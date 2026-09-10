@@ -1,0 +1,29 @@
+ls:
+    # Rust
+    crates:
+        .dir: snake_case
+        .rs: snake_case
+    # JS/TS
+    packages:
+        .dir: kebab-case
+        .js: kebab-case
+        .ts: kebab-case
+    # JS/TS
+    tests:
+        .dir: kebab-case
+        .js: kebab-case
+        .ts: kebab-case
+
+ignore:
+    - .git
+    - .github
+    - .vscode
+    - __MACOSX
+    - "**/__MACOSX"
+    - .DS_Store
+    - "**/.DS_Store"
+    - node_modules
+    - "**/node_modules"
+    - target
+    - "**/dist"
+    - "**/@types"

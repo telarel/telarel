@@ -1,0 +1,20 @@
+#:schema https://www.schemastore.org/cargo.json
+
+[package]
+name = "telarel_common"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "A shared library for the compiler"
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["telarel", "compiler", "common"]
+categories.workspace = true
+include = ["src/**", "Cargo.toml", "README.md"]
+
+[dependencies]
+oxc = { workspace = true, features = ["codegen"] }
+oxc_sourcemap = { workspace = true }

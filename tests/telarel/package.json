@@ -1,0 +1,14 @@
+{
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "telarel": "workspace:*",
+        "vitest": "catalog:test"
+    },
+    "devDependencies": {
+        "vite": "catalog:test"
+    }
+}

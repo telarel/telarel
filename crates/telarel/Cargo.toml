@@ -1,0 +1,30 @@
+#:schema https://www.schemastore.org/cargo.json
+
+[package]
+name = "telarel"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "An extensible JavaScript compiler"
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["telarel", "compiler"]
+categories.workspace = true
+include = ["src/**", "Cargo.toml", "README.md"]
+
+[dependencies]
+
+# Workspace
+telarel_common = { workspace = true }
+telarel_plugin = { workspace = true }
+telarel_core = { workspace = true }
+
+# Crates
+oxc = { workspace = true }
+oxc_sourcemap = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

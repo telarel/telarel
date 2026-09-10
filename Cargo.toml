@@ -1,0 +1,61 @@
+#:schema https://www.schemastore.org/cargo.json
+
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Alpheus <contact@alphe.us>"]
+edition = "2024"
+rust-version = "1.95.0"
+readme = "README.md"
+homepage = "https://github.com/telarel/telarel"
+repository = "https://github.com/telarel/telarel"
+license = "MIT"
+categories = ["compilers", "web-programming"]
+
+[workspace.dependencies]
+
+# Workspace
+telarel_common = { version = "0.1.0", path = "crates/common" }
+telarel_plugin = { version = "0.1.0", path = "crates/plugin" }
+telarel_core = { version = "0.1.0", path = "crates/core" }
+telarel_binding = { version = "0.1.0", path = "crates/binding" }
+telarel = { version = "0.1.0", path = "crates/telarel" }
+
+# Crates
+anyhow = { version = "^1.0.0" }
+napi = { version = "^3.12.0" }
+napi-build = { version = "^2.4.0" }
+napi-derive = { version = "^3.6.0" }
+oxc = { version = "~0.146.0" }
+oxc_sourcemap = { version = "^8.1.0" }
+serde = { version = "^1.0.0" }
+tokio = { version = "^1.50.0" }
+
+[profile.dev]
+opt-level = 0
+debug = true
+strip = false
+lto = false
+panic = "unwind"
+incremental = true
+codegen-units = 256
+
+[profile.dev-wasm]
+inherits = "dev"
+debug = "line-tables-only"
+panic = "abort"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = true
+lto = true
+panic = "abort"
+codegen-units = 1
+
+[profile.release-wasm]
+inherits = "release"
+opt-level = "s"

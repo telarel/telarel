@@ -1,0 +1,29 @@
+#:schema https://www.schemastore.org/cargo.json
+
+[package]
+name = "telarel_plugin"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "A plugin interface for the compiler"
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["telarel", "compiler", "plugin"]
+categories.workspace = true
+include = ["src/**", "Cargo.toml", "README.md"]
+
+[dependencies]
+
+# Workspace
+telarel_common = { workspace = true }
+
+# Crates
+anyhow = { workspace = true }
+oxc = { workspace = true }
+oxc_sourcemap = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

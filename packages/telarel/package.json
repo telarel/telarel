@@ -1,0 +1,69 @@
+{
+    "name": "telarel",
+    "version": "0.1.0",
+    "description": "An extensible JavaScript compiler",
+    "keywords": [
+        "compiler",
+        "extensible",
+        "javascript",
+        "js",
+        "telarel",
+        "ts",
+        "typescript"
+    ],
+    "homepage": "https://github.com/telarel/telarel",
+    "bugs": "https://github.com/telarel/telarel/issues",
+    "license": "MIT",
+    "author": {
+        "name": "Alpheus",
+        "email": "contact@alphe.us"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/telarel/telarel.git",
+        "directory": "packages/telarel"
+    },
+    "files": [
+        "dist"
+    ],
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "dependencies": {
+        "ts-vista": "~0.2.3"
+    },
+    "optionalDependencies": {
+        "@telarel/binding-darwin-arm64": "0.1.0",
+        "@telarel/binding-darwin-x64": "0.1.0",
+        "@telarel/binding-linux-arm64-gnu": "0.1.0",
+        "@telarel/binding-linux-arm64-musl": "0.1.0",
+        "@telarel/binding-linux-x64-gnu": "0.1.0",
+        "@telarel/binding-linux-x64-musl": "0.1.0",
+        "@telarel/binding-wasm32-wasi": "0.1.0",
+        "@telarel/binding-win32-arm64-msvc": "0.1.0",
+        "@telarel/binding-win32-x64-msvc": "0.1.0"
+    },
+    "napi": {
+        "binaryName": "telarel",
+        "packageName": "@telarel/binding",
+        "targets": [
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "aarch64-unknown-linux-gnu",
+            "aarch64-unknown-linux-musl",
+            "x86_64-unknown-linux-gnu",
+            "x86_64-unknown-linux-musl",
+            "aarch64-pc-windows-msvc",
+            "x86_64-pc-windows-msvc",
+            "wasm32-wasip1-threads"
+        ]
+    }
+}

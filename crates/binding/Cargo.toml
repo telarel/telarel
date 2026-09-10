@@ -1,0 +1,34 @@
+#:schema https://www.schemastore.org/cargo.json
+
+[package]
+name = "telarel_binding"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+# Workspace
+telarel_common = { workspace = true }
+telarel_plugin = { workspace = true }
+telarel_core = { workspace = true }
+
+# Crates
+anyhow = { workspace = true }
+napi = { workspace = true, features = ["napi4", "tokio_rt"] }
+napi-derive = { workspace = true }
+oxc = { workspace = true }
+oxc_sourcemap = { workspace = true }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+tokio = { workspace = true, features = ["rt"] }
+
+[build-dependencies]
+napi-build = { workspace = true }

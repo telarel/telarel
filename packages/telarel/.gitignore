@@ -1,0 +1,8 @@
+# Artifacts
+/artifacts/
+
+# Binary
+/npm/
+
+# Binding
+/src/binding/

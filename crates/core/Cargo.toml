@@ -1,0 +1,30 @@
+#:schema https://www.schemastore.org/cargo.json
+
+[package]
+name = "telarel_core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "A pipeline orchestrator"
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["telarel", "compiler", "core"]
+categories.workspace = true
+include = ["src/**", "Cargo.toml", "README.md"]
+
+[dependencies]
+
+# Workspace
+telarel_common = { workspace = true }
+telarel_plugin = { workspace = true }
+
+# Crates
+anyhow = { workspace = true }
+oxc = { workspace = true }
+oxc_sourcemap = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

@@ -1,0 +1,17 @@
+packages:
+    - packages/*
+    - packages/*/npm/*
+    - tests/*
+
+autoInstallPeers: false
+strictPeerDependencies: false
+
+catalogs:
+    test:
+        vite: ^8
+        vitest: ^5
+
+minimumReleaseAge: 1440
+
+minimumReleaseAgeExclude:
+    - "@apst/*"
