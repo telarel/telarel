@@ -16,5 +16,5 @@ categories.workspace = true
 include = ["src/**", "Cargo.toml", "README.md"]
 
 [dependencies]
-oxc = { workspace = true, features = ["codegen"] }
+oxc = { workspace = true, features = ["codegen", "serialize"] }
 oxc_sourcemap = { workspace = true }
