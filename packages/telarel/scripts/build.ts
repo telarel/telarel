@@ -85,7 +85,7 @@ for (const platform of orderedTargets) {
         outputDir: Path.join("artifacts"),
         platform: true,
         jsPackageName: "@telarel/binding",
-        jsBinding: Path.join("..", "src", "binding", "index.js"),
+        jsBinding: Path.join("index.js"),
         dts: Path.join("..", "src", "binding", "index.d.ts"),
         esm: true,
         package: "telarel_binding",
@@ -94,6 +94,12 @@ for (const platform of orderedTargets) {
 
     await buildTask;
 }
+
+const generatedBinding: string = Path.resolve(pkgDir, "artifacts", "index.js");
+
+const localBinding: string = Path.resolve(pkgDir, "src", "binding", "index.js");
+
+await Fsp.copyFile(generatedBinding, localBinding);
 
 consola.info("Moving artifacts into npm packages...");
 

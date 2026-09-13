@@ -6,6 +6,11 @@ packages:
 autoInstallPeers: false
 strictPeerDependencies: false
 
+overrides:
+    "@emnapi/core": 2.0.0-alpha.5
+    "@emnapi/runtime": 2.0.0-alpha.5
+    emnapi: 2.0.0-alpha.5
+
 catalogs:
     test:
         vite: ^8

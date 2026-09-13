@@ -58,11 +58,13 @@ pub fn parse<'ctx, 'a>(
                 Span::new(label.offset(), label.offset() + label.len())
             })
             .unwrap_or_else(|| Span::new(0, 0));
+
         let message: String = diagnostic.to_string();
+
         return Err(CompileError::new(options.context, span, message));
     }
 
-    if parser_return.panicked {
+    if parser_return.fatal_error {
         let span: Span = Span::new(0, 0);
         return Err(CompileError::new(
             options.context,
