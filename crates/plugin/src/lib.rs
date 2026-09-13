@@ -1,3 +1,10 @@
+//! # Telarel Plugin
+//!
+//! A plugin interface for the compiler.
+//!
+//! This crate provides the plugin traits, hook argument and output types,
+//! and the plugin driver that runs plugin hooks across the pipeline.
+
 mod _types;
 mod plugin;
 mod plugin_driver;
