@@ -1,6 +1,6 @@
 # Telarel Core
 
-A pipeline orchestrator.
+A pipeline orchestrator for the compiler.
 
 ## License
 
