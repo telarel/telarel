@@ -22,6 +22,7 @@ anyhow = { workspace = true }
 napi = { workspace = true, features = ["napi4", "tokio_rt"] }
 napi-derive = { workspace = true }
 oxc = { workspace = true }
+oxc_estree_codec = { workspace = true }
 oxc_sourcemap = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]

@@ -94,11 +94,13 @@ test-rs:
     cargo test -- --nocapture
 
 # Test JavaScript code with native binding
+[env("VITE_CONFIG_NATIVE_IGNORE_WARNING", "true")]
 test-js-native:
     cd ./{{test_telarel}} && {{vitest}} run
 
 # Test JavaScript code under WASI
 [env("NODE_OPTIONS", "--disable-warning=ExperimentalWarning")]
+[env("VITE_CONFIG_NATIVE_IGNORE_WARNING", "true")]
 test-js-wasm:
     cd ./{{test_telarel}} && {{vitest}} run --config vitest.wasm.config.ts
 

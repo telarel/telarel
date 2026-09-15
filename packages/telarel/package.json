@@ -38,6 +38,7 @@
         "./package.json": "./package.json"
     },
     "dependencies": {
+        "@oxc-project/types": "~0.150.0",
         "ts-vista": "~0.2.3"
     },
     "optionalDependencies": {
