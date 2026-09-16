@@ -3,7 +3,7 @@ import { cjsPreset, dtsPreset, esmPreset } from "@apst/tsdown/presets";
 
 export default defineConfig(
     {
-        entry: ["./src/index.ts"],
+        entry: ["./src/index.ts", "./src/ast.ts"],
         platform: "node",
     },
     [

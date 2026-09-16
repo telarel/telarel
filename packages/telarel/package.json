@@ -35,6 +35,11 @@
             "import": "./dist/index.mjs",
             "require": "./dist/index.js"
         },
+        "./ast": {
+            "types": "./dist/ast.d.ts",
+            "import": "./dist/ast.mjs",
+            "require": "./dist/ast.js"
+        },
         "./package.json": "./package.json"
     },
     "dependencies": {
