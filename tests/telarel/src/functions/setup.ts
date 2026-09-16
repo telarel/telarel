@@ -77,6 +77,11 @@ const stageWasi = async (): Promise<void> => {
     staged.push(Path.join(distDir, "node_modules"));
 };
 
+const removeStaged = async (): Promise<void> => {
+    for (const target of staged) await Fsp.rm(target, { force: true });
+    staged.length = 0;
+};
+
 const setup = async (): Promise<Teardown> => {
     const hasDist: boolean = await exists(Path.join(distDir, "index.mjs"));
 
@@ -92,11 +97,9 @@ const setup = async (): Promise<Teardown> => {
         await stageNative();
     }
 
-    return async (): Promise<void> => {
-        for (const target of staged) {
-            await Fsp.rm(target, { force: true });
-        }
-    };
+    return removeStaged;
 };
 
+export type { StageOptions, Teardown };
+export { exists, stage, stageNative, stageWasi, removeStaged, setup };
 export default setup;
