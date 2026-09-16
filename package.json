@@ -10,6 +10,7 @@
         "@emnapi/runtime": "2.0.0-alpha.5",
         "@napi-rs/cli": "~3.7.4",
         "@types/node": "^26.1.2",
+        "@types/react": "^19.3.0",
         "consola": "^3.4.2",
         "emnapi": "2.0.0-alpha.5",
         "oxfmt": "~0.68.0",

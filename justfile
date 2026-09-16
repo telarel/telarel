@@ -14,6 +14,9 @@ telarel := "packages/telarel"
 
 test_telarel := "tests/telarel"
 
+bench_rs := "benchmarks/rust"
+bench_js := "benchmarks/javascript"
+
 # Default action
 _:
     just --list -u
@@ -109,6 +112,18 @@ test-js: test-js-native test-js-wasm
 
 # Rust test
 test: test-rs test-js
+
+# Run Rust benchmarks
+bench-rs:
+    cargo bench -p telarel_bench
+
+# Run JavaScript benchmarks
+[env("VITE_CONFIG_NATIVE_IGNORE_WARNING", "true")]
+bench-js:
+    cd ./{{bench_js}} && {{vitest}} bench --run
+
+# Run benchmarks
+bench: bench-rs bench-js
 
 # Check Rust code
 check-rs: fmt-rs lint-rs test-rs

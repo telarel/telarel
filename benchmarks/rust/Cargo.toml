@@ -1,0 +1,25 @@
+#:schema https://www.schemastore.org/cargo.json
+
+[package]
+name = "telarel_bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+autobenches = false
+
+[dependencies]
+
+# Workspace
+telarel = { workspace = true }
+
+# Crates
+oxc = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true, features = ["async_tokio"] }
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[[bench]]
+name = "compile"
+harness = false

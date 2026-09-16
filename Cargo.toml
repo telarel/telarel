@@ -2,7 +2,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "benchmarks/rust"]
 
 [workspace.package]
 version = "0.1.0"
@@ -26,6 +26,7 @@ telarel = { version = "0.1.0", path = "crates/telarel" }
 
 # Crates
 anyhow = { version = "^1.0.0" }
+criterion = { version = "~0.8.2" }
 napi = { version = "^3.12.0" }
 napi-build = { version = "^2.4.0" }
 napi-derive = { version = "^3.6.0" }

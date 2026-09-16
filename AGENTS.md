@@ -28,6 +28,13 @@ This repository is a TypeScript/Rust monorepo.
 | --------------- | -------------------------------- |
 | `tests/telarel` | JavaScript test for the compiler |
 
+### Benchmarks
+
+| Path                    | Description              |
+| ----------------------- | ------------------------ |
+| `benchmarks/rust`       | Benchmark with Criterion |
+| `benchmarks/javascript` | Benchmark with Vitest    |
+
 ## Dependency Boundaries
 
 | Crate     | May depend on              |
