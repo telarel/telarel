@@ -90,4 +90,35 @@ mod tests {
         assert!(json.contains("\"mappings\":\""));
         assert!(!json.contains("\"mappings\":\"\""));
     }
+
+    #[test]
+    fn test_codegen_sourcemap_sources_entry() {
+        let allocator: Allocator = Allocator::default();
+        let code: &str = "const a = 1;";
+        let parsed: ParseResult<'_> = parse_code(&allocator, code);
+
+        let result: CodegenResult<'_> =
+            codegen(CodegenOptions { file: FILE, program: &parsed.program });
+
+        let source: Option<&str> = result.map.get_source(0);
+
+        assert_eq!(source, Some(FILE));
+    }
+
+    #[test]
+    fn test_codegen_roundtrip_preserves_statements() {
+        let allocator: Allocator = Allocator::default();
+        let code: &str =
+            "const a = 1; let b = 2; function f() { return a + b; }";
+        let parsed: ParseResult<'_> = parse_code(&allocator, code);
+
+        let result: CodegenResult<'_> =
+            codegen(CodegenOptions { file: FILE, program: &parsed.program });
+
+        let compact: String = result.code.split_whitespace().collect();
+
+        assert!(compact.contains("consta=1"));
+        assert!(compact.contains("letb=2"));
+        assert!(compact.contains("functionf()"));
+    }
 }

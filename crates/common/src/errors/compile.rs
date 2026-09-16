@@ -90,4 +90,26 @@ mod tests {
         let error: CompileError = CompileError::from_message("boom");
         assert_eq!(error.to_string(), "boom");
     }
+
+    #[test]
+    fn test_compile_error_is_std_error() {
+        let error: CompileError = CompileError::from_message("boom");
+        let boxed: Box<dyn std::error::Error> = Box::new(error);
+
+        assert_eq!(boxed.to_string(), "boom");
+    }
+
+    #[test]
+    fn test_debug_renders() {
+        let cwd: &str = "/repo";
+        let file: &str = "src/app.js";
+        let code: &str = "let 1 = x;";
+        let ctx: CompileContext<'_> = CompileContext::new(cwd, file, code);
+        let span: oxc::span::Span = oxc::span::Span::new(4, 5);
+        let error: CompileError =
+            CompileError::new(&ctx, span, "expected an identifier".into());
+        let debug: String = format!("{:?}", error);
+
+        assert!(debug.contains("CompileError"));
+    }
 }

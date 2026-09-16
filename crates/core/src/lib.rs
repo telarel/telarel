@@ -112,8 +112,8 @@ mod tests {
     use telarel_common::CompileContext;
     use telarel_common::CompileOptions;
     use telarel_plugin::{
-        Plugin, SharedPluginable, TransformArgs, TransformOutput,
-        TransformReturn,
+        OptionsArgs, OptionsOutput, Plugin, SharedPluginable, TransformArgs,
+        TransformOutput, TransformReturn,
     };
 
     use oxc::allocator::{ArenaBox, ArenaVec, CloneIn, GetAllocator};
@@ -286,6 +286,58 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct RewriteCodeOptionsPlugin;
+
+    impl Plugin for RewriteCodeOptionsPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "rewrite-code-options".into()
+        }
+
+        async fn options(
+            &self,
+            args: &'_ OptionsArgs<'_>,
+        ) -> anyhow::Result<Option<OptionsOutput>> {
+            let mut options: CompileOptions = args.options.clone();
+            options.code = "const rewritten = 7;".to_string();
+            Ok(Some(OptionsOutput { options }))
+        }
+    }
+
+    #[derive(Debug)]
+    struct FailingPrePlugin;
+
+    impl Plugin for FailingPrePlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "failing-pre".into()
+        }
+
+        async fn pre(
+            &self,
+            _ctx: &'_ CompileContext<'_>,
+            _args: &'_ telarel_plugin::PreArgs<'_>,
+        ) -> anyhow::Result<()> {
+            Err(anyhow::anyhow!("stage boom"))
+        }
+    }
+
+    #[derive(Debug)]
+    struct FailingPostPlugin;
+
+    impl Plugin for FailingPostPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "failing-post".into()
+        }
+
+        async fn post(
+            &self,
+            _ctx: &'_ CompileContext<'_>,
+            _args: &'_ telarel_plugin::PostArgs<'_>,
+        ) -> anyhow::Result<()> {
+            Err(anyhow::anyhow!("stage boom"))
+        }
+    }
+
     fn options() -> CompileOptions {
         CompileOptions {
             cwd: "/repo".to_string(),
@@ -311,6 +363,24 @@ mod tests {
         let plugins: Vec<SharedPluginable> = vec![Arc::new(NoopPlugin)];
         let out = compile(opts, plugins).await.unwrap();
         assert_eq!(out.code, "console.log(1);");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_strips_trailing_newline() {
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "const a = 1;\n".to_string(),
+        };
+        let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
+        assert_eq!(out.code, "const a = 1;");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_no_plugins_sourcemap_sources() {
+        let out: crate::CompileOutput =
+            compile(options(), vec![]).await.unwrap();
+        assert_eq!(out.map.get_source(0), Some("index.ts"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -346,5 +416,45 @@ mod tests {
             map.get_tokens().next().is_some(),
             "mappings must be non-empty"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_invalid_code_errors() {
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "const = ;".to_string(),
+        };
+        let error: CompileError = compile(opts, vec![]).await.unwrap_err();
+        assert!(error.to_string().contains("index.ts"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_options_hook_rewrites_code() {
+        let plugins: Vec<SharedPluginable> =
+            vec![Arc::new(RewriteCodeOptionsPlugin)];
+        let out: crate::CompileOutput =
+            compile(options(), plugins).await.unwrap();
+        assert!(out.code.contains("rewritten"), "{}", out.code);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_pre_hook_error_aborts() {
+        let plugins: Vec<SharedPluginable> = vec![Arc::new(FailingPrePlugin)];
+        let error: CompileError =
+            compile(options(), plugins).await.unwrap_err();
+        let message: String = error.to_string();
+        assert!(message.contains("pre hook"), "{}", message);
+        assert!(message.contains("stage boom"), "{}", message);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_post_hook_error_aborts() {
+        let plugins: Vec<SharedPluginable> = vec![Arc::new(FailingPostPlugin)];
+        let error: CompileError =
+            compile(options(), plugins).await.unwrap_err();
+        let message: String = error.to_string();
+        assert!(message.contains("post hook"), "{}", message);
+        assert!(message.contains("stage boom"), "{}", message);
     }
 }

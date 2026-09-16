@@ -178,4 +178,29 @@ mod tests {
         assert!(parsed.program.source_type.is_javascript());
         assert!(!parsed.program.source_type.is_typescript());
     }
+
+    #[test]
+    fn test_parse_tsx_source_type() {
+        let allocator: Allocator = Allocator::default();
+        let file: &str = "index.tsx";
+        let result: ParseResult<'_> =
+            parse_code(&allocator, file, "const x = <div>hi</div>;")
+                .expect("tsx source parses");
+
+        assert!(result.program.source_type.is_typescript());
+        assert!(result.program.source_type.is_jsx());
+    }
+
+    #[test]
+    fn test_parse_jsx_source_type() {
+        let allocator: Allocator = Allocator::default();
+        let file: &str = "index.jsx";
+        let result: ParseResult<'_> =
+            parse_code(&allocator, file, "const x = <div>hi</div>;")
+                .expect("jsx source parses");
+
+        assert!(result.program.source_type.is_javascript());
+        assert!(result.program.source_type.is_jsx());
+        assert!(!result.program.source_type.is_typescript());
+    }
 }
