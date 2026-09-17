@@ -5,22 +5,49 @@ import { describe, expect, it } from "vitest";
 
 describe("validation", (): void => {
     it("rejects on a parse error with file context", async (): Promise<void> => {
-        // Pinned observed message: the native parser renders a code-frame
-        // style diagnostic including the file name and caret position.
+        // A plugin declaring `transform` forces the parse path; without one
+        // the skip path passes invalid code through verbatim. Pinned
+        // observed message: the native parser renders a code-frame style
+        // diagnostic including the file name and caret position.
         await expect(
             compile({
                 cwd: "/repo",
                 file: "index.ts",
                 code: "const = ;",
+                plugins: [
+                    {
+                        name: "force-parse",
+                        transform: (): void => void 0,
+                    },
+                ],
             }),
         ).rejects.toThrow("index.ts");
+
         await expect(
             compile({
                 cwd: "/repo",
                 file: "index.ts",
                 code: "const = ;",
+                plugins: [
+                    {
+                        name: "force-parse",
+                        transform: (): void => void 0,
+                    },
+                ],
             }),
         ).rejects.toThrow(/expected|Unexpected token/i);
+    });
+
+    it("passes invalid code through verbatim when no transform plugin exists", async (): Promise<void> => {
+        // Skip path: without a `transform` hook the source is never parsed,
+        // so syntactically invalid code compiles to itself.
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const = ;",
+        });
+
+        expect(result.code).toBe("const = ;");
     });
 
     it("rejects on missing required compile options", async (): Promise<void> => {

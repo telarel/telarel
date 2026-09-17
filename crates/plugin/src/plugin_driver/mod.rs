@@ -1,7 +1,9 @@
 pub mod hooks;
 
+use std::sync::Arc;
+
 use oxc::ast::ast::Program;
-use telarel_common::{CompileContext, CompileOptions};
+use telarel_common::{CompileContext, CompileOptions, HookUsage};
 
 use crate::_types::hooks::post::PostArgs;
 use crate::_types::hooks::pre::PreArgs;
@@ -10,13 +12,60 @@ use crate::plugin::pluginable::SharedPluginable;
 
 /// Drives plugins through the hooks in registration order.
 pub struct PluginDriver {
-    plugins: Vec<SharedPluginable>,
+    usage: HookUsage,
+    options_plugins: Vec<SharedPluginable>,
+    pre_plugins: Vec<SharedPluginable>,
+    transform_plugins: Vec<SharedPluginable>,
+    post_plugins: Vec<SharedPluginable>,
 }
 
 impl PluginDriver {
     /// Create a driver from plugins in registration order.
+    ///
+    /// Plugins are partitioned by their declared [`HookUsage`]; a hook only
+    /// iterates the plugins that declared it.
     pub fn new(plugins: Vec<SharedPluginable>) -> Self {
-        Self { plugins }
+        let mut usage: HookUsage = HookUsage::default();
+
+        let mut options_plugins: Vec<SharedPluginable> = Vec::new();
+        let mut pre_plugins: Vec<SharedPluginable> = Vec::new();
+        let mut transform_plugins: Vec<SharedPluginable> = Vec::new();
+        let mut post_plugins: Vec<SharedPluginable> = Vec::new();
+
+        for plugin in &plugins {
+            let declared: HookUsage = plugin.call_hook_usage();
+
+            usage |= declared;
+
+            if declared.contains(HookUsage::OPTIONS) {
+                options_plugins.push(Arc::clone(plugin));
+            }
+
+            if declared.contains(HookUsage::PRE) {
+                pre_plugins.push(Arc::clone(plugin));
+            }
+
+            if declared.contains(HookUsage::TRANSFORM) {
+                transform_plugins.push(Arc::clone(plugin));
+            }
+
+            if declared.contains(HookUsage::POST) {
+                post_plugins.push(Arc::clone(plugin));
+            }
+        }
+
+        Self {
+            usage,
+            options_plugins,
+            pre_plugins,
+            transform_plugins,
+            post_plugins,
+        }
+    }
+
+    /// The aggregate hook usage across all plugins.
+    pub fn usage(&self) -> HookUsage {
+        self.usage
     }
 
     /// Run the `options` hook chain; the last `Some` output wins.
@@ -24,7 +73,7 @@ impl PluginDriver {
         &self,
         options: CompileOptions,
     ) -> anyhow::Result<CompileOptions> {
-        hooks::options::options(&self.plugins, options).await
+        hooks::options::options(&self.options_plugins, options).await
     }
 
     /// Run the `pre` hook on every plugin in registration order.
@@ -33,7 +82,7 @@ impl PluginDriver {
         ctx: &CompileContext<'_>,
         args: &PreArgs<'_>,
     ) -> anyhow::Result<()> {
-        hooks::pre::pre(&self.plugins, ctx, args).await
+        hooks::pre::pre(&self.pre_plugins, ctx, args).await
     }
 
     /// Run the `transform` hook chain; returns the final replaced
@@ -43,7 +92,7 @@ impl PluginDriver {
         ctx: &'a CompileContext<'a>,
         args: &'a TransformArgs<'a>,
     ) -> anyhow::Result<Option<Program<'a>>> {
-        hooks::transform::transform(&self.plugins, ctx, args).await
+        hooks::transform::transform(&self.transform_plugins, ctx, args).await
     }
 
     /// Run the `post` hook on every plugin in registration order.
@@ -52,7 +101,7 @@ impl PluginDriver {
         ctx: &CompileContext<'_>,
         args: &PostArgs<'_>,
     ) -> anyhow::Result<()> {
-        hooks::post::post(&self.plugins, ctx, args).await
+        hooks::post::post(&self.post_plugins, ctx, args).await
     }
 }
 
@@ -69,7 +118,8 @@ mod tests {
     use std::sync::MutexGuard;
 
     use telarel_common::{
-        CompileContext, CompileOptions, ParseOptions, ParseResult, parse,
+        CompileContext, CompileOptions, HookUsage, ParseOptions, ParseResult,
+        parse,
     };
 
     use oxc::allocator::Allocator;
@@ -78,7 +128,9 @@ mod tests {
     use crate::_types::hooks::options::{OptionsArgs, OptionsOutput};
     use crate::_types::hooks::post::PostArgs;
     use crate::_types::hooks::pre::PreArgs;
-    use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
+    use crate::_types::hooks::transform::{
+        TransformArgs, TransformOutput, TransformReturn,
+    };
     use crate::SharedPluginable;
     use crate::plugin::Plugin;
     use crate::plugin::pluginable::Pluginable;
@@ -91,6 +143,10 @@ mod tests {
     impl Plugin for OptionsPlugin {
         fn name(&self) -> Cow<'static, str> {
             "options".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::OPTIONS
         }
 
         async fn options(
@@ -110,6 +166,10 @@ mod tests {
         fn name(&self) -> Cow<'static, str> {
             "noop-options".into()
         }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::OPTIONS
+        }
     }
 
     #[derive(Debug)]
@@ -118,6 +178,10 @@ mod tests {
     impl Plugin for FailingOptionsPlugin {
         fn name(&self) -> Cow<'static, str> {
             "fail-options".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::OPTIONS
         }
 
         async fn options(
@@ -153,6 +217,10 @@ mod tests {
             self.name.into()
         }
 
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::PRE | HookUsage::POST
+        }
+
         async fn pre(
             &self,
             _ctx: &CompileContext<'_>,
@@ -180,6 +248,10 @@ mod tests {
             "fail-pre".into()
         }
 
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::PRE
+        }
+
         async fn pre(
             &self,
             _ctx: &CompileContext<'_>,
@@ -195,6 +267,10 @@ mod tests {
     impl Plugin for MarkPlugin {
         fn name(&self) -> Cow<'static, str> {
             "mark".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::TRANSFORM
         }
 
         fn transform<'a>(
@@ -225,6 +301,10 @@ mod tests {
             "fail-transform".into()
         }
 
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::TRANSFORM
+        }
+
         fn transform<'a>(
             &'a self,
             _ctx: &'a CompileContext<'a>,
@@ -243,12 +323,63 @@ mod tests {
             "fail-post".into()
         }
 
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::POST
+        }
+
         async fn post(
             &self,
             _ctx: &CompileContext<'_>,
             _args: &PostArgs<'_>,
         ) -> anyhow::Result<()> {
             Err(anyhow::anyhow!("boom"))
+        }
+    }
+
+    #[derive(Debug)]
+    struct PreOnlyPlugin {
+        name: &'static str,
+        log: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl PreOnlyPlugin {
+        fn new(log: Arc<Mutex<Vec<String>>>) -> Self {
+            Self { name: "pre-only", log }
+        }
+
+        fn record(&self) {
+            let mut log: MutexGuard<'_, Vec<String>> = self.log.lock().unwrap();
+            log.push(self.name.to_string());
+        }
+    }
+
+    impl Plugin for PreOnlyPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            self.name.into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::PRE
+        }
+
+        async fn pre(
+            &self,
+            _ctx: &CompileContext<'_>,
+            _args: &PreArgs<'_>,
+        ) -> anyhow::Result<()> {
+            self.record();
+            Ok(())
+        }
+
+        fn transform<'a>(
+            &'a self,
+            _ctx: &'a CompileContext<'a>,
+            _args: &'a TransformArgs<'a>,
+        ) -> impl Future<Output = TransformReturn<'a>> {
+            async move {
+                self.record();
+                Ok(None)
+            }
         }
     }
 
@@ -498,5 +629,65 @@ mod tests {
         let output: OptionsOutput = output.unwrap().expect("options output");
 
         assert_eq!(output.options.cwd, "/changed");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_skips_plugins_without_usage() {
+        let allocator: Allocator = Allocator::default();
+
+        let ctx: CompileContext<'_> =
+            CompileContext::new("/repo", "a.ts", "console.log(1);");
+
+        let parsed: ParseResult<'_> = parse(ParseOptions {
+            context: &ctx,
+            allocator: &allocator,
+            file: "a.ts",
+            code: "console.log(1);",
+        })
+        .unwrap();
+
+        let program: Program<'_> = parsed.program;
+
+        let args: TransformArgs<'_> = TransformArgs {
+            allocator: &allocator,
+            file: "a.ts",
+            program: &program,
+        };
+
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Arc::new(PreOnlyPlugin::new(Arc::clone(&log)))];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let replaced: Option<Program<'_>> =
+            driver.transform(&ctx, &args).await.unwrap();
+
+        let recorded: Vec<String> = log.lock().unwrap().clone();
+
+        assert!(replaced.is_none());
+        assert_eq!(driver.usage(), HookUsage::PRE);
+        assert!(recorded.is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_driver_aggregates_usage() {
+        let plugins: Vec<SharedPluginable> = vec![
+            Arc::new(OptionsPlugin),
+            Arc::new(FailingPrePlugin),
+            Arc::new(MarkPlugin),
+            Arc::new(FailingPostPlugin),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        assert_eq!(
+            driver.usage(),
+            HookUsage::OPTIONS
+                | HookUsage::PRE
+                | HookUsage::TRANSFORM
+                | HookUsage::POST
+        );
     }
 }

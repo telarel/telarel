@@ -793,9 +793,13 @@ impl telarel::Plugin for TransformPlugin {
         "rename-jsx-elements".into()
     }
 
+    fn hook_usage(&self) -> telarel::HookUsage {
+        telarel::HookUsage::TRANSFORM
+    }
+
     async fn transform<'a>(
         &'a self,
-        _ctx: &'a telarel::CompileContext<'a>,
+        _: &'a telarel::CompileContext<'a>,
         args: &'a telarel::TransformArgs<'a>,
     ) -> telarel::TransformReturn<'a> {
         let builder: AstBuilder<'a> = AstBuilder::new(args.allocator);

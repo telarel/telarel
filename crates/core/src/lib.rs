@@ -7,17 +7,41 @@
 
 use oxc::allocator::Allocator;
 use oxc::ast::ast::Program;
-use oxc_sourcemap::SourceMap;
+use oxc_sourcemap::{SourceMap, SourceMapBuilder};
 
 use telarel_common::{
-    CompileContext, CompileError, CompileOptions, ParseOptions, parse,
+    CompileContext, CompileError, HookUsage, ParseOptions, parse,
 };
 use telarel_plugin::__internal::PluginDriver;
 use telarel_plugin::{PostArgs, PreArgs, SharedPluginable, TransformArgs};
 
+pub use telarel_common::CompileOptions;
+
 fn strip_trailing_newline(source: String) -> String {
     let trimmed: &str = source.trim_end_matches('\n');
     String::from(trimmed)
+}
+
+/// Build a per-line identity map: each generated line maps to the same
+/// source line at column 0.
+fn identity_map(
+    file: &str,
+    code: &str,
+) -> SourceMap<'static> {
+    let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
+
+    builder.set_file(file);
+
+    let source_id: u32 = builder.add_source_and_content(file, code);
+
+    let line_count: u32 =
+        u32::try_from(code.lines().count().max(1)).unwrap_or(u32::MAX);
+
+    for line in 0..line_count {
+        builder.add_token(line, 0, line, 0, Some(source_id), None);
+    }
+
+    builder.into_owned_sourcemap().into_inner()
 }
 
 /// Result of a successful compile.
@@ -41,8 +65,6 @@ pub async fn compile(
             CompileError::from_message(&format!("options hook: {error:#}"))
         })?;
 
-    let allocator: Allocator = Allocator::default();
-
     let ctx: CompileContext<'_> =
         CompileContext::new(&resolved.cwd, &resolved.file, &resolved.code);
 
@@ -53,55 +75,75 @@ pub async fn compile(
             CompileError::from_message(&format!("pre hook: {error:#}"))
         })?;
 
-    // Parse ONCE before the transform chain. Root the resolved source in the
-    // allocator so the parsed program borrows from the same allocation.
-    let source: &'_ str = allocator.alloc_str(&resolved.code);
+    let (code, map): (String, SourceMap<'static>) = if driver
+        .usage()
+        .contains(HookUsage::TRANSFORM)
+    {
+        // Parse ONCE before the transform chain. Root the resolved source in
+        // the allocator so the parsed program borrows from the same
+        // allocation.
+        let allocator: Allocator = Allocator::default();
 
-    let parse_options: ParseOptions<'_, '_> = ParseOptions {
-        context: &ctx,
-        allocator: &allocator,
-        file: &resolved.file,
-        code: source,
-    };
+        let source: &'_ str = allocator.alloc_str(&resolved.code);
 
-    let original: Program<'_> = parse(parse_options)?.program;
-
-    // Transform stage over the native Program.
-    let transform_args: TransformArgs<'_> = TransformArgs {
-        allocator: &allocator,
-        file: &resolved.file,
-        program: &original,
-    };
-
-    let replaced: Option<Program<'_>> =
-        driver.transform(&ctx, &transform_args).await.map_err(|error| {
-            CompileError::from_message(&format!("transform hook: {error:#}"))
-        })?;
-
-    // Pointer stability is the DRIVER's job (it allocs replacements in
-    // `args.allocator`); the core only borrows for codegen. `Program` is not
-    // `Clone` — do NOT copy it here.
-    let current: &Program<'_> = replaced.as_ref().unwrap_or(&original);
-
-    // Codegen from the AST (original when no plugin replaced).
-    let result: telarel_common::CodegenResult<'_> =
-        telarel_common::codegen(telarel_common::CodegenOptions {
+        let parse_options: ParseOptions<'_, '_> = ParseOptions {
+            context: &ctx,
+            allocator: &allocator,
             file: &resolved.file,
-            program: current,
-        });
+            code: source,
+        };
 
-    let final_source: String = strip_trailing_newline(result.code);
+        let original: Program<'_> = parse(parse_options)?.program;
 
-    let map: SourceMap<'static> = result.map.into_owned();
+        let transform_args: TransformArgs<'_> = TransformArgs {
+            allocator: &allocator,
+            file: &resolved.file,
+            program: &original,
+        };
+
+        let replaced: Option<Program<'_>> =
+            driver.transform(&ctx, &transform_args).await.map_err(|error| {
+                CompileError::from_message(&format!(
+                    "transform hook: {error:#}"
+                ))
+            })?;
+
+        // Pointer stability is the DRIVER's job (it allocs replacements in
+        // `args.allocator`); the core only borrows for codegen. `Program` is
+        // not `Clone` — do NOT copy it here.
+        let current: &Program<'_> = replaced.as_ref().unwrap_or(&original);
+
+        // Codegen from the AST (original when no plugin replaced).
+        let result: telarel_common::CodegenResult<'_> =
+            telarel_common::codegen(telarel_common::CodegenOptions {
+                file: &resolved.file,
+                program: current,
+            });
+
+        let code: String = strip_trailing_newline(result.code);
+
+        let map: SourceMap<'static> = result.map.into_owned();
+
+        (code, map)
+    } else {
+        // No plugin uses `transform`: skip parse and codegen entirely and
+        // pass the source through with a per-line identity map.
+        let code: String = strip_trailing_newline(resolved.code.clone());
+
+        let map: SourceMap<'static> =
+            identity_map(&resolved.file, &resolved.code);
+
+        (code, map)
+    };
 
     driver
-        .post(&ctx, &PostArgs { file: &resolved.file, code: &final_source })
+        .post(&ctx, &PostArgs { file: &resolved.file, code: &code })
         .await
         .map_err(|error| {
             CompileError::from_message(&format!("post hook: {error:#}"))
         })?;
 
-    Ok(CompileOutput { code: final_source, map })
+    Ok(CompileOutput { code, map })
 }
 
 #[cfg(test)]
@@ -134,6 +176,10 @@ mod tests {
         fn name(&self) -> Cow<'static, str> {
             "noop".into()
         }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::PRE
+        }
     }
 
     const TARGET: &str = "console";
@@ -146,6 +192,10 @@ mod tests {
     impl Plugin for RenameCalleePlugin {
         fn name(&self) -> Cow<'static, str> {
             "rename-callee".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::TRANSFORM
         }
 
         // Rebuild the Program with every `console` Identifier renamed to
@@ -294,6 +344,10 @@ mod tests {
             "rewrite-code-options".into()
         }
 
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::OPTIONS
+        }
+
         async fn options(
             &self,
             args: &'_ OptionsArgs<'_>,
@@ -312,6 +366,10 @@ mod tests {
             "failing-pre".into()
         }
 
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::PRE
+        }
+
         async fn pre(
             &self,
             _ctx: &'_ CompileContext<'_>,
@@ -327,6 +385,10 @@ mod tests {
     impl Plugin for FailingPostPlugin {
         fn name(&self) -> Cow<'static, str> {
             "failing-post".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::POST
         }
 
         async fn post(
@@ -419,14 +481,64 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_invalid_code_errors() {
+    async fn test_compile_invalid_code_errors_with_transform_plugin() {
         let opts: CompileOptions = CompileOptions {
             cwd: "/repo".to_string(),
             file: "index.ts".to_string(),
             code: "const = ;".to_string(),
         };
-        let error: CompileError = compile(opts, vec![]).await.unwrap_err();
+        let error: CompileError =
+            compile(opts, vec![Arc::new(RenameCalleePlugin)])
+                .await
+                .unwrap_err();
         assert!(error.to_string().contains("index.ts"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_no_transform_usage_skips_parse() {
+        // Invalid syntax passes through unparsed when no plugin uses
+        // `transform` — the skip path never parses.
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "const = ;".to_string(),
+        };
+        let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
+        assert_eq!(out.code, "const = ;");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_no_transform_usage_identity_map() {
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "const a = 1;\nconst b = 2;\n".to_string(),
+        };
+        let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
+        assert_eq!(out.code, "const a = 1;\nconst b = 2;");
+        assert_eq!(out.map.get_source(0), Some("index.ts"));
+        let token: oxc_sourcemap::Token =
+            out.map.get_token(1).expect("one token per line");
+        assert_eq!(token.get_dst_line(), 1);
+        assert_eq!(token.get_src_line(), 1);
+        assert_eq!(token.get_dst_col(), 0);
+        assert_eq!(token.get_src_col(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_noop_pre_plugin_does_not_parse() {
+        // A plugin declaring only PRE must not force the parse path; output
+        // stays verbatim (proves NoopPlugin's PRE declaration doesn't leak
+        // into the transform decision).
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "console.log(1);\n".to_string(),
+        };
+        let plugins: Vec<SharedPluginable> = vec![Arc::new(NoopPlugin)];
+        let out = compile(opts, plugins).await.unwrap();
+        assert_eq!(out.code, "console.log(1);");
+        assert_eq!(out.map.get_source(0), Some("index.ts"));
     }
 
     #[tokio::test(flavor = "current_thread")]

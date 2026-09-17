@@ -16,5 +16,6 @@ categories.workspace = true
 include = ["src/**", "Cargo.toml", "README.md"]
 
 [dependencies]
+bitflags = { workspace = true }
 oxc = { workspace = true, features = ["codegen", "serialize"] }
 oxc_sourcemap = { workspace = true }

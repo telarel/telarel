@@ -1,4 +1,9 @@
-import type { CompileResult, PluginContext } from "telarel";
+import type {
+    CompileResult,
+    PluginContext,
+    TransformArgs,
+    TransformOutput,
+} from "telarel";
 
 import { compile } from "telarel";
 import { describe, expect, it } from "vitest";
@@ -22,7 +27,10 @@ describe("sourcemap", (): void => {
 
         expect(typeof result.map).toBe("object");
         expect(result.map.version).toBe(3);
-        expect(result.map.file).toBe(void 0);
+        // No plugin declares `transform`, so the compile takes the skip
+        // path: verbatim code with a per-line identity map that names the
+        // input file.
+        expect(result.map.file).toBe("index.ts");
         expect(result.map.sourceRoot).toBe(void 0);
         expect(result.map.x_google_ignoreList).toBe(void 0);
         expect(result.map.sources).toEqual(["index.ts"]);
@@ -70,7 +78,9 @@ describe("sourcemap", (): void => {
         expect(result.map.mappings.length).toBeGreaterThan(0);
     });
 
-    it("compiles empty code to empty code and empty mappings", async (): Promise<void> => {
+    it("compiles empty code to empty code and a minimal identity map", async (): Promise<void> => {
+        // Skip path: the identity map emits one per-line token even for
+        // empty source (`max(1)` line count).
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
@@ -78,7 +88,7 @@ describe("sourcemap", (): void => {
         });
 
         expect(result.code).toBe("");
-        expect(result.map.mappings).toBe("");
+        expect(result.map.mappings).toBe("AAAA");
     });
 
     it("round-trips BOM and non-ASCII code", async (): Promise<void> => {
@@ -88,15 +98,17 @@ describe("sourcemap", (): void => {
             code: '\uFEFFconst µ = "日本語";',
         });
 
-        expect(result.code).toBe('const µ = "日本語";');
-        // Observed divergence between runtimes: the WASI runtime decodes
-        // Rust strings with a TextDecoder whose default `ignoreBOM: false`
-        // strips a LEADING U+FEFF, while the native binding preserves it.
-        // The pipeline strips the BOM from output code on both runtimes, so
-        // pin only the runtime-independent fields here.
+        // Skip path: output is verbatim, so the leading BOM survives in the
+        // code wherever the runtime preserved it in the input (the WASI
+        // TextDecoder strips a leading U+FEFF while the native binding
+        // preserves it) — pin only the runtime-independent remainder.
+        expect(result.code.replace(/^\uFEFF/gu, "")).toBe(
+            'const µ = "日本語";',
+        );
         expect(result.map.version).toBe(3);
         expect(result.map.sources).toEqual(["index.ts"]);
-        expect(result.map.mappings).toBe("AAAC,MAAM,IAAI");
+        // Skip path: identity mappings — one column-0 token per line.
+        expect(result.map.mappings).toBe("AAAA");
         // `sourcesContent` mirrors the original text, but the leading BOM's
         // survival is runtime-dependent (the WASI TextDecoder strips a
         // leading U+FEFF while the native binding preserves it) — pin only
@@ -120,22 +132,26 @@ describe("sourcemap", (): void => {
 
         expect(result.code).toBe("const a = 1;\nconst b = 2;");
         expect(result.map.version).toBe(3);
-        expect(result.map.mappings).toBe("AAAA,MAAM,IAAI;AACV,MAAM,IAAI");
+        // Skip path: identity mappings — one column-0 token per line.
+        expect(result.map.mappings).toBe("AAAA;AACA");
     });
 
-    it("normalizes CRLF to LF in code while keeping CRLF in sourcesContent", async (): Promise<void> => {
+    it("keeps CRLF in code and sourcesContent on the skip path", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;\r\nconst b = 2;",
         });
 
-        expect(result.code).toBe("const a = 1;\nconst b = 2;");
+        // Skip path: output code is verbatim, so CRLF line endings are
+        // preserved instead of being normalized by codegen.
+        expect(result.code).toBe("const a = 1;\r\nconst b = 2;");
         expect(result.map.version).toBe(3);
         expect(result.map.sourcesContent).toEqual([
             "const a = 1;\r\nconst b = 2;",
         ]);
-        expect(result.map.mappings).toBe("AAAA,MAAM,IAAI;AACV,MAAM,IAAI");
+        // Skip path: identity mappings — one column-0 token per line.
+        expect(result.map.mappings).toBe("AAAA;AACA");
     });
 
     it("uses the given file name as the single source", async (): Promise<void> => {
@@ -146,15 +162,30 @@ describe("sourcemap", (): void => {
         });
 
         expect(result.map.sources).toEqual(["entry.tsx"]);
-        expect(result.map.mappings).toBe("AAAA,MAAM,IAAI");
+        // Skip path: identity mappings — one column-0 token per line.
+        expect(result.map.mappings).toBe("AAAA");
     });
 
     it("keeps mappings identical after a pass-through transform", async (): Promise<void> => {
+        // A declared `transform` hook forces the codegen path (the skip
+        // path only applies when no plugin uses `transform`), so the
+        // baseline must also carry a transform hook: compare an explicit
+        // `{ ast }` pass-through against an implicit void pass-through.
         const baseline: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
-            plugins: [],
+            plugins: [
+                {
+                    name: "explicit-pass-through",
+                    transform: (
+                        _: PluginContext,
+                        args: TransformArgs,
+                    ): TransformOutput => ({
+                        ast: args.ast,
+                    }),
+                },
+            ],
         });
 
         const result: CompileResult = await compile({
@@ -191,21 +222,27 @@ describe("sourcemap", (): void => {
                     transform: (_ctx: PluginContext, args) => {
                         const program: ProgramFixture =
                             args.ast as unknown as ProgramFixture;
+
                         const statement:
                             | ProgramFixture["body"][number]
                             | undefined = program.body[0];
+
                         if (!statement) {
                             throw new Error("expected a top-level statement");
                         }
+
                         const declaration:
                             | ProgramFixture["body"][number]["declarations"][number]
                             | undefined = statement.declarations[0];
+
                         if (declaration?.id.type !== "Identifier") {
                             throw new Error(
                                 "expected an identifier declaration",
                             );
                         }
+
                         declaration.id.name = "renamed-long";
+
                         return { ast: args.ast };
                     },
                 },
@@ -219,7 +256,9 @@ describe("sourcemap", (): void => {
         expect(result.map.mappings.length).toBeGreaterThan(0);
         // A changed AST must not produce byte-identical mappings: the
         // generated code is longer, so the later segments' column deltas
-        // shift. Observed: baseline "AAAA,MAAM,IAAI" vs "AAAA,MAAMA,eAAI".
+        // shift. The no-plugins baseline takes the skip path ("AAAA"),
+        // while the mutated AST goes through codegen and produces
+        // multi-segment mappings.
         expect(result.map.mappings).not.toBe(baseline.map.mappings);
     });
 
@@ -232,8 +271,7 @@ describe("sourcemap", (): void => {
 
         expect(result.code).toBe("const a = 1;\nconst b = 2;\nconst c = 3;");
         expect(result.map.version).toBe(3);
-        expect(result.map.mappings).toBe(
-            "AAAA,MAAM,IAAI;AACV,MAAM,IAAI;AACV,MAAM,IAAI",
-        );
+        // Skip path: identity mappings — one column-0 token per line.
+        expect(result.map.mappings).toBe("AAAA;AACA;AACA");
     });
 });

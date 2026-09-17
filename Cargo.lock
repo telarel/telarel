@@ -1563,6 +1563,7 @@ dependencies = [
 name = "telarel_common"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "oxc",
  "oxc_sourcemap",
 ]

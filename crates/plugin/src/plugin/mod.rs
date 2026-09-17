@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::future::Future;
 
-use telarel_common::CompileContext;
+use telarel_common::{CompileContext, HookUsage};
 
 use crate::_types::hooks::options::{OptionsArgs, OptionsOutput};
 use crate::_types::hooks::post::PostArgs;
@@ -16,6 +16,9 @@ use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
 pub trait Plugin: Any + Debug + Send + Sync + 'static {
     /// The plugin name.
     fn name(&self) -> Cow<'static, str>;
+
+    /// Which hooks this plugin implements; hooks not declared are never called.
+    fn hook_usage(&self) -> HookUsage;
 
     /// Run the `options` hook; may replace the compile options.
     fn options<'a>(

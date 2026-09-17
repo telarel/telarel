@@ -5,7 +5,7 @@ use napi::{Error, Result, Status};
 use oxc::ast::ast::Program;
 use oxc::span::SourceType;
 
-use telarel_common::{CompileContext, CompileOptions};
+use telarel_common::{CompileContext, CompileOptions, HookUsage};
 use telarel_plugin::__internal::{HookFuture, LocalHookFuture};
 use telarel_plugin::{
     OptionsArgs, OptionsOutput, Pluginable, PostArgs, PreArgs, TransformArgs,
@@ -66,6 +66,28 @@ fn hook_error(error: Error) -> anyhow::Error {
 impl Pluginable for JsPlugin {
     fn call_name(&self) -> Cow<'static, str> {
         Cow::Owned(self.name.clone())
+    }
+
+    fn call_hook_usage(&self) -> HookUsage {
+        let mut usage: HookUsage = HookUsage::default();
+
+        if self.tsfn_options.is_some() {
+            usage.insert(HookUsage::OPTIONS);
+        }
+
+        if self.tsfn_pre.is_some() {
+            usage.insert(HookUsage::PRE);
+        }
+
+        if self.tsfn_transform.is_some() {
+            usage.insert(HookUsage::TRANSFORM);
+        }
+
+        if self.tsfn_post.is_some() {
+            usage.insert(HookUsage::POST);
+        }
+
+        usage
     }
 
     fn call_options<'a>(

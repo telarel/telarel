@@ -5,7 +5,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use telarel_common::CompileContext;
+use telarel_common::{CompileContext, HookUsage};
 
 use crate::_types::hooks::options::{OptionsArgs, OptionsOutput};
 use crate::_types::hooks::post::PostArgs;
@@ -29,6 +29,9 @@ pub type LocalHookFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 pub trait Pluginable: Any + Send + Sync + 'static {
     /// The plugin name.
     fn call_name(&self) -> Cow<'static, str>;
+
+    /// Query which hooks the plugin implements.
+    fn call_hook_usage(&self) -> HookUsage;
 
     /// Call the `options` hook.
     fn call_options<'a>(
@@ -61,6 +64,10 @@ pub trait Pluginable: Any + Send + Sync + 'static {
 impl<T: Plugin> Pluginable for T {
     fn call_name(&self) -> Cow<'static, str> {
         Plugin::name(self)
+    }
+
+    fn call_hook_usage(&self) -> HookUsage {
+        Plugin::hook_usage(self)
     }
 
     fn call_options<'a>(

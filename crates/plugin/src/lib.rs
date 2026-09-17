@@ -17,6 +17,7 @@ pub use _types::hooks::transform::{
 };
 pub use plugin::Plugin;
 pub use plugin::pluginable::{Pluginable, SharedPluginable};
+pub use telarel_common::HookUsage;
 
 pub mod __internal {
     pub use crate::plugin::pluginable::{HookFuture, LocalHookFuture};
