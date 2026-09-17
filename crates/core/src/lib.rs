@@ -105,17 +105,16 @@ pub async fn compile(
             program: &original,
         };
 
-        let replaced: Option<Program<'_>> =
+        let replaced: Option<&Program<'_>> =
             driver.transform(&ctx, &transform_args).await.map_err(|error| {
                 CompileError::from_message(&format!(
                     "transform hook: {error:#}"
                 ))
             })?;
 
-        // Pointer stability is the DRIVER's job (it allocs replacements in
-        // `args.allocator`); the core only borrows for codegen. `Program` is
-        // not `Clone` — do NOT copy it here.
-        let current: &Program<'_> = replaced.as_ref().unwrap_or(&original);
+        // The driver returns a borrow into the compile allocator; the core
+        // only borrows for codegen and never copies the program.
+        let current: &Program<'_> = replaced.unwrap_or(&original);
 
         // Codegen from the AST (original when no plugin replaced).
         let result: telarel_common::CodegenResult<'_> =
@@ -166,9 +165,10 @@ mod tests {
     use oxc::ast::ast::{
         Argument, CallExpression, Directive, Expression, ExpressionStatement,
         IdentifierReference, NumericLiteral, Program, Statement,
-        StaticMemberExpression,
+        StaticMemberExpression, StringLiteral,
     };
     use oxc::ast::builder::AstBuilder;
+    use oxc::span::SPAN;
     use oxc::str::Ident;
 
     use super::*;
@@ -189,6 +189,8 @@ mod tests {
     const TARGET: &str = "console";
 
     const REPLACEMENT: &str = "consolex";
+
+    const DIRECTIVE: &str = "x-telarel-chain";
 
     #[derive(Debug)]
     struct RenameCalleePlugin;
@@ -337,6 +339,81 @@ mod tests {
                 Argument::from(rename_expression(expression, builder))
             },
             | None => argument.clone_in(builder.allocator()),
+        }
+    }
+
+    #[derive(Debug)]
+    struct AppendDirectivePlugin;
+
+    impl Plugin for AppendDirectivePlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "append-directive".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::TRANSFORM
+        }
+
+        // Rebuild the Program with one extra directive appended (AstBuilder
+        // walk over the allocator; build the replacement in `args.allocator`).
+        // Returns Some(TransformOutput { program }).
+        async fn transform<'a>(
+            &'a self,
+            _ctx: &'a CompileContext<'a>,
+            args: &'a TransformArgs<'a>,
+        ) -> TransformReturn<'a> {
+            let builder: AstBuilder<'a> = AstBuilder::new(args.allocator);
+            let original: &'a Program<'a> = args.program;
+
+            let string_literal: StringLiteral<'a> =
+                StringLiteral::new(SPAN, DIRECTIVE, None, &builder);
+
+            let directive: Directive<'a> =
+                Directive::new(SPAN, string_literal, DIRECTIVE, &builder);
+
+            let mut directives: ArenaVec<'a, Directive<'a>> =
+                original.directives.clone_in(builder.allocator());
+
+            directives.push(directive);
+
+            let body: ArenaVec<'a, Statement<'a>> =
+                original.body.clone_in(builder.allocator());
+
+            let program: Program<'a> = Program::new(
+                original.span,
+                original.source_type,
+                original.source_text,
+                original.comments.clone_in(builder.allocator()),
+                original.hashbang.clone_in(builder.allocator()),
+                directives,
+                body,
+                &builder,
+            );
+
+            Ok(Some(TransformOutput { program }))
+        }
+    }
+
+    #[derive(Debug)]
+    struct NoneReturningTransformPlugin;
+
+    impl Plugin for NoneReturningTransformPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "none-returning-transform".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::TRANSFORM
+        }
+
+        // A transform hook that never replaces the program: Ok(None) must
+        // leave the current program in place for the rest of the chain.
+        async fn transform<'a>(
+            &'a self,
+            _ctx: &'a CompileContext<'a>,
+            _args: &'a TransformArgs<'a>,
+        ) -> TransformReturn<'a> {
+            Ok(None)
         }
     }
 
@@ -624,5 +701,67 @@ mod tests {
 
         assert!(message.contains("post hook"), "{}", message);
         assert!(message.contains("stage boom"), "{}", message);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_transform_chain_multiple_replacements() {
+        // Two replacing plugins in sequence: the rename must survive into the
+        // second plugin and both transformations must appear in the final
+        // code (proves the chain carries each replacement by reference).
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "console.log(1);".to_string(),
+        };
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Arc::new(RenameCalleePlugin), Arc::new(AppendDirectivePlugin)];
+
+        let out = compile(opts, plugins).await.unwrap();
+
+        assert!(out.code.contains("consolex"), "{}", out.code);
+        assert!(out.code.contains("x-telarel-chain"), "{}", out.code);
+        assert_eq!(out.map.get_source(0), Some("index.ts"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_transform_none_returning_plugin_uses_original() {
+        // A transform plugin returning Ok(None) must leave the parsed
+        // original in place for codegen: the code is unchanged verbatim.
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "console.log(1);".to_string(),
+        };
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Arc::new(NoneReturningTransformPlugin)];
+
+        let out = compile(opts, plugins).await.unwrap();
+
+        assert!(out.code.contains("console.log(1);"), "{}", out.code);
+        assert_eq!(out.map.get_source(0), Some("index.ts"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_transform_mixed_chain_none_then_replace() {
+        // None, replace, None: only the replacing plugin's output must reach
+        // codegen, and the surrounding Nones must not reset to the original.
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "console.log(1);".to_string(),
+        };
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Arc::new(NoneReturningTransformPlugin),
+            Arc::new(RenameCalleePlugin),
+            Arc::new(NoneReturningTransformPlugin),
+        ];
+
+        let out = compile(opts, plugins).await.unwrap();
+
+        assert!(out.code.contains("consolex"), "{}", out.code);
+        assert_eq!(out.map.get_source(0), Some("index.ts"));
     }
 }

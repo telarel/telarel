@@ -86,12 +86,13 @@ impl PluginDriver {
     }
 
     /// Run the `transform` hook chain; returns the final replaced
-    /// [`Program`], or `None` when no plugin replaced.
+    /// [`Program`], or `None` when no plugin replaced. The program lives in
+    /// the compile allocator; no copy is made.
     pub async fn transform<'a>(
         &'a self,
         ctx: &'a CompileContext<'a>,
         args: &'a TransformArgs<'a>,
-    ) -> anyhow::Result<Option<Program<'a>>> {
+    ) -> anyhow::Result<Option<&'a Program<'a>>> {
         hooks::transform::transform(&self.transform_plugins, ctx, args).await
     }
 
@@ -331,6 +332,97 @@ mod tests {
         ) -> impl Future<Output = crate::_types::hooks::transform::TransformReturn<'a>>
         {
             async move {
+                let code: &'a str = args.allocator.alloc_str("\"mark\";");
+                let options: ParseOptions<'_, '_> = ParseOptions {
+                    context: ctx,
+                    allocator: args.allocator,
+                    file: args.file,
+                    code,
+                };
+                let parsed: ParseResult<'_> = parse(options).unwrap();
+                Ok(Some(TransformOutput { program: parsed.program }))
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct RecordingPlugin {
+        seen: Arc<Mutex<Vec<usize>>>,
+    }
+
+    impl RecordingPlugin {
+        fn new(seen: Arc<Mutex<Vec<usize>>>) -> Self {
+            Self { seen }
+        }
+
+        fn record(
+            &self,
+            program: &Program<'_>,
+        ) {
+            let mut seen: MutexGuard<'_, Vec<usize>> =
+                self.seen.lock().unwrap();
+            seen.push(std::ptr::from_ref(program) as usize);
+        }
+    }
+
+    impl Plugin for RecordingPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "record-transform".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::TRANSFORM
+        }
+
+        fn transform<'a>(
+            &'a self,
+            _ctx: &'a CompileContext<'a>,
+            args: &'a TransformArgs<'a>,
+        ) -> impl Future<Output = TransformReturn<'a>> {
+            async move {
+                self.record(args.program);
+                Ok(None)
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct RecordingReplacerPlugin {
+        seen: Arc<Mutex<Vec<usize>>>,
+    }
+
+    impl RecordingReplacerPlugin {
+        fn new(seen: Arc<Mutex<Vec<usize>>>) -> Self {
+            Self { seen }
+        }
+
+        fn record(
+            &self,
+            program: &Program<'_>,
+        ) {
+            let mut seen: MutexGuard<'_, Vec<usize>> =
+                self.seen.lock().unwrap();
+            seen.push(std::ptr::from_ref(program) as usize);
+        }
+    }
+
+    impl Plugin for RecordingReplacerPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "record-replace".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::TRANSFORM
+        }
+
+        fn transform<'a>(
+            &'a self,
+            ctx: &'a CompileContext<'a>,
+            args: &'a TransformArgs<'a>,
+        ) -> impl Future<Output = TransformReturn<'a>> {
+            async move {
+                self.record(args.program);
+
                 let code: &'a str = args.allocator.alloc_str("\"mark\";");
                 let options: ParseOptions<'_, '_> = ParseOptions {
                     context: ctx,
@@ -632,13 +724,13 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let replaced: Option<Program<'_>> =
+        let replaced: Option<&Program<'_>> =
             driver.transform(&ctx, &args).await.unwrap();
 
-        let replaced: Program<'_> = replaced.expect("transform ran");
+        let replaced: &Program<'_> = replaced.expect("transform ran");
 
         // final program survives in the allocator; assert via codegen
-        let out: String = oxc::codegen::Codegen::new().build(&replaced).code;
+        let out: String = oxc::codegen::Codegen::new().build(replaced).code;
 
         assert!(out.contains("mark"), "{out}");
     }
@@ -679,6 +771,127 @@ mod tests {
             format!("{err:#}").contains("`fail-transform` transform"),
             "{err:#}"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_returns_original_program_by_reference() {
+        let allocator: Allocator = Allocator::default();
+
+        let ctx: CompileContext<'_> =
+            CompileContext::new("/repo", "a.ts", "console.log(1);");
+
+        let options: ParseOptions<'_, '_> = ParseOptions {
+            context: &ctx,
+            allocator: &allocator,
+            file: "a.ts",
+            code: "console.log(1);",
+        };
+
+        let parsed: ParseResult<'_> = parse(options).unwrap();
+
+        let program: Program<'_> = parsed.program;
+
+        let args: TransformArgs<'_> = TransformArgs {
+            allocator: &allocator,
+            file: "a.ts",
+            program: &program,
+        };
+
+        let seen: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Arc::new(RecordingPlugin::new(Arc::clone(&seen)))];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let replaced: Option<&Program<'_>> =
+            driver.transform(&ctx, &args).await.unwrap();
+
+        let recorded: Vec<usize> = seen.lock().unwrap().clone();
+
+        // no plugin replaced, so the hook runner must hand the original
+        // program to the plugin by reference instead of cloning it into
+        // the allocator first
+        assert!(replaced.is_none());
+        assert_eq!(recorded, vec![std::ptr::from_ref(args.program) as usize],);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_replacement_flows_by_reference() {
+        let allocator: Allocator = Allocator::default();
+
+        let ctx: CompileContext<'_> =
+            CompileContext::new("/repo", "a.ts", "console.log(1);");
+
+        let options: ParseOptions<'_, '_> = ParseOptions {
+            context: &ctx,
+            allocator: &allocator,
+            file: "a.ts",
+            code: "console.log(1);",
+        };
+
+        let parsed: ParseResult<'_> = parse(options).unwrap();
+
+        let program: Program<'_> = parsed.program;
+
+        let args: TransformArgs<'_> = TransformArgs {
+            allocator: &allocator,
+            file: "a.ts",
+            program: &program,
+        };
+
+        let first_seen: Arc<Mutex<Vec<usize>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let second_seen: Arc<Mutex<Vec<usize>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let final_seen: Arc<Mutex<Vec<usize>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Arc::new(RecordingReplacerPlugin::new(Arc::clone(&first_seen))),
+            Arc::new(RecordingReplacerPlugin::new(Arc::clone(&second_seen))),
+            Arc::new(RecordingPlugin::new(Arc::clone(&final_seen))),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let replaced: Option<&Program<'_>> =
+            driver.transform(&ctx, &args).await.unwrap();
+
+        let replaced: &Program<'_> = replaced.expect("transform ran");
+
+        let original: usize = std::ptr::from_ref(args.program) as usize;
+
+        let first: usize = first_seen.lock().unwrap()[0];
+
+        let second: usize = second_seen.lock().unwrap()[0];
+
+        let final_seen: usize = final_seen.lock().unwrap()[0];
+
+        let returned: usize = std::ptr::from_ref(replaced) as usize;
+
+        // the first plugin sees the original program by reference
+        assert_eq!(first, original);
+
+        // the second plugin sees the first plugin's replacement by
+        // reference, not a copy
+        assert_ne!(second, original);
+        assert_ne!(second, first);
+
+        // the trailing observer sees the second plugin's replacement by
+        // reference, not a copy
+        assert_ne!(final_seen, second);
+
+        // the chain returns the exact program the last plugin received;
+        // a final `clone_in` copy would allocate a fresh program here
+        assert_eq!(returned, final_seen);
+
+        // the returned program is the replacement content
+        let out: String = oxc::codegen::Codegen::new().build(replaced).code;
+
+        assert!(out.contains("mark"), "{out}");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -779,7 +992,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let replaced: Option<Program<'_>> =
+        let replaced: Option<&Program<'_>> =
             driver.transform(&ctx, &args).await.unwrap();
 
         let recorded: Vec<String> = log.lock().unwrap().clone();

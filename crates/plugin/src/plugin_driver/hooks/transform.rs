@@ -1,5 +1,4 @@
 use anyhow::Context;
-use oxc::allocator::CloneIn;
 use oxc::ast::ast::Program;
 use telarel_common::CompileContext;
 
@@ -9,11 +8,14 @@ use crate::plugin::pluginable::SharedPluginable;
 /// Run the `transform` hook chain.
 ///
 /// Each `Some` output replaces the program carried into the next plugin.
+///
+/// Replacements are allocated in `args.allocator`, so the returned borrow is
+/// pointer-stable for the lifetime of the compile allocator.
 pub async fn transform<'a>(
     plugins: &'a [SharedPluginable],
     ctx: &'a CompileContext<'a>,
     args: &'a TransformArgs<'a>,
-) -> anyhow::Result<Option<Program<'a>>> {
+) -> anyhow::Result<Option<&'a Program<'a>>> {
     let mut current: Option<&'a Program<'a>> = None;
 
     for plugin in plugins {
@@ -36,5 +38,5 @@ pub async fn transform<'a>(
         }
     }
 
-    Ok(current.map(|program: &Program<'a>| program.clone_in(args.allocator)))
+    Ok(current)
 }
