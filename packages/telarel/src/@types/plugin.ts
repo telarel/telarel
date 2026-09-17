@@ -109,7 +109,9 @@ type Plugin = {
     /**
      * Update compiler options and return them.
      */
-    options?: (options: Options) => PartialOptions | null | void;
+    options?: (
+        options: Options,
+    ) => PartialOptions | null | void | Promise<PartialOptions | null | void>;
     /**
      * Setup.
      */

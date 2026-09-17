@@ -29,7 +29,9 @@ type RawTransformOutput = { astJson: string } | null;
 
 type RawPlugin = {
     name: string;
-    options?: (options: RawOptionsArgs) => RawOptionsOutput | null;
+    options?: (
+        options: RawOptionsArgs,
+    ) => RawOptionsOutput | null | Promise<RawOptionsOutput | null>;
     pre?: (ctx: RawPluginContext, args: RawStageArgs) => unknown;
     transform?: (
         ctx: RawPluginContext,
@@ -59,8 +61,10 @@ const toRawPlugin = (
     const options = plugin.options;
 
     if (typeof options === "function") {
-        raw.options = (rawArgs: RawOptionsArgs): RawOptionsOutput | null => {
-            const next: PartialOptions | null | void = options({
+        raw.options = async (
+            rawArgs: RawOptionsArgs,
+        ): Promise<RawOptionsOutput | null> => {
+            const next: PartialOptions | null | void = await options({
                 cwd: rawArgs.cwd,
                 file: rawArgs.file,
                 code: rawArgs.code,

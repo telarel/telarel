@@ -228,6 +228,27 @@ describe("compile", (): void => {
         expect(result.code).toBe("const b = 2;");
     });
 
+    it("awaits an async options hook", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "async-options",
+                    options: async () => {
+                        await new Promise<void>((resolve): void => {
+                            setTimeout(resolve, 0);
+                        });
+                        return { code: "const replaced = 2;" };
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const replaced = 2;");
+    });
+
     it("rejects on hook errors with plugin context", async (): Promise<void> => {
         await expect(
             compile({
