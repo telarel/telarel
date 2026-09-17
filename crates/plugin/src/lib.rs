@@ -18,6 +18,7 @@ pub use plugin::Plugin;
 pub use plugin::pluginable::{Pluginable, SharedPluginable};
 pub use telarel_common::{HookUsage, PartialCompileOptions};
 
+#[doc(hidden)]
 pub mod __internal {
     pub use crate::plugin::pluginable::{HookFuture, LocalHookFuture};
     pub use crate::plugin_driver::PluginDriver;
