@@ -32,11 +32,12 @@ pub mod sourcemap {
 pub use telarel_common::{
     CodegenOptions, CodegenResult, CompileContext, CompileError,
     CompileOptions, HookUsage, ParseOptions, ParseResult,
+    PartialCompileOptions,
 };
 
 pub use telarel_plugin::{
-    OptionsArgs, OptionsOutput, Plugin, Pluginable, PostArgs, PreArgs,
-    SharedPluginable, TransformArgs, TransformOutput, TransformReturn,
+    Plugin, Pluginable, PostArgs, PreArgs, SharedPluginable, TransformArgs,
+    TransformOutput, TransformReturn,
 };
 
 pub use telarel_core::{CompileOutput, compile};

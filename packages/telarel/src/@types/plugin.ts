@@ -1,4 +1,5 @@
 import type { Program } from "@oxc-project/types";
+import type { Format, Partial } from "ts-vista";
 
 // Note: `PluginContext.metadata` is a real `Map<string, unknown>`, created
 // once per `compile()` call by this package's wrapper and injected into
@@ -92,6 +93,12 @@ type Options = {
 };
 
 /**
+ * Partial options a plugin may return from the `options` hook; omitted fields
+ * keep their current values.
+ */
+type PartialOptions = Format<Partial<Options>>;
+
+/**
  * The plugin.
  */
 type Plugin = {
@@ -100,9 +107,9 @@ type Plugin = {
      */
     name: string;
     /**
-     * Update compiler options and return them. Pure: return-value wins.
+     * Update compiler options and return them.
      */
-    options?: (options: Options) => Options;
+    options?: (options: Options) => PartialOptions | null | void;
     /**
      * Setup.
      */
@@ -124,6 +131,7 @@ type Plugin = {
 
 export type {
     Options,
+    PartialOptions,
     Plugin,
     PluginContext,
     PostArgs,

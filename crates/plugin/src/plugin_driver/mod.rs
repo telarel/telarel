@@ -119,15 +119,12 @@ mod tests {
 
     use telarel_common::{
         CompileContext, CompileOptions, HookUsage, ParseOptions, ParseResult,
-        parse,
+        PartialCompileOptions, parse,
     };
 
     use oxc::allocator::Allocator;
     use oxc::ast::ast::Program;
 
-    use crate::_types::hooks::options::{OptionsArgs, OptionsOutput};
-    use crate::_types::hooks::post::PostArgs;
-    use crate::_types::hooks::pre::PreArgs;
     use crate::_types::hooks::transform::{
         TransformArgs, TransformOutput, TransformReturn,
     };
@@ -151,11 +148,12 @@ mod tests {
 
         async fn options(
             &self,
-            args: &OptionsArgs<'_>,
-        ) -> anyhow::Result<Option<OptionsOutput>> {
-            let mut options: CompileOptions = args.options.clone();
-            options.cwd = "/changed".to_string();
-            Ok(Some(OptionsOutput { options }))
+            _options: &CompileOptions,
+        ) -> anyhow::Result<Option<PartialCompileOptions>> {
+            Ok(Some(PartialCompileOptions {
+                cwd: Some("/changed".to_string()),
+                ..PartialCompileOptions::default()
+            }))
         }
     }
 
@@ -173,6 +171,59 @@ mod tests {
     }
 
     #[derive(Debug)]
+    struct PartialOptionsPlugin;
+
+    impl Plugin for PartialOptionsPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "partial-options".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::OPTIONS
+        }
+
+        async fn options(
+            &self,
+            _options: &CompileOptions,
+        ) -> anyhow::Result<Option<PartialCompileOptions>> {
+            Ok(Some(PartialCompileOptions {
+                code: Some("const rewritten = 7;".to_string()),
+                ..PartialCompileOptions::default()
+            }))
+        }
+    }
+
+    #[derive(Debug)]
+    struct ObserveOptionsPlugin {
+        observed: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl ObserveOptionsPlugin {
+        fn new(observed: Arc<Mutex<Vec<String>>>) -> Self {
+            Self { observed }
+        }
+    }
+
+    impl Plugin for ObserveOptionsPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "observe-options".into()
+        }
+
+        fn hook_usage(&self) -> HookUsage {
+            HookUsage::OPTIONS
+        }
+
+        async fn options(
+            &self,
+            options: &CompileOptions,
+        ) -> anyhow::Result<Option<PartialCompileOptions>> {
+            self.observed.lock().unwrap().push(options.code.clone());
+
+            Ok(None)
+        }
+    }
+
+    #[derive(Debug)]
     struct FailingOptionsPlugin;
 
     impl Plugin for FailingOptionsPlugin {
@@ -186,8 +237,8 @@ mod tests {
 
         async fn options(
             &self,
-            _args: &OptionsArgs<'_>,
-        ) -> anyhow::Result<Option<OptionsOutput>> {
+            _options: &CompileOptions,
+        ) -> anyhow::Result<Option<PartialCompileOptions>> {
             Err(anyhow::anyhow!("boom"))
         }
     }
@@ -419,6 +470,53 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn test_options_partial_merge_keeps_other_fields() {
+        let plugins: Vec<SharedPluginable> =
+            vec![Arc::new(PartialOptionsPlugin)];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let options: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "a.ts".to_string(),
+            code: "console.log(1);".to_string(),
+        };
+
+        let resolved: CompileOptions = driver.options(options).await.unwrap();
+
+        assert_eq!(resolved.code, "const rewritten = 7;");
+        assert_eq!(resolved.cwd, "/repo");
+        assert_eq!(resolved.file, "a.ts");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_partial_merge_visible_to_later_plugin() {
+        let observed: Arc<Mutex<Vec<String>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Arc::new(PartialOptionsPlugin),
+            Arc::new(ObserveOptionsPlugin::new(Arc::clone(&observed))),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let options: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "a.ts".to_string(),
+            code: "console.log(1);".to_string(),
+        };
+
+        let resolved: CompileOptions = driver.options(options).await.unwrap();
+
+        assert_eq!(resolved.code, "const rewritten = 7;");
+
+        let recorded: Vec<String> = observed.lock().unwrap().clone();
+
+        assert_eq!(recorded, vec!["const rewritten = 7;".to_string()],);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn test_options_error_propagates() {
         let plugins: Vec<SharedPluginable> =
             vec![Arc::new(FailingOptionsPlugin)];
@@ -621,14 +719,13 @@ mod tests {
             code: "console.log(1);".to_string(),
         };
 
-        let args: OptionsArgs<'_> = OptionsArgs { options: &options };
+        let output: anyhow::Result<Option<PartialCompileOptions>> =
+            plugin.call_options(&options).await;
 
-        let output: anyhow::Result<Option<OptionsOutput>> =
-            plugin.call_options(&args).await;
+        let output: PartialCompileOptions =
+            output.unwrap().expect("options output");
 
-        let output: OptionsOutput = output.unwrap().expect("options output");
-
-        assert_eq!(output.options.cwd, "/changed");
+        assert_eq!(output.cwd.as_deref(), Some("/changed"));
     }
 
     #[tokio::test(flavor = "current_thread")]

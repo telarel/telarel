@@ -1,6 +1,6 @@
 import type { Program } from "@oxc-project/types";
 
-import type { Options, Plugin, PluginContext } from "#/@types/plugin";
+import type { PartialOptions, Plugin, PluginContext } from "#/@types/plugin";
 
 type RawPluginContext = {
     cwd: string;
@@ -19,7 +19,11 @@ type RawOptionsArgs = {
     code: string;
 };
 
-type RawOptionsOutput = { cwd: string; file: string; code: string };
+type RawOptionsOutput = {
+    cwd?: string;
+    file?: string;
+    code?: string;
+};
 
 type RawTransformOutput = { astJson: string } | null;
 
@@ -55,14 +59,34 @@ const toRawPlugin = (
     const options = plugin.options;
 
     if (typeof options === "function") {
-        raw.options = (rawArgs: RawOptionsArgs): RawOptionsOutput => {
-            const next: Options = options({
+        raw.options = (rawArgs: RawOptionsArgs): RawOptionsOutput | null => {
+            const next: PartialOptions | null | void = options({
                 cwd: rawArgs.cwd,
                 file: rawArgs.file,
                 code: rawArgs.code,
             });
 
-            return { cwd: next.cwd, file: next.file, code: next.code };
+            if (next === null || next === void 0) {
+                return null;
+            }
+
+            const update: PartialOptions = next;
+
+            const output: RawOptionsOutput = {};
+
+            if (typeof update.cwd === "string") {
+                output.cwd = update.cwd;
+            }
+
+            if (typeof update.file === "string") {
+                output.file = update.file;
+            }
+
+            if (typeof update.code === "string") {
+                output.code = update.code;
+            }
+
+            return output;
         };
     }
 

@@ -5,9 +5,10 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use telarel_common::{CompileContext, HookUsage};
+use telarel_common::{
+    CompileContext, CompileOptions, HookUsage, PartialCompileOptions,
+};
 
-use crate::_types::hooks::options::{OptionsArgs, OptionsOutput};
 use crate::_types::hooks::post::PostArgs;
 use crate::_types::hooks::pre::PreArgs;
 use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
@@ -36,8 +37,8 @@ pub trait Pluginable: Any + Send + Sync + 'static {
     /// Call the `options` hook.
     fn call_options<'a>(
         &'a self,
-        args: &'a OptionsArgs<'_>,
-    ) -> HookFuture<'a, anyhow::Result<Option<OptionsOutput>>>;
+        options: &'a CompileOptions,
+    ) -> HookFuture<'a, anyhow::Result<Option<PartialCompileOptions>>>;
 
     /// Call the `pre` hook.
     fn call_pre<'a>(
@@ -72,9 +73,9 @@ impl<T: Plugin> Pluginable for T {
 
     fn call_options<'a>(
         &'a self,
-        args: &'a OptionsArgs<'_>,
-    ) -> HookFuture<'a, anyhow::Result<Option<OptionsOutput>>> {
-        Box::pin(Plugin::options(self, args))
+        options: &'a CompileOptions,
+    ) -> HookFuture<'a, anyhow::Result<Option<PartialCompileOptions>>> {
+        Box::pin(Plugin::options(self, options))
     }
 
     fn call_pre<'a>(

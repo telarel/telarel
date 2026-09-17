@@ -5,11 +5,13 @@ use napi::{Error, Result, Status};
 use oxc::ast::ast::Program;
 use oxc::span::SourceType;
 
-use telarel_common::{CompileContext, CompileOptions, HookUsage};
+use telarel_common::{
+    CompileContext, CompileOptions, HookUsage, PartialCompileOptions,
+};
 use telarel_plugin::__internal::{HookFuture, LocalHookFuture};
 use telarel_plugin::{
-    OptionsArgs, OptionsOutput, Pluginable, PostArgs, PreArgs, TransformArgs,
-    TransformOutput, TransformReturn,
+    Pluginable, PostArgs, PreArgs, TransformArgs, TransformOutput,
+    TransformReturn,
 };
 
 use crate::_types::plugin::hooks::{JsOptionsOutput, JsTransformOutput};
@@ -92,17 +94,17 @@ impl Pluginable for JsPlugin {
 
     fn call_options<'a>(
         &'a self,
-        args: &'a OptionsArgs<'_>,
-    ) -> HookFuture<'a, anyhow::Result<Option<OptionsOutput>>> {
+        options: &'a CompileOptions,
+    ) -> HookFuture<'a, anyhow::Result<Option<PartialCompileOptions>>> {
         Box::pin(async move {
             let Some(tsfn) = self.tsfn_options.as_ref() else {
                 return Ok(None);
             };
 
             let call: OptionsCall = OptionsCall {
-                cwd: args.options.cwd.clone(),
-                file: args.options.file.clone(),
-                code: args.options.code.clone(),
+                cwd: options.cwd.clone(),
+                file: options.file.clone(),
+                code: options.code.clone(),
                 plugins: self.plugins.clone(),
             };
 
@@ -116,12 +118,10 @@ impl Pluginable for JsPlugin {
                 | Either::B(value) => value,
             };
 
-            Ok(replaced.map(|output| OptionsOutput {
-                options: CompileOptions {
-                    cwd: output.cwd,
-                    file: output.file,
-                    code: output.code,
-                },
+            Ok(replaced.map(|output| PartialCompileOptions {
+                cwd: output.cwd,
+                file: output.file,
+                code: output.code,
             }))
         })
     }

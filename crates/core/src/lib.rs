@@ -153,9 +153,10 @@ mod tests {
 
     use telarel_common::CompileContext;
     use telarel_common::CompileOptions;
+    use telarel_common::PartialCompileOptions;
     use telarel_plugin::{
-        OptionsArgs, OptionsOutput, Plugin, SharedPluginable, TransformArgs,
-        TransformOutput, TransformReturn,
+        Plugin, SharedPluginable, TransformArgs, TransformOutput,
+        TransformReturn,
     };
 
     use oxc::allocator::{ArenaBox, ArenaVec, CloneIn, GetAllocator};
@@ -350,11 +351,12 @@ mod tests {
 
         async fn options(
             &self,
-            args: &'_ OptionsArgs<'_>,
-        ) -> anyhow::Result<Option<OptionsOutput>> {
-            let mut options: CompileOptions = args.options.clone();
-            options.code = "const rewritten = 7;".to_string();
-            Ok(Some(OptionsOutput { options }))
+            _options: &CompileOptions,
+        ) -> anyhow::Result<Option<PartialCompileOptions>> {
+            Ok(Some(PartialCompileOptions {
+                code: Some("const rewritten = 7;".to_string()),
+                ..PartialCompileOptions::default()
+            }))
         }
     }
 

@@ -72,52 +72,67 @@ describe("validation", (): void => {
         );
     });
 
-    it("rejects when an options hook returns null", async (): Promise<void> => {
-        // Pinned observed message: "options hook: PendingException, Cannot
-        // read properties of null (reading 'cwd')". The wrapper at
-        // packages/telarel/src/bridges/plugin.ts dereferences `next.cwd`
-        // without a null guard, so the hook result flows into the TSFN
-        // bridge as a thrown TypeError surfaced as a PendingException.
+    it("leaves options unchanged when an options hook returns null", async (): Promise<void> => {
+        // Intentional behavior change: a `null` return is a pass-through.
+        // The wrapper maps it to Rust `None`, so the compile options are
+        // carried over verbatim.
         const plugin: unknown = {
             name: "null-options",
             options: (): null => null,
         };
 
-        const build = async (): Promise<CompileResult> =>
-            await compile({
-                cwd: "/repo",
-                file: "index.ts",
-                code: "const a = 1;",
-                plugins: [plugin as Plugin],
-            });
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [plugin as Plugin],
+        });
 
-        await expect(build()).rejects.toThrow(
-            "Cannot read properties of null (reading 'cwd')",
-        );
+        expect(result.code).toBe("const a = 1;");
     });
 
-    it("rejects when an options hook returns a partial object", async (): Promise<void> => {
-        // Pinned observed message: "options hook: InvalidArg, Value is none
-        // of these types `Promise`, `JsOptionsOutput`, ". The Rust side
-        // receives the partial object via TSFN and fails its downcast before
-        // any property access, producing an InvalidArg conversion error
-        // (the message ends with a trailing comma and space).
+    it("leaves options unchanged when an options hook returns undefined", async (): Promise<void> => {
+        // Companion to the `null` case above; `void` returns behave the
+        // same as explicit `null`.
         const plugin: unknown = {
-            name: "partial-options",
-            options: (): unknown => ({ cwd: "/x", file: "a.ts" }),
+            name: "void-options",
+            options: (): void => void 0,
         };
 
-        const build = async (): Promise<CompileResult> =>
-            await compile({
-                cwd: "/repo",
-                file: "index.ts",
-                code: "const a = 1;",
-                plugins: [plugin as Plugin],
-            });
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [plugin as Plugin],
+        });
 
-        await expect(build()).rejects.toThrow(
-            "Value is none of these types `Promise`, `JsOptionsOutput`",
-        );
+        expect(result.code).toBe("const a = 1;");
+    });
+
+    it("merges a partial options hook return with the current options", async (): Promise<void> => {
+        // Intentional behavior change: partial returns no longer reject.
+        // Omitted fields keep their current values; here only `code` is
+        // replaced while `cwd` and `file` carry over into the transform.
+        const plugin: unknown = {
+            name: "partial-options",
+            options: (): unknown => ({ code: "const b = 2;" }),
+            transform: (ctx: PluginContext): { ast: unknown } | null => {
+                expect(ctx.cwd).toBe("/repo");
+                expect(ctx.file).toBe("index.ts");
+                expect(ctx.code).toBe("const b = 2;");
+
+                return null;
+            },
+        };
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [plugin as Plugin],
+        });
+
+        expect(result.code).toBe("const b = 2;");
     });
 
     it("allows duplicate plugin names in registration order", async (): Promise<void> => {

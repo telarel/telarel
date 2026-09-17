@@ -150,6 +150,84 @@ describe("compile", (): void => {
         expect(result.code).toContain("const b = 2");
     });
 
+    it("chains options hooks last-wins across a pass-through plugin", async (): Promise<void> => {
+        // A `void`-returning plugin between two updating ones is a
+        // pass-through: the first update is still visible to the second.
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "first",
+                    options: (options) => ({
+                        ...options,
+                        code: "const b = 2;",
+                    }),
+                },
+                {
+                    name: "passthrough",
+                    options: (): void => void 0,
+                },
+                {
+                    name: "second",
+                    options: (options) => ({
+                        ...options,
+                        code: `${options.code}; const c = 3;`,
+                    }),
+                },
+            ],
+        });
+
+        expect(result.code).toContain("const b = 2");
+        expect(result.code).toContain("const c = 3");
+    });
+
+    it("merges partial options returns against carried options", async (): Promise<void> => {
+        // A partial return only replaces the fields it names; the second
+        // plugin observes the merged result and rewrites the file.
+        const seen: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "rewrite-code",
+                    options: (options) => ({
+                        ...options,
+                        code: "const b = 2;",
+                    }),
+                },
+                {
+                    name: "rewrite-file",
+                    options: (options) => {
+                        seen.push(options.code);
+                        seen.push(options.cwd);
+
+                        return { file: "renamed.ts" };
+                    },
+                },
+                {
+                    name: "observe",
+                    pre: (ctx: PluginContext): void => {
+                        seen.push(ctx.file);
+                        seen.push(ctx.code);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([
+            "const b = 2;",
+            "/repo",
+            "renamed.ts",
+            "const b = 2;",
+        ]);
+        expect(result.code).toBe("const b = 2;");
+    });
+
     it("rejects on hook errors with plugin context", async (): Promise<void> => {
         await expect(
             compile({

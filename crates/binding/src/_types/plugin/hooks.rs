@@ -27,13 +27,14 @@ pub struct JsTransformOutput {
     pub ast_json: String,
 }
 
-/// Output of the `options` hook: full replacement options.
+/// Output of the `options` hook: a partial update;
+/// `None` fields keep their current values.
 #[napi_derive::napi(object)]
 pub struct JsOptionsOutput {
-    /// Replacement working directory.
-    pub cwd: String,
-    /// Replacement file.
-    pub file: String,
-    /// Replacement code.
-    pub code: String,
+    /// Replacement working directory, if updated.
+    pub cwd: Option<String>,
+    /// Replacement file, if updated.
+    pub file: Option<String>,
+    /// Replacement code, if updated.
+    pub code: Option<String>,
 }

@@ -5,9 +5,10 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::future::Future;
 
-use telarel_common::{CompileContext, HookUsage};
+use telarel_common::{
+    CompileContext, CompileOptions, HookUsage, PartialCompileOptions,
+};
 
-use crate::_types::hooks::options::{OptionsArgs, OptionsOutput};
 use crate::_types::hooks::post::PostArgs;
 use crate::_types::hooks::pre::PreArgs;
 use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
@@ -20,11 +21,12 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
     /// Which hooks this plugin implements; hooks not declared are never called.
     fn hook_usage(&self) -> HookUsage;
 
-    /// Run the `options` hook; may replace the compile options.
+    /// Run the `options` hook; may return a partial update of the compile
+    /// options. `None` fields keep their current values.
     fn options<'a>(
         &'a self,
-        _args: &'a OptionsArgs<'_>,
-    ) -> impl Future<Output = anyhow::Result<Option<OptionsOutput>>> + Send
+        _options: &'a CompileOptions,
+    ) -> impl Future<Output = anyhow::Result<Option<PartialCompileOptions>>> + Send
     {
         async { Ok(None) }
     }
