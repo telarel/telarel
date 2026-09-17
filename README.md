@@ -2,6 +2,11 @@
 
 An extensible JavaScript compiler.
 
+## Architecture
+
+For more details about the repository,
+please refer to the [architecture documentation](./ARCHITECTURE.md).
+
 ## Contributing
 
 For contributing,
