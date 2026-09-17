@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 use telarel_common::CompileOptions;
 
 use crate::plugin::pluginable::SharedPluginable;
@@ -13,7 +15,11 @@ pub async fn options(
     let mut current: CompileOptions = options;
 
     for plugin in plugins {
-        if let Some(update) = plugin.call_options(&current).await? {
+        if let Some(update) = plugin
+            .call_options(&current)
+            .await
+            .with_context(|| format!("`{}` options", plugin.call_name()))?
+        {
             if let Some(cwd) = update.cwd {
                 current.cwd = cwd;
             }

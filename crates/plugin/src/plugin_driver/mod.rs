@@ -536,6 +536,27 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn test_options_error_names_plugin() {
+        let plugins: Vec<SharedPluginable> =
+            vec![Arc::new(FailingOptionsPlugin)];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let options: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "a.ts".to_string(),
+            code: "console.log(1);".to_string(),
+        };
+
+        let err: anyhow::Error = driver.options(options).await.unwrap_err();
+
+        assert!(
+            format!("{err:#}").contains("`fail-options` options"),
+            "{err:#}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn test_pre_runs_all_plugins_in_order() {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
