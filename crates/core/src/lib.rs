@@ -7,7 +7,8 @@
 
 use oxc::allocator::Allocator;
 use oxc::ast::ast::Program;
-use oxc_sourcemap::{SourceMap, SourceMapBuilder};
+use oxc_sourcemap::SourceMap as OxcSourceMap;
+use oxc_sourcemap::SourceMapBuilder;
 
 use telarel_common::{
     CompileContext, CompileError, HookUsage, ParseOptions, parse,
@@ -16,6 +17,9 @@ use telarel_plugin::__internal::PluginDriver;
 use telarel_plugin::{PostArgs, PreArgs, SharedPluginable, TransformArgs};
 
 pub use telarel_common::CompileOptions;
+
+/// An owned source map produced by a compile run.
+pub type SourceMap = OxcSourceMap<'static>;
 
 fn strip_trailing_newline(source: String) -> String {
     let trimmed: &str = source.trim_end_matches('\n');
@@ -27,7 +31,7 @@ fn strip_trailing_newline(source: String) -> String {
 fn identity_map(
     file: &str,
     code: &str,
-) -> SourceMap<'static> {
+) -> SourceMap {
     let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
 
     builder.set_file(file);
@@ -50,7 +54,7 @@ pub struct CompileOutput {
     /// Generated code.
     pub code: String,
     /// Source map.
-    pub map: SourceMap<'static>,
+    pub map: SourceMap,
 }
 
 /// Run the per-file pipeline over `options` with `plugins`.
@@ -75,7 +79,7 @@ pub async fn compile(
             CompileError::from_message(&format!("pre hook: {error:#}"))
         })?;
 
-    let (code, map): (String, SourceMap<'static>) = if driver
+    let (code, map): (String, SourceMap) = if driver
         .usage()
         .contains(HookUsage::TRANSFORM)
     {
@@ -122,7 +126,7 @@ pub async fn compile(
 
         let code: String = strip_trailing_newline(result.code);
 
-        let map: SourceMap<'static> = result.map.into_owned();
+        let map: SourceMap = result.map.into_owned();
 
         (code, map)
     } else {
@@ -130,8 +134,7 @@ pub async fn compile(
         // pass the source through with a per-line identity map.
         let code: String = strip_trailing_newline(resolved.code.clone());
 
-        let map: SourceMap<'static> =
-            identity_map(&resolved.file, &resolved.code);
+        let map: SourceMap = identity_map(&resolved.file, &resolved.code);
 
         (code, map)
     };
@@ -414,6 +417,7 @@ mod tests {
     async fn test_compile_no_plugins_codegens_original() {
         let out: crate::CompileOutput =
             compile(options(), vec![]).await.unwrap();
+
         assert_eq!(out.code, "const a = 1;");
     }
 
@@ -424,8 +428,11 @@ mod tests {
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
+
         let plugins: Vec<SharedPluginable> = vec![Arc::new(NoopPlugin)];
+
         let out = compile(opts, plugins).await.unwrap();
+
         assert_eq!(out.code, "console.log(1);");
     }
 
@@ -436,7 +443,9 @@ mod tests {
             file: "index.ts".to_string(),
             code: "const a = 1;\n".to_string(),
         };
+
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
+
         assert_eq!(out.code, "const a = 1;");
     }
 
@@ -444,6 +453,7 @@ mod tests {
     async fn test_compile_no_plugins_sourcemap_sources() {
         let out: crate::CompileOutput =
             compile(options(), vec![]).await.unwrap();
+
         assert_eq!(out.map.get_source(0), Some("index.ts"));
     }
 
@@ -455,10 +465,15 @@ mod tests {
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
+
         let plugins: Vec<SharedPluginable> = vec![Arc::new(RenameCalleePlugin)];
+
         let out = compile(opts, plugins).await.unwrap();
+
         assert!(out.code.contains("consolex"), "{}", out.code);
-        let map: SourceMap<'static> = out.map;
+
+        let map: SourceMap = out.map;
+
         assert!(
             map.get_tokens().next().is_some(),
             "mappings must be non-empty"
@@ -472,9 +487,12 @@ mod tests {
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
+
         let out =
             compile(opts, vec![Arc::new(RenameCalleePlugin)]).await.unwrap();
-        let map: SourceMap<'static> = out.map;
+
+        let map: SourceMap = out.map;
+
         assert_eq!(map.get_source(0), Some("index.ts"));
         assert!(
             map.get_tokens().next().is_some(),
@@ -489,10 +507,12 @@ mod tests {
             file: "index.ts".to_string(),
             code: "const = ;".to_string(),
         };
+
         let error: CompileError =
             compile(opts, vec![Arc::new(RenameCalleePlugin)])
                 .await
                 .unwrap_err();
+
         assert!(error.to_string().contains("index.ts"));
     }
 
@@ -505,7 +525,9 @@ mod tests {
             file: "index.ts".to_string(),
             code: "const = ;".to_string(),
         };
+
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
+
         assert_eq!(out.code, "const = ;");
     }
 
@@ -516,11 +538,15 @@ mod tests {
             file: "index.ts".to_string(),
             code: "const a = 1;\nconst b = 2;\n".to_string(),
         };
+
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
+
         assert_eq!(out.code, "const a = 1;\nconst b = 2;");
         assert_eq!(out.map.get_source(0), Some("index.ts"));
+
         let token: oxc_sourcemap::Token =
             out.map.get_token(1).expect("one token per line");
+
         assert_eq!(token.get_dst_line(), 1);
         assert_eq!(token.get_src_line(), 1);
         assert_eq!(token.get_dst_col(), 0);
@@ -537,8 +563,11 @@ mod tests {
             file: "index.ts".to_string(),
             code: "console.log(1);\n".to_string(),
         };
+
         let plugins: Vec<SharedPluginable> = vec![Arc::new(NoopPlugin)];
+
         let out = compile(opts, plugins).await.unwrap();
+
         assert_eq!(out.code, "console.log(1);");
         assert_eq!(out.map.get_source(0), Some("index.ts"));
     }
@@ -547,27 +576,52 @@ mod tests {
     async fn test_compile_options_hook_rewrites_code() {
         let plugins: Vec<SharedPluginable> =
             vec![Arc::new(RewriteCodeOptionsPlugin)];
+
         let out: crate::CompileOutput =
             compile(options(), plugins).await.unwrap();
+
         assert!(out.code.contains("rewritten"), "{}", out.code);
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_pre_hook_error_aborts() {
         let plugins: Vec<SharedPluginable> = vec![Arc::new(FailingPrePlugin)];
+
         let error: CompileError =
             compile(options(), plugins).await.unwrap_err();
+
         let message: String = error.to_string();
+
         assert!(message.contains("pre hook"), "{}", message);
         assert!(message.contains("stage boom"), "{}", message);
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_output_map_is_alias() {
+        // `SourceMap` in `CompileOutput` must be the owned-map alias: assign it
+        // to an explicitly-aliased variable to prove the types agree.
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "const a = 1;".to_string(),
+        };
+
+        let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
+
+        let map: SourceMap = out.map;
+
+        assert_eq!(map.get_source(0), Some("index.ts"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn test_compile_post_hook_error_aborts() {
         let plugins: Vec<SharedPluginable> = vec![Arc::new(FailingPostPlugin)];
+
         let error: CompileError =
             compile(options(), plugins).await.unwrap_err();
+
         let message: String = error.to_string();
+
         assert!(message.contains("post hook"), "{}", message);
         assert!(message.contains("stage boom"), "{}", message);
     }
