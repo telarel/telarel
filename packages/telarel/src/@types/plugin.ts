@@ -107,26 +107,26 @@ type Plugin = {
      */
     name: string;
     /**
-     * Update compiler options and return them.
+     * The options hook: update compiler options and return them.
      */
     options?: (
         options: Options,
     ) => PartialOptions | null | void | Promise<PartialOptions | null | void>;
     /**
-     * Setup.
+     * The pre hook: run before compilation.
      */
     pre?: (ctx: PluginContext, args: PreArgs) => void | Promise<void>;
     /**
-     * AST-level transform: ast -> ast. Chained. Return { ast } (the
-     * possibly-mutated tree) to hand the payload to the next plugin; return
-     * nothing to pass through.
+     * The transform hook: chained AST-level transformation.
+     *
+     * Return AST to be used by the next plugin, return nothing to pass through.
      */
     transform?: (
         ctx: PluginContext,
         args: TransformArgs,
     ) => TransformOutput | null | void | Promise<TransformOutput | null | void>;
     /**
-     * Cleanup.
+     * The post hook: run after compilation.
      */
     post?: (ctx: PluginContext, args: PostArgs) => void | Promise<void>;
 };

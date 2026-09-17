@@ -1,5 +1,5 @@
 /**
- * Source map (v3), aligned with the native binding's `JsSourceMap`.
+ * Source map (v3).
  */
 type SourceMap = {
     /**
