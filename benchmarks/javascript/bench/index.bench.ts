@@ -39,6 +39,7 @@ if (sanity.code.length === 0) {
 
 const benchCase = (name: string, plugins: Array<Plugin>): void => {
     for (const fixture of fixtures) {
+        // oxlint-disable-next-line vitest/expect-expect
         test(`${name} / ${fixture.name}`, async ({ bench }): Promise<void> => {
             await bench(`${name} / ${fixture.name}`, async (): Promise<void> => {
                 const result: CompileResult = await compile({

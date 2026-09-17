@@ -114,13 +114,9 @@ describe("sourcemap", (): void => {
         // leading U+FEFF while the native binding preserves it) — pin only
         // the runtime-independent remainder.
         expect(result.map.sourcesContent).not.toBe(void 0);
-        if (result.map.sourcesContent) {
-            const content: string | null | undefined =
-                result.map.sourcesContent[0];
-            expect(content?.replace(/^\uFEFF/gu, "")).toBe(
-                'const µ = "日本語";',
-            );
-        }
+        expect(result.map.sourcesContent?.[0]?.replace(/^\uFEFF/gu, "")).toBe(
+            'const µ = "日本語";',
+        );
     });
 
     it("pins mappings across multiple lines", async (): Promise<void> => {
