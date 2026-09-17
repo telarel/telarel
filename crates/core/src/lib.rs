@@ -22,7 +22,9 @@ pub use telarel_common::CompileOptions;
 pub type SourceMap = OxcSourceMap<'static>;
 
 fn strip_trailing_newline(source: String) -> String {
-    let trimmed: &str = source.trim_end_matches('\n');
+    // Strip a trailing `\n`, then a trailing `\r`, so `\n`, `\r\n`, and lone
+    // `\r` terminators all disappear while interior line endings survive.
+    let trimmed: &str = source.trim_end_matches('\n').trim_end_matches('\r');
     String::from(trimmed)
 }
 
@@ -519,6 +521,49 @@ mod tests {
             cwd: "/repo".to_string(),
             file: "index.ts".to_string(),
             code: "const a = 1;\n".to_string(),
+        };
+
+        let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
+
+        assert_eq!(out.code, "const a = 1;");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_strips_crlf_trailing_newline() {
+        // CRLF sources must not leave a stray `\r` after the `\n` strip.
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "const a = 1;\r\n".to_string(),
+        };
+
+        let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
+
+        assert_eq!(out.code, "const a = 1;");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_preserves_interior_crlf() {
+        // Only the trailing terminator is stripped; interior CRLF is intact.
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "const a = 1;\r\nconst b = 2;".to_string(),
+        };
+
+        let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
+
+        assert_eq!(out.code, "const a = 1;\r\nconst b = 2;");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_strips_lone_cr_trailing_newline() {
+        // A lone `\r` terminator is also stripped, matching the documented
+        // behavior of the trim (`\n`, `\r\n`, and lone `\r`).
+        let opts: CompileOptions = CompileOptions {
+            cwd: "/repo".to_string(),
+            file: "index.ts".to_string(),
+            code: "const a = 1;\r".to_string(),
         };
 
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();

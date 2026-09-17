@@ -150,6 +150,20 @@ describe("sourcemap", (): void => {
         expect(result.map.mappings).toBe("AAAA;AACA");
     });
 
+    it("strips a trailing CRLF from code on the skip path", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;\r\n",
+        });
+
+        // Skip path: the trailing `\r\n` terminator is stripped, but the
+        // identity map still names the file and covers the line.
+        expect(result.code).toBe("const a = 1;");
+        expect(result.map.version).toBe(3);
+        expect(result.map.mappings).toBe("AAAA");
+    });
+
     it("uses the given file name as the single source", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
