@@ -2,6 +2,8 @@
 
 Telarel is an extensible JavaScript compiler written in Rust.
 
+For more details, refer to `./ARCHITECTURE.md`.
+
 ## Architecture
 
 This repository is a TypeScript/Rust monorepo.
@@ -78,7 +80,7 @@ This repository contains Rust and TypeScript/JavaScript code.
 When modifying code:
 
 - always ask before changing public API semantics
-- if behavior changes, update tests and docs accordingly
+- if behavior changes, update tests and docs (like `./ARCHITECTURE.md`) accordingly
 
 If uncertain about intended behavior:
 
