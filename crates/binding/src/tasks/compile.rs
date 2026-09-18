@@ -35,11 +35,11 @@ impl Task for CompileTask {
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
         let runtime: tokio::runtime::Runtime = crate::tasks::worker_runtime()?;
+        let options: CompileOptions = std::mem::take(&mut self.options);
+        let plugins: Vec<SharedPluginable> = std::mem::take(&mut self.plugins);
 
-        runtime.block_on(async {
-            compile(self.options.clone(), self.plugins.clone())
-                .await
-                .map_err(crate::tasks::error_to_napi)
+        runtime.block_on(async move {
+            compile(options, plugins).await.map_err(crate::tasks::error_to_napi)
         })
     }
 

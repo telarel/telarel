@@ -9,6 +9,16 @@ pub struct CompileOptions {
     pub code: String,
 }
 
+impl Default for CompileOptions {
+    fn default() -> Self {
+        Self {
+            cwd: String::from("/"),
+            file: String::from("index.js"),
+            code: String::from(""),
+        }
+    }
+}
+
 /// Partial update of the compile options; `None` fields keep current values.
 #[derive(Debug, Clone, Default)]
 pub struct PartialCompileOptions {
