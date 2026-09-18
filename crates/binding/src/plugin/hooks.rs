@@ -191,17 +191,8 @@ pub trait HookCall: 'static {
     /// JS return type of the hook (before the sync/async `Either`).
     type Return: FromNapiValue + TypeName + ValidateNapiValue + 'static;
 
-    /// Build the JS args payload for this call.
-    fn payload(&self) -> Self::Payload;
-
-    /// Current working directory.
-    fn cwd(&self) -> &str;
-
-    /// The file being compiled.
-    fn file(&self) -> &str;
-
-    /// The code being compiled.
-    fn code(&self) -> &str;
+    /// Consume the call data into the JS-facing plugin context and args payload.
+    fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)>;
 }
 
 /// A hook payload: the plugin context followed by the hook args.
@@ -232,20 +223,14 @@ impl HookCall for StageCall {
     type Payload = JsStageArgs;
     type Return = Undefined;
 
-    fn payload(&self) -> Self::Payload {
-        JsStageArgs { file: self.file.clone(), code: self.code.clone() }
-    }
+    fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
+        let context: JsPluginContext =
+            plugin_context(self.cwd, self.file.clone(), self.code.clone())?;
 
-    fn cwd(&self) -> &str {
-        &self.cwd
-    }
+        let payload: JsStageArgs =
+            JsStageArgs { file: self.file, code: self.code };
 
-    fn file(&self) -> &str {
-        &self.file
-    }
-
-    fn code(&self) -> &str {
-        &self.code
+        Ok((context, payload))
     }
 }
 
@@ -273,23 +258,14 @@ impl HookCall for TransformCall {
     type Payload = JsTransformArgs;
     type Return = Option<JsTransformOutput>;
 
-    fn payload(&self) -> Self::Payload {
-        JsTransformArgs {
-            file: self.file.clone(),
-            ast_json: self.ast_json.clone(),
-        }
-    }
+    fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
+        let context: JsPluginContext =
+            plugin_context(self.cwd, self.file.clone(), self.code.clone())?;
 
-    fn cwd(&self) -> &str {
-        &self.cwd
-    }
+        let payload: JsTransformArgs =
+            JsTransformArgs { file: self.file, ast_json: self.ast_json };
 
-    fn file(&self) -> &str {
-        &self.file
-    }
-
-    fn code(&self) -> &str {
-        &self.code
+        Ok((context, payload))
     }
 }
 
@@ -302,15 +278,11 @@ pub type TransformTsfn = Tsfn<
 
 /// Build the JS-facing plugin context for a hook call.
 pub fn plugin_context(
-    cwd: &str,
-    file: &str,
-    code: &str,
+    cwd: String,
+    file: String,
+    code: String,
 ) -> Result<JsPluginContext> {
-    Ok(JsPluginContext {
-        cwd: cwd.to_string(),
-        file: file.to_string(),
-        code: code.to_string(),
-    })
+    Ok(JsPluginContext { cwd, file, code })
 }
 
 /// A TSFN bridging one ctx-bearing JS hook: the worker-side call data `C`,
@@ -342,12 +314,8 @@ where
     let tsfn: CtxTsfn<C> = function
         .build_threadsafe_function::<C>()
         .build_callback(move |callback: ThreadsafeCallContext<C>| {
-            let payload: C::Payload = callback.value.payload();
-            let context: JsPluginContext = plugin_context(
-                callback.value.cwd(),
-                callback.value.file(),
-                callback.value.code(),
-            )?;
+            let (context, payload): (JsPluginContext, C::Payload) =
+                callback.value.into_payload()?;
 
             Ok(FnCtx(context, payload))
         })?;
