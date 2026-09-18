@@ -34,13 +34,14 @@ impl Task for CompileTask {
     type JsValue = crate::_types::results::JsCompileResult;
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        let runtime: tokio::runtime::Runtime = crate::tasks::worker_runtime()?;
         let options: CompileOptions = std::mem::take(&mut self.options);
+
         let plugins: Vec<SharedPluginable> = std::mem::take(&mut self.plugins);
 
-        runtime.block_on(async move {
+        crate::tasks::block_on_compile(async move {
             compile(options, plugins).await.map_err(crate::tasks::error_to_napi)
         })
+        .flatten()
     }
 
     fn resolve(

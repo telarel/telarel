@@ -90,6 +90,6 @@ Any in-place mutation without a return value is discarded. A shared `metadata` o
 
 ## Execution Model
 
-The transform hook's future is intentionally non-`Send` (`LocalHookFuture`) because programs borrow from the compile allocator. On native, each `compile` call creates a new single-threaded Tokio runtime and `block_on`s it from a libuv worker thread ([`CompileTask`](./crates/binding/src/tasks/compile.rs#L31)).
+The transform hook's future is intentionally non-`Send` (`LocalHookFuture`) because programs borrow from the compile allocator. On native, each `compile` call runs on a libuv worker thread and `block_on`s a per-thread, reused current-thread Tokio runtime ([`block_on_compile`](./crates/binding/src/tasks/mod.rs), used by [`CompileTask`](./crates/binding/src/tasks/compile.rs#L10)). The non-`Send` transform future never escapes the worker thread: it is fully driven and dropped inside `block_on`.
 
 The same TSFN-based binding also works with `wasm32-wasip1-threads`, and the JS test suite runs against both backends.
