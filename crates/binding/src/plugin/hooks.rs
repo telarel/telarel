@@ -30,6 +30,41 @@ use crate::_types::plugin::hooks::{
 pub type Tsfn<Data, Payload, Return> =
     ThreadsafeFunction<Data, Return, Payload, napi::Status, false, false, 0>;
 
+/// A cheap-to-clone shared string: one allocation, shared by a hook call's
+/// context and payload through `Arc` refcounts.
+///
+/// Serializes to JS as a plain UTF-8 string, so hook payload shapes are unchanged.
+#[derive(Debug, Clone)]
+pub struct SharedStr(Arc<str>);
+
+impl SharedStr {
+    /// Allocate a new shared string.
+    pub fn new(value: &str) -> Self {
+        Self(Arc::from(value))
+    }
+
+    /// Borrow the underlying string.
+    #[allow(dead_code)] // exercised by the unit tests below
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for SharedStr {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl ToNapiValue for SharedStr {
+    unsafe fn to_napi_value(
+        env: sys::napi_env,
+        val: Self,
+    ) -> Result<sys::napi_value> {
+        unsafe { <&str as ToNapiValue>::to_napi_value(env, val.0.as_ref()) }
+    }
+}
+
 macro_rules! for_each_hook_slot {
     ($macro_name:ident $(, $extra:tt)*) => {
         $macro_name! {
@@ -146,11 +181,11 @@ impl SharedRef {
 /// Worker-side call data for the `options` hook.
 pub struct OptionsCall {
     /// Current working directory.
-    pub cwd: String,
+    pub cwd: SharedStr,
     /// The file being compiled.
-    pub file: String,
+    pub file: SharedStr,
     /// The code being compiled.
-    pub code: String,
+    pub code: SharedStr,
     /// Rooted JS array holding every raw plugin object.
     pub plugins: SharedRef,
 }
@@ -212,11 +247,11 @@ impl<A: ToNapiValue> JsValuesTupleIntoVec for FnCtx<A> {
 /// Worker-side call data for the `pre` / `post` hooks.
 pub struct StageCall {
     /// Current working directory.
-    pub cwd: String,
+    pub cwd: SharedStr,
     /// The file being compiled.
-    pub file: String,
+    pub file: SharedStr,
     /// The code being compiled.
-    pub code: String,
+    pub code: SharedStr,
 }
 
 impl HookCall for StageCall {
@@ -245,11 +280,11 @@ pub type PostTsfn =
 /// Worker-side call data for the `transform` hook.
 pub struct TransformCall {
     /// Current working directory.
-    pub cwd: String,
+    pub cwd: SharedStr,
     /// The file being compiled.
-    pub file: String,
+    pub file: SharedStr,
     /// The original code, anchoring the read-back AST spans.
-    pub code: String,
+    pub code: SharedStr,
     /// The AST as a JSON string.
     pub ast_json: String,
 }
@@ -260,7 +295,7 @@ impl HookCall for TransformCall {
 
     fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
         let context: JsPluginContext =
-            plugin_context(self.cwd, self.file.clone(), self.code.clone())?;
+            plugin_context(self.cwd, self.file.clone(), self.code)?;
 
         let payload: JsTransformArgs =
             JsTransformArgs { file: self.file, ast_json: self.ast_json };
@@ -278,9 +313,9 @@ pub type TransformTsfn = Tsfn<
 
 /// Build the JS-facing plugin context for a hook call.
 pub fn plugin_context(
-    cwd: String,
-    file: String,
-    code: String,
+    cwd: SharedStr,
+    file: SharedStr,
+    code: SharedStr,
 ) -> Result<JsPluginContext> {
     Ok(JsPluginContext { cwd, file, code })
 }
@@ -378,6 +413,7 @@ pub(crate) use hook_scan;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugin::hooks::SharedStr;
 
     #[test]
     fn test_hook_slots_are_sequential() {
@@ -385,5 +421,42 @@ mod tests {
         assert_eq!(pre::SLOT, 1);
         assert_eq!(transform::SLOT, 2);
         assert_eq!(post::SLOT, 3);
+    }
+
+    #[test]
+    fn test_shared_str_from_borrow_and_as_str() {
+        let shared: SharedStr = SharedStr::new("index.ts");
+        assert_eq!(shared.as_str(), "index.ts");
+    }
+
+    #[test]
+    fn test_shared_str_clone_shares_allocation() {
+        let shared: SharedStr = SharedStr::new("const a = 1;");
+
+        let clone: SharedStr = shared.clone();
+
+        // Clones share the same Arc allocation: both see the same data, and
+        // dropping the original does not affect the clone.
+        assert_eq!(clone.as_str(), "const a = 1;");
+
+        let original: SharedStr = shared;
+
+        assert_eq!(original.as_str(), "const a = 1;");
+        assert_eq!(clone.as_str(), "const a = 1;");
+    }
+
+    #[test]
+    fn test_shared_str_from_impl() {
+        let value: &str = "console.log(1);";
+
+        let shared: SharedStr = SharedStr::from(value);
+
+        assert_eq!(shared.as_str(), value);
+    }
+
+    #[test]
+    fn test_shared_str_debug() {
+        let shared: SharedStr = SharedStr::new("x");
+        assert_eq!(format!("{shared:?}"), r#"SharedStr("x")"#);
     }
 }

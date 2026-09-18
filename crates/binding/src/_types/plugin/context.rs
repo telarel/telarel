@@ -1,14 +1,16 @@
 use napi::bindgen_prelude::{JsValue, Object, ToNapiValue};
 use napi::sys;
 
+use crate::plugin::hooks::SharedStr;
+
 /// JS-facing plugin context passed to every ctx-bearing hook.
 pub struct JsPluginContext {
     /// Current working directory.
-    pub cwd: String,
+    pub cwd: SharedStr,
     /// The original file.
-    pub file: String,
+    pub file: SharedStr,
     /// The original code.
-    pub code: String,
+    pub code: SharedStr,
 }
 
 impl ToNapiValue for JsPluginContext {

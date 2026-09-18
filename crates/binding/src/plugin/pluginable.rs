@@ -16,8 +16,8 @@ use telarel_plugin::{
 
 use crate::_types::plugin::hooks::{JsOptionsOutput, JsTransformOutput};
 use crate::plugin::hooks::{
-    OptionsCall, OptionsTsfn, PostTsfn, PreTsfn, SharedRef, StageCall,
-    TransformCall, TransformTsfn, hook_scan,
+    OptionsCall, OptionsTsfn, PostTsfn, PreTsfn, SharedRef, SharedStr,
+    StageCall, TransformCall, TransformTsfn, hook_scan,
 };
 
 /// A JS plugin object bridged into the Rust plugin layer.
@@ -101,9 +101,9 @@ impl Pluginable for JsPlugin {
             };
 
             let call: OptionsCall = OptionsCall {
-                cwd: options.cwd.clone(),
-                file: options.file.clone(),
-                code: options.code.clone(),
+                cwd: SharedStr::new(&options.cwd),
+                file: SharedStr::new(&options.file),
+                code: SharedStr::new(&options.code),
                 plugins: self.plugins.clone(),
             };
 
@@ -136,9 +136,9 @@ impl Pluginable for JsPlugin {
             };
 
             let call: StageCall = StageCall {
-                cwd: ctx.cwd.to_string(),
-                file: args.file.to_string(),
-                code: args.code.to_string(),
+                cwd: SharedStr::new(ctx.cwd),
+                file: SharedStr::new(args.file),
+                code: SharedStr::new(args.code),
             };
 
             let output: Either<Promise<Undefined>, Undefined> =
@@ -172,9 +172,9 @@ impl Pluginable for JsPlugin {
             );
 
             let call: TransformCall = TransformCall {
-                cwd: ctx.cwd.to_string(),
-                file: args.file.to_string(),
-                code: ctx.code.to_string(),
+                cwd: SharedStr::new(ctx.cwd),
+                file: SharedStr::new(args.file),
+                code: SharedStr::new(ctx.code),
                 ast_json,
             };
 
@@ -219,9 +219,9 @@ impl Pluginable for JsPlugin {
             };
 
             let call: StageCall = StageCall {
-                cwd: ctx.cwd.to_string(),
-                file: args.file.to_string(),
-                code: args.code.to_string(),
+                cwd: SharedStr::new(ctx.cwd),
+                file: SharedStr::new(args.file),
+                code: SharedStr::new(args.code),
             };
 
             let output: Either<Promise<Undefined>, Undefined> =
