@@ -21,11 +21,19 @@ pub use telarel_common::CompileOptions;
 /// An owned source map produced by a compile run.
 pub type SourceMap = OxcSourceMap<'static>;
 
-fn strip_trailing_newline(source: String) -> String {
-    // Strip a trailing `\n`, then a trailing `\r`, so `\n`, `\r\n`, and lone
-    // `\r` terminators all disappear while interior line endings survive.
-    let trimmed: &str = source.trim_end_matches('\n').trim_end_matches('\r');
-    String::from(trimmed)
+/// Strip a trailing `\n`, then a trailing `\r`, so `\n`, `\r\n`, and
+/// lone `\r` terminators all disappear, but still keeping interior
+/// line endings survive.
+///
+/// The input is owned, so the trailing terminator is removed in place
+/// instead of copying the whole string into a fresh `String`.
+fn strip_trailing_newline(mut source: String) -> String {
+    let new_len: usize =
+        source.trim_end_matches('\n').trim_end_matches('\r').len();
+
+    source.truncate(new_len);
+
+    source
 }
 
 /// Build a per-line identity map: each generated line maps to the same
@@ -132,7 +140,9 @@ pub async fn compile(
         (code, map)
     } else {
         // No plugin uses `transform`: skip parse and codegen entirely and
-        // pass the source through with a per-line identity map.
+        // pass the source through with a per-line identity map. A clone is
+        // required here: `ctx` borrows `resolved.code` until the `post` hook
+        // below, so the strip cannot consume `resolved.code` in place.
         let code: String = strip_trailing_newline(resolved.code.clone());
 
         let map: SourceMap = identity_map(&resolved.file, &resolved.code);
