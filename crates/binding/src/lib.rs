@@ -19,13 +19,6 @@ pub fn compile(
     env: Env,
     options: JsOptions,
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<CompileTask>> {
-    // The metadata object is created ONCE per compile and shared by every
-    // plugin through every hook payload. It is rooted so it survives for the
-    // whole compilation; the reference is released when the compile finishes.
-    let metadata: Object<'static> = Object::new(&env)?;
-
-    let metadata: SharedRef = SharedRef::new(&metadata)?;
-
     // Root the plugin objects in one JS array; it is embedded into `options`
     // hook payloads.
     let plugin_array: Array<'_> = Array::from_vec(
@@ -46,7 +39,7 @@ pub fn compile(
         options.plugins.into_iter().map(SharedRef::from_ref).collect();
 
     let plugins: Vec<SharedPluginable> =
-        match to_plugins(&env, &plugin_refs, &metadata, &plugin_array) {
+        match to_plugins(&env, &plugin_refs, &plugin_array) {
             | Ok(plugins) => plugins,
             | Err(error) => {
                 // Bridging failed before the async task exists, so nothing
@@ -57,8 +50,6 @@ pub fn compile(
                 // secondary to the bridging error and cannot be reported
                 // from this cleanup path; `release` is idempotent, so this
                 // is safe even if some refs were already released.
-                let _ = metadata.release(&env);
-
                 let _ = plugin_array.release(&env);
 
                 for reference in &plugin_refs {
@@ -70,9 +61,7 @@ pub fn compile(
         };
 
     // Every rooted reference of this compile, released in `Task::finally`.
-    let mut refs: Vec<SharedRef> = Vec::with_capacity(plugin_refs.len() + 2);
-
-    refs.push(metadata);
+    let mut refs: Vec<SharedRef> = Vec::with_capacity(plugin_refs.len() + 1);
 
     refs.push(plugin_array);
 

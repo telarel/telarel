@@ -305,14 +305,11 @@ pub fn plugin_context(
     cwd: &str,
     file: &str,
     code: &str,
-    metadata: &SharedRef,
-    env: &Env,
 ) -> Result<JsPluginContext> {
     Ok(JsPluginContext {
         cwd: cwd.to_string(),
         file: file.to_string(),
         code: code.to_string(),
-        metadata: metadata.get(env)?,
     })
 }
 
@@ -329,7 +326,6 @@ pub type CtxTsfn<C> = Tsfn<
 pub fn scan_hook<C>(
     object: &Object<'static>,
     name: &str,
-    metadata: &SharedRef,
 ) -> Result<Option<CtxTsfn<C>>>
 where
     C: HookCall,
@@ -343,7 +339,6 @@ where
         return Ok(None);
     };
 
-    let metadata: SharedRef = metadata.clone();
     let tsfn: CtxTsfn<C> = function
         .build_threadsafe_function::<C>()
         .build_callback(move |callback: ThreadsafeCallContext<C>| {
@@ -352,8 +347,6 @@ where
                 callback.value.cwd(),
                 callback.value.file(),
                 callback.value.code(),
-                &metadata,
-                &callback.env,
             )?;
 
             Ok(FnCtx(context, payload))
@@ -389,23 +382,23 @@ pub fn scan_options(object: &Object<'static>) -> Result<Option<OptionsTsfn>> {
 ///
 /// Returns `(options, pre, transform, post)`.
 macro_rules! hook_scan {
-    ($object:expr, $metadata:expr) => {{
+    ($object:expr) => {{
         let options: Option<crate::plugin::hooks::OptionsTsfn> =
             crate::plugin::hooks::scan_options($object)?;
 
         let pre: Option<crate::plugin::hooks::PreTsfn> =
             crate::plugin::hooks::scan_hook::<crate::plugin::hooks::StageCall>(
-                $object, "pre", $metadata,
+                $object, "pre",
             )?;
 
         let transform: Option<crate::plugin::hooks::TransformTsfn> =
             crate::plugin::hooks::scan_hook::<
                 crate::plugin::hooks::TransformCall,
-            >($object, "transform", $metadata)?;
+            >($object, "transform")?;
 
         let post: Option<crate::plugin::hooks::PostTsfn> =
             crate::plugin::hooks::scan_hook::<crate::plugin::hooks::StageCall>(
-                $object, "post", $metadata,
+                $object, "post",
             )?;
 
         (options, pre, transform, post)

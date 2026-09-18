@@ -9,8 +9,6 @@ pub struct JsPluginContext {
     pub file: String,
     /// The original code.
     pub code: String,
-    /// Shared metadata object, alive for the whole compilation.
-    pub metadata: Object<'static>,
 }
 
 impl ToNapiValue for JsPluginContext {
@@ -27,8 +25,6 @@ impl ToNapiValue for JsPluginContext {
         object.set("file", val.file)?;
 
         object.set("code", val.code)?;
-
-        object.set("metadata", JsValue::raw(&val.metadata))?;
 
         Ok(JsValue::raw(&object))
     }

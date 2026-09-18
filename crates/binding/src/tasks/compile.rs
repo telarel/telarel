@@ -10,15 +10,16 @@ use crate::plugin::hooks::SharedRef;
 pub struct CompileTask {
     options: CompileOptions,
     plugins: Vec<SharedPluginable>,
-    /// Rooted object references created for this compile (metadata, plugin
-    /// array, and one per plugin object); released on the JS thread when the
-    /// compile finishes.
+    /// Rooted object references created for this compile;
+    /// released on the JS thread when the compile finishes.
+    ///
+    /// For example, plugin array, and one per plugin object.
     refs: Vec<SharedRef>,
 }
 
 impl CompileTask {
-    /// Create a task from Rust options, bridged plugins, and the rooted
-    /// references to release when the compile finishes.
+    /// Create a task from Rust options, bridged plugins,
+    /// and the rooted references to release when the compile finishes.
     pub fn new(
         options: CompileOptions,
         plugins: Vec<SharedPluginable>,
@@ -55,15 +56,15 @@ impl Task for CompileTask {
 
     /// Release every rooted reference created for this compile.
     ///
-    /// Every reference is released even if one release fails; the first
-    /// error is returned after the loop so no reference leaks on the
-    /// failure path.
+    /// Every reference is released even if one release fails;
+    /// the first error is returned after the loop so no reference leaks on the failure path.
     fn finally(
         self,
         env: Env,
     ) -> napi::Result<()> {
-        // Drop the adapters (and their TSFNs) first: no hook call can be in
-        // flight or start afterwards, so the references are no longer used.
+        // Drop the adapters (and their TSFNs) first:
+        // no hook call can be in flight or start afterwards,
+        // so the references are no longer used.
         drop(self.plugins);
 
         let mut first_error: Option<napi::Error> = None;

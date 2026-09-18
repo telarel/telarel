@@ -6,7 +6,6 @@ type RawPluginContext = {
     cwd: string;
     file: string;
     code: string;
-    metadata: Record<string, unknown>;
 };
 
 type RawStageArgs = { file: string; code: string };
@@ -49,6 +48,7 @@ const toRawPlugin = (
     }
 
     const name: string = plugin.name;
+
     const raw: RawPlugin = { name };
 
     const toContext = (ctx: RawPluginContext): PluginContext => ({

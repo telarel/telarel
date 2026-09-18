@@ -3,10 +3,8 @@ import type { Format, Partial } from "ts-vista";
 
 // Note: `PluginContext.metadata` is a real `Map<string, unknown>`, created
 // once per `compile()` call by this package's wrapper and injected into
-// every hook context. The native binding materializes its shared metadata
-// as a plain object (napi cannot bridge `Map`); the wrapper ignores that
-// object and substitutes the wrapper-owned Map, so all plugins in one
-// compilation observe the same `Map` instance.
+// every hook context, so all plugins in one compilation observe the same
+// `Map` instance.
 
 type PluginContext = {
     /**

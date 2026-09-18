@@ -36,7 +36,6 @@ impl JsPlugin {
     /// slots, wrapping present hook functions into TSFNs.
     pub fn from_object(
         object: &Object<'static>,
-        metadata: &SharedRef,
         plugins: &SharedRef,
     ) -> Result<Self> {
         let name: String = object.get::<String>("name")?.ok_or_else(|| {
@@ -47,7 +46,7 @@ impl JsPlugin {
         })?;
 
         let (tsfn_options, tsfn_pre, tsfn_transform, tsfn_post) =
-            hook_scan!(object, metadata);
+            hook_scan!(object);
 
         Ok(Self {
             name,
