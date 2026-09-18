@@ -1,13 +1,16 @@
-# Caches
+# OS
 __MACOSX/
 .DS_Store
 
-# Modules
+# Dependencies
 node_modules/
 
-# Builds
-target/
+# Build
 dist/
+target/
+
+# Test
+.vitest/
 
 # Logs
 *.log

@@ -36,3 +36,4 @@ ignore:
     - target
     - "**/dist"
     - "**/@types"
+    - "**/.vitest"
