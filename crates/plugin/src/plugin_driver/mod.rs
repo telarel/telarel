@@ -37,19 +37,19 @@ impl PluginDriver {
 
             usage |= declared;
 
-            if declared.contains(HookUsage::OPTIONS) {
+            if declared.contains(HookUsage::Options) {
                 options_plugins.push(Arc::clone(plugin));
             }
 
-            if declared.contains(HookUsage::PRE) {
+            if declared.contains(HookUsage::Pre) {
                 pre_plugins.push(Arc::clone(plugin));
             }
 
-            if declared.contains(HookUsage::TRANSFORM) {
+            if declared.contains(HookUsage::Transform) {
                 transform_plugins.push(Arc::clone(plugin));
             }
 
-            if declared.contains(HookUsage::POST) {
+            if declared.contains(HookUsage::Post) {
                 post_plugins.push(Arc::clone(plugin));
             }
         }
@@ -144,7 +144,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::OPTIONS
+            HookUsage::Options
         }
 
         async fn options(
@@ -167,7 +167,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::OPTIONS
+            HookUsage::Options
         }
     }
 
@@ -180,7 +180,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::OPTIONS
+            HookUsage::Options
         }
 
         async fn options(
@@ -211,7 +211,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::OPTIONS
+            HookUsage::Options
         }
 
         async fn options(
@@ -233,7 +233,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::OPTIONS
+            HookUsage::Options
         }
 
         async fn options(
@@ -270,7 +270,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::PRE | HookUsage::POST
+            HookUsage::Pre | HookUsage::Post
         }
 
         async fn pre(
@@ -301,7 +301,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::PRE
+            HookUsage::Pre
         }
 
         async fn pre(
@@ -322,7 +322,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::TRANSFORM
+            HookUsage::Transform
         }
 
         fn transform<'a>(
@@ -371,7 +371,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::TRANSFORM
+            HookUsage::Transform
         }
 
         fn transform<'a>(
@@ -412,7 +412,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::TRANSFORM
+            HookUsage::Transform
         }
 
         fn transform<'a>(
@@ -445,7 +445,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::TRANSFORM
+            HookUsage::Transform
         }
 
         fn transform<'a>(
@@ -467,7 +467,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::POST
+            HookUsage::Post
         }
 
         async fn post(
@@ -502,7 +502,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::PRE
+            HookUsage::Pre
         }
 
         async fn pre(
@@ -998,7 +998,7 @@ mod tests {
         let recorded: Vec<String> = log.lock().unwrap().clone();
 
         assert!(replaced.is_none());
-        assert_eq!(driver.usage(), HookUsage::PRE);
+        assert_eq!(driver.usage(), HookUsage::Pre);
         assert!(recorded.is_empty());
     }
 
@@ -1015,10 +1015,10 @@ mod tests {
 
         assert_eq!(
             driver.usage(),
-            HookUsage::OPTIONS
-                | HookUsage::PRE
-                | HookUsage::TRANSFORM
-                | HookUsage::POST
+            HookUsage::Options
+                | HookUsage::Pre
+                | HookUsage::Transform
+                | HookUsage::Post
         );
     }
 }

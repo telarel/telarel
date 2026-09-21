@@ -73,19 +73,19 @@ impl Pluginable for JsPlugin {
         let mut usage: HookUsage = HookUsage::default();
 
         if self.tsfn_options.is_some() {
-            usage.insert(HookUsage::OPTIONS);
+            usage.insert(HookUsage::Options);
         }
 
         if self.tsfn_pre.is_some() {
-            usage.insert(HookUsage::PRE);
+            usage.insert(HookUsage::Pre);
         }
 
         if self.tsfn_transform.is_some() {
-            usage.insert(HookUsage::TRANSFORM);
+            usage.insert(HookUsage::Transform);
         }
 
         if self.tsfn_post.is_some() {
-            usage.insert(HookUsage::POST);
+            usage.insert(HookUsage::Post);
         }
 
         usage

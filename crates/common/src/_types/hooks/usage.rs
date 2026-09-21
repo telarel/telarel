@@ -5,13 +5,13 @@ bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
     pub struct HookUsage: u8 {
         /// The `options` hook.
-        const OPTIONS = 1 << 0;
+        const Options = 1 << 0;
         /// The `pre` hook.
-        const PRE = 1 << 1;
+        const Pre = 1 << 1;
         /// The `transform` hook.
-        const TRANSFORM = 1 << 2;
+        const Transform = 1 << 2;
         /// The `post` hook.
-        const POST = 1 << 3;
+        const Post = 1 << 3;
     }
 }
 
@@ -21,9 +21,9 @@ mod tests {
 
     #[test]
     fn test_hook_usage_bits_are_distinct() {
-        assert_ne!(HookUsage::OPTIONS, HookUsage::PRE);
-        assert_ne!(HookUsage::PRE, HookUsage::TRANSFORM);
-        assert_ne!(HookUsage::TRANSFORM, HookUsage::POST);
+        assert_ne!(HookUsage::Options, HookUsage::Pre);
+        assert_ne!(HookUsage::Pre, HookUsage::Transform);
+        assert_ne!(HookUsage::Transform, HookUsage::Post);
     }
 
     #[test]
@@ -34,9 +34,9 @@ mod tests {
 
     #[test]
     fn test_hook_usage_contains_and_union() {
-        let usage: HookUsage = HookUsage::PRE | HookUsage::POST;
-        assert!(usage.contains(HookUsage::PRE));
-        assert!(usage.contains(HookUsage::POST));
-        assert!(!usage.contains(HookUsage::TRANSFORM));
+        let usage: HookUsage = HookUsage::Pre | HookUsage::Post;
+        assert!(usage.contains(HookUsage::Pre));
+        assert!(usage.contains(HookUsage::Post));
+        assert!(!usage.contains(HookUsage::Transform));
     }
 }

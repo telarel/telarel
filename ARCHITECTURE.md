@@ -72,7 +72,7 @@ On the JS side, usage is inferred from the hook properties on the plugin object.
 
 ### Parse Skip
 
-The driver's aggregate [`HookUsage`](./crates/common/src/_types/hooks/usage.rs#L6) determines whether the source needs to be parsed. If no plugin declares `TRANSFORM`, parsing and codegen are skipped entirely. In that case, even invalid syntax is passed through, a [per-line identity map](./crates/core/src/lib.rs#L31) is returned instead of producing a parse error.
+The driver's aggregate [`HookUsage`](./crates/common/src/_types/hooks/usage.rs#L6) determines whether the source needs to be parsed. If no plugin declares `Transform`, parsing and codegen are skipped entirely. In that case, even invalid syntax is passed through, a [per-line identity map](./crates/core/src/lib.rs#L31) is returned instead of producing a parse error.
 
 Declaring only `pre` or `post` does not trigger parsing.
 

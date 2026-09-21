@@ -91,7 +91,7 @@ pub async fn compile(
 
     let (code, map): (String, SourceMap) = if driver
         .usage()
-        .contains(HookUsage::TRANSFORM)
+        .contains(HookUsage::Transform)
     {
         // Parse ONCE before the transform chain. Root the resolved source in
         // the allocator so the parsed program borrows from the same
@@ -194,7 +194,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::PRE
+            HookUsage::Pre
         }
     }
 
@@ -213,7 +213,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::TRANSFORM
+            HookUsage::Transform
         }
 
         // Rebuild the Program with every `console` Identifier renamed to
@@ -363,7 +363,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::TRANSFORM
+            HookUsage::Transform
         }
 
         // Rebuild the Program with one extra directive appended (AstBuilder
@@ -415,7 +415,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::TRANSFORM
+            HookUsage::Transform
         }
 
         // A transform hook that never replaces the program: Ok(None) must
@@ -438,7 +438,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::OPTIONS
+            HookUsage::Options
         }
 
         async fn options(
@@ -461,7 +461,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::PRE
+            HookUsage::Pre
         }
 
         async fn pre(
@@ -482,7 +482,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::POST
+            HookUsage::Post
         }
 
         async fn post(

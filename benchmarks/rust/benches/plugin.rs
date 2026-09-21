@@ -794,7 +794,7 @@ impl telarel::Plugin for TransformPlugin {
     }
 
     fn register_hook_usage(&self) -> telarel::HookUsage {
-        telarel::HookUsage::TRANSFORM
+        telarel::HookUsage::Transform
     }
 
     async fn transform<'a>(
