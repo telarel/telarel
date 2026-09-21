@@ -32,7 +32,7 @@ pub trait Pluginable: Any + Send + Sync + 'static {
     fn call_name(&self) -> Cow<'static, str>;
 
     /// Query which hooks the plugin implements.
-    fn call_hook_usage(&self) -> HookUsage;
+    fn call_register_hook_usage(&self) -> HookUsage;
 
     /// Call the `options` hook.
     fn call_options<'a>(
@@ -67,8 +67,8 @@ impl<T: Plugin> Pluginable for T {
         Plugin::name(self)
     }
 
-    fn call_hook_usage(&self) -> HookUsage {
-        Plugin::hook_usage(self)
+    fn call_register_hook_usage(&self) -> HookUsage {
+        Plugin::register_hook_usage(self)
     }
 
     fn call_options<'a>(

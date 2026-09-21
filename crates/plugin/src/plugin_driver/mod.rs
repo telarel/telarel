@@ -33,7 +33,7 @@ impl PluginDriver {
         let mut post_plugins: Vec<SharedPluginable> = Vec::new();
 
         for plugin in &plugins {
-            let declared: HookUsage = plugin.call_hook_usage();
+            let declared: HookUsage = plugin.call_register_hook_usage();
 
             usage |= declared;
 
@@ -143,7 +143,7 @@ mod tests {
             "options".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::OPTIONS
         }
 
@@ -166,7 +166,7 @@ mod tests {
             "noop-options".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::OPTIONS
         }
     }
@@ -179,7 +179,7 @@ mod tests {
             "partial-options".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::OPTIONS
         }
 
@@ -210,7 +210,7 @@ mod tests {
             "observe-options".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::OPTIONS
         }
 
@@ -232,7 +232,7 @@ mod tests {
             "fail-options".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::OPTIONS
         }
 
@@ -269,7 +269,7 @@ mod tests {
             self.name.into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::PRE | HookUsage::POST
         }
 
@@ -300,7 +300,7 @@ mod tests {
             "fail-pre".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::PRE
         }
 
@@ -321,7 +321,7 @@ mod tests {
             "mark".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::TRANSFORM
         }
 
@@ -370,7 +370,7 @@ mod tests {
             "record-transform".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::TRANSFORM
         }
 
@@ -411,7 +411,7 @@ mod tests {
             "record-replace".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::TRANSFORM
         }
 
@@ -444,7 +444,7 @@ mod tests {
             "fail-transform".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::TRANSFORM
         }
 
@@ -466,7 +466,7 @@ mod tests {
             "fail-post".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::POST
         }
 
@@ -501,7 +501,7 @@ mod tests {
             self.name.into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::PRE
         }
 

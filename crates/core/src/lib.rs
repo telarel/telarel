@@ -193,7 +193,7 @@ mod tests {
             "noop".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::PRE
         }
     }
@@ -212,7 +212,7 @@ mod tests {
             "rename-callee".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::TRANSFORM
         }
 
@@ -362,7 +362,7 @@ mod tests {
             "append-directive".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::TRANSFORM
         }
 
@@ -414,7 +414,7 @@ mod tests {
             "none-returning-transform".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::TRANSFORM
         }
 
@@ -437,7 +437,7 @@ mod tests {
             "rewrite-code-options".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::OPTIONS
         }
 
@@ -460,7 +460,7 @@ mod tests {
             "failing-pre".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::PRE
         }
 
@@ -481,7 +481,7 @@ mod tests {
             "failing-post".into()
         }
 
-        fn hook_usage(&self) -> HookUsage {
+        fn register_hook_usage(&self) -> HookUsage {
             HookUsage::POST
         }
 

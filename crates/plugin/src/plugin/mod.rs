@@ -19,7 +19,7 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
     fn name(&self) -> Cow<'static, str>;
 
     /// Which hooks this plugin implements; hooks not declared are never called.
-    fn hook_usage(&self) -> HookUsage;
+    fn register_hook_usage(&self) -> HookUsage;
 
     /// Run the `options` hook; may return a partial update of the compile
     /// options. `None` fields keep their current values.

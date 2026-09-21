@@ -793,7 +793,7 @@ impl telarel::Plugin for TransformPlugin {
         "rename-jsx-elements".into()
     }
 
-    fn hook_usage(&self) -> telarel::HookUsage {
+    fn register_hook_usage(&self) -> telarel::HookUsage {
         telarel::HookUsage::TRANSFORM
     }
 

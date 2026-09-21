@@ -66,7 +66,7 @@ Merge semantics:
 
 ### Hook Usage Declaration
 
-[`hook_usage`](./crates/plugin/src/plugin/mod.rs#L22) is required and affects how the driver runs plugins. If a hook isn't declared, it won't be called.
+[`register_hook_usage`](./crates/plugin/src/plugin/mod.rs#L22) is required and affects how the driver runs plugins. If a hook isn't declared, it won't be called.
 
 On the JS side, usage is inferred from the hook properties on the plugin object. Therefore, even if `transform` is declared but always returns nothing, it still triggers parse + codegen.
 

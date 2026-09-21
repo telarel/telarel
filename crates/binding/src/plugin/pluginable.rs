@@ -69,7 +69,7 @@ impl Pluginable for JsPlugin {
         Cow::Owned(self.name.clone())
     }
 
-    fn call_hook_usage(&self) -> HookUsage {
+    fn call_register_hook_usage(&self) -> HookUsage {
         let mut usage: HookUsage = HookUsage::default();
 
         if self.tsfn_options.is_some() {
