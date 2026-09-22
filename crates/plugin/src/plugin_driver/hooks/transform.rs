@@ -1,42 +1,31 @@
 use anyhow::Context;
-use oxc::ast::ast::Program;
 use telarel_common::CompileContext;
 
-use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
+use crate::_types::hooks::transform::TransformArgs;
 use crate::plugin::pluginable::SharedPluginable;
 
 /// Run the `transform` hook chain.
 ///
-/// Each `Some` output replaces the program carried into the next plugin.
-///
-/// Replacements are allocated in `args.allocator`, so the returned borrow is
-/// pointer-stable for the lifetime of the compile allocator.
-pub async fn transform<'a>(
+/// Each plugin mutates the same program in place; mutations are visible to
+/// the following plugins. The program stays rooted in the compile
+/// allocator, so pointer stability is preserved across the chain.
+pub async fn transform<'a, 'ast>(
     plugins: &'a [SharedPluginable],
     ctx: &'a CompileContext<'a>,
-    args: &'a TransformArgs<'a>,
-) -> anyhow::Result<Option<&'a Program<'a>>> {
-    let mut current: Option<&'a Program<'a>> = None;
-
+    args: &mut TransformArgs<'a, 'ast>,
+) -> anyhow::Result<()> {
     for plugin in plugins {
-        let hook_args: &'a TransformArgs<'a> =
-            args.allocator.alloc(TransformArgs {
-                allocator: args.allocator,
-                file: args.file,
-                program: current.unwrap_or(args.program),
-            });
+        let hook_args: TransformArgs<'_, '_> = TransformArgs {
+            allocator: args.allocator,
+            file: args.file,
+            program: &mut *args.program,
+        };
 
-        let result: TransformReturn<'a> =
-            plugin.call_transform(ctx, hook_args).await;
-
-        if let Some(output) = result
-            .with_context(|| format!("`{}` transform", plugin.call_name()))?
-        {
-            let placed: &'a Program<'a> = args.allocator.alloc(output.program);
-
-            current = Some(placed);
-        }
+        plugin
+            .call_transform(ctx, hook_args)
+            .await
+            .with_context(|| format!("`{}` transform", plugin.call_name()))?;
     }
 
-    Ok(current)
+    Ok(())
 }

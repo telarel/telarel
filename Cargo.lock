@@ -1055,6 +1055,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxc_traverse"
+version = "0.150.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae5cc628f131fbb82083ec77a59191ee9a6f9e7b49e575b1b787313119df48f8"
+dependencies = [
+ "itoa",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_ast_visit",
+ "oxc_data_structures",
+ "oxc_ecmascript",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_str",
+ "oxc_syntax",
+ "rustc-hash",
+]
+
+[[package]]
 name = "page_size"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1526,6 +1545,7 @@ version = "0.1.0"
 dependencies = [
  "oxc",
  "oxc_sourcemap",
+ "oxc_traverse",
  "telarel_common",
  "telarel_core",
  "telarel_plugin",
@@ -1537,7 +1557,6 @@ name = "telarel_bench"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "oxc",
  "telarel",
  "tokio",
 ]

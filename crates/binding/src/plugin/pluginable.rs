@@ -10,8 +10,7 @@ use telarel_common::{
 };
 use telarel_plugin::__internal::{HookFuture, LocalHookFuture};
 use telarel_plugin::{
-    Pluginable, PostArgs, PreArgs, TransformArgs, TransformOutput,
-    TransformReturn,
+    Pluginable, PostArgs, PreArgs, TransformArgs, TransformReturn,
 };
 
 use crate::_types::plugin::hooks::{JsOptionsOutput, JsTransformOutput};
@@ -152,14 +151,14 @@ impl Pluginable for JsPlugin {
         })
     }
 
-    fn call_transform<'a>(
+    fn call_transform<'a, 'ast>(
         &'a self,
         ctx: &'a CompileContext<'a>,
-        args: &'a TransformArgs<'a>,
-    ) -> LocalHookFuture<'a, TransformReturn<'a>> {
+        args: TransformArgs<'a, 'ast>,
+    ) -> LocalHookFuture<'a, TransformReturn> {
         Box::pin(async move {
             let Some(tsfn) = self.tsfn_transform.as_ref() else {
-                return Ok(None);
+                return Ok(());
             };
 
             // Capture the source type BEFORE serializing; the read-back needs
@@ -167,7 +166,7 @@ impl Pluginable for JsPlugin {
             let source_type: SourceType = args.program.source_type;
 
             let ast_json: String = oxc_estree_codec::program_to_json(
-                args.program,
+                &*args.program,
                 oxc_estree_codec::ProgramToJsonOptions::new(),
             );
 
@@ -175,7 +174,7 @@ impl Pluginable for JsPlugin {
                 cwd: SharedStr::new(ctx.cwd),
                 file: SharedStr::new(args.file),
                 code: SharedStr::new(ctx.code),
-                ast_json,
+                ast_json: ast_json.clone(),
             };
 
             let output: Either<
@@ -189,22 +188,35 @@ impl Pluginable for JsPlugin {
             };
 
             let Some(replaced) = replaced else {
-                return Ok(None);
+                // The JS wrapper re-stringified the tree and compared it with
+                // the baseline; `null` means the tree did not change.
+                return Ok(());
             };
 
-            // Read the replacement tree back into the compile allocator; the
-            // original code anchors the spans.
+            // Defense in depth: a raw (unwrapped) plugin may send the tree
+            // back unchanged; skip the read-back in that case too.
+            if replaced.ast_json == ast_json {
+                return Ok(());
+            }
+
+            // Root the source text in the compile allocator so the read-back
+            // tree's data lifetime matches the allocator's, not the hook
+            // call's; the original code anchors the spans.
+            let source: &str = args.allocator.alloc_str(ctx.code);
+
             let program: Program<'_> = oxc_estree_codec::json_to_program(
                 &replaced.ast_json,
                 oxc_estree_codec::JsonToProgramOptions {
                     allocator: args.allocator,
                     source_type,
-                    source_text: ctx.code,
+                    source_text: source,
                 },
             )
             .map_err(anyhow::Error::from)?;
 
-            Ok(Some(TransformOutput { program }))
+            *args.program = program;
+
+            Ok(())
         })
     }
 

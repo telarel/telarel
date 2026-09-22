@@ -40,13 +40,15 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(()) }
     }
 
-    /// Run the `transform` hook.
-    fn transform<'a>(
+    /// Run the `transform` hook; mutate `args.program` in place. A plugin
+    /// may swap the entire root by assigning a freshly parsed `Program`
+    /// over `*args.program`.
+    fn transform<'a, 'ast>(
         &'a self,
         _ctx: &'a CompileContext<'a>,
-        _args: &'a TransformArgs<'a>,
-    ) -> impl Future<Output = TransformReturn<'a>> {
-        async { Ok(None) }
+        _args: TransformArgs<'a, 'ast>,
+    ) -> impl Future<Output = TransformReturn> {
+        async { Ok(()) }
     }
 
     /// Run the `post` hook, after the transform chain.

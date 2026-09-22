@@ -48,11 +48,11 @@ pub trait Pluginable: Any + Send + Sync + 'static {
     ) -> HookFuture<'a, anyhow::Result<()>>;
 
     /// Call the `transform` hook.
-    fn call_transform<'a>(
+    fn call_transform<'a, 'ast>(
         &'a self,
         ctx: &'a CompileContext<'a>,
-        args: &'a TransformArgs<'a>,
-    ) -> LocalHookFuture<'a, TransformReturn<'a>>;
+        args: TransformArgs<'a, 'ast>,
+    ) -> LocalHookFuture<'a, TransformReturn>;
 
     /// Call the `post` hook.
     fn call_post<'a>(
@@ -86,11 +86,11 @@ impl<T: Plugin> Pluginable for T {
         Box::pin(Plugin::pre(self, ctx, args))
     }
 
-    fn call_transform<'a>(
+    fn call_transform<'a, 'ast>(
         &'a self,
         ctx: &'a CompileContext<'a>,
-        args: &'a TransformArgs<'a>,
-    ) -> LocalHookFuture<'a, TransformReturn<'a>> {
+        args: TransformArgs<'a, 'ast>,
+    ) -> LocalHookFuture<'a, TransformReturn> {
         Box::pin(Plugin::transform(self, ctx, args))
     }
 

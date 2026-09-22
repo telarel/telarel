@@ -54,8 +54,9 @@ impl ToNapiValue for JsTransformArgs {
     }
 }
 
-/// Output of the `transform` hook: the possibly-mutated ESTree tree as a
-/// JSON string (absent/None = pass-through).
+/// Output of the `transform` hook: the mutated ESTree tree as a JSON string.
+/// The JS wrapper sends `null` when the tree did not change (it re-stringifies
+/// the tree after the hook and compares it with the pre-call string).
 #[napi_derive::napi(object)]
 pub struct JsTransformOutput {
     /// The replacement AST as a JSON string.

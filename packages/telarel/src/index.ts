@@ -1,5 +1,4 @@
 export type { CompileOptions, CompileResult } from "#/@types/compile";
-export type { SourceMap } from "#/@types/source-map";
 export type {
     Options,
     PartialOptions,
@@ -8,6 +7,7 @@ export type {
     PostArgs,
     PreArgs,
     TransformArgs,
-    TransformOutput,
 } from "#/@types/plugin";
+export type { SourceMap } from "#/@types/source-map";
+
 export { compile } from "#/functions/compile";

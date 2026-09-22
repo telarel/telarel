@@ -1,9 +1,4 @@
-import type {
-    CompileResult,
-    PluginContext,
-    TransformArgs,
-    TransformOutput,
-} from "telarel";
+import type { CompileResult, PluginContext } from "telarel";
 
 import { compile } from "telarel";
 import { describe, expect, it } from "vitest";
@@ -65,7 +60,6 @@ describe("sourcemap", (): void => {
                             );
                         }
                         declaration.id.name = "renamed";
-                        return { ast: args.ast };
                     },
                 },
             ],
@@ -179,21 +173,16 @@ describe("sourcemap", (): void => {
     it("keeps mappings identical after a pass-through transform", async (): Promise<void> => {
         // A declared `transform` hook forces the codegen path (the skip
         // path only applies when no plugin uses `transform`), so the
-        // baseline must also carry a transform hook: compare an explicit
-        // `{ ast }` pass-through against an implicit void pass-through.
+        // baseline must also carry a transform hook. Both hooks mutate
+        // nothing; their mappings must match exactly.
         const baseline: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
             plugins: [
                 {
-                    name: "explicit-pass-through",
-                    transform: (
-                        _: PluginContext,
-                        args: TransformArgs,
-                    ): TransformOutput => ({
-                        ast: args.ast,
-                    }),
+                    name: "baseline-pass-through",
+                    transform: (): void => void 0,
                 },
             ],
         });
@@ -252,8 +241,6 @@ describe("sourcemap", (): void => {
                         }
 
                         declaration.id.name = "renamed-long";
-
-                        return { ast: args.ast };
                     },
                 },
             ],

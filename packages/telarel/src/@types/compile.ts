@@ -51,4 +51,4 @@ type CompileResult = {
 };
 
 export type { CompleteCompileOptions, CompileOptions, CompileResult, Options };
-export type { SourceMap } from "./source-map";
+export type { SourceMap } from "#/@types/source-map";

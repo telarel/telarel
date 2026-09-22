@@ -62,15 +62,10 @@ type TransformArgs = {
      */
     file: string;
     /**
-     * The current AST.
+     * The current AST; mutate it in place.
      */
     ast: Program;
 };
-
-/**
- * Output of the `transform` hook.
- */
-type TransformOutput = { ast: Program };
 
 /**
  * Arguments for the `options` hook.
@@ -116,13 +111,11 @@ type Plugin = {
     pre?: (ctx: PluginContext, args: PreArgs) => void | Promise<void>;
     /**
      * The transform hook: chained AST-level transformation.
-     *
-     * Return AST to be used by the next plugin, return nothing to pass through.
      */
     transform?: (
         ctx: PluginContext,
         args: TransformArgs,
-    ) => TransformOutput | null | void | Promise<TransformOutput | null | void>;
+    ) => void | Promise<void>;
     /**
      * The post hook: run after compilation.
      */
@@ -137,5 +130,4 @@ export type {
     PostArgs,
     PreArgs,
     TransformArgs,
-    TransformOutput,
 };

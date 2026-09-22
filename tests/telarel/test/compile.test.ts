@@ -1,11 +1,7 @@
-import type {
-    CompileResult,
-    Plugin,
-    PluginContext,
-    TransformOutput,
-} from "telarel";
+import type { CompileResult, Plugin, PluginContext } from "telarel";
 
 import { compile } from "telarel";
+import { walk } from "telarel/walker";
 import { describe, expect, it } from "vitest";
 
 type ProgramFixture = {
@@ -45,7 +41,7 @@ describe("compile", (): void => {
         expect(result.map.mappings.length).toBeGreaterThan(0);
     });
 
-    it("skips AST read-back when no plugin returns an ast", async (): Promise<void> => {
+    it("skips ast read-back when the transform hook does not mutate", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
@@ -84,7 +80,6 @@ describe("compile", (): void => {
                             throw new Error("expected a top-level statement");
                         }
                         seen.push(statement.expression.callee.object.type);
-                        return { ast: args.ast };
                     },
                 },
             ],
@@ -112,10 +107,9 @@ describe("compile", (): void => {
                 },
                 {
                     name: "reader",
-                    transform: (ctx: PluginContext, args) => {
+                    transform: (ctx: PluginContext) => {
                         seen.push(ctx.metadata.get("marker"));
-                        // AST edit expressing the same intent
-                        return { ast: args.ast };
+                        // no mutation: pass-through
                     },
                 },
                 {
@@ -378,45 +372,6 @@ describe("compile", (): void => {
         ).rejects.toThrow("options-kaboom");
     });
 
-    it("rejects a transform returning an object without an ast", async (): Promise<void> => {
-        // The JS wrapper raises a TypeError, which the TSFN bridge captures
-        // and delivers to the worker as a napi rejection preserving the
-        // message prefixed with the hook context.
-        await expect(
-            compile({
-                cwd: "/repo",
-                file: "index.ts",
-                code: "const a = 1;",
-                plugins: [
-                    {
-                        name: "bad-shape",
-                        transform: (): TransformOutput | null =>
-                            ({}) as unknown as TransformOutput,
-                    },
-                ],
-            }),
-        ).rejects.toThrow(
-            'Plugin "bad-shape" transform returned an object without an "ast" property',
-        );
-    });
-
-    it("treats an explicit null transform return as pass-through", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.ts",
-            code: "const a = 1;",
-            plugins: [
-                {
-                    name: "null-passthrough",
-                    transform: (): null => null,
-                },
-            ],
-        });
-
-        expect(result.code).toBe("const a = 1;");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
-    });
-
     it("treats a non-function hook value as absent", async (): Promise<void> => {
         const broken: unknown = {
             name: "broken-shape",
@@ -452,10 +407,9 @@ describe("compile", (): void => {
                         seen.push("pre");
                         ctx.metadata.set("marker", "from-async-pre");
                     },
-                    transform: async (ctx: PluginContext, args) => {
+                    transform: async (ctx: PluginContext) => {
                         seen.push("transform");
                         seen.push(String(ctx.metadata.get("marker")));
-                        return { ast: args.ast };
                     },
                     post: async (ctx: PluginContext): Promise<void> => {
                         seen.push("post");
@@ -489,9 +443,8 @@ describe("compile", (): void => {
                     pre: (): void => {
                         seen.push("first.pre");
                     },
-                    transform: (_ctx: PluginContext, args) => {
+                    transform: (_ctx: PluginContext) => {
                         seen.push("first.transform");
-                        return { ast: args.ast };
                     },
                     post: (): void => {
                         seen.push("first.post");
@@ -502,9 +455,8 @@ describe("compile", (): void => {
                     pre: (): void => {
                         seen.push("second.pre");
                     },
-                    transform: (_ctx: PluginContext, args) => {
+                    transform: (_ctx: PluginContext) => {
                         seen.push("second.transform");
-                        return { ast: args.ast };
                     },
                     post: (): void => {
                         seen.push("second.post");
@@ -547,7 +499,6 @@ describe("compile", (): void => {
                             );
                         }
                         declaration.id.name = "first";
-                        return { ast: args.ast };
                     },
                 },
                 {
@@ -572,7 +523,6 @@ describe("compile", (): void => {
                             );
                         }
                         declaration.id.name = "second";
-                        return { ast: args.ast };
                     },
                 },
             ],
@@ -591,9 +541,8 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "transform-writer",
-                    transform: (ctx: PluginContext, args) => {
+                    transform: (ctx: PluginContext) => {
                         ctx.metadata.set("marker", "from-transform");
-                        return { ast: args.ast };
                     },
                 },
                 {
@@ -626,9 +575,7 @@ describe("compile", (): void => {
                     },
                     {
                         name: "reader",
-                        transform: (_ctx: PluginContext, args) => {
-                            return { ast: args.ast };
-                        },
+                        transform: (): void => void 0,
                     },
                     {
                         name: "verifier",
@@ -677,7 +624,6 @@ describe("compile", (): void => {
                             file: args.file,
                             code: ctx.code,
                         });
-                        return { ast: args.ast };
                     },
                     post: (ctx: PluginContext, args): void => {
                         record(ctx, args);
@@ -715,7 +661,6 @@ describe("compile", (): void => {
                             file: args.file,
                             code: ctx.code,
                         });
-                        return { ast: args.ast };
                     },
                     post: (ctx: PluginContext, args): void => {
                         record(ctx, args);
@@ -732,7 +677,7 @@ describe("compile", (): void => {
         ]);
     });
 
-    it("round-trips a nested ast mutation through json", async (): Promise<void> => {
+    it("applies a nested ast mutation through json", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
@@ -753,7 +698,6 @@ describe("compile", (): void => {
                             throw new Error("expected a literal initializer");
                         }
                         declaration.init.value = "new";
-                        return { ast: args.ast };
                     },
                 },
             ],
@@ -764,54 +708,108 @@ describe("compile", (): void => {
         expect(result.map.mappings.length).toBeGreaterThan(0);
     });
 
-    it("treats an async null transform return as pass-through", async (): Promise<void> => {
+    it("applies an in-place ast mutation when transform returns void", async (): Promise<void> => {
+        // The wrapper re-stringifies the tree after the hook and compares it
+        // with the pre-call string; the mutation flows back into Rust.
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
             plugins: [
                 {
-                    name: "async-null-passthrough",
-                    transform: async (): Promise<null> => null,
-                },
-            ],
-        });
-
-        expect(result.code).toBe("const a = 1;");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
-    });
-
-    it("discards an in-place ast mutation when transform returns void", async (): Promise<void> => {
-        // Observed: only the returned `{ ast }` payload is serialized back;
-        // an in-place mutation without a return is invisible to the compiler.
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.ts",
-            code: "const a = 1;",
-            plugins: [
-                {
-                    name: "mutate-and-forget",
+                    name: "mutate-in-place",
                     transform: (_ctx: PluginContext, args): void => {
                         const program: ProgramFixture =
                             args.ast as unknown as ProgramFixture;
+
                         const statement:
                             | ProgramFixture["body"][number]
                             | undefined = program.body[0];
+
                         const declaration:
                             | ProgramFixture["body"][number]["declarations"][number]
                             | undefined = statement?.declarations[0];
+
                         if (declaration?.id.type !== "Identifier") {
                             throw new Error(
                                 "expected an identifier declaration",
                             );
                         }
+
                         declaration.id.name = "mutated";
                     },
                 },
             ],
         });
 
-        expect(result.code).toBe("const a = 1;");
+        expect(result.code).toBe("const mutated = 1;");
+    });
+
+    it("applies a whole-root reassignment of args.ast when transform returns void", async (): Promise<void> => {
+        // The wrapper re-stringifies the args-bag property after the hook,
+        // so a plugin can replace the whole tree (not just mutate it in
+        // place) and the replacement must flow back into Rust.
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "root-reassign",
+                    transform: (_ctx: PluginContext, args): void => {
+                        const program: ProgramFixture = structuredClone(
+                            args.ast,
+                        ) as unknown as ProgramFixture;
+
+                        const declaration:
+                            | ProgramFixture["body"][number]["declarations"][number]
+                            | undefined = program.body[0]?.declarations[0];
+
+                        if (declaration?.id.type !== "Identifier") {
+                            throw new Error(
+                                "expected an identifier declaration",
+                            );
+                        }
+
+                        declaration.id.name = "replaced";
+
+                        args.ast = program as never;
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const replaced = 1;");
+    });
+
+    it("walks and mutates the ast via telarel/walker", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.tsx",
+            code: "const a = <Button>hi</Button>;",
+            plugins: [
+                {
+                    name: "walker-rename",
+                    transform: (_ctx: PluginContext, args): void => {
+                        walk(
+                            args.ast as unknown as Parameters<typeof walk>[0],
+                            {
+                                enter(node): void {
+                                    if (
+                                        node.type === "JSXIdentifier" &&
+                                        node.name === "Button"
+                                    ) {
+                                        node.name = "Buttonx";
+                                    }
+                                },
+                            },
+                        );
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toContain("<Buttonx>");
     });
 
     it("rejects cleanly on a non-Error throwable from transform", async (): Promise<void> => {
@@ -879,7 +877,6 @@ describe("compile", (): void => {
                                 );
                             }
                             declaration.id.name = "renamed";
-                            return { ast: args.ast };
                         },
                     },
                     {
@@ -912,10 +909,9 @@ describe("compile", (): void => {
                 },
                 {
                     name: "reader",
-                    transform: (ctx: PluginContext, args) => {
+                    transform: (ctx: PluginContext) => {
                         seen.push(ctx.metadata.get("count"));
                         seenObject.push(ctx.metadata.get("obj"));
-                        return { ast: args.ast };
                     },
                 },
             ],
@@ -935,9 +931,7 @@ describe("compile", (): void => {
         };
         const reader: Plugin = {
             name: "loop-reader",
-            transform: (_ctx: PluginContext, args) => {
-                return { ast: args.ast };
-            },
+            transform: (): void => void 0,
         };
 
         const results: Array<CompileResult> = [];
@@ -982,13 +976,11 @@ describe("compile", (): void => {
                                       ctx.metadata.set("id", marker);
                                   },
                             transform: isOdd
-                                ? (ctx: PluginContext, args) => {
+                                ? (ctx: PluginContext) => {
                                       seen.push(String(ctx.metadata.get("id")));
-                                      return { ast: args.ast };
                                   }
-                                : async (ctx: PluginContext, args) => {
+                                : async (ctx: PluginContext) => {
                                       seen.push(String(ctx.metadata.get("id")));
-                                      return { ast: args.ast };
                                   },
                         },
                     ],

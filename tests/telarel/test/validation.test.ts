@@ -116,12 +116,10 @@ describe("validation", (): void => {
         const plugin: unknown = {
             name: "partial-options",
             options: (): unknown => ({ code: "const b = 2;" }),
-            transform: (ctx: PluginContext): { ast: unknown } | null => {
+            transform: (ctx: PluginContext): void => {
                 expect(ctx.cwd).toBe("/repo");
                 expect(ctx.file).toBe("index.ts");
                 expect(ctx.code).toBe("const b = 2;");
-
-                return null;
             },
         };
 

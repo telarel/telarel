@@ -40,10 +40,16 @@
             "import": "./dist/ast.mjs",
             "require": "./dist/ast.js"
         },
+        "./walker": {
+            "types": "./dist/walker.d.ts",
+            "import": "./dist/walker.mjs",
+            "require": "./dist/walker.js"
+        },
         "./package.json": "./package.json"
     },
     "dependencies": {
         "@oxc-project/types": "~0.150.0",
+        "oxc-walker": "^1.1.1",
         "ts-vista": "~0.2.3"
     },
     "optionalDependencies": {

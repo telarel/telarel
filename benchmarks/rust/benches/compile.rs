@@ -1,4 +1,5 @@
 mod plugin;
+mod plugin_traverse;
 
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
@@ -12,6 +13,7 @@ use criterion::{
 use telarel::{CompileOptions, SharedPluginable, compile};
 
 use crate::plugin::TransformPlugin;
+use crate::plugin_traverse::TraversePlugin;
 
 const FIXTURES: [&str; 1] = ["react-page.tsx"];
 
@@ -78,6 +80,12 @@ fn bench_compile(criterion: &mut Criterion) {
 
     bench_case(criterion, &runtime, "common", &[]);
     bench_case(criterion, &runtime, "plugin", &[Arc::new(TransformPlugin)]);
+    bench_case(
+        criterion,
+        &runtime,
+        "plugin-traverse",
+        &[Arc::new(TraversePlugin)],
+    );
 }
 
 criterion_group!(benches, bench_compile);

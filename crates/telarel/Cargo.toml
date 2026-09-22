@@ -25,6 +25,13 @@ telarel_core = { workspace = true }
 # Crates
 oxc = { workspace = true }
 oxc_sourcemap = { workspace = true }
+oxc_traverse = { workspace = true, optional = true }
+
+[features]
+default = ["ast_visit"]
+ast_visit = ["oxc/ast_visit"]
+semantic = ["oxc/semantic"]
+traverse = ["dep:oxc_traverse", "ast_visit", "semantic"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }

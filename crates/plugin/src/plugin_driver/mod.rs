@@ -2,7 +2,6 @@ pub mod hooks;
 
 use std::sync::Arc;
 
-use oxc::ast::ast::Program;
 use telarel_common::{CompileContext, CompileOptions, HookUsage};
 
 use crate::_types::hooks::post::PostArgs;
@@ -85,14 +84,13 @@ impl PluginDriver {
         hooks::pre::pre(&self.pre_plugins, ctx, args).await
     }
 
-    /// Run the `transform` hook chain; returns the final replaced
-    /// [`Program`], or `None` when no plugin replaced. The program lives in
-    /// the compile allocator; no copy is made.
-    pub async fn transform<'a>(
+    /// Run the `transform` hook chain; each plugin mutates the carried
+    /// [`oxc::ast::ast::Program`] in place.
+    pub async fn transform<'a, 'ast>(
         &'a self,
         ctx: &'a CompileContext<'a>,
-        args: &'a TransformArgs<'a>,
-    ) -> anyhow::Result<Option<&'a Program<'a>>> {
+        args: &mut TransformArgs<'a, 'ast>,
+    ) -> anyhow::Result<()> {
         hooks::transform::transform(&self.transform_plugins, ctx, args).await
     }
 
@@ -126,9 +124,7 @@ mod tests {
     use oxc::allocator::Allocator;
     use oxc::ast::ast::Program;
 
-    use crate::_types::hooks::transform::{
-        TransformArgs, TransformOutput, TransformReturn,
-    };
+    use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
     use crate::SharedPluginable;
     use crate::plugin::Plugin;
     use crate::plugin::pluginable::Pluginable;
@@ -325,22 +321,28 @@ mod tests {
             HookUsage::Transform
         }
 
-        fn transform<'a>(
+        fn transform<'a, 'ast>(
             &'a self,
             ctx: &'a CompileContext<'a>,
-            args: &'a TransformArgs<'a>,
-        ) -> impl Future<Output = crate::_types::hooks::transform::TransformReturn<'a>>
-        {
+            args: TransformArgs<'a, 'ast>,
+        ) -> impl Future<Output = TransformReturn> {
             async move {
-                let code: &'a str = args.allocator.alloc_str("\"mark\";");
+                let code: &'ast str = args.allocator.alloc_str("\"mark\";");
+
+                let file: &'ast str = args.allocator.alloc_str(args.file);
+
                 let options: ParseOptions<'_, '_> = ParseOptions {
                     context: ctx,
                     allocator: args.allocator,
-                    file: args.file,
+                    file,
                     code,
                 };
+
                 let parsed: ParseResult<'_> = parse(options).unwrap();
-                Ok(Some(TransformOutput { program: parsed.program }))
+
+                *args.program = parsed.program;
+
+                Ok(())
             }
         }
     }
@@ -374,24 +376,24 @@ mod tests {
             HookUsage::Transform
         }
 
-        fn transform<'a>(
+        fn transform<'a, 'ast>(
             &'a self,
             _ctx: &'a CompileContext<'a>,
-            args: &'a TransformArgs<'a>,
-        ) -> impl Future<Output = TransformReturn<'a>> {
+            args: TransformArgs<'a, 'ast>,
+        ) -> impl Future<Output = TransformReturn> {
             async move {
                 self.record(args.program);
-                Ok(None)
+                Ok(())
             }
         }
     }
 
     #[derive(Debug)]
-    struct RecordingReplacerPlugin {
+    struct RecordingMutatorPlugin {
         seen: Arc<Mutex<Vec<usize>>>,
     }
 
-    impl RecordingReplacerPlugin {
+    impl RecordingMutatorPlugin {
         fn new(seen: Arc<Mutex<Vec<usize>>>) -> Self {
             Self { seen }
         }
@@ -406,32 +408,39 @@ mod tests {
         }
     }
 
-    impl Plugin for RecordingReplacerPlugin {
+    impl Plugin for RecordingMutatorPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "record-replace".into()
+            "record-mutate".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
             HookUsage::Transform
         }
 
-        fn transform<'a>(
+        fn transform<'a, 'ast>(
             &'a self,
             ctx: &'a CompileContext<'a>,
-            args: &'a TransformArgs<'a>,
-        ) -> impl Future<Output = TransformReturn<'a>> {
+            args: TransformArgs<'a, 'ast>,
+        ) -> impl Future<Output = TransformReturn> {
             async move {
                 self.record(args.program);
 
-                let code: &'a str = args.allocator.alloc_str("\"mark\";");
+                let code: &'ast str = args.allocator.alloc_str("\"mark\";");
+
+                let file: &'ast str = args.allocator.alloc_str(args.file);
+
                 let options: ParseOptions<'_, '_> = ParseOptions {
                     context: ctx,
                     allocator: args.allocator,
-                    file: args.file,
+                    file,
                     code,
                 };
+
                 let parsed: ParseResult<'_> = parse(options).unwrap();
-                Ok(Some(TransformOutput { program: parsed.program }))
+
+                *args.program = parsed.program;
+
+                Ok(())
             }
         }
     }
@@ -448,12 +457,11 @@ mod tests {
             HookUsage::Transform
         }
 
-        fn transform<'a>(
+        fn transform<'a, 'ast>(
             &'a self,
             _ctx: &'a CompileContext<'a>,
-            _args: &'a TransformArgs<'a>,
-        ) -> impl Future<Output = crate::_types::hooks::transform::TransformReturn<'a>>
-        {
+            _args: TransformArgs<'a, 'ast>,
+        ) -> impl Future<Output = TransformReturn> {
             async move { Err(anyhow::anyhow!("boom")) }
         }
     }
@@ -514,14 +522,14 @@ mod tests {
             Ok(())
         }
 
-        fn transform<'a>(
+        fn transform<'a, 'ast>(
             &'a self,
             _ctx: &'a CompileContext<'a>,
-            _args: &'a TransformArgs<'a>,
-        ) -> impl Future<Output = TransformReturn<'a>> {
+            _args: TransformArgs<'a, 'ast>,
+        ) -> impl Future<Output = TransformReturn> {
             async move {
                 self.record();
-                Ok(None)
+                Ok(())
             }
         }
     }
@@ -711,12 +719,12 @@ mod tests {
 
         let parsed: ParseResult<'_> = parse(options).unwrap();
 
-        let program: Program<'_> = parsed.program;
+        let mut program: Program<'_> = parsed.program;
 
-        let args: TransformArgs<'_> = TransformArgs {
+        let mut args: TransformArgs<'_, '_> = TransformArgs {
             allocator: &allocator,
             file: "a.ts",
-            program: &program,
+            program: &mut program,
         };
 
         let plugins: Vec<SharedPluginable> =
@@ -724,13 +732,12 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let replaced: Option<&Program<'_>> =
-            driver.transform(&ctx, &args).await.unwrap();
+        driver.transform(&ctx, &mut args).await.unwrap();
 
-        let replaced: &Program<'_> = replaced.expect("transform ran");
-
-        // final program survives in the allocator; assert via codegen
-        let out: String = oxc::codegen::Codegen::new().build(replaced).code;
+        // the chain swapped the root in place; the final program is the
+        // last "mark" swap, still rooted in the allocator
+        let out: String =
+            oxc::codegen::Codegen::new().build(&*args.program).code;
 
         assert!(out.contains("mark"), "{out}");
     }
@@ -751,12 +758,12 @@ mod tests {
 
         let parsed: ParseResult<'_> = parse(options).unwrap();
 
-        let program: Program<'_> = parsed.program;
+        let mut program: Program<'_> = parsed.program;
 
-        let args: TransformArgs<'_> = TransformArgs {
+        let mut args: TransformArgs<'_, '_> = TransformArgs {
             allocator: &allocator,
             file: "a.ts",
-            program: &program,
+            program: &mut program,
         };
 
         let plugins: Vec<SharedPluginable> =
@@ -765,7 +772,7 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let err: anyhow::Error =
-            driver.transform(&ctx, &args).await.unwrap_err();
+            driver.transform(&ctx, &mut args).await.unwrap_err();
 
         assert!(
             format!("{err:#}").contains("`fail-transform` transform"),
@@ -789,12 +796,12 @@ mod tests {
 
         let parsed: ParseResult<'_> = parse(options).unwrap();
 
-        let program: Program<'_> = parsed.program;
+        let mut program: Program<'_> = parsed.program;
 
-        let args: TransformArgs<'_> = TransformArgs {
+        let mut args: TransformArgs<'_, '_> = TransformArgs {
             allocator: &allocator,
             file: "a.ts",
-            program: &program,
+            program: &mut program,
         };
 
         let seen: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
@@ -804,20 +811,18 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let replaced: Option<&Program<'_>> =
-            driver.transform(&ctx, &args).await.unwrap();
+        driver.transform(&ctx, &mut args).await.unwrap();
 
         let recorded: Vec<usize> = seen.lock().unwrap().clone();
 
-        // no plugin replaced, so the hook runner must hand the original
+        // no plugin mutated, so the hook runner must hand the original
         // program to the plugin by reference instead of cloning it into
         // the allocator first
-        assert!(replaced.is_none());
-        assert_eq!(recorded, vec![std::ptr::from_ref(args.program) as usize],);
+        assert_eq!(recorded, vec![std::ptr::from_ref(&*args.program) as usize],);
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_transform_replacement_flows_by_reference() {
+    async fn test_transform_mutations_flow_by_reference() {
         let allocator: Allocator = Allocator::default();
 
         let ctx: CompileContext<'_> =
@@ -832,12 +837,12 @@ mod tests {
 
         let parsed: ParseResult<'_> = parse(options).unwrap();
 
-        let program: Program<'_> = parsed.program;
+        let mut program: Program<'_> = parsed.program;
 
-        let args: TransformArgs<'_> = TransformArgs {
+        let mut args: TransformArgs<'_, '_> = TransformArgs {
             allocator: &allocator,
             file: "a.ts",
-            program: &program,
+            program: &mut program,
         };
 
         let first_seen: Arc<Mutex<Vec<usize>>> =
@@ -850,19 +855,16 @@ mod tests {
             Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
-            Arc::new(RecordingReplacerPlugin::new(Arc::clone(&first_seen))),
-            Arc::new(RecordingReplacerPlugin::new(Arc::clone(&second_seen))),
+            Arc::new(RecordingMutatorPlugin::new(Arc::clone(&first_seen))),
+            Arc::new(RecordingMutatorPlugin::new(Arc::clone(&second_seen))),
             Arc::new(RecordingPlugin::new(Arc::clone(&final_seen))),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let replaced: Option<&Program<'_>> =
-            driver.transform(&ctx, &args).await.unwrap();
+        driver.transform(&ctx, &mut args).await.unwrap();
 
-        let replaced: &Program<'_> = replaced.expect("transform ran");
-
-        let original: usize = std::ptr::from_ref(args.program) as usize;
+        let original: usize = std::ptr::from_ref(&*args.program) as usize;
 
         let first: usize = first_seen.lock().unwrap()[0];
 
@@ -870,26 +872,17 @@ mod tests {
 
         let final_seen: usize = final_seen.lock().unwrap()[0];
 
-        let returned: usize = std::ptr::from_ref(replaced) as usize;
-
-        // the first plugin sees the original program by reference
+        // in-place mutation: every plugin observes the same root Program,
+        // never a copy
         assert_eq!(first, original);
 
-        // the second plugin sees the first plugin's replacement by
-        // reference, not a copy
-        assert_ne!(second, original);
-        assert_ne!(second, first);
+        assert_eq!(second, original);
 
-        // the trailing observer sees the second plugin's replacement by
-        // reference, not a copy
-        assert_ne!(final_seen, second);
+        assert_eq!(final_seen, original);
 
-        // the chain returns the exact program the last plugin received;
-        // a final `clone_in` copy would allocate a fresh program here
-        assert_eq!(returned, final_seen);
-
-        // the returned program is the replacement content
-        let out: String = oxc::codegen::Codegen::new().build(replaced).code;
+        // the mutations are visible: the last root swap is the content
+        let out: String =
+            oxc::codegen::Codegen::new().build(&*args.program).code;
 
         assert!(out.contains("mark"), "{out}");
     }
@@ -977,12 +970,12 @@ mod tests {
         })
         .unwrap();
 
-        let program: Program<'_> = parsed.program;
+        let mut program: Program<'_> = parsed.program;
 
-        let args: TransformArgs<'_> = TransformArgs {
+        let mut args: TransformArgs<'_, '_> = TransformArgs {
             allocator: &allocator,
             file: "a.ts",
-            program: &program,
+            program: &mut program,
         };
 
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
@@ -992,12 +985,10 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let replaced: Option<&Program<'_>> =
-            driver.transform(&ctx, &args).await.unwrap();
+        driver.transform(&ctx, &mut args).await.unwrap();
 
         let recorded: Vec<String> = log.lock().unwrap().clone();
 
-        assert!(replaced.is_none());
         assert_eq!(driver.usage(), HookUsage::Pre);
         assert!(recorded.is_empty());
     }

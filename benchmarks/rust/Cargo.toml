@@ -11,10 +11,7 @@ autobenches = false
 [dependencies]
 
 # Workspace
-telarel = { workspace = true }
-
-# Crates
-oxc = { workspace = true }
+telarel = { workspace = true, features = ["traverse"] }
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }

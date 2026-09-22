@@ -89,66 +89,64 @@ pub async fn compile(
             CompileError::from_message(&format!("pre hook: {error:#}"))
         })?;
 
-    let (code, map): (String, SourceMap) = if driver
-        .usage()
-        .contains(HookUsage::Transform)
-    {
-        // Parse ONCE before the transform chain. Root the resolved source in
-        // the allocator so the parsed program borrows from the same
-        // allocation.
-        let allocator: Allocator = Allocator::default();
+    let (code, map): (String, SourceMap) =
+        if driver.usage().contains(HookUsage::Transform) {
+            // Parse ONCE before the transform chain. Root the resolved source in
+            // the allocator so the parsed program borrows from the same
+            // allocation.
+            let allocator: Allocator = Allocator::default();
 
-        let source: &'_ str = allocator.alloc_str(&resolved.code);
+            let source: &'_ str = allocator.alloc_str(&resolved.code);
 
-        let parse_options: ParseOptions<'_, '_> = ParseOptions {
-            context: &ctx,
-            allocator: &allocator,
-            file: &resolved.file,
-            code: source,
-        };
-
-        let original: Program<'_> = parse(parse_options)?.program;
-
-        let transform_args: TransformArgs<'_> = TransformArgs {
-            allocator: &allocator,
-            file: &resolved.file,
-            program: &original,
-        };
-
-        let replaced: Option<&Program<'_>> =
-            driver.transform(&ctx, &transform_args).await.map_err(|error| {
-                CompileError::from_message(&format!(
-                    "transform hook: {error:#}"
-                ))
-            })?;
-
-        // The driver returns a borrow into the compile allocator; the core
-        // only borrows for codegen and never copies the program.
-        let current: &Program<'_> = replaced.unwrap_or(&original);
-
-        // Codegen from the AST (original when no plugin replaced).
-        let result: telarel_common::CodegenResult<'_> =
-            telarel_common::codegen(telarel_common::CodegenOptions {
+            let parse_options: ParseOptions<'_, '_> = ParseOptions {
+                context: &ctx,
+                allocator: &allocator,
                 file: &resolved.file,
-                program: current,
-            });
+                code: source,
+            };
 
-        let code: String = strip_trailing_newline(result.code);
+            let mut original: Program<'_> = parse(parse_options)?.program;
 
-        let map: SourceMap = result.map.into_owned();
+            {
+                let mut transform_args: TransformArgs<'_, '_> = TransformArgs {
+                    allocator: &allocator,
+                    file: &resolved.file,
+                    program: &mut original,
+                };
 
-        (code, map)
-    } else {
-        // No plugin uses `transform`: skip parse and codegen entirely and
-        // pass the source through with a per-line identity map. A clone is
-        // required here: `ctx` borrows `resolved.code` until the `post` hook
-        // below, so the strip cannot consume `resolved.code` in place.
-        let code: String = strip_trailing_newline(resolved.code.clone());
+                driver.transform(&ctx, &mut transform_args).await.map_err(
+                    |error| {
+                        CompileError::from_message(&format!(
+                            "transform hook: {error:#}"
+                        ))
+                    },
+                )?;
+            }
 
-        let map: SourceMap = identity_map(&resolved.file, &resolved.code);
+            // Plugins mutated the program in place; codegen borrows the final
+            // tree and never copies the program.
+            let result: telarel_common::CodegenResult<'_> =
+                telarel_common::codegen(telarel_common::CodegenOptions {
+                    file: &resolved.file,
+                    program: &original,
+                });
 
-        (code, map)
-    };
+            let code: String = strip_trailing_newline(result.code);
+
+            let map: SourceMap = result.map.into_owned();
+
+            (code, map)
+        } else {
+            // No plugin uses `transform`: skip parse and codegen entirely and
+            // pass the source through with a per-line identity map. A clone is
+            // required here: `ctx` borrows `resolved.code` until the `post` hook
+            // below, so the strip cannot consume `resolved.code` in place.
+            let code: String = strip_trailing_newline(resolved.code.clone());
+
+            let map: SourceMap = identity_map(&resolved.file, &resolved.code);
+
+            (code, map)
+        };
 
     driver
         .post(&ctx, &PostArgs { file: &resolved.file, code: &code })
@@ -169,16 +167,13 @@ mod tests {
     use telarel_common::CompileOptions;
     use telarel_common::PartialCompileOptions;
     use telarel_plugin::{
-        Plugin, SharedPluginable, TransformArgs, TransformOutput,
-        TransformReturn,
+        Plugin, SharedPluginable, TransformArgs, TransformReturn,
     };
 
-    use oxc::allocator::{ArenaBox, ArenaVec, CloneIn, GetAllocator};
-    use oxc::ast::ast::{
-        Argument, CallExpression, Directive, Expression, ExpressionStatement,
-        IdentifierReference, NumericLiteral, Program, Statement,
-        StaticMemberExpression, StringLiteral,
-    };
+    use oxc::ast_visit::VisitMut;
+    use oxc::ast_visit::walk_mut;
+
+    use oxc::ast::ast::{Directive, IdentifierReference, StringLiteral};
     use oxc::ast::builder::AstBuilder;
     use oxc::span::SPAN;
     use oxc::str::Ident;
@@ -216,141 +211,34 @@ mod tests {
             HookUsage::Transform
         }
 
-        // Rebuild the Program with every `console` Identifier renamed to
-        // `consolex` (AstBuilder walk over the allocator; build the replacement
-        // in `args.allocator`). Returns Some(TransformOutput { program }).
-        async fn transform<'a>(
+        // Mutate every `console` IdentifierReference to `consolex` in place
+        // (VisitMut walk over the arena-allocated program).
+        async fn transform<'a, 'ast>(
             &'a self,
             _ctx: &'a CompileContext<'a>,
-            args: &'a TransformArgs<'a>,
-        ) -> TransformReturn<'a> {
-            let builder: AstBuilder<'a> = AstBuilder::new(args.allocator);
-            let original: &'a Program<'a> = args.program;
+            args: TransformArgs<'a, 'ast>,
+        ) -> TransformReturn {
+            let mut renamer: Renamer<'_> =
+                Renamer { allocator: args.allocator };
 
-            let body: ArenaVec<'a, Statement<'a>> = ArenaVec::from_iter_in(
-                original.body.iter().map(|statement: &Statement<'a>| {
-                    rename_statement(statement, &builder)
-                }),
-                &builder,
-            );
-            let directives: ArenaVec<'a, Directive<'a>> =
-                ArenaVec::from_iter_in(
-                    original.directives.iter().map(
-                        |directive: &Directive<'a>| {
-                            directive.clone_in(builder.allocator())
-                        },
-                    ),
-                    &builder,
-                );
+            walk_mut::walk_program(&mut renamer, args.program);
 
-            let program: Program<'a> = Program::new(
-                original.span,
-                original.source_type,
-                original.source_text,
-                original.comments.clone_in(builder.allocator()),
-                original.hashbang.clone_in(builder.allocator()),
-                directives,
-                body,
-                &builder,
-            );
-
-            Ok(Some(TransformOutput { program }))
+            Ok(())
         }
     }
 
-    fn rename_statement<'a>(
-        statement: &Statement<'a>,
-        builder: &AstBuilder<'a>,
-    ) -> Statement<'a> {
-        match statement {
-            | Statement::ExpressionStatement(expression_statement) => {
-                let expression: Expression<'a> = rename_expression(
-                    &expression_statement.expression,
-                    builder,
-                );
-                let node: ExpressionStatement<'a> = ExpressionStatement::new(
-                    expression_statement.span,
-                    expression,
-                    builder,
-                );
-                Statement::ExpressionStatement(ArenaBox::new_in(node, builder))
-            },
-            | other => other.clone_in(builder.allocator()),
-        }
+    struct Renamer<'x> {
+        allocator: &'x Allocator,
     }
 
-    fn rename_expression<'a>(
-        expression: &Expression<'a>,
-        builder: &AstBuilder<'a>,
-    ) -> Expression<'a> {
-        match expression {
-            | Expression::Identifier(identifier) => {
-                let name: &str = identifier.name.as_str();
-                let renamed: &str =
-                    if name == TARGET { REPLACEMENT } else { name };
-                let ident: Ident<'a> = Ident::from_str_in(renamed, builder);
-                let node: IdentifierReference<'a> =
-                    IdentifierReference::new(identifier.span, ident, builder);
-                Expression::Identifier(ArenaBox::new_in(node, builder))
-            },
-            | Expression::CallExpression(call) => {
-                let callee: Expression<'a> =
-                    rename_expression(&call.callee, builder);
-                let arguments: ArenaVec<'a, Argument<'a>> =
-                    ArenaVec::from_iter_in(
-                        call.arguments.iter().map(|argument: &Argument<'a>| {
-                            rename_argument(argument, builder)
-                        }),
-                        builder,
-                    );
-                let node: CallExpression<'a> = CallExpression::new(
-                    call.span,
-                    callee,
-                    None,
-                    arguments,
-                    call.optional,
-                    builder,
-                );
-                Expression::CallExpression(ArenaBox::new_in(node, builder))
-            },
-            | Expression::StaticMemberExpression(member) => {
-                let object: Expression<'a> =
-                    rename_expression(&member.object, builder);
-                let node: StaticMemberExpression<'a> =
-                    StaticMemberExpression::new(
-                        member.span,
-                        object,
-                        member.property.clone_in(builder.allocator()),
-                        member.optional,
-                        builder,
-                    );
-                Expression::StaticMemberExpression(ArenaBox::new_in(
-                    node, builder,
-                ))
-            },
-            | Expression::NumericLiteral(literal) => {
-                let node: NumericLiteral<'a> = NumericLiteral::new(
-                    literal.span,
-                    literal.value,
-                    literal.raw.clone_in(builder.allocator()),
-                    literal.base,
-                    builder,
-                );
-                Expression::NumericLiteral(ArenaBox::new_in(node, builder))
-            },
-            | other => other.clone_in(builder.allocator()),
-        }
-    }
-
-    fn rename_argument<'a>(
-        argument: &Argument<'a>,
-        builder: &AstBuilder<'a>,
-    ) -> Argument<'a> {
-        match argument.as_expression() {
-            | Some(expression) => {
-                Argument::from(rename_expression(expression, builder))
-            },
-            | None => argument.clone_in(builder.allocator()),
+    impl<'x> VisitMut<'x> for Renamer<'x> {
+        fn visit_identifier_reference(
+            &mut self,
+            ident: &mut IdentifierReference<'x>,
+        ) {
+            if ident.name.as_str() == TARGET {
+                ident.name = Ident::from_str_in(REPLACEMENT, &self.allocator);
+            }
         }
     }
 
@@ -366,66 +254,46 @@ mod tests {
             HookUsage::Transform
         }
 
-        // Rebuild the Program with one extra directive appended (AstBuilder
-        // walk over the allocator; build the replacement in `args.allocator`).
-        // Returns Some(TransformOutput { program }).
-        async fn transform<'a>(
+        // Mutate the program in place: append one extra directive.
+        async fn transform<'a, 'ast>(
             &'a self,
             _ctx: &'a CompileContext<'a>,
-            args: &'a TransformArgs<'a>,
-        ) -> TransformReturn<'a> {
-            let builder: AstBuilder<'a> = AstBuilder::new(args.allocator);
-            let original: &'a Program<'a> = args.program;
+            args: TransformArgs<'a, 'ast>,
+        ) -> TransformReturn {
+            let builder: AstBuilder<'ast> = AstBuilder::new(args.allocator);
 
-            let string_literal: StringLiteral<'a> =
+            let string_literal: StringLiteral<'ast> =
                 StringLiteral::new(SPAN, DIRECTIVE, None, &builder);
 
-            let directive: Directive<'a> =
+            let directive: Directive<'ast> =
                 Directive::new(SPAN, string_literal, DIRECTIVE, &builder);
 
-            let mut directives: ArenaVec<'a, Directive<'a>> =
-                original.directives.clone_in(builder.allocator());
+            args.program.directives.push(directive);
 
-            directives.push(directive);
-
-            let body: ArenaVec<'a, Statement<'a>> =
-                original.body.clone_in(builder.allocator());
-
-            let program: Program<'a> = Program::new(
-                original.span,
-                original.source_type,
-                original.source_text,
-                original.comments.clone_in(builder.allocator()),
-                original.hashbang.clone_in(builder.allocator()),
-                directives,
-                body,
-                &builder,
-            );
-
-            Ok(Some(TransformOutput { program }))
+            Ok(())
         }
     }
 
     #[derive(Debug)]
-    struct NoneReturningTransformPlugin;
+    struct NoopTransformPlugin;
 
-    impl Plugin for NoneReturningTransformPlugin {
+    impl Plugin for NoopTransformPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "none-returning-transform".into()
+            "noop-transform".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
             HookUsage::Transform
         }
 
-        // A transform hook that never replaces the program: Ok(None) must
-        // leave the current program in place for the rest of the chain.
-        async fn transform<'a>(
+        // A transform hook that never mutates the program: the current
+        // program stays in place for the rest of the chain.
+        async fn transform<'a, 'ast>(
             &'a self,
             _ctx: &'a CompileContext<'a>,
-            _args: &'a TransformArgs<'a>,
-        ) -> TransformReturn<'a> {
-            Ok(None)
+            _args: TransformArgs<'a, 'ast>,
+        ) -> TransformReturn {
+            Ok(())
         }
     }
 
@@ -780,9 +648,9 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_transform_none_returning_plugin_uses_original() {
-        // A transform plugin returning Ok(None) must leave the parsed
-        // original in place for codegen: the code is unchanged verbatim.
+    async fn test_compile_transform_noop_plugin_keeps_original() {
+        // A transform plugin that keeps the parsed original in place must
+        // leave it untouched for codegen: the code is unchanged verbatim.
         let opts: CompileOptions = CompileOptions {
             cwd: "/repo".to_string(),
             file: "index.ts".to_string(),
@@ -790,7 +658,7 @@ mod tests {
         };
 
         let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(NoneReturningTransformPlugin)];
+            vec![Arc::new(NoopTransformPlugin)];
 
         let out = compile(opts, plugins).await.unwrap();
 
@@ -799,9 +667,10 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_transform_mixed_chain_none_then_replace() {
-        // None, replace, None: only the replacing plugin's output must reach
-        // codegen, and the surrounding Nones must not reset to the original.
+    async fn test_compile_transform_mixed_chain_noop_then_replace() {
+        // Noop, replace, noop: only the replacing plugin's mutation must
+        // reach codegen, and the surrounding noop plugins must not reset
+        // the tree to the original.
         let opts: CompileOptions = CompileOptions {
             cwd: "/repo".to_string(),
             file: "index.ts".to_string(),
@@ -809,9 +678,9 @@ mod tests {
         };
 
         let plugins: Vec<SharedPluginable> = vec![
-            Arc::new(NoneReturningTransformPlugin),
+            Arc::new(NoopTransformPlugin),
             Arc::new(RenameCalleePlugin),
-            Arc::new(NoneReturningTransformPlugin),
+            Arc::new(NoopTransformPlugin),
         ];
 
         let out = compile(opts, plugins).await.unwrap();

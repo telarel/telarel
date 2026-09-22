@@ -1,6 +1,11 @@
 import type { Program } from "@oxc-project/types";
 
-import type { PartialOptions, Plugin, PluginContext } from "#/@types/plugin";
+import type {
+    PartialOptions,
+    Plugin,
+    PluginContext,
+    TransformArgs,
+} from "#/@types/plugin";
 
 type RawPluginContext = {
     cwd: string;
@@ -111,27 +116,18 @@ const toRawPlugin = (
         raw.transform = async (
             ctx: RawPluginContext,
             rawArgs: RawTransformArgs,
-        ): Promise<RawTransformOutput> => {
+        ): Promise<RawTransformOutput | null> => {
             const ast: Program = JSON.parse(rawArgs.astJson) as Program;
 
-            const out: unknown = await transform(toContext(ctx), {
-                file: rawArgs.file,
-                ast,
-            });
+            const args: TransformArgs = { file: rawArgs.file, ast };
 
-            if (out === null || typeof out !== "object") {
-                return null;
-            }
+            await transform(toContext(ctx), args);
 
-            const replacement = out as { ast?: Program };
+            const next: string = JSON.stringify(args.ast);
 
-            if (replacement.ast === void 0) {
-                throw new TypeError(
-                    `Plugin "${name}" transform returned an object without an "ast" property`,
-                );
-            }
+            if (next === rawArgs.astJson) return null;
 
-            return { astJson: JSON.stringify(replacement.ast) };
+            return { astJson: next };
         };
     }
 
