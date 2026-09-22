@@ -162,7 +162,6 @@ pub async fn compile(
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
-    use std::sync::Arc;
 
     use telarel_common::CompileContext;
     use telarel_common::CompileOptions;
@@ -384,7 +383,8 @@ mod tests {
             code: "console.log(1);".to_string(),
         };
 
-        let plugins: Vec<SharedPluginable> = vec![Arc::new(NoopPlugin)];
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(NoopPlugin)];
 
         let out = compile(opts, plugins).await.unwrap();
 
@@ -464,7 +464,8 @@ mod tests {
             code: "console.log(1);".to_string(),
         };
 
-        let plugins: Vec<SharedPluginable> = vec![Arc::new(RenameCalleePlugin)];
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(RenameCalleePlugin)];
 
         let out = compile(opts, plugins).await.unwrap();
 
@@ -486,8 +487,9 @@ mod tests {
             code: "console.log(1);".to_string(),
         };
 
-        let out =
-            compile(opts, vec![Arc::new(RenameCalleePlugin)]).await.unwrap();
+        let out = compile(opts, vec![Plugin::new_shared(RenameCalleePlugin)])
+            .await
+            .unwrap();
 
         let map: SourceMap = out.map;
 
@@ -507,7 +509,7 @@ mod tests {
         };
 
         let error: CompileError =
-            compile(opts, vec![Arc::new(RenameCalleePlugin)])
+            compile(opts, vec![Plugin::new_shared(RenameCalleePlugin)])
                 .await
                 .unwrap_err();
 
@@ -562,7 +564,8 @@ mod tests {
             code: "console.log(1);\n".to_string(),
         };
 
-        let plugins: Vec<SharedPluginable> = vec![Arc::new(NoopPlugin)];
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(NoopPlugin)];
 
         let out = compile(opts, plugins).await.unwrap();
 
@@ -573,7 +576,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_options_hook_rewrites_code() {
         let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(RewriteCodeOptionsPlugin)];
+            vec![Plugin::new_shared(RewriteCodeOptionsPlugin)];
 
         let out: crate::CompileOutput =
             compile(options(), plugins).await.unwrap();
@@ -583,7 +586,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_pre_hook_error_aborts() {
-        let plugins: Vec<SharedPluginable> = vec![Arc::new(FailingPrePlugin)];
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(FailingPrePlugin)];
 
         let error: CompileError =
             compile(options(), plugins).await.unwrap_err();
@@ -613,7 +617,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_post_hook_error_aborts() {
-        let plugins: Vec<SharedPluginable> = vec![Arc::new(FailingPostPlugin)];
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(FailingPostPlugin)];
 
         let error: CompileError =
             compile(options(), plugins).await.unwrap_err();
@@ -635,8 +640,10 @@ mod tests {
             code: "console.log(1);".to_string(),
         };
 
-        let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(RenameCalleePlugin), Arc::new(AppendDirectivePlugin)];
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(RenameCalleePlugin),
+            Plugin::new_shared(AppendDirectivePlugin),
+        ];
 
         let out = compile(opts, plugins).await.unwrap();
 
@@ -656,7 +663,7 @@ mod tests {
         };
 
         let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(NoopTransformPlugin)];
+            vec![Plugin::new_shared(NoopTransformPlugin)];
 
         let out = compile(opts, plugins).await.unwrap();
 
@@ -676,9 +683,9 @@ mod tests {
         };
 
         let plugins: Vec<SharedPluginable> = vec![
-            Arc::new(NoopTransformPlugin),
-            Arc::new(RenameCalleePlugin),
-            Arc::new(NoopTransformPlugin),
+            Plugin::new_shared(NoopTransformPlugin),
+            Plugin::new_shared(RenameCalleePlugin),
+            Plugin::new_shared(NoopTransformPlugin),
         ];
 
         let out = compile(opts, plugins).await.unwrap();

@@ -3,14 +3,13 @@ mod plugin_traverse;
 
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use criterion::{
     BenchmarkGroup, BenchmarkId, Criterion, criterion_group, criterion_main,
     measurement::WallTime,
 };
 
-use telarel::{CompileOptions, SharedPluginable, compile};
+use telarel::{CompileOptions, Plugin, SharedPluginable, compile};
 
 use crate::plugin::TransformPlugin;
 use crate::plugin_traverse::TraversePlugin;
@@ -79,12 +78,17 @@ fn bench_compile(criterion: &mut Criterion) {
             .expect("build current-thread tokio runtime");
 
     bench_case(criterion, &runtime, "common", &[]);
-    bench_case(criterion, &runtime, "plugin", &[Arc::new(TransformPlugin)]);
+    bench_case(
+        criterion,
+        &runtime,
+        "plugin",
+        &[Plugin::new_shared(TransformPlugin)],
+    );
     bench_case(
         criterion,
         &runtime,
         "plugin-traverse",
-        &[Arc::new(TraversePlugin)],
+        &[Plugin::new_shared(TraversePlugin)],
     );
 }
 

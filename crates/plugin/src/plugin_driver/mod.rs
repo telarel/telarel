@@ -533,8 +533,10 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_options_chain_mutates_in_place() {
-        let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(OptionsPlugin), Arc::new(OptionsPlugin)];
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(OptionsPlugin),
+            Plugin::new_shared(OptionsPlugin),
+        ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
@@ -551,7 +553,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_options_noop_keeps_current() {
-        let plugins: Vec<SharedPluginable> = vec![Arc::new(NoopOptionsPlugin)];
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(NoopOptionsPlugin)];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
@@ -569,7 +572,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_options_mutation_keeps_other_fields() {
         let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(RewriteCodeOptionsPlugin)];
+            vec![Plugin::new_shared(RewriteCodeOptionsPlugin)];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
@@ -592,8 +595,10 @@ mod tests {
             Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
-            Arc::new(RewriteCodeOptionsPlugin),
-            Arc::new(ObserveOptionsPlugin::new(Arc::clone(&observed))),
+            Plugin::new_shared(RewriteCodeOptionsPlugin),
+            Plugin::new_shared(ObserveOptionsPlugin::new(Arc::clone(
+                &observed,
+            ))),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
@@ -616,7 +621,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_options_error_propagates() {
         let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(FailingOptionsPlugin)];
+            vec![Plugin::new_shared(FailingOptionsPlugin)];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
@@ -634,7 +639,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_options_error_names_plugin() {
         let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(FailingOptionsPlugin)];
+            vec![Plugin::new_shared(FailingOptionsPlugin)];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
@@ -658,8 +663,8 @@ mod tests {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
-            Arc::new(OrderPlugin::new("first", Arc::clone(&log))),
-            Arc::new(OrderPlugin::new("second", Arc::clone(&log))),
+            Plugin::new_shared(OrderPlugin::new("first", Arc::clone(&log))),
+            Plugin::new_shared(OrderPlugin::new("second", Arc::clone(&log))),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
@@ -680,11 +685,11 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_pre_error_aborts_and_names_plugin() {
         let plugins: Vec<SharedPluginable> = vec![
-            Arc::new(OrderPlugin::new(
+            Plugin::new_shared(OrderPlugin::new(
                 "first",
                 Arc::new(Mutex::new(Vec::new())),
             )),
-            Arc::new(FailingPrePlugin),
+            Plugin::new_shared(FailingPrePlugin),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
@@ -724,8 +729,10 @@ mod tests {
             program: &mut program,
         };
 
-        let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(MarkPlugin), Arc::new(MarkPlugin)];
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(MarkPlugin),
+            Plugin::new_shared(MarkPlugin),
+        ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
@@ -764,7 +771,7 @@ mod tests {
         };
 
         let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(FailingTransformPlugin)];
+            vec![Plugin::new_shared(FailingTransformPlugin)];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
@@ -804,7 +811,7 @@ mod tests {
         let seen: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(RecordingPlugin::new(Arc::clone(&seen)))];
+            vec![Plugin::new_shared(RecordingPlugin::new(Arc::clone(&seen)))];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
@@ -852,9 +859,13 @@ mod tests {
             Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
-            Arc::new(RecordingMutatorPlugin::new(Arc::clone(&first_seen))),
-            Arc::new(RecordingMutatorPlugin::new(Arc::clone(&second_seen))),
-            Arc::new(RecordingPlugin::new(Arc::clone(&final_seen))),
+            Plugin::new_shared(RecordingMutatorPlugin::new(Arc::clone(
+                &first_seen,
+            ))),
+            Plugin::new_shared(RecordingMutatorPlugin::new(Arc::clone(
+                &second_seen,
+            ))),
+            Plugin::new_shared(RecordingPlugin::new(Arc::clone(&final_seen))),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
@@ -889,8 +900,8 @@ mod tests {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
-            Arc::new(OrderPlugin::new("first", Arc::clone(&log))),
-            Arc::new(OrderPlugin::new("second", Arc::clone(&log))),
+            Plugin::new_shared(OrderPlugin::new("first", Arc::clone(&log))),
+            Plugin::new_shared(OrderPlugin::new("second", Arc::clone(&log))),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
@@ -911,11 +922,11 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_post_error_names_plugin() {
         let plugins: Vec<SharedPluginable> = vec![
-            Arc::new(OrderPlugin::new(
+            Plugin::new_shared(OrderPlugin::new(
                 "first",
                 Arc::new(Mutex::new(Vec::new())),
             )),
-            Arc::new(FailingPostPlugin),
+            Plugin::new_shared(FailingPostPlugin),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
@@ -933,7 +944,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_pluginable_dispatch() {
-        let plugin: Arc<dyn Pluginable> = Arc::new(OptionsPlugin);
+        let plugin: Arc<dyn Pluginable> = Plugin::new_shared(OptionsPlugin);
 
         assert_eq!(plugin.call_name(), "options");
 
@@ -974,7 +985,7 @@ mod tests {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> =
-            vec![Arc::new(PreOnlyPlugin::new(Arc::clone(&log)))];
+            vec![Plugin::new_shared(PreOnlyPlugin::new(Arc::clone(&log)))];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
@@ -989,10 +1000,10 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_driver_aggregates_usage() {
         let plugins: Vec<SharedPluginable> = vec![
-            Arc::new(OptionsPlugin),
-            Arc::new(FailingPrePlugin),
-            Arc::new(MarkPlugin),
-            Arc::new(FailingPostPlugin),
+            Plugin::new_shared(OptionsPlugin),
+            Plugin::new_shared(FailingPrePlugin),
+            Plugin::new_shared(MarkPlugin),
+            Plugin::new_shared(FailingPostPlugin),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
