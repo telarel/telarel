@@ -6,33 +6,18 @@ use crate::plugin::pluginable::SharedPluginable;
 
 /// Run the `options` hook chain.
 ///
-/// Each `Some` update is merged onto the carried options field-by-field
-/// (`None` fields keep their current values), so the last plugin wins.
+/// Each plugin mutates the same options in place;
+/// mutations are visible to the following plugins.
 pub async fn options(
     plugins: &[SharedPluginable],
-    options: CompileOptions,
-) -> anyhow::Result<CompileOptions> {
-    let mut current: CompileOptions = options;
-
+    options: &mut CompileOptions,
+) -> anyhow::Result<()> {
     for plugin in plugins {
-        if let Some(update) = plugin
-            .call_options(&current)
+        plugin
+            .call_options(&mut *options)
             .await
-            .with_context(|| format!("`{}` options", plugin.call_name()))?
-        {
-            if let Some(cwd) = update.cwd {
-                current.cwd = cwd;
-            }
-
-            if let Some(file) = update.file {
-                current.file = file;
-            }
-
-            if let Some(code) = update.code {
-                current.code = code;
-            }
-        }
+            .with_context(|| format!("`{}` options", plugin.call_name()))?;
     }
 
-    Ok(current)
+    Ok(())
 }

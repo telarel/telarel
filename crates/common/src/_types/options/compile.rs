@@ -19,17 +19,6 @@ impl Default for CompileOptions {
     }
 }
 
-/// Partial update of the compile options; `None` fields keep current values.
-#[derive(Debug, Clone, Default)]
-pub struct PartialCompileOptions {
-    /// Updated working directory, if provided.
-    pub cwd: Option<String>,
-    /// Updated file, if provided.
-    pub file: Option<String>,
-    /// Updated code, if provided.
-    pub code: Option<String>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

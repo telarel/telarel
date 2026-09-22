@@ -14,7 +14,7 @@ pub use _types::hooks::pre::PreArgs;
 pub use _types::hooks::transform::{TransformArgs, TransformReturn};
 pub use plugin::Plugin;
 pub use plugin::pluginable::{Pluginable, SharedPluginable};
-pub use telarel_common::{HookUsage, PartialCompileOptions};
+pub use telarel_common::HookUsage;
 
 #[doc(hidden)]
 pub mod __internal {

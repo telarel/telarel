@@ -5,9 +5,7 @@ use napi::{Error, Result, Status};
 use oxc::ast::ast::Program;
 use oxc::span::SourceType;
 
-use telarel_common::{
-    CompileContext, CompileOptions, HookUsage, PartialCompileOptions,
-};
+use telarel_common::{CompileContext, CompileOptions, HookUsage};
 use telarel_plugin::__internal::{HookFuture, LocalHookFuture};
 use telarel_plugin::{
     Pluginable, PostArgs, PreArgs, TransformArgs, TransformReturn,
@@ -92,11 +90,11 @@ impl Pluginable for JsPlugin {
 
     fn call_options<'a>(
         &'a self,
-        options: &'a CompileOptions,
-    ) -> HookFuture<'a, anyhow::Result<Option<PartialCompileOptions>>> {
+        options: &'a mut CompileOptions,
+    ) -> HookFuture<'a, anyhow::Result<()>> {
         Box::pin(async move {
             let Some(tsfn) = self.tsfn_options.as_ref() else {
-                return Ok(None);
+                return Ok(());
             };
 
             let call: OptionsCall = OptionsCall {
@@ -116,11 +114,15 @@ impl Pluginable for JsPlugin {
                 | Either::B(value) => value,
             };
 
-            Ok(replaced.map(|output| PartialCompileOptions {
-                cwd: output.cwd,
-                file: output.file,
-                code: output.code,
-            }))
+            let Some(output) = replaced else {
+                return Ok(());
+            };
+
+            options.cwd = output.cwd;
+            options.file = output.file;
+            options.code = output.code;
+
+            Ok(())
         })
     }
 

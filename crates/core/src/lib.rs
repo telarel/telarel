@@ -74,10 +74,11 @@ pub async fn compile(
 ) -> Result<CompileOutput, CompileError> {
     let driver: PluginDriver = PluginDriver::new(plugins);
 
-    let resolved: CompileOptions =
-        driver.options(options).await.map_err(|error| {
-            CompileError::from_message(&format!("options hook: {error:#}"))
-        })?;
+    let mut resolved: CompileOptions = options;
+
+    driver.options(&mut resolved).await.map_err(|error| {
+        CompileError::from_message(&format!("options hook: {error:#}"))
+    })?;
 
     let ctx: CompileContext<'_> =
         CompileContext::new(&resolved.cwd, &resolved.file, &resolved.code);
@@ -165,7 +166,6 @@ mod tests {
 
     use telarel_common::CompileContext;
     use telarel_common::CompileOptions;
-    use telarel_common::PartialCompileOptions;
     use telarel_plugin::{
         Plugin, SharedPluginable, TransformArgs, TransformReturn,
     };
@@ -311,12 +311,10 @@ mod tests {
 
         async fn options(
             &self,
-            _options: &CompileOptions,
-        ) -> anyhow::Result<Option<PartialCompileOptions>> {
-            Ok(Some(PartialCompileOptions {
-                code: Some("const rewritten = 7;".to_string()),
-                ..PartialCompileOptions::default()
-            }))
+            options: &mut CompileOptions,
+        ) -> anyhow::Result<()> {
+            options.code = "const rewritten = 7;".to_string();
+            Ok(())
         }
     }
 

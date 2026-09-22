@@ -5,9 +5,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::future::Future;
 
-use telarel_common::{
-    CompileContext, CompileOptions, HookUsage, PartialCompileOptions,
-};
+use telarel_common::{CompileContext, CompileOptions, HookUsage};
 
 use crate::_types::hooks::post::PostArgs;
 use crate::_types::hooks::pre::PreArgs;
@@ -21,14 +19,13 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
     /// Which hooks this plugin implements; hooks not declared are never called.
     fn register_hook_usage(&self) -> HookUsage;
 
-    /// Run the `options` hook; may return a partial update of the compile
-    /// options. `None` fields keep their current values.
+    /// Run the `options` hook; mutate `options` in place. Plugins assign
+    /// the fields they want to change and return `Ok(())`.
     fn options<'a>(
         &'a self,
-        _options: &'a CompileOptions,
-    ) -> impl Future<Output = anyhow::Result<Option<PartialCompileOptions>>> + Send
-    {
-        async { Ok(None) }
+        _options: &'a mut CompileOptions,
+    ) -> impl Future<Output = anyhow::Result<()>> + Send {
+        async { Ok(()) }
     }
 
     /// Run the `pre` hook, before the transform chain.

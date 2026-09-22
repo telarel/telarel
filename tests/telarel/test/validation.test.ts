@@ -73,9 +73,9 @@ describe("validation", (): void => {
     });
 
     it("leaves options unchanged when an options hook returns null", async (): Promise<void> => {
-        // Intentional behavior change: a `null` return is a pass-through.
-        // The wrapper maps it to Rust `None`, so the compile options are
-        // carried over verbatim.
+        // The wrapper calls the hook, silently ignores the `null` return,
+        // and sends the full options bag back; the compile options are
+        // carried over unchanged.
         const plugin: unknown = {
             name: "null-options",
             options: (): null => null,
@@ -92,8 +92,8 @@ describe("validation", (): void => {
     });
 
     it("leaves options unchanged when an options hook returns undefined", async (): Promise<void> => {
-        // Companion to the `null` case above; `void` returns behave the
-        // same as explicit `null`.
+        // Companion to the `null` case above; the wrapper ignores the
+        // return either way and the options bag comes back unchanged.
         const plugin: unknown = {
             name: "void-options",
             options: (): void => void 0,
@@ -109,13 +109,16 @@ describe("validation", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
-    it("merges a partial options hook return with the current options", async (): Promise<void> => {
-        // Intentional behavior change: partial returns no longer reject.
-        // Omitted fields keep their current values; here only `code` is
-        // replaced while `cwd` and `file` carry over into the transform.
+    it("applies an in-place options mutation", async (): Promise<void> => {
+        // Intentional behavior change: the hook mutates the options bag in
+        // place; the wrapper sends the full record back to Rust, so the
+        // transform observes the mutated `code` with the current `cwd`
+        // and `file` carried over.
         const plugin: unknown = {
-            name: "partial-options",
-            options: (): unknown => ({ code: "const b = 2;" }),
+            name: "mutate-options",
+            options: (options: Options): void => {
+                options.code = "const b = 2;";
+            },
             transform: (ctx: PluginContext): void => {
                 expect(ctx.cwd).toBe("/repo");
                 expect(ctx.file).toBe("index.ts");
@@ -131,6 +134,25 @@ describe("validation", (): void => {
         });
 
         expect(result.code).toBe("const b = 2;");
+    });
+
+    it("silently ignores a returned options value", async (): Promise<void> => {
+        // Intentional behavior change: a returned value is discarded by
+        // the wrapper (no `TypeError`), so a hook that returns a
+        // replacement without mutating is a pass-through.
+        const plugin: unknown = {
+            name: "ignored-return",
+            options: (): unknown => ({ code: "const b = 2;" }),
+        };
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [plugin as Plugin],
+        });
+
+        expect(result.code).toBe("const a = 1;");
     });
 
     it("allows duplicate plugin names in registration order", async (): Promise<void> => {

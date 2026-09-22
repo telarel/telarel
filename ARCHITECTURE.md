@@ -33,7 +33,7 @@ There are no cycles.
 
 ```mermaid
 flowchart TD
-    Options[<b>options</b><br/>field-by-field merge of options]
+    Options[<b>options</b><br/>chained in-place mutation of options]
     Pre[<b>pre</b><br/>notify-all; first error aborts]
     TransformNeeded{any transform plugin?}
     Parse[parse into allocator]
@@ -51,18 +51,23 @@ flowchart TD
 
 The plugin implements 4 hooks (all with no operation by default). `options` goes without context since the context is built from the resolved options.
 
-| Hook      | Context | Arguments                          | Return          | Merge                      |
-| --------- | ------- | ---------------------------------- | --------------- | -------------------------- |
-| options   | –       | options                            | partial options | last `Some` wins per field |
-| pre       | ✓       | file, code (read-only)             | `()`            | notify                     |
-| transform | ✓       | allocator, file, program (mutable) | `()`            | chained; in-place mutation |
-| post      | ✓       | file, final code                   | `()`            | notify                     |
+| Hook      | Context | Arguments                          | Return | Merge   |
+| --------- | ------- | ---------------------------------- | ------ | ------- |
+| options   | –       | options (mutable)                  | `()`   | chained |
+| pre       | ✓       | file, code (read-only)             | `()`   | notify  |
+| transform | ✓       | allocator, file, program (mutable) | `()`   | chained |
+| post      | ✓       | file, final code                   | `()`   | notify  |
 
 Merge semantics:
 
-- **Last `Some` wins per field** — the options hook merges each returned [`PartialCompileOptions`](./crates/common/src/_types/options/compile.rs#L14) field-by-field into the carried options; `None` fields keep their current values, and later plugins observe earlier merges
-- **Notify** — `pre` and `post` run for their side effects in registration order; the first error aborts the run
-- **Chained** — each `transform` plugin mutates the same [`Program`](./crates/plugin/src/_types/hooks/transform.rs#L6) in place, so mutations are visible to the following plugins; a plugin may swap the entire root by assigning `*args.program` with a tree allocated in the shared allocator — pointer stability is the [driver's](./crates/plugin/src/plugin_driver/hooks/transform.rs) job
+- **Chained** — each plugin mutates the same argument in place; mutations are visible to following plugins
+    - `options` — mutable [`CompileOptions`](./crates/common/src/_types/options/compile.rs#L3) bag
+    - `transform` — mutable [`Program`](./crates/plugin/src/_types/hooks/transform.rs#L6)
+- **Notify** — `pre` and `post` run for side effects in registration order; the first error aborts
+
+For `options`, the [driver](./crates/plugin/src/plugin_driver/hooks/options.rs) loops with `&mut` over one options bag.
+
+For `transform`, a plugin may swap the entire root by assigning `*args.program` with a tree allocated in the shared allocator — pointer stability is the [driver's](./crates/plugin/src/plugin_driver/hooks/transform.rs) job.
 
 ### Hook Usage Declaration
 
@@ -86,7 +91,11 @@ flowchart LR
     E -- stringify --> S -- deserialize --> P
 ```
 
-The JS `transform` hook is mutation-based: the wrapper parses the serialized tree, calls the hook, re-stringifies the tree, and compares it with the pre-call string. Equal — nothing crosses back into Rust; different — the JSON is parsed back into the compile allocator and swapped in as the root. Returning any value from a JS `transform` hook throws a `TypeError`. A shared `metadata` object is created for each compile and released in `Task::finally`, so it remains isolated between different compiles.
+The JS `options` hook receives the current `{ cwd, file, code }` bag and the wrapper always sends the full record back to Rust, so unmutated fields keep their values.
+
+The JS `transform` hook is mutation-based: the wrapper parses the serialized tree, calls the hook, re-stringifies the tree, and compares it with the pre-call string. Equal — nothing crosses back into Rust; different — the JSON is parsed back into the compile allocator and swapped in as the root.
+
+A shared `metadata` object is created for each compile and released in `Task::finally`, so it remains isolated between different compiles.
 
 ## Execution Model
 
@@ -103,5 +112,7 @@ For traversal, plugin authors choose by task:
 
 Details:
 
-- **Simple field edits** — rename, retag, drop a node. JS `walk` is backed by `oxc-walker`.
-- **Parent/scope-aware rewrites** — insert after a node, rename the binding a reference resolves to. Rust: enable the `traverse` feature; [`TraverseCtx`](./crates/telarel/src/lib.rs) provides parent/ancestor access and an `AstBuilder` for allocating nodes; scoping is built per compile via `SemanticBuilder::new().build(program).semantic.into_scoping()`. JS: add a scope tracker only if the transform does not replace nodes.
+- **Simple field edits** — rename, retag, drop a node; JS `walk` is backed by `oxc-walker`
+- **Parent/scope-aware rewrites** — insert after a node, or rename the binding a reference resolves to
+
+For parent/scope-aware rewrites in Rust, enable the `traverse` feature; [`TraverseCtx`](./crates/telarel/src/lib.rs) provides parent/ancestor access and an `AstBuilder` for allocating nodes, with scoping built per compile via `SemanticBuilder::new().build(program).semantic.into_scoping()`. In JS, add a scope tracker only if the transform does not replace nodes.

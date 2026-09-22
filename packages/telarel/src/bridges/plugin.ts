@@ -1,7 +1,7 @@
 import type { Program } from "@oxc-project/types";
 
 import type {
-    PartialOptions,
+    Options,
     Plugin,
     PluginContext,
     TransformArgs,
@@ -24,9 +24,9 @@ type RawOptionsArgs = {
 };
 
 type RawOptionsOutput = {
-    cwd?: string;
-    file?: string;
-    code?: string;
+    cwd: string;
+    file: string;
+    code: string;
 };
 
 type RawTransformOutput = { astJson: string } | null;
@@ -35,7 +35,7 @@ type RawPlugin = {
     name: string;
     options?: (
         options: RawOptionsArgs,
-    ) => RawOptionsOutput | null | Promise<RawOptionsOutput | null>;
+    ) => RawOptionsOutput | Promise<RawOptionsOutput>;
     pre?: (ctx: RawPluginContext, args: RawStageArgs) => unknown;
     transform?: (
         ctx: RawPluginContext,
@@ -68,31 +68,31 @@ const toRawPlugin = (
     if (typeof options === "function") {
         raw.options = async (
             rawArgs: RawOptionsArgs,
-        ): Promise<RawOptionsOutput | null> => {
-            const next: PartialOptions | null | void = await options({
+        ): Promise<RawOptionsOutput> => {
+            const current: Options = {
                 cwd: rawArgs.cwd,
                 file: rawArgs.file,
                 code: rawArgs.code,
-            });
+            };
 
-            if (next === null || next === void 0) {
-                return null;
+            await options(current);
+
+            const output: RawOptionsOutput = {
+                cwd: rawArgs.cwd,
+                file: rawArgs.file,
+                code: rawArgs.code,
+            };
+
+            if (typeof current.cwd === "string") {
+                output.cwd = current.cwd;
             }
 
-            const update: PartialOptions = next;
-
-            const output: RawOptionsOutput = {};
-
-            if (typeof update.cwd === "string") {
-                output.cwd = update.cwd;
+            if (typeof current.file === "string") {
+                output.file = current.file;
             }
 
-            if (typeof update.file === "string") {
-                output.file = update.file;
-            }
-
-            if (typeof update.code === "string") {
-                output.code = update.code;
+            if (typeof current.code === "string") {
+                output.code = current.code;
             }
 
             return output;

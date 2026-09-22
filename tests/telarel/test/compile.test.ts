@@ -133,10 +133,9 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "opts",
-                    options: (options) => ({
-                        ...options,
-                        code: "const b = 2;",
-                    }),
+                    options: (options): void => {
+                        options.code = "const b = 2;";
+                    },
                 },
             ],
         });
@@ -145,8 +144,8 @@ describe("compile", (): void => {
     });
 
     it("chains options hooks last-wins across a pass-through plugin", async (): Promise<void> => {
-        // A `void`-returning plugin between two updating ones is a
-        // pass-through: the first update is still visible to the second.
+        // A no-op plugin between two mutating ones is a pass-through: the
+        // first mutation is still visible to the second.
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
@@ -154,10 +153,9 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "first",
-                    options: (options) => ({
-                        ...options,
-                        code: "const b = 2;",
-                    }),
+                    options: (options): void => {
+                        options.code = "const b = 2;";
+                    },
                 },
                 {
                     name: "passthrough",
@@ -165,10 +163,9 @@ describe("compile", (): void => {
                 },
                 {
                     name: "second",
-                    options: (options) => ({
-                        ...options,
-                        code: `${options.code}; const c = 3;`,
-                    }),
+                    options: (options): void => {
+                        options.code = `${options.code}; const c = 3;`;
+                    },
                 },
             ],
         });
@@ -177,9 +174,9 @@ describe("compile", (): void => {
         expect(result.code).toContain("const c = 3");
     });
 
-    it("merges partial options returns against carried options", async (): Promise<void> => {
-        // A partial return only replaces the fields it names; the second
-        // plugin observes the merged result and rewrites the file.
+    it("propagates in-place options mutations across plugins", async (): Promise<void> => {
+        // Each plugin mutates the fields it wants; the second plugin
+        // observes the first mutation and rewrites the file.
         const seen: Array<string> = [];
 
         const result: CompileResult = await compile({
@@ -189,18 +186,17 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "rewrite-code",
-                    options: (options) => ({
-                        ...options,
-                        code: "const b = 2;",
-                    }),
+                    options: (options): void => {
+                        options.code = "const b = 2;";
+                    },
                 },
                 {
                     name: "rewrite-file",
-                    options: (options) => {
+                    options: (options): void => {
                         seen.push(options.code);
                         seen.push(options.cwd);
 
-                        return { file: "renamed.ts" };
+                        options.file = "renamed.ts";
                     },
                 },
                 {
@@ -230,11 +226,11 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "async-options",
-                    options: async () => {
+                    options: async (options): Promise<void> => {
                         await new Promise<void>((resolve): void => {
                             setTimeout(resolve, 0);
                         });
-                        return { code: "const replaced = 2;" };
+                        options.code = "const replaced = 2;";
                     },
                 },
             ],
@@ -399,9 +395,9 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "async-all",
-                    options: (options) => {
+                    options: (options): void => {
                         seen.push("options");
-                        return { ...options, code: "const b = 2;" };
+                        options.code = "const b = 2;";
                     },
                     pre: async (ctx: PluginContext): Promise<void> => {
                         seen.push("pre");
@@ -646,10 +642,9 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "options-rewrite",
-                    options: (options) => ({
-                        ...options,
-                        code: "const b = 2;",
-                    }),
+                    options: (options): void => {
+                        options.code = "const b = 2;";
+                    },
                 },
                 {
                     name: "fidelity",
@@ -780,6 +775,30 @@ describe("compile", (): void => {
         });
 
         expect(result.code).toBe("const replaced = 1;");
+    });
+
+    it("silently ignores a returned value from transform", async (): Promise<void> => {
+        // Intentional behavior change: the wrapper calls the hook and
+        // silently ignores the return value (no `TypeError`), so a
+        // replacement object returned without mutating is a pass-through
+        // and the original code survives.
+        const plugin: unknown = {
+            name: "ignored-return",
+            transform: (): unknown => ({
+                ast: { type: "Program", body: [] },
+            }),
+        };
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [plugin as Plugin],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+        expect(result.map.version).toBe(3);
+        expect(result.map.mappings.length).toBeGreaterThan(0);
     });
 
     it("walks and mutates the ast via telarel/walker", async (): Promise<void> => {

@@ -1,7 +1,6 @@
 export type { CompileOptions, CompileResult } from "#/@types/compile";
 export type {
     Options,
-    PartialOptions,
     Plugin,
     PluginContext,
     PostArgs,
