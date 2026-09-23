@@ -26,7 +26,12 @@ const exists = async (path: string): Promise<boolean> => {
     }
 };
 
+const clear = async (target: string): Promise<void> => {
+    await Fsp.rm(target, { force: true, recursive: true });
+};
+
 const stage = async (options: StageOptions): Promise<void> => {
+    await clear(options.target);
     await Fsp.symlink(options.source, options.target, "file");
     staged.push(options.target);
 };
@@ -68,13 +73,17 @@ const stageWasi = async (): Promise<void> => {
         });
     }
 
+    const nodeModulesTarget: string = Path.join(distDir, "node_modules");
+
+    await clear(nodeModulesTarget);
+
     await Fsp.symlink(
         Path.join(wasiDir, "node_modules"),
-        Path.join(distDir, "node_modules"),
+        nodeModulesTarget,
         "dir",
     );
 
-    staged.push(Path.join(distDir, "node_modules"));
+    staged.push(nodeModulesTarget);
 };
 
 const removeStaged = async (): Promise<void> => {

@@ -20,6 +20,7 @@ categories = ["compilers", "web-programming"]
 # Workspace
 telarel_common = { version = "0.1.0", path = "crates/common" }
 telarel_plugin = { version = "0.1.0", path = "crates/plugin" }
+telarel_plugin_transform = { version = "0.1.0", path = "crates/plugin_transform" }
 telarel_core = { version = "0.1.0", path = "crates/core" }
 telarel_binding = { version = "0.1.0", path = "crates/binding" }
 telarel = { version = "0.1.0", path = "crates/telarel" }
@@ -32,10 +33,12 @@ napi = { version = "^3.12.0" }
 napi-build = { version = "^2.4.0" }
 napi-derive = { version = "^3.6.0" }
 oxc = { version = "~0.150.0", default-features = false }
+oxc_compat = { version = "~0.150.0" }
 oxc_estree_codec = { version = "~0.1.0" }
 oxc_sourcemap = { version = "^8.1.0" }
 oxc_traverse = { version = "~0.150.0", default-features = false }
 serde = { version = "^1.0.0" }
+serde_json = { version = "^1.0.0" }
 tokio = { version = "^1.50.0", default-features = false }
 
 [profile.dev]

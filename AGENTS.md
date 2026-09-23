@@ -10,13 +10,14 @@ This repository is a TypeScript/Rust monorepo.
 
 ### Rust Crates
 
-| Path             | Description                                            |
-| ---------------- | ------------------------------------------------------ |
-| `crates/common`  | Share code across different stage                      |
-| `crates/plugin`  | The plugin module to provide structs, traits and types |
-| `crates/core`    | The pipeline orchestrator                              |
-| `crates/binding` | NAPI bindings for the compiler                         |
-| `crates/telarel` | Re-export public facing API                            |
+| Path                      | Description                                            |
+| ------------------------- | ------------------------------------------------------ |
+| `crates/common`           | Share code across different stage                      |
+| `crates/plugin`           | The plugin module to provide structs, traits and types |
+| `crates/plugin_transform` | The transform plugin                                   |
+| `crates/core`             | The pipeline orchestrator                              |
+| `crates/binding`          | NAPI bindings for the compiler                         |
+| `crates/telarel`          | Re-export public facing API                            |
 
 ### TypeScript Packages
 
@@ -39,13 +40,14 @@ This repository is a TypeScript/Rust monorepo.
 
 ## Dependency Boundaries
 
-| Crate     | May depend on              |
-| --------- | -------------------------- |
-| `common`  | /                          |
-| `plugin`  | `common`                   |
-| `core`    | `common`, `plugin`         |
-| `binding` | `common`, `plugin`, `core` |
-| `telarel` | `common`, `plugin`, `core` |
+| Crate              | May depend on                          |
+| ------------------ | -------------------------------------- |
+| `common`           | /                                      |
+| `plugin`           | `common`                               |
+| `plugin_transform` | `common`, `plugin`                     |
+| `core`             | `common`, `plugin`                     |
+| `binding`          | `common`, `plugin`, `core`, `plugin_*` |
+| `telarel`          | `common`, `plugin`, `core`             |
 
 Do not introduce circular dependencies.
 

@@ -15,15 +15,18 @@ crate-type = ["cdylib"]
 # Workspace
 telarel_common = { workspace = true }
 telarel_plugin = { workspace = true }
+telarel_plugin_transform = { workspace = true }
 telarel_core = { workspace = true }
 
 # Crates
 anyhow = { workspace = true }
-napi = { workspace = true, features = ["napi4", "tokio_rt"] }
+napi = { workspace = true, features = ["napi4", "tokio_rt", "serde-json"] }
 napi-derive = { workspace = true }
 oxc = { workspace = true, features = ["serialize"] }
 oxc_estree_codec = { workspace = true }
 oxc_sourcemap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }

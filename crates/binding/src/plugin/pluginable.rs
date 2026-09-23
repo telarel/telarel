@@ -12,6 +12,7 @@ use telarel_plugin::{
 };
 
 use crate::_types::plugin::hooks::{JsOptionsOutput, JsTransformOutput};
+use crate::plugin::build::NAME_REQUIRED;
 use crate::plugin::hooks::{
     OptionsCall, OptionsTsfn, PostTsfn, PreTsfn, SharedRef, SharedStr,
     StageCall, TransformCall, TransformTsfn, hook_scan,
@@ -36,10 +37,7 @@ impl JsPlugin {
         plugins: &SharedRef,
     ) -> Result<Self> {
         let name: String = object.get::<String>("name")?.ok_or_else(|| {
-            Error::new(
-                Status::InvalidArg,
-                "plugin `name` is required".to_owned(),
-            )
+            Error::new(Status::InvalidArg, NAME_REQUIRED.to_owned())
         })?;
 
         let (tsfn_options, tsfn_pre, tsfn_transform, tsfn_post) =

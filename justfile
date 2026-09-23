@@ -155,6 +155,7 @@ publish-rs-crate PKG CMD:
 publish-rs-try:
     just publish-rs-crate telarel_common "--dry-run"
     just publish-rs-crate telarel_plugin "--dry-run"
+    just publish-rs-crate telarel_plugin_transform "--dry-run"
     just publish-rs-crate telarel_core "--dry-run"
     just publish-rs-crate telarel "--dry-run"
 
@@ -162,6 +163,7 @@ publish-rs-try:
 publish-rs:
     just publish-rs-crate telarel_common ""
     just publish-rs-crate telarel_plugin ""
+    just publish-rs-crate telarel_plugin_transform ""
     just publish-rs-crate telarel_core ""
     just publish-rs-crate telarel ""
 

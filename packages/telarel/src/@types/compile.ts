@@ -1,5 +1,6 @@
 import type { Format, Partial } from "ts-vista";
 
+import type { BuiltinPlugin } from "#/@types/builtin";
 import type { Plugin } from "#/@types/plugin";
 import type { SourceMap } from "#/@types/source-map";
 
@@ -28,7 +29,7 @@ type CompleteCompileOptions = Options & {
     /**
      * The plugins to run, in registration order.
      */
-    plugins: Plugin[];
+    plugins: Array<Plugin | BuiltinPlugin>;
 };
 
 /**

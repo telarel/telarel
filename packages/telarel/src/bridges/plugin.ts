@@ -1,5 +1,6 @@
 import type { Program } from "@oxc-project/types";
 
+import type { BuiltinPlugin } from "#/@types/builtin";
 import type {
     Options,
     Plugin,
@@ -31,7 +32,7 @@ type RawOptionsOutput = {
 
 type RawTransformOutput = { astJson: string } | null;
 
-type RawPlugin = {
+type RawHookPlugin = {
     name: string;
     options?: (
         options: RawOptionsArgs,
@@ -44,8 +45,28 @@ type RawPlugin = {
     post?: (ctx: RawPluginContext, args: RawStageArgs) => unknown;
 };
 
+type RawBuiltinPlugin = {
+    __builtin: true;
+    name: string;
+    options?: unknown;
+};
+
+type RawPlugin = RawHookPlugin | RawBuiltinPlugin;
+
+/**
+ * Check whether the plugin object is a builtin plugin.
+ */
+const isBuiltinPlugin = (
+    plugin: Plugin | BuiltinPlugin,
+): plugin is BuiltinPlugin => {
+    return (
+        "__builtin" in plugin &&
+        (plugin as { __builtin?: unknown }).__builtin === true
+    );
+};
+
 const toRawPlugin = (
-    plugin: Plugin,
+    plugin: Plugin | BuiltinPlugin,
     metadata: Map<string, unknown>,
 ): RawPlugin => {
     if (typeof plugin.name !== "string" || plugin.name.length === 0) {
@@ -54,7 +75,20 @@ const toRawPlugin = (
 
     const name: string = plugin.name;
 
-    const raw: RawPlugin = { name };
+    if (isBuiltinPlugin(plugin)) {
+        const builtin: RawBuiltinPlugin = {
+            __builtin: true,
+            name,
+        };
+
+        if ("options" in plugin) {
+            builtin.options = plugin.options;
+        }
+
+        return builtin;
+    }
+
+    const raw: RawHookPlugin = { name };
 
     const toContext = (ctx: RawPluginContext): PluginContext => ({
         cwd: ctx.cwd,

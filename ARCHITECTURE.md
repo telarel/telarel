@@ -13,11 +13,14 @@ The [`compile`](./crates/core/src/lib.rs#L61) function takes compile options (`c
 ```mermaid
 flowchart TD
     common --> plugin
+    common --> plugin_transform
     plugin --> core
+    plugin --> plugin_transform
     common --> core
     common --> binding
     plugin --> binding
     core --> binding
+    plugin_transform --> binding
     common --> telarel
     plugin --> telarel
     core --> telarel
@@ -96,6 +99,29 @@ The JS `options` hook receives the current `{ cwd, file, code }` bag and the wra
 The JS `transform` hook is mutation-based: the wrapper parses the serialized tree, calls the hook, re-stringifies the tree, and compares it with the pre-call string. Equal — nothing crosses back into Rust; different — the JSON is parsed back into the compile allocator and swapped in as the root.
 
 A shared `metadata` object is created for each compile and released in `Task::finally`, so it remains isolated between different compiles.
+
+## Builtin Plugin Bridge
+
+A builtin plugin is activated from JS as a plain data descriptor and executes in Rust.
+
+```ts
+{
+    __builtin: true,
+    name: "",
+    options: {},
+}
+```
+
+The descriptor crosses the bridge as data, and the binding dispatches it to the matching Rust builtin by name.
+
+```mermaid
+flowchart LR
+    F["JS factory"] -- data --> D["binding: dispatch by name"] --> R["Rust builtin plugin"]
+```
+
+The [binding](./crates/binding/src/plugin/build.rs) routes a plugin to its Rust builtin only when the object carries the explicit `__builtin: true` property — no name prefix is reserved, so a user JS plugin may use any name.
+
+Each builtin's name is defined once in its plugin crate and mirrored by the binding's napi enum.
 
 ## Execution Model
 
