@@ -3,6 +3,7 @@ packages:
     - packages/*/npm/*
     - tests/*
     - benchmarks/javascript
+    - examples/javascript/*
 
 autoInstallPeers: false
 strictPeerDependencies: false

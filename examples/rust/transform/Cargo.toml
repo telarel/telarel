@@ -1,0 +1,13 @@
+#:schema https://www.schemastore.org/cargo.json
+
+[package]
+name = "telarel_example_transform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+telarel = { workspace = true }
+telarel_plugin_transform = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }

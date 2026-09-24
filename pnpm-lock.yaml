@@ -84,6 +84,18 @@ importers:
         specifier: catalog:test
         version: 8.2.2(@types/node@26.5.0)
 
+  examples/javascript/common:
+    dependencies:
+      telarel:
+        specifier: workspace:*
+        version: link:../../../packages/telarel
+
+  examples/javascript/transform:
+    dependencies:
+      telarel:
+        specifier: workspace:*
+        version: link:../../../packages/telarel
+
   packages/telarel:
     dependencies:
       '@oxc-project/types':
@@ -99,6 +111,34 @@ importers:
       oxc-transform:
         specifier: ~0.150.0
         version: 0.150.0
+    optionalDependencies:
+      '@telarel/binding-darwin-arm64':
+        specifier: 0.1.0
+        version: link:npm/darwin-arm64
+      '@telarel/binding-darwin-x64':
+        specifier: 0.1.0
+        version: link:npm/darwin-x64
+      '@telarel/binding-linux-arm64-gnu':
+        specifier: 0.1.0
+        version: link:npm/linux-arm64-gnu
+      '@telarel/binding-linux-arm64-musl':
+        specifier: 0.1.0
+        version: link:npm/linux-arm64-musl
+      '@telarel/binding-linux-x64-gnu':
+        specifier: 0.1.0
+        version: link:npm/linux-x64-gnu
+      '@telarel/binding-linux-x64-musl':
+        specifier: 0.1.0
+        version: link:npm/linux-x64-musl
+      '@telarel/binding-wasm32-wasi':
+        specifier: 0.1.0
+        version: link:npm/wasm32-wasi
+      '@telarel/binding-win32-arm64-msvc':
+        specifier: 0.1.0
+        version: link:npm/win32-arm64-msvc
+      '@telarel/binding-win32-x64-msvc':
+        specifier: 0.1.0
+        version: link:npm/win32-x64-msvc
 
   packages/telarel/npm/darwin-arm64: {}
 

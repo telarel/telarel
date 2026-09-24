@@ -22,6 +22,15 @@ ls:
         .dir: kebab-case
         .js: kebab-case
         .ts: kebab-case
+    # Rust
+    examples/rust:
+        .dir: snake_case
+        .rs: snake_case
+    # JS/TS
+    examples/javascript:
+        .dir: kebab-case
+        .js: kebab-case
+        .ts: kebab-case
 
 ignore:
     - .git

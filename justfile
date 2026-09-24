@@ -17,6 +17,8 @@ test_telarel := "tests/telarel"
 bench_rs := "benchmarks/rust"
 bench_js := "benchmarks/javascript"
 
+example_js := "examples/javascript"
+
 # Default action
 _:
     just --list -u
@@ -124,6 +126,21 @@ bench-js:
 
 # Run benchmarks
 bench: bench-rs bench-js
+
+# Run a Rust example
+example-rs NAME:
+    cargo run -p telarel_example_{{NAME}}
+
+# Run a JavaScript example
+example-js NAME:
+    cd ./{{example_js}}/{{NAME}} && node ./src/index.ts
+
+# Run all examples
+examples:
+    just example-rs common
+    just example-rs transform
+    just example-js common
+    just example-js transform
 
 # Check Rust code
 check-rs: fmt-rs lint-rs test-rs

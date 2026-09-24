@@ -1,0 +1,10 @@
+{
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "compile": "node ./src/index.ts"
+    },
+    "dependencies": {
+        "telarel": "workspace:*"
+    }
+}

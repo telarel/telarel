@@ -1,0 +1,12 @@
+#:schema https://www.schemastore.org/cargo.json
+
+[package]
+name = "telarel_example_common"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+telarel = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }

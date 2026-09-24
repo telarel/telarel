@@ -1767,6 +1767,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "telarel_example_common"
+version = "0.1.0"
+dependencies = [
+ "telarel",
+ "tokio",
+]
+
+[[package]]
+name = "telarel_example_transform"
+version = "0.1.0"
+dependencies = [
+ "telarel",
+ "telarel_plugin_transform",
+ "tokio",
+]
+
+[[package]]
 name = "telarel_plugin"
 version = "0.1.0"
 dependencies = [
