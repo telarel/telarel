@@ -78,4 +78,15 @@ mod tests {
 
         assert_eq!(error.status, napi::Status::InvalidArg);
     }
+
+    #[test]
+    fn test_to_transform_plugin_inline_helper_loader_dispatches() {
+        // The mapping to telarel's inline pass is asserted by the option-level tests in `options`.
+        let plugin: telarel_plugin::SharedPluginable = to_transform_plugin(
+            Some(json!({ "oxc": { "helperLoader": { "mode": "inline" } } })),
+        )
+        .expect("transform dispatches");
+
+        assert_eq!(plugin.call_name(), NAME);
+    }
 }

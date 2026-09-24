@@ -9,6 +9,7 @@
         "@emnapi/core": "2.0.0-alpha.5",
         "@emnapi/runtime": "2.0.0-alpha.5",
         "@napi-rs/cli": "~3.7.4",
+        "@oxc-project/runtime": "0.150.0",
         "@types/node": "^26.1.2",
         "@types/react": "^19.3.0",
         "consola": "^3.4.2",

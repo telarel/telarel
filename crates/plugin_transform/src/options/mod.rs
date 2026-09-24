@@ -1,4 +1,5 @@
 pub mod define;
+pub mod helper_loader;
 pub mod inject;
 pub mod jsx;
 pub mod target;
@@ -13,7 +14,14 @@ use oxc_transformer_plugins::{
     InjectGlobalVariablesConfig, ReplaceGlobalDefinesConfig,
 };
 
+use crate::options::helper_loader::ResolvedHelpers;
+use crate::options::helper_loader::overlay_helper_loader;
+use crate::options::helper_loader::resolve_helpers;
+use crate::options::jsx::overlay_jsx;
+use crate::options::typescript::overlay_typescript;
+
 pub use define::DefineOptions;
+pub use helper_loader::{HelperLoaderMode, HelperLoaderOptions};
 pub use inject::{InjectEntry, InjectOptions, InjectSpecifier};
 pub use jsx::{JsxOptions, JsxRuntime};
 pub use target::TransformTarget;
@@ -28,6 +36,8 @@ pub struct TransformOptions {
     pub typescript: Option<TypeScriptOptions>,
     /// JSX transform options.
     pub jsx: Option<JsxOptions>,
+    /// Helper loader options; the raw `oxc` base helper state is ignored.
+    pub helper_loader: Option<HelperLoaderOptions>,
     /// Injected imports run after all transforms, before `define`.
     pub inject: Option<InjectOptions>,
     /// Replacements run after `inject` and all transforms.
@@ -74,18 +84,32 @@ impl TransformOptions {
             self.oxc.clone().unwrap_or_default();
 
         if let Some(typescript) = &self.typescript {
-            typescript::overlay_typescript(&mut base.typescript, typescript);
+            overlay_typescript(&mut base.typescript, typescript);
         }
 
         if let Some(jsx) = &self.jsx {
-            jsx::overlay_jsx(&mut base.jsx, jsx);
+            overlay_jsx(&mut base.jsx, jsx);
         }
 
         if let Some(engine_targets) = Self::engine_targets(&self.targets) {
             base.env = oxc::transformer::EnvOptions::from(engine_targets);
         }
 
+        overlay_helper_loader(
+            &mut base.helper_loader,
+            self.helper_loader.as_ref(),
+        );
+
         base
+    }
+
+    /// Resolve the helper loader state from the telarel layer.
+    ///
+    /// The resolved state feeds the inline helpers pass; the same mapping is
+    /// applied to the oxc options by [`TransformOptions::resolve`]. The raw
+    /// `oxc` base helper state is ignored.
+    pub(crate) fn resolve_helpers(&self) -> ResolvedHelpers {
+        resolve_helpers(self.helper_loader.as_ref())
     }
 
     /// Resolve the `inject` options into the oxc config.
@@ -125,6 +149,7 @@ mod tests {
     use oxc_compat::Version;
 
     use crate::options::define::DefineOptions;
+    use crate::options::helper_loader::DEFAULT_HELPER_MODULE_NAME;
     use crate::options::inject::{InjectEntry, InjectOptions, InjectSpecifier};
     use crate::options::jsx::{JsxOptions, JsxRuntime};
     use crate::options::target::TransformTarget;
@@ -194,6 +219,7 @@ mod tests {
         assert!(options.typescript.is_none());
         assert!(options.define.is_none());
         assert!(options.inject.is_none());
+        assert!(options.helper_loader.is_none());
         assert!(options.oxc.is_none());
     }
 
@@ -450,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_oxc_helper_loader_passthrough() {
+    fn test_resolve_oxc_helper_loader_base_is_overwritten() {
         let options: TransformOptions = TransformOptions {
             oxc: Some(OxcTransformOptions {
                 helper_loader: oxc::transformer::HelperLoaderOptions {
@@ -466,7 +492,179 @@ mod tests {
 
         assert!(matches!(
             resolved.helper_loader.mode,
+            oxc::transformer::HelperLoaderMode::Runtime
+        ));
+        assert_eq!(
+            resolved.helper_loader.module_name,
+            DEFAULT_HELPER_MODULE_NAME
+        );
+    }
+
+    #[test]
+    fn test_resolve_helper_absent_defaults_to_inline() {
+        let options: TransformOptions = TransformOptions::default();
+
+        let resolved: OxcTransformOptions = options.resolve();
+        let helpers: ResolvedHelpers = options.resolve_helpers();
+
+        assert!(matches!(
+            resolved.helper_loader.mode,
+            oxc::transformer::HelperLoaderMode::Runtime
+        ));
+        assert!(helpers.inline());
+        assert_eq!(helpers.module_name, DEFAULT_HELPER_MODULE_NAME);
+    }
+
+    #[test]
+    fn test_resolve_helper_inline_maps_to_oxc_runtime_with_inline_flag() {
+        let options: TransformOptions = TransformOptions {
+            helper_loader: Some(HelperLoaderOptions {
+                mode: Some(HelperLoaderMode::Inline),
+                module_name: None,
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+        let helpers: ResolvedHelpers = options.resolve_helpers();
+
+        assert!(matches!(
+            resolved.helper_loader.mode,
+            oxc::transformer::HelperLoaderMode::Runtime
+        ));
+        assert!(helpers.inline());
+    }
+
+    #[test]
+    fn test_resolve_helper_inline_keeps_module_name() {
+        let options: TransformOptions = TransformOptions {
+            helper_loader: Some(HelperLoaderOptions {
+                mode: Some(HelperLoaderMode::Inline),
+                module_name: Some(String::from("my-runtime")),
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+        let helpers: ResolvedHelpers = options.resolve_helpers();
+
+        assert_eq!(resolved.helper_loader.module_name, "my-runtime");
+        assert!(helpers.inline());
+        assert_eq!(helpers.module_name, "my-runtime");
+    }
+
+    #[test]
+    fn test_resolve_helper_runtime_maps_to_oxc_runtime() {
+        let options: TransformOptions = TransformOptions {
+            helper_loader: Some(HelperLoaderOptions {
+                mode: Some(HelperLoaderMode::Runtime),
+                module_name: None,
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+        let helpers: ResolvedHelpers = options.resolve_helpers();
+
+        assert!(matches!(
+            resolved.helper_loader.mode,
+            oxc::transformer::HelperLoaderMode::Runtime
+        ));
+        assert!(!helpers.inline());
+    }
+
+    #[test]
+    fn test_resolve_helper_external_maps_to_oxc_external() {
+        let options: TransformOptions = TransformOptions {
+            helper_loader: Some(HelperLoaderOptions {
+                mode: Some(HelperLoaderMode::External),
+                module_name: None,
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+        let helpers: ResolvedHelpers = options.resolve_helpers();
+
+        assert!(matches!(
+            resolved.helper_loader.mode,
             oxc::transformer::HelperLoaderMode::External
         ));
+        assert!(!helpers.inline());
+    }
+
+    #[test]
+    fn test_resolve_helper_absent_mode_defaults_to_inline() {
+        let options: TransformOptions = TransformOptions {
+            helper_loader: Some(HelperLoaderOptions {
+                mode: None,
+                module_name: None,
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+        let helpers: ResolvedHelpers = options.resolve_helpers();
+
+        assert!(matches!(
+            resolved.helper_loader.mode,
+            oxc::transformer::HelperLoaderMode::Runtime
+        ));
+        assert!(helpers.inline());
+        assert_eq!(helpers.module_name, DEFAULT_HELPER_MODULE_NAME);
+    }
+
+    #[test]
+    fn test_resolve_helper_wins_over_oxc_base() {
+        let options: TransformOptions = TransformOptions {
+            helper_loader: Some(HelperLoaderOptions {
+                mode: Some(HelperLoaderMode::External),
+                module_name: Some(String::from("my-runtime")),
+            }),
+            oxc: Some(OxcTransformOptions {
+                helper_loader: oxc::transformer::HelperLoaderOptions {
+                    mode: oxc::transformer::HelperLoaderMode::Runtime,
+                    module_name: std::borrow::Cow::Borrowed("other-runtime"),
+                },
+                ..OxcTransformOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert!(matches!(
+            resolved.helper_loader.mode,
+            oxc::transformer::HelperLoaderMode::External
+        ));
+        assert_eq!(resolved.helper_loader.module_name, "my-runtime");
+    }
+
+    #[test]
+    fn test_resolve_oxc_base_helper_loader_is_ignored() {
+        let options: TransformOptions = TransformOptions {
+            oxc: Some(OxcTransformOptions {
+                helper_loader: oxc::transformer::HelperLoaderOptions {
+                    mode: oxc::transformer::HelperLoaderMode::Inline,
+                    module_name: std::borrow::Cow::Borrowed("my-runtime"),
+                },
+                ..OxcTransformOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+        let helpers: ResolvedHelpers = options.resolve_helpers();
+
+        assert!(matches!(
+            resolved.helper_loader.mode,
+            oxc::transformer::HelperLoaderMode::Runtime
+        ));
+        assert_eq!(
+            resolved.helper_loader.module_name,
+            DEFAULT_HELPER_MODULE_NAME
+        );
+        assert!(helpers.inline());
+        assert_eq!(helpers.module_name, DEFAULT_HELPER_MODULE_NAME);
     }
 }

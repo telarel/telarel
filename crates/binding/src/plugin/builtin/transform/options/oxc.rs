@@ -1,3 +1,6 @@
+use telarel_plugin_transform::HelperLoaderMode as TelarelHelperLoaderMode;
+use telarel_plugin_transform::HelperLoaderOptions as TelarelHelperLoaderOptions;
+
 /// The JS-facing helper loader mode.
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -10,7 +13,7 @@ pub enum BindingHelperLoaderMode {
     Runtime,
 }
 
-impl From<BindingHelperLoaderMode> for oxc::transformer::HelperLoaderMode {
+impl From<BindingHelperLoaderMode> for TelarelHelperLoaderMode {
     fn from(mode: BindingHelperLoaderMode) -> Self {
         match mode {
             | BindingHelperLoaderMode::Inline => Self::Inline,
@@ -34,27 +37,13 @@ pub struct BindingHelperLoaderOptions {
 }
 
 impl BindingHelperLoaderOptions {
-    /// Convert into the raw oxc helper loader options;
-    /// absent fields fall back to oxc's own defaults.
-    fn into_helper_loader_options(
-        self
-    ) -> oxc::transformer::HelperLoaderOptions {
-        oxc::transformer::HelperLoaderOptions {
-            module_name: self
-                .module_name
-                .map_or_else(default_module_name, From::from)
-                .into(),
-            mode: self.mode.map_or(
-                oxc::transformer::HelperLoaderMode::Runtime,
-                From::from,
-            ),
+    /// Convert into the telarel-owned helper loader options.
+    fn into_helper_loader_options(self) -> TelarelHelperLoaderOptions {
+        TelarelHelperLoaderOptions {
+            module_name: self.module_name,
+            mode: self.mode.map(From::from),
         }
     }
-}
-
-/// The default helper module name, matching oxc's own default.
-fn default_module_name() -> String {
-    String::from("@oxc-project/runtime")
 }
 
 /// A deserializable subset of oxc's transform options for the raw `oxc` passthrough layer.
@@ -76,27 +65,55 @@ pub struct OxcPassthrough {
 }
 
 impl OxcPassthrough {
-    /// Convert into the raw oxc base layer;
-    /// absent sub-options fall back to oxc's own defaults.
-    pub fn into_transform_options(self) -> oxc::transformer::TransformOptions {
-        oxc::transformer::TransformOptions {
-            assumptions: self.assumptions.unwrap_or_default(),
-            typescript: self.typescript.unwrap_or_default(),
-            decorator: self.decorator.unwrap_or_default(),
-            jsx: self.jsx.unwrap_or_default(),
-            env: self.env.unwrap_or_default(),
-            helper_loader: self.helper_loader.map_or_else(
-                oxc::transformer::HelperLoaderOptions::default,
-                |helper_loader| helper_loader.into_helper_loader_options(),
-            ),
-            ..oxc::transformer::TransformOptions::default()
-        }
+    /// Convert into the raw oxc base layer plus the telarel helper options.
+    pub fn into_parts(
+        self
+    ) -> (oxc::transformer::TransformOptions, Option<TelarelHelperLoaderOptions>)
+    {
+        let helper_loader: Option<TelarelHelperLoaderOptions> = self
+            .helper_loader
+            .map(BindingHelperLoaderOptions::into_helper_loader_options);
+
+        let oxc: oxc::transformer::TransformOptions =
+            oxc::transformer::TransformOptions {
+                assumptions: self.assumptions.unwrap_or_default(),
+                typescript: self.typescript.unwrap_or_default(),
+                decorator: self.decorator.unwrap_or_default(),
+                jsx: self.jsx.unwrap_or_default(),
+                env: self.env.unwrap_or_default(),
+                helper_loader: oxc::transformer::HelperLoaderOptions::default(),
+                ..oxc::transformer::TransformOptions::default()
+            };
+
+        (oxc, helper_loader)
+    }
+}
+
+/// Convert the optional passthrough layer into the oxc base and helper options.
+///
+/// Defined here because the `oxc` module name shadows the oxc crate inside the parent `options` module.
+pub fn to_oxc_parts(
+    passthrough: Option<OxcPassthrough>
+) -> (
+    Option<oxc::transformer::TransformOptions>,
+    Option<TelarelHelperLoaderOptions>,
+) {
+    match passthrough {
+        | Some(passthrough) => {
+            let (oxc, helper_loader): (
+                oxc::transformer::TransformOptions,
+                Option<TelarelHelperLoaderOptions>,
+            ) = passthrough.into_parts();
+
+            (Some(oxc), helper_loader)
+        },
+        | None => (None, None),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use oxc::transformer::HelperLoaderMode;
+    use telarel_plugin_transform::HelperLoaderMode as TelarelHelperLoaderMode;
 
     use super::OxcPassthrough;
 
@@ -104,16 +121,18 @@ mod tests {
     fn test_oxc_passthrough_defaults_fill_oxc_defaults() {
         let passthrough: OxcPassthrough = OxcPassthrough::default();
 
-        let oxc: oxc::transformer::TransformOptions =
-            passthrough.into_transform_options();
+        let (oxc, helper): (
+            oxc::transformer::TransformOptions,
+            Option<telarel_plugin_transform::HelperLoaderOptions>,
+        ) = passthrough.into_parts();
 
         assert!(oxc.jsx.jsx_plugin);
         assert_eq!(oxc.jsx.runtime, oxc::transformer::JsxRuntime::Automatic);
-        assert_eq!(oxc.helper_loader.module_name, "@oxc-project/runtime");
         assert!(matches!(
             oxc.helper_loader.mode,
             oxc::transformer::HelperLoaderMode::Runtime
         ));
+        assert!(helper.is_none());
     }
 
     #[test]
@@ -121,11 +140,14 @@ mod tests {
         let passthrough: OxcPassthrough =
             serde_json::from_str("{}").expect("empty object parses");
 
-        let oxc: oxc::transformer::TransformOptions =
-            passthrough.into_transform_options();
+        let (_, helper): (
+            oxc::transformer::TransformOptions,
+            Option<telarel_plugin_transform::HelperLoaderOptions>,
+        ) = passthrough.into_parts();
 
-        assert_eq!(oxc.helper_loader.module_name, "@oxc-project/runtime");
-        assert!(matches!(oxc.helper_loader.mode, HelperLoaderMode::Runtime));
+        // An absent `helperLoader` stays `None`; telarel's unconfigured
+        // default is then inline, handled by its own post-transform pass.
+        assert!(helper.is_none());
     }
 
     #[test]
@@ -135,11 +157,16 @@ mod tests {
         )
         .expect("helper loader parses");
 
-        let oxc: oxc::transformer::TransformOptions =
-            passthrough.into_transform_options();
+        let (_, helper): (
+            oxc::transformer::TransformOptions,
+            Option<telarel_plugin_transform::HelperLoaderOptions>,
+        ) = passthrough.into_parts();
 
-        assert_eq!(oxc.helper_loader.module_name, "my-runtime");
-        assert!(matches!(oxc.helper_loader.mode, HelperLoaderMode::External));
+        let helper: telarel_plugin_transform::HelperLoaderOptions =
+            helper.expect("helper loader layer");
+
+        assert_eq!(helper.module_name.as_deref(), Some("my-runtime"));
+        assert_eq!(helper.mode, Some(TelarelHelperLoaderMode::External));
     }
 
     #[test]
@@ -149,11 +176,38 @@ mod tests {
         )
         .expect("partial helper loader parses");
 
-        let oxc: oxc::transformer::TransformOptions =
-            passthrough.into_transform_options();
+        let (_, helper): (
+            oxc::transformer::TransformOptions,
+            Option<telarel_plugin_transform::HelperLoaderOptions>,
+        ) = passthrough.into_parts();
 
-        assert_eq!(oxc.helper_loader.module_name, "@oxc-project/runtime");
-        assert!(matches!(oxc.helper_loader.mode, HelperLoaderMode::External));
+        let helper: telarel_plugin_transform::HelperLoaderOptions =
+            helper.expect("helper loader layer");
+
+        assert!(helper.module_name.is_none());
+        assert_eq!(helper.mode, Some(TelarelHelperLoaderMode::External));
+    }
+
+    #[test]
+    fn test_oxc_passthrough_helper_loader_inline_maps_to_telarel_inline() {
+        let passthrough: OxcPassthrough =
+            serde_json::from_str(r#"{ "helperLoader": { "mode": "inline" } }"#)
+                .expect("inline helper loader parses");
+
+        let (oxc, helper): (
+            oxc::transformer::TransformOptions,
+            Option<telarel_plugin_transform::HelperLoaderOptions>,
+        ) = passthrough.into_parts();
+
+        assert!(matches!(
+            oxc.helper_loader.mode,
+            oxc::transformer::HelperLoaderMode::Runtime
+        ));
+
+        let helper: telarel_plugin_transform::HelperLoaderOptions =
+            helper.expect("helper loader layer");
+
+        assert_eq!(helper.mode, Some(TelarelHelperLoaderMode::Inline));
     }
 
     #[test]

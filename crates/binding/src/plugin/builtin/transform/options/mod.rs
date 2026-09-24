@@ -14,7 +14,9 @@ use telarel_plugin_transform::{
 use crate::plugin::builtin::common::parse_optional_options;
 use crate::plugin::builtin::transform::options::define::parse_define;
 use crate::plugin::builtin::transform::options::inject::parse_inject;
-use crate::plugin::builtin::transform::options::oxc::OxcPassthrough;
+use crate::plugin::builtin::transform::options::oxc::{
+    OxcPassthrough, to_oxc_parts,
+};
 use crate::plugin::builtin::transform::options::target::parse_target;
 
 /// The JS-facing options bag for the builtin transform plugin.
@@ -61,13 +63,16 @@ pub fn to_transform_options(
     let oxc: Option<OxcPassthrough> =
         parse_optional_options(options.oxc, "oxc options")?;
 
+    let (oxc, helper_loader) = to_oxc_parts(oxc);
+
     Ok(TransformOptions {
         targets: parsed,
         typescript,
         jsx,
         inject,
         define,
-        oxc: oxc.map(OxcPassthrough::into_transform_options),
+        helper_loader,
+        oxc,
     })
 }
 
@@ -113,6 +118,7 @@ mod tests {
         assert!(parsed.typescript.is_none());
         assert!(parsed.define.is_none());
         assert!(parsed.inject.is_none());
+        assert!(parsed.helper_loader.is_none());
         assert!(parsed.oxc.is_none());
     }
 
@@ -256,6 +262,78 @@ mod tests {
 
         assert_eq!(error.status, napi::Status::InvalidArg);
         assert!(error.reason.contains("invalid `oxc options`"));
+    }
+
+    #[test]
+    fn test_to_transform_options_helper_loader_external() {
+        let options: BindingTransformPluginOptions = fixtures(
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(json!({
+                "helperLoader": {
+                    "mode": "external",
+                    "moduleName": "my-runtime",
+                },
+            })),
+        );
+
+        let parsed: TelarelTransformOptions =
+            to_transform_options(options).expect("helper loader parses");
+
+        let helper: telarel_plugin_transform::HelperLoaderOptions =
+            parsed.helper_loader.expect("helper layer");
+
+        assert_eq!(
+            helper.mode,
+            Some(telarel_plugin_transform::HelperLoaderMode::External)
+        );
+        assert_eq!(helper.module_name.as_deref(), Some("my-runtime"));
+
+        // The oxc passthrough base keeps oxc's own defaults (`Runtime`);
+        // the telarel helper options are carried separately and overlay the
+        // base at transform time.
+        let oxc: oxc::transformer::TransformOptions =
+            parsed.oxc.expect("oxc layer");
+
+        assert!(matches!(
+            oxc.helper_loader.mode,
+            oxc::transformer::HelperLoaderMode::Runtime
+        ));
+    }
+
+    #[test]
+    fn test_to_transform_options_helper_loader_inline_never_oxc_inline() {
+        let options: BindingTransformPluginOptions = fixtures(
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(json!({ "helperLoader": { "mode": "inline" } })),
+        );
+
+        let parsed: TelarelTransformOptions =
+            to_transform_options(options).expect("inline helper parses");
+
+        let helper: telarel_plugin_transform::HelperLoaderOptions =
+            parsed.helper_loader.expect("helper layer");
+
+        assert_eq!(
+            helper.mode,
+            Some(telarel_plugin_transform::HelperLoaderMode::Inline)
+        );
+
+        // oxc's panicking `Inline` variant must not reach the oxc base.
+        let oxc: oxc::transformer::TransformOptions =
+            parsed.oxc.expect("oxc layer");
+
+        assert!(matches!(
+            oxc.helper_loader.mode,
+            oxc::transformer::HelperLoaderMode::Runtime
+        ));
     }
 
     #[test]

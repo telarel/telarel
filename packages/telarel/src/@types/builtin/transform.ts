@@ -186,7 +186,7 @@ type OxcTransformOptions = {
      */
     env?: OxcEnvOptions;
     /**
-     * Behaviour for runtime helpers, mirroring oxc's `HelperLoaderOptions`.
+     * Behaviour for runtime helpers.
      */
     helperLoader?: {
         /**
@@ -198,7 +198,7 @@ type OxcTransformOptions = {
         /**
          * Strategy used to resolve helper calls.
          *
-         * By default, it is `runtime`.
+         * By default, it is `inline`.
          */
         mode?: HelperLoaderMode;
     };

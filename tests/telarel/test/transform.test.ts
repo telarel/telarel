@@ -91,6 +91,56 @@ describe("transform", (): void => {
         expect(result.code).toContain("babelHelpers.");
     });
 
+    it("inlines helper bodies with the inline helper loader mode", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "async function run() { await work(); }",
+            plugins: [
+                transform({
+                    targets: ["es2015"],
+                    oxc: { helperLoader: { mode: "inline" } },
+                }),
+            ],
+        });
+
+        expect(result.code).toContain("function _asyncToGenerator(");
+        expect(result.code).toContain("_asyncToGenerator(function* ()");
+        expect(result.code).not.toContain("@oxc-project/runtime");
+    });
+
+    it("inlines helper bodies for the default helper loader mode", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "async function run() { await work(); }",
+            plugins: [transform({ targets: ["es2015"] })],
+        });
+
+        expect(result.code).toContain("function _asyncToGenerator(");
+        expect(result.code).toContain("_asyncToGenerator(function* ()");
+        expect(result.code).not.toContain("@oxc-project/runtime");
+    });
+
+    it("keeps the runtime helper import with the explicit runtime helper loader mode", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "async function run() { await work(); }",
+            plugins: [
+                transform({
+                    targets: ["es2015"],
+                    oxc: { helperLoader: { mode: "runtime" } },
+                }),
+            ],
+        });
+
+        expect(result.code).toContain(
+            "@oxc-project/runtime/helpers/asyncToGenerator",
+        );
+        expect(result.code).not.toContain("function _asyncToGenerator(");
+    });
+
     it("replaces a defined identifier with its value", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
