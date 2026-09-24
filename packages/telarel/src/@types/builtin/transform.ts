@@ -48,14 +48,36 @@ type EngineTarget =
 type TransformTarget = EsTarget | "hermes" | "rhino" | EngineTarget;
 
 /**
+ * Options for the TypeScript transform, a curated subset of the builtin's
+ * fields.
+ */
+type TypeScriptOptions = {
+    /**
+     * Whether to keep value imports that only import types.
+     */
+    onlyRemoveTypeImports?: boolean;
+    /**
+     * Whether to leave TypeScript namespaces unelided.
+     */
+    allowNamespaces?: boolean;
+    /**
+     * The identifier treated as the JSX pragma.
+     */
+    jsxPragma?: string;
+    /**
+     * The identifier treated as the JSX fragment pragma.
+     */
+    jsxPragmaFrag?: string;
+    /**
+     * Whether to simplify enum reads that oxc can constant-fold.
+     */
+    optimizeEnums?: boolean;
+};
+
+/**
  * The JSX transform runtime.
  */
 type JsxRuntime = "classic" | "automatic";
-
-/**
- * The strategy used to resolve runtime helpers.
- */
-type HelperLoaderMode = "inline" | "runtime" | "external";
 
 /**
  * Options for the JSX transform, a curated subset of the builtin's fields.
@@ -90,31 +112,46 @@ type JsxOptions = {
 };
 
 /**
- * Options for the TypeScript transform, a curated subset of the builtin's
- * fields.
+ * A `define` replacement value: the expression source for strings, or a
+ * stringified scalar.
  */
-type TypeScriptOptions = {
+type DefineValue = string | number | boolean;
+
+/**
+ * The shorthand `inject` value: a module source importing the key as a named
+ * specifier with no imported name, or a `[source, imported]` pair for a named
+ * import of `imported` from `source`.
+ */
+type InjectShorthand = string | [source: string, imported: string];
+
+/**
+ * The full `inject` value, describing the specifier to inject explicitly.
+ */
+type InjectObject = {
     /**
-     * Whether to keep value imports that only import types.
+     * The module to import the binding from.
      */
-    onlyRemoveTypeImports?: boolean;
+    source: string;
     /**
-     * Whether to leave TypeScript namespaces unelided.
+     * The name imported from the module, for `named` mode.
      */
-    allowNamespaces?: boolean;
+    imported?: string;
     /**
-     * The identifier treated as the JSX pragma.
+     * The local binding name the free identifier is replaced with.
      */
-    jsxPragma?: string;
+    local: string;
     /**
-     * The identifier treated as the JSX fragment pragma.
+     * The kind of specifier to emit.
+     *
+     * By default, it is `named`.
      */
-    jsxPragmaFrag?: string;
-    /**
-     * Whether to simplify enum reads that oxc can constant-fold.
-     */
-    optimizeEnums?: boolean;
+    mode?: "named" | "default" | "namespace";
 };
+
+/**
+ * The strategy used to resolve runtime helpers.
+ */
+type HelperLoaderMode = "inline" | "runtime" | "external";
 
 /**
  * The oxc escape hatch: a serializable mirror of oxc's transform options.
@@ -258,13 +295,37 @@ type TransformOptions = {
      */
     targets?: Array<TransformTarget>;
     /**
+     * The TypeScript transform options.
+     */
+    typescript?: TypeScriptOptions;
+    /**
      * The JSX transform options.
      */
     jsx?: JsxOptions;
     /**
-     * The TypeScript transform options.
+     * Auto-injected imports for otherwise-free identifiers, keyed by the local
+     * binding name. Dotted keys like `"Object.assign"` are allowed and replaced
+     * as member chains. A string value is a module source imported as a named
+     * specifier with no imported name; a `[source, imported]` pair imports
+     * `imported` from `source`; the object form selects the specifier
+     * explicitly.
+     *
+     * Injected imports run after all transforms, before `define`.
      */
-    typescript?: TypeScriptOptions;
+    inject?: Record<string, InjectShorthand | InjectObject>;
+    /**
+     * Compile-time replacements for free identifiers and member chains, keyed
+     * by the replaced source.
+     *
+     * Each value is an expression source string: quote string literals yourself
+     * (`API_URL: '"https://x"'`), while scalars are stringified (`true` becomes
+     * `true`, `1.5` becomes `1.5`). String values pass through verbatim. Keys
+     * are processed in alphabetical order; duplicate keys are unreachable via
+     * object literals.
+     *
+     * Replacements run last, after `inject` and all transforms.
+     */
+    define?: Record<string, DefineValue>;
     /**
      * The oxc escape hatch.
      */
@@ -284,10 +345,13 @@ type TransformPlugin = BuiltinPlugin<TransformPluginName, TransformOptions>;
 export type {
     TransformPluginName,
     TransformPlugin,
+    DefineValue,
     EngineTarget,
     EsTarget,
     EnvModules,
     HelperLoaderMode,
+    InjectObject,
+    InjectShorthand,
     JsxOptions,
     JsxRuntime,
     OxcTransformOptions,

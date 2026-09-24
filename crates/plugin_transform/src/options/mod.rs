@@ -1,12 +1,20 @@
-mod jsx;
-mod target;
-mod typescript;
+pub mod define;
+pub mod inject;
+pub mod jsx;
+pub mod target;
+pub mod typescript;
 
+use oxc::diagnostics::Diagnostics;
 use oxc::transformer::Engine;
 use oxc::transformer::EngineTargets;
 use oxc::transformer::TransformOptions as OxcTransformOptions;
 use oxc_compat::Version;
+use oxc_transformer_plugins::{
+    InjectGlobalVariablesConfig, ReplaceGlobalDefinesConfig,
+};
 
+pub use define::DefineOptions;
+pub use inject::{InjectEntry, InjectOptions, InjectSpecifier};
 pub use jsx::{JsxOptions, JsxRuntime};
 pub use target::TransformTarget;
 pub use typescript::TypeScriptOptions;
@@ -16,8 +24,14 @@ pub use typescript::TypeScriptOptions;
 pub struct TransformOptions {
     /// Empty means the ESNext default; targets win over an `oxc` layer env.
     pub targets: Vec<TransformTarget>,
-    pub jsx: Option<JsxOptions>,
+    /// TypeScript transform options.
     pub typescript: Option<TypeScriptOptions>,
+    /// JSX transform options.
+    pub jsx: Option<JsxOptions>,
+    /// Injected imports run after all transforms, before `define`.
+    pub inject: Option<InjectOptions>,
+    /// Replacements run after `inject` and all transforms.
+    pub define: Option<DefineOptions>,
     /// Raw backend passthrough (base layer).
     pub oxc: Option<OxcTransformOptions>,
 }
@@ -59,12 +73,12 @@ impl TransformOptions {
         let mut base: OxcTransformOptions =
             self.oxc.clone().unwrap_or_default();
 
-        if let Some(jsx) = &self.jsx {
-            jsx::overlay_jsx(&mut base.jsx, jsx);
-        }
-
         if let Some(typescript) = &self.typescript {
             typescript::overlay_typescript(&mut base.typescript, typescript);
+        }
+
+        if let Some(jsx) = &self.jsx {
+            jsx::overlay_jsx(&mut base.jsx, jsx);
         }
 
         if let Some(engine_targets) = Self::engine_targets(&self.targets) {
@@ -72,6 +86,33 @@ impl TransformOptions {
         }
 
         base
+    }
+
+    /// Resolve the `inject` options into the oxc config.
+    ///
+    /// Returns `None` when no entries are configured.
+    pub(crate) fn resolve_inject(&self) -> Option<InjectGlobalVariablesConfig> {
+        match &self.inject {
+            | Some(inject) if !inject.entries.is_empty() => {
+                Some(inject.resolve())
+            },
+            | _ => None,
+        }
+    }
+
+    /// Resolve the `define` options into the oxc config.
+    ///
+    /// Returns `None` when no entries are configured; errors from invalid
+    /// keys or values surface as [`Diagnostics`].
+    pub(crate) fn resolve_define(
+        &self
+    ) -> Result<Option<ReplaceGlobalDefinesConfig>, Diagnostics> {
+        match &self.define {
+            | Some(define) if !define.entries.is_empty() => {
+                define.resolve().map(Some)
+            },
+            | _ => Ok(None),
+        }
     }
 }
 
@@ -83,6 +124,8 @@ mod tests {
     use oxc::transformer::TransformOptions as OxcTransformOptions;
     use oxc_compat::Version;
 
+    use crate::options::define::DefineOptions;
+    use crate::options::inject::{InjectEntry, InjectOptions, InjectSpecifier};
     use crate::options::jsx::{JsxOptions, JsxRuntime};
     use crate::options::target::TransformTarget;
     use crate::options::typescript::TypeScriptOptions;
@@ -149,7 +192,94 @@ mod tests {
         assert!(options.targets.is_empty());
         assert!(options.jsx.is_none());
         assert!(options.typescript.is_none());
+        assert!(options.define.is_none());
+        assert!(options.inject.is_none());
         assert!(options.oxc.is_none());
+    }
+
+    #[test]
+    fn test_resolve_inject_none_by_default() {
+        let options: TransformOptions = TransformOptions::default();
+
+        assert!(options.resolve_inject().is_none());
+    }
+
+    #[test]
+    fn test_resolve_inject_empty_entries_is_none() {
+        let options: TransformOptions = TransformOptions {
+            inject: Some(InjectOptions::default()),
+            ..TransformOptions::default()
+        };
+
+        assert!(options.resolve_inject().is_none());
+    }
+
+    #[test]
+    fn test_resolve_inject_configured() {
+        let options: TransformOptions = TransformOptions {
+            inject: Some(InjectOptions {
+                entries: vec![InjectEntry {
+                    source: String::from("jquery"),
+                    specifier: InjectSpecifier::Named {
+                        imported: None,
+                        local: String::from("$"),
+                    },
+                }],
+            }),
+            ..TransformOptions::default()
+        };
+
+        assert!(options.resolve_inject().is_some());
+    }
+
+    #[test]
+    fn test_resolve_define_none_by_default() {
+        let options: TransformOptions = TransformOptions::default();
+
+        let resolved: Option<ReplaceGlobalDefinesConfig> =
+            options.resolve_define().expect("default resolves");
+
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn test_resolve_define_empty_entries_is_none() {
+        let options: TransformOptions = TransformOptions {
+            define: Some(DefineOptions::default()),
+            ..TransformOptions::default()
+        };
+
+        let resolved: Option<ReplaceGlobalDefinesConfig> =
+            options.resolve_define().expect("empty resolves");
+
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn test_resolve_define_configured() {
+        let options: TransformOptions = TransformOptions {
+            define: Some(DefineOptions {
+                entries: vec![(String::from("__DEV__"), String::from("false"))],
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: Option<ReplaceGlobalDefinesConfig> =
+            options.resolve_define().expect("configured resolves");
+
+        assert!(resolved.is_some());
+    }
+
+    #[test]
+    fn test_resolve_define_invalid_entry_errors() {
+        let options: TransformOptions = TransformOptions {
+            define: Some(DefineOptions {
+                entries: vec![(String::from("bad key"), String::from("1"))],
+            }),
+            ..TransformOptions::default()
+        };
+
+        assert!(options.resolve_define().is_err());
     }
 
     #[test]
@@ -259,30 +389,6 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_agnostic_wins_per_field_over_oxc() {
-        let options: TransformOptions = TransformOptions {
-            jsx: Some(JsxOptions {
-                runtime: Some(JsxRuntime::Classic),
-                ..JsxOptions::default()
-            }),
-            oxc: Some(OxcTransformOptions {
-                jsx: OxcJsxOptions {
-                    runtime: oxc::transformer::JsxRuntime::Automatic,
-                    import_source: Some(String::from("preact")),
-                    ..OxcJsxOptions::default()
-                },
-                ..OxcTransformOptions::default()
-            }),
-            ..TransformOptions::default()
-        };
-
-        let resolved: OxcTransformOptions = options.resolve();
-
-        assert_eq!(resolved.jsx.runtime, oxc::transformer::JsxRuntime::Classic);
-        assert_eq!(resolved.jsx.import_source.as_deref(), Some("preact"));
-    }
-
-    #[test]
     fn test_resolve_typescript_overlay() {
         let options: TransformOptions = TransformOptions {
             typescript: Some(TypeScriptOptions {
@@ -305,6 +411,30 @@ mod tests {
         assert!(resolved.typescript.only_remove_type_imports);
         assert!(resolved.typescript.optimize_enums);
         assert_eq!(resolved.typescript.jsx_pragma, "h");
+    }
+
+    #[test]
+    fn test_resolve_agnostic_wins_per_field_over_oxc() {
+        let options: TransformOptions = TransformOptions {
+            jsx: Some(JsxOptions {
+                runtime: Some(JsxRuntime::Classic),
+                ..JsxOptions::default()
+            }),
+            oxc: Some(OxcTransformOptions {
+                jsx: OxcJsxOptions {
+                    runtime: oxc::transformer::JsxRuntime::Automatic,
+                    import_source: Some(String::from("preact")),
+                    ..OxcJsxOptions::default()
+                },
+                ..OxcTransformOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert_eq!(resolved.jsx.runtime, oxc::transformer::JsxRuntime::Classic);
+        assert_eq!(resolved.jsx.import_source.as_deref(), Some("preact"));
     }
 
     #[test]

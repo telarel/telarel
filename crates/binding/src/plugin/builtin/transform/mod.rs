@@ -1,6 +1,4 @@
 pub mod options;
-pub mod oxc;
-pub mod target;
 
 use napi::Result;
 

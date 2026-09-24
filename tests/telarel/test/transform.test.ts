@@ -5,6 +5,7 @@ import type {
     PluginContext,
     TransformArgs,
 } from "telarel";
+import type { TransformOptions } from "telarel/plugins/transform";
 
 import { compile } from "telarel";
 import { transform } from "telarel/plugins/transform";
@@ -88,6 +89,142 @@ describe("transform", (): void => {
         });
 
         expect(result.code).toContain("babelHelpers.");
+    });
+
+    it("replaces a defined identifier with its value", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "const flag = __DEV__;",
+            plugins: [transform({ define: { __DEV__: "false" } })],
+        });
+
+        expect(result.code).toContain("false");
+        expect(result.code).not.toContain("__DEV__");
+    });
+
+    it("replaces a defined member chain with a folded literal", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "const mode = process.env.NODE_ENV;",
+            plugins: [
+                transform({
+                    define: { "process.env.NODE_ENV": '"production"' },
+                }),
+            ],
+        });
+
+        expect(result.code).toContain('"production"');
+        expect(result.code).not.toContain("process.env");
+    });
+
+    it("combines define with target lowering", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "async function run() { await work(); } const flag = __DEV__;",
+            plugins: [
+                transform({
+                    targets: ["es2015"],
+                    define: { __DEV__: "true" },
+                }),
+            ],
+        });
+
+        expect(result.code).toContain("_asyncToGenerator");
+        expect(result.code).toContain("true");
+        expect(result.code).not.toContain("__DEV__");
+    });
+
+    it("injects an import for a used shorthand identifier", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "const node = $('#root');",
+            plugins: [transform({ inject: { $: "jquery" } })],
+        });
+
+        expect(result.code).toContain("jquery");
+        expect(result.code).toContain("import");
+    });
+
+    it("injects no import for an unused shorthand identifier", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "const node = query('#root');",
+            plugins: [transform({ inject: { $: "jquery" } })],
+        });
+
+        expect(result.code).not.toContain("jquery");
+        expect(result.code).not.toContain("import");
+    });
+
+    it("injects a namespace import in object form", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "const node = React.createElement('div');",
+            plugins: [
+                transform({
+                    inject: {
+                        React: {
+                            source: "react",
+                            mode: "namespace",
+                            local: "React",
+                        },
+                    },
+                }),
+            ],
+        });
+
+        expect(result.code).toContain("import * as React");
+    });
+
+    it("injects a named import from the pair form", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "const merged = assign({}, source);",
+            plugins: [
+                transform({
+                    inject: { assign: ["es-object-assign", "assign"] },
+                }),
+            ],
+        });
+
+        expect(result.code).toContain("es-object-assign");
+        expect(result.code).toContain("import");
+    });
+
+    it("rejects an invalid define key", async (): Promise<void> => {
+        const options: TransformOptions = { define: { "1bad": "1" } };
+
+        const build = async (): Promise<CompileResult> =>
+            await compile({
+                cwd: "/repo",
+                file: "index.js",
+                code: "const a = 1;",
+                plugins: [transform(options)],
+            });
+
+        const promise: Promise<CompileResult> = build();
+
+        await expect(promise).rejects.toThrow(/define/);
+        await expect(promise).rejects.toThrow("1bad");
+    });
+
+    it("folds a scalar define value into the output", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "const enabled = ENABLED;",
+            plugins: [transform({ define: { ENABLED: true } })],
+        });
+
+        expect(result.code).toContain("true");
+        expect(result.code).not.toContain("ENABLED");
     });
 
     it("treats an unbranded plugin named builtin:* as a js plugin", async (): Promise<void> => {

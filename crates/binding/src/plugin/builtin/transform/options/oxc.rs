@@ -13,9 +13,9 @@ pub enum BindingHelperLoaderMode {
 impl From<BindingHelperLoaderMode> for oxc::transformer::HelperLoaderMode {
     fn from(mode: BindingHelperLoaderMode) -> Self {
         match mode {
-            BindingHelperLoaderMode::Inline => Self::Inline,
-            BindingHelperLoaderMode::External => Self::External,
-            BindingHelperLoaderMode::Runtime => Self::Runtime,
+            | BindingHelperLoaderMode::Inline => Self::Inline,
+            | BindingHelperLoaderMode::External => Self::External,
+            | BindingHelperLoaderMode::Runtime => Self::Runtime,
         }
     }
 }
@@ -44,9 +44,10 @@ impl BindingHelperLoaderOptions {
                 .module_name
                 .map_or_else(default_module_name, From::from)
                 .into(),
-            mode: self
-                .mode
-                .map_or(oxc::transformer::HelperLoaderMode::Runtime, From::from),
+            mode: self.mode.map_or(
+                oxc::transformer::HelperLoaderMode::Runtime,
+                From::from,
+            ),
         }
     }
 }

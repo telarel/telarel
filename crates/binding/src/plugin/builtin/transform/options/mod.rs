@@ -1,21 +1,31 @@
+pub mod define;
+pub mod inject;
+pub mod oxc;
+pub mod target;
+
 use napi::{Error, Result, Status};
 
 use telarel_plugin_transform::{
-    JsxOptions as TelarelJsxOptions, TransformOptions, TransformTarget,
+    DefineOptions, InjectOptions, JsxOptions as TelarelJsxOptions,
+    TransformOptions, TransformTarget,
     TypeScriptOptions as TelarelTypeScriptOptions,
 };
 
 use crate::plugin::builtin::common::parse_optional_options;
-use crate::plugin::builtin::transform::oxc::OxcPassthrough;
-use crate::plugin::builtin::transform::target::parse_target;
+use crate::plugin::builtin::transform::options::define::parse_define;
+use crate::plugin::builtin::transform::options::inject::parse_inject;
+use crate::plugin::builtin::transform::options::oxc::OxcPassthrough;
+use crate::plugin::builtin::transform::options::target::parse_target;
 
 /// The JS-facing options bag for the builtin transform plugin.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BindingTransformPluginOptions {
     pub targets: Option<Vec<serde_json::Value>>,
-    pub jsx: Option<serde_json::Value>,
     pub typescript: Option<serde_json::Value>,
+    pub jsx: Option<serde_json::Value>,
+    pub inject: Option<serde_json::Value>,
+    pub define: Option<serde_json::Value>,
     pub oxc: Option<serde_json::Value>,
 }
 
@@ -36,19 +46,27 @@ pub fn to_transform_options(
         }
     }
 
+    let typescript: Option<TelarelTypeScriptOptions> =
+        parse_optional_options(options.typescript, "typescript options")?;
+
     let jsx: Option<TelarelJsxOptions> =
         parse_optional_options(options.jsx, "jsx options")?;
 
-    let typescript: Option<TelarelTypeScriptOptions> =
-        parse_optional_options(options.typescript, "typescript options")?;
+    let inject: Option<InjectOptions> =
+        options.inject.map(parse_inject).transpose()?;
+
+    let define: Option<DefineOptions> =
+        options.define.map(parse_define).transpose()?;
 
     let oxc: Option<OxcPassthrough> =
         parse_optional_options(options.oxc, "oxc options")?;
 
     Ok(TransformOptions {
         targets: parsed,
-        jsx,
         typescript,
+        jsx,
+        inject,
+        define,
         oxc: oxc.map(OxcPassthrough::into_transform_options),
     })
 }
@@ -64,15 +82,28 @@ mod tests {
 
     use super::{BindingTransformPluginOptions, to_transform_options};
 
+    fn fixtures(
+        targets: Option<Vec<serde_json::Value>>,
+        typescript: Option<serde_json::Value>,
+        jsx: Option<serde_json::Value>,
+        inject: Option<serde_json::Value>,
+        define: Option<serde_json::Value>,
+        oxc: Option<serde_json::Value>,
+    ) -> BindingTransformPluginOptions {
+        BindingTransformPluginOptions {
+            targets,
+            typescript,
+            jsx,
+            inject,
+            define,
+            oxc,
+        }
+    }
+
     #[test]
     fn test_to_transform_options_defaults() {
         let options: BindingTransformPluginOptions =
-            BindingTransformPluginOptions {
-                targets: None,
-                jsx: None,
-                typescript: None,
-                oxc: None,
-            };
+            fixtures(None, None, None, None, None, None);
 
         let parsed: TelarelTransformOptions =
             to_transform_options(options).expect("defaults parse");
@@ -80,22 +111,25 @@ mod tests {
         assert!(parsed.targets.is_empty());
         assert!(parsed.jsx.is_none());
         assert!(parsed.typescript.is_none());
+        assert!(parsed.define.is_none());
+        assert!(parsed.inject.is_none());
         assert!(parsed.oxc.is_none());
     }
 
     #[test]
     fn test_to_transform_options_targets() {
-        let options: BindingTransformPluginOptions =
-            BindingTransformPluginOptions {
-                targets: Some(vec![
-                    json!("es2022"),
-                    json!({ "chrome": 100 }),
-                    json!("ESNEXT"),
-                ]),
-                jsx: None,
-                typescript: None,
-                oxc: None,
-            };
+        let options: BindingTransformPluginOptions = fixtures(
+            Some(vec![
+                json!("es2022"),
+                json!({ "chrome": 100 }),
+                json!("ESNEXT"),
+            ]),
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         let parsed: TelarelTransformOptions =
             to_transform_options(options).expect("targets parse");
@@ -112,13 +146,14 @@ mod tests {
 
     #[test]
     fn test_to_transform_options_invalid_target_errors() {
-        let options: BindingTransformPluginOptions =
-            BindingTransformPluginOptions {
-                targets: Some(vec![json!("chrome58")]),
-                jsx: None,
-                typescript: None,
-                oxc: None,
-            };
+        let options: BindingTransformPluginOptions = fixtures(
+            Some(vec![json!("chrome58")]),
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         let error: napi::Error =
             to_transform_options(options).expect_err("invalid target errors");
@@ -128,20 +163,21 @@ mod tests {
     }
 
     #[test]
-    fn test_to_transform_options_jsx_and_typescript() {
-        let options: BindingTransformPluginOptions =
-            BindingTransformPluginOptions {
-                targets: None,
-                jsx: Some(json!({
-                    "runtime": "classic",
-                    "importSource": "preact",
-                })),
-                typescript: Some(json!({
-                    "onlyRemoveTypeImports": true,
-                    "jsxPragma": "h",
-                })),
-                oxc: None,
-            };
+    fn test_to_transform_options_typescript_and_jsx() {
+        let options: BindingTransformPluginOptions = fixtures(
+            None,
+            Some(json!({
+                "onlyRemoveTypeImports": true,
+                "jsxPragma": "h",
+            })),
+            Some(json!({
+                "runtime": "classic",
+                "importSource": "preact",
+            })),
+            None,
+            None,
+            None,
+        );
 
         let parsed: TelarelTransformOptions =
             to_transform_options(options).expect("layers parse");
@@ -161,13 +197,14 @@ mod tests {
 
     #[test]
     fn test_to_transform_options_jsx_unknown_field_errors() {
-        let options: BindingTransformPluginOptions =
-            BindingTransformPluginOptions {
-                targets: None,
-                jsx: Some(json!({ "unknownField": true })),
-                typescript: None,
-                oxc: None,
-            };
+        let options: BindingTransformPluginOptions = fixtures(
+            None,
+            None,
+            Some(json!({ "unknownField": true })),
+            None,
+            None,
+            None,
+        );
 
         let error: napi::Error =
             to_transform_options(options).expect_err("unknown field errors");
@@ -178,16 +215,17 @@ mod tests {
 
     #[test]
     fn test_to_transform_options_oxc_passthrough() {
-        let options: BindingTransformPluginOptions =
-            BindingTransformPluginOptions {
-                targets: None,
-                jsx: None,
-                typescript: None,
-                oxc: Some(json!({
-                    "jsx": { "pragma": "h" },
-                    "env": { "targets": { "chrome": "80" } },
-                })),
-            };
+        let options: BindingTransformPluginOptions = fixtures(
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(json!({
+                "jsx": { "pragma": "h" },
+                "env": { "targets": { "chrome": "80" } },
+            })),
+        );
 
         let parsed: TelarelTransformOptions =
             to_transform_options(options).expect("oxc layer parses");
@@ -204,18 +242,37 @@ mod tests {
 
     #[test]
     fn test_to_transform_options_oxc_unknown_field_errors() {
-        let options: BindingTransformPluginOptions =
-            BindingTransformPluginOptions {
-                targets: None,
-                jsx: None,
-                typescript: None,
-                oxc: Some(json!({ "cwd": "/tmp" })),
-            };
+        let options: BindingTransformPluginOptions = fixtures(
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(json!({ "cwd": "/tmp" })),
+        );
 
         let error: napi::Error = to_transform_options(options)
             .expect_err("unsupported oxc field errors");
 
         assert_eq!(error.status, napi::Status::InvalidArg);
         assert!(error.reason.contains("invalid `oxc options`"));
+    }
+
+    #[test]
+    fn test_to_transform_options_define_and_inject_combined() {
+        let options: BindingTransformPluginOptions = fixtures(
+            None,
+            None,
+            None,
+            Some(json!({ "$": "jquery" })),
+            Some(json!({ "__DEV__": "false" })),
+            None,
+        );
+
+        let parsed: TelarelTransformOptions =
+            to_transform_options(options).expect("define and inject parse");
+
+        assert!(parsed.define.is_some());
+        assert!(parsed.inject.is_some());
     }
 }

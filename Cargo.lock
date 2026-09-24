@@ -1784,6 +1784,7 @@ dependencies = [
  "anyhow",
  "oxc",
  "oxc_compat",
+ "oxc_transformer_plugins",
  "serde",
  "telarel_common",
  "telarel_plugin",

@@ -25,6 +25,7 @@ telarel_plugin = { workspace = true }
 anyhow = { workspace = true }
 oxc = { workspace = true, features = ["transformer", "semantic", "ast_visit"] }
 oxc_compat = { workspace = true }
+oxc_transformer_plugins = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
