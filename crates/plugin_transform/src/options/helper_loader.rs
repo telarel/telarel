@@ -34,7 +34,7 @@ impl HelperLoaderMode {
 pub struct HelperLoaderOptions {
     /// Strategy used to resolve helper calls.
     pub mode: Option<HelperLoaderMode>,
-    /// The module name to import helper functions from.
+    /// The module name to import helper functions from, work in [HelperLoaderMode::Runtime].
     pub module_name: Option<String>,
 }
 
