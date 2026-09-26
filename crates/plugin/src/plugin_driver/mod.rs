@@ -333,6 +333,8 @@ mod tests {
                     allocator: args.allocator,
                     file,
                     code,
+                    language: None,
+                    source_type: None,
                 };
 
                 let parsed: ParseResult<'_> = parse(options).unwrap();
@@ -431,6 +433,8 @@ mod tests {
                     allocator: args.allocator,
                     file,
                     code,
+                    language: None,
+                    source_type: None,
                 };
 
                 let parsed: ParseResult<'_> = parse(options).unwrap();
@@ -541,9 +545,9 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let mut options: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         driver.options(&mut options).await.unwrap();
@@ -562,6 +566,7 @@ mod tests {
             cwd: Some("/repo".into()),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         driver.options(&mut options).await.unwrap();
@@ -580,6 +585,7 @@ mod tests {
             cwd: Some("/repo".into()),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         driver.options(&mut options).await.unwrap();
@@ -626,9 +632,9 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let mut options: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         let result: anyhow::Result<()> = driver.options(&mut options).await;
@@ -644,9 +650,9 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let mut options: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         let err: anyhow::Error =
@@ -717,6 +723,8 @@ mod tests {
             allocator: &allocator,
             file: "a.ts",
             code: "console.log(1);",
+            language: None,
+            source_type: None,
         };
 
         let parsed: ParseResult<'_> = parse(options).unwrap();
@@ -758,6 +766,8 @@ mod tests {
             allocator: &allocator,
             file: "a.ts",
             code: "console.log(1);",
+            language: None,
+            source_type: None,
         };
 
         let parsed: ParseResult<'_> = parse(options).unwrap();
@@ -796,6 +806,8 @@ mod tests {
             allocator: &allocator,
             file: "a.ts",
             code: "console.log(1);",
+            language: None,
+            source_type: None,
         };
 
         let parsed: ParseResult<'_> = parse(options).unwrap();
@@ -837,6 +849,8 @@ mod tests {
             allocator: &allocator,
             file: "a.ts",
             code: "console.log(1);",
+            language: None,
+            source_type: None,
         };
 
         let parsed: ParseResult<'_> = parse(options).unwrap();
@@ -971,6 +985,8 @@ mod tests {
             allocator: &allocator,
             file: "a.ts",
             code: "console.log(1);",
+            language: None,
+            source_type: None,
         })
         .unwrap();
 

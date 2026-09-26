@@ -58,8 +58,14 @@ mod tests {
     ) -> ParseResult<'a> {
         let context: CompileContext<'_> = CompileContext::new(CWD, FILE, code);
 
-        let options: ParseOptions<'_, 'a> =
-            ParseOptions { context: &context, allocator, file: FILE, code };
+        let options: ParseOptions<'_, 'a> = ParseOptions {
+            context: &context,
+            allocator,
+            file: FILE,
+            code,
+            language: None,
+            source_type: None,
+        };
 
         parse(options).expect("valid source parses")
     }

@@ -5,6 +5,21 @@ import type { Plugin } from "#/@types/plugin";
 import type { SourceMap } from "#/@types/source-map";
 
 /**
+ * The language of the source code.
+ */
+type Language = "js" | "ts" | "dts" | "jsx" | "tsx";
+
+/**
+ * The module system / execution mode of the source code.
+ *
+ * - `script` — classic non-module script
+ * - `commonjs` — CommonJS (`require` / `module.exports`)
+ * - `module` — ES Module (`import` / `export`)
+ * - `unambiguous` - the parser infers from the statements
+ */
+type SourceType = "script" | "commonjs" | "module" | "unambiguous";
+
+/**
  * User options for a compile run.
  */
 type Options = {
@@ -20,6 +35,14 @@ type Options = {
      * The code to be compiled.
      */
     code: string;
+    /**
+     * The language of the source code.
+     */
+    language: Language;
+    /**
+     * The module system of the source code.
+     */
+    sourceType: SourceType;
 };
 
 /**
@@ -36,7 +59,10 @@ type CompleteCompileOptions = Options & {
  * User options for a compile run.
  */
 type CompileOptions = Format<
-    Partial<CompleteCompileOptions, "cwd" | "plugins">
+    Partial<
+        CompleteCompileOptions,
+        "cwd" | "language" | "sourceType" | "plugins"
+    >
 >;
 
 /**
@@ -53,4 +79,11 @@ type CompileResult = {
     map: SourceMap;
 };
 
-export type { CompleteCompileOptions, CompileOptions, CompileResult, Options };
+export type {
+    Language,
+    SourceType,
+    CompleteCompileOptions,
+    CompileOptions,
+    CompileResult,
+    Options,
+};

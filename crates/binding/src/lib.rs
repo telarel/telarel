@@ -19,6 +19,10 @@ pub fn compile(
     env: Env,
     options: JsOptions,
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<CompileTask>> {
+    // Convert the options before rooting anything: a validation failure
+    // (for example, an invalid `sourceType`) must not leak rooted references.
+    let options_rust: CompileOptions = to_compile_options(&options)?;
+
     // Root the plugin objects in one JS array; it is embedded into `options`
     // hook payloads.
     let plugin_array: Array<'_> = Array::from_vec(
@@ -30,10 +34,6 @@ pub fn compile(
         Object::from_raw(env.raw(), JsValue::raw(&plugin_array));
 
     let plugin_array: SharedRef = SharedRef::new(&plugin_array)?;
-
-    // Wrap the per-plugin references created during parsing so they can be
-    // released with the rest of the compile's rooted references.
-    let options_rust: CompileOptions = to_compile_options(&options);
 
     let plugin_refs: Vec<SharedRef> =
         options.plugins.into_iter().map(SharedRef::from_ref).collect();

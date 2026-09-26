@@ -113,6 +113,8 @@ pub async fn compile(
                 allocator: &allocator,
                 file: &resolved.file,
                 code: source,
+                language: resolved.language,
+                source_type: resolved.source_type,
             };
 
             let mut original: Program<'_> = parse(parse_options)?.program;
@@ -394,9 +396,9 @@ mod tests {
 
     fn options() -> CompileOptions {
         CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;".to_string(),
+            ..Default::default()
         }
     }
 
@@ -411,9 +413,9 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_noop_plugin_leaves_output_unchanged() {
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         let plugins: Vec<SharedPluginable> =
@@ -427,9 +429,9 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_strips_trailing_newline() {
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;\n".to_string(),
+            ..Default::default()
         };
 
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
@@ -441,9 +443,9 @@ mod tests {
     async fn test_compile_strips_crlf_trailing_newline() {
         // CRLF sources must not leave a stray `\r` after the `\n` strip.
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;\r\n".to_string(),
+            ..Default::default()
         };
 
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
@@ -455,9 +457,9 @@ mod tests {
     async fn test_compile_preserves_interior_crlf() {
         // Only the trailing terminator is stripped; interior CRLF is intact.
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;\r\nconst b = 2;".to_string(),
+            ..Default::default()
         };
 
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
@@ -470,9 +472,9 @@ mod tests {
         // A lone `\r` terminator is also stripped, matching the documented
         // behavior of the trim (`\n`, `\r\n`, and lone `\r`).
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;\r".to_string(),
+            ..Default::default()
         };
 
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
@@ -492,9 +494,9 @@ mod tests {
     async fn test_compile_transform_plugin_replaces() {
         // RenameCalleePlugin over `console.log(1);` must yield `consolex`.
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         let plugins: Vec<SharedPluginable> =
@@ -515,9 +517,9 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_sourcemap_points_at_original() {
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         let out = compile(opts, vec![Plugin::new_shared(RenameCalleePlugin)])
@@ -536,9 +538,9 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_invalid_code_errors_with_transform_plugin() {
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const = ;".to_string(),
+            ..Default::default()
         };
 
         let error: CompileError =
@@ -554,9 +556,9 @@ mod tests {
         // Invalid syntax passes through unparsed when no plugin uses
         // `transform` — the skip path never parses.
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const = ;".to_string(),
+            ..Default::default()
         };
 
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
@@ -567,9 +569,9 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_no_transform_usage_identity_map() {
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;\nconst b = 2;\n".to_string(),
+            ..Default::default()
         };
 
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
@@ -592,9 +594,9 @@ mod tests {
         // stays verbatim (proves NoopPlugin's PRE declaration doesn't leak
         // into the transform decision).
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);\n".to_string(),
+            ..Default::default()
         };
 
         let plugins: Vec<SharedPluginable> =
@@ -636,9 +638,9 @@ mod tests {
         // `SourceMap` in `CompileOutput` must be the owned-map alias: assign it
         // to an explicitly-aliased variable to prove the types agree.
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;".to_string(),
+            ..Default::default()
         };
 
         let out: crate::CompileOutput = compile(opts, vec![]).await.unwrap();
@@ -668,9 +670,9 @@ mod tests {
         // second plugin and both transformations must appear in the final
         // code (proves the chain carries each replacement by reference).
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         let plugins: Vec<SharedPluginable> = vec![
@@ -690,9 +692,9 @@ mod tests {
         // A transform plugin that keeps the parsed original in place must
         // leave it untouched for codegen: the code is unchanged verbatim.
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         let plugins: Vec<SharedPluginable> =
@@ -710,9 +712,9 @@ mod tests {
         // reach codegen, and the surrounding noop plugins must not reset
         // the tree to the original.
         let opts: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         let plugins: Vec<SharedPluginable> = vec![
@@ -738,9 +740,9 @@ mod tests {
             })];
 
         let opts: CompileOptions = CompileOptions {
-            cwd: None,
             file: "index.ts".to_string(),
             code: "const a = 1;".to_string(),
+            ..Default::default()
         };
 
         compile(opts, plugins).await.unwrap();

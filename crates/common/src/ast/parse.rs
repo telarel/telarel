@@ -2,8 +2,10 @@ use oxc::allocator::Allocator;
 use oxc::ast::ast::Program;
 use oxc::diagnostics::LabeledSpan;
 use oxc::parser::Parser;
-use oxc::span::{SourceType, Span};
+use oxc::span::{SourceType as OxcSourceType, Span};
 
+use crate::_types::options::language::{Language, grammar_source_type};
+use crate::_types::options::source_type::{SourceType, with_module_kind};
 use crate::contexts::compile::CompileContext;
 use crate::errors::compile::CompileError;
 
@@ -18,6 +20,12 @@ pub struct ParseOptions<'ctx, 'a> {
     pub file: &'a str,
     /// Source code to parse.
     pub code: &'a str,
+    /// The grammar of the code;
+    /// `None` infers the grammar from the file extension.
+    pub language: Option<Language>,
+    /// The module system of the code;
+    /// `None` keeps the module kind resolved from the grammar.
+    pub source_type: Option<SourceType>,
 }
 
 /// Result of [`parse`].
@@ -36,16 +44,27 @@ fn strip_id_suffix(module_id: &str) -> &str {
 
 /// Infer the source type from a module id, falling back to the default
 /// (an ES module) for extensionless or unknown virtual files.
-fn source_type_for_module_id(module_id: &str) -> SourceType {
+fn source_type_for_module_id(module_id: &str) -> OxcSourceType {
     let path: &str = strip_id_suffix(module_id);
-    SourceType::from_path(path).unwrap_or_default()
+    OxcSourceType::from_path(path).unwrap_or_default()
 }
 
 /// Parse source code into a [`Program`].
 pub fn parse<'ctx, 'a>(
     options: ParseOptions<'ctx, 'a>
 ) -> Result<ParseResult<'a>, CompileError> {
-    let source_type: SourceType = source_type_for_module_id(options.file);
+    // Resolve the grammar: an explicit language option wins;
+    // otherwise infer from the module id.
+    let grammar: OxcSourceType = options
+        .language
+        .map(grammar_source_type)
+        .unwrap_or_else(|| source_type_for_module_id(options.file));
+
+    // Overlay an explicit module kind, keeping the grammar's kind otherwise.
+    let source_type: OxcSourceType = match options.source_type {
+        | Some(module_kind) => with_module_kind(grammar, module_kind),
+        | None => grammar,
+    };
 
     let parser_return: oxc::parser::ParserReturn<'_> =
         Parser::new(options.allocator, options.code, source_type).parse();
@@ -86,17 +105,33 @@ mod tests {
 
     const FILE: &str = "index.ts";
 
+    fn parse_code_with_options<'a>(
+        allocator: &'a Allocator,
+        file: &'a str,
+        language: Option<Language>,
+        source_type: Option<SourceType>,
+        code: &'a str,
+    ) -> Result<ParseResult<'a>, CompileError> {
+        let context: CompileContext<'_> = CompileContext::new(CWD, file, code);
+
+        let options: ParseOptions<'_, 'a> = ParseOptions {
+            context: &context,
+            allocator,
+            file,
+            code,
+            language,
+            source_type,
+        };
+
+        parse(options)
+    }
+
     fn parse_code<'a>(
         allocator: &'a Allocator,
         file: &'a str,
         code: &'a str,
     ) -> Result<ParseResult<'a>, CompileError> {
-        let context: CompileContext<'_> = CompileContext::new(CWD, file, code);
-
-        let options: ParseOptions<'_, 'a> =
-            ParseOptions { context: &context, allocator, file, code };
-
-        parse(options)
+        parse_code_with_options(allocator, file, None, None, code)
     }
 
     #[test]
@@ -202,5 +237,206 @@ mod tests {
         assert!(result.program.source_type.is_javascript());
         assert!(result.program.source_type.is_jsx());
         assert!(!result.program.source_type.is_typescript());
+    }
+
+    #[test]
+    fn test_parse_explicit_language_overrides_extension() {
+        let allocator: Allocator = Allocator::default();
+
+        let file: &str = "app.js";
+
+        let result: ParseResult<'_> = parse_code_with_options(
+            &allocator,
+            file,
+            Some(Language::TS),
+            None,
+            "const a: number = 1;",
+        )
+        .expect("explicit language parses");
+
+        assert!(result.program.source_type.is_typescript());
+        assert!(!result.program.source_type.is_jsx());
+    }
+
+    #[test]
+    fn test_parse_explicit_jsx_parses_without_extension() {
+        let allocator: Allocator = Allocator::default();
+
+        let file: &str = "app";
+
+        let result: ParseResult<'_> = parse_code_with_options(
+            &allocator,
+            file,
+            Some(Language::JSX),
+            None,
+            "const x = <div>hi</div>;",
+        )
+        .expect("explicit jsx language parses");
+
+        assert!(result.program.source_type.is_javascript());
+        assert!(result.program.source_type.is_jsx());
+    }
+
+    #[test]
+    fn test_parse_explicit_dts_parses_declarations() {
+        let allocator: Allocator = Allocator::default();
+
+        let file: &str = "app.js";
+
+        let result: ParseResult<'_> = parse_code_with_options(
+            &allocator,
+            file,
+            Some(Language::DTS),
+            None,
+            "declare const a: string;",
+        )
+        .expect("explicit dts language parses");
+
+        assert!(result.program.source_type.is_typescript_definition());
+        assert!(!result.program.source_type.is_jsx());
+    }
+
+    #[test]
+    fn test_parse_module_kind_script_overrides_unambiguous() {
+        let allocator: Allocator = Allocator::default();
+
+        let result: ParseResult<'_> = parse_code_with_options(
+            &allocator,
+            FILE,
+            Some(Language::JS),
+            Some(SourceType::Script),
+            "const a = 1;",
+        )
+        .expect("script module kind parses");
+
+        assert!(result.program.source_type.is_script());
+        assert!(!result.program.source_type.is_module());
+        assert!(!result.program.source_type.is_unambiguous());
+    }
+
+    #[test]
+    fn test_parse_module_kind_module_on_typescript() {
+        let allocator: Allocator = Allocator::default();
+
+        let result: ParseResult<'_> = parse_code_with_options(
+            &allocator,
+            FILE,
+            Some(Language::TS),
+            Some(SourceType::Module),
+            "const a = 1;",
+        )
+        .expect("module module kind parses");
+
+        assert!(result.program.source_type.is_module());
+        assert!(result.program.source_type.is_typescript());
+    }
+
+    #[test]
+    fn test_parse_module_kind_overrides_grammar_from_path() {
+        let allocator: Allocator = Allocator::default();
+
+        let file: &str = "index.ts";
+
+        let result: ParseResult<'_> = parse_code_with_options(
+            &allocator,
+            file,
+            None,
+            Some(SourceType::Script),
+            "const a = 1;",
+        )
+        .expect("script override on path-inferred grammar parses");
+
+        assert!(result.program.source_type.is_typescript());
+        assert!(result.program.source_type.is_script());
+    }
+
+    #[test]
+    fn test_parse_module_kind_unambiguous_pins_default() {
+        let allocator: Allocator = Allocator::default();
+
+        let result: ParseResult<'_> = parse_code_with_options(
+            &allocator,
+            FILE,
+            Some(Language::TS),
+            Some(SourceType::Unambiguous),
+            "export const a = 1;",
+        )
+        .expect("unambiguous module kind parses");
+
+        // The parser resolves an unambiguous source to script or module;
+        // ESM syntax resolves to module.
+        assert!(result.program.source_type.is_module());
+        assert!(result.program.source_type.is_typescript());
+    }
+
+    #[test]
+    fn test_grammar_source_type() {
+        let js: OxcSourceType = grammar_source_type(Language::JS);
+
+        assert!(js.is_javascript());
+        assert!(!js.is_typescript());
+        assert!(!js.is_jsx());
+        assert!(js.is_unambiguous());
+
+        let ts: OxcSourceType = grammar_source_type(Language::TS);
+
+        assert!(ts.is_typescript());
+        assert!(!ts.is_javascript());
+        assert!(!ts.is_jsx());
+        assert!(ts.is_unambiguous());
+
+        let dts: OxcSourceType = grammar_source_type(Language::DTS);
+
+        assert!(dts.is_typescript());
+        assert!(dts.is_typescript_definition());
+        assert!(!dts.is_jsx());
+
+        let jsx: OxcSourceType = grammar_source_type(Language::JSX);
+
+        assert!(jsx.is_javascript());
+        assert!(!jsx.is_typescript());
+        assert!(jsx.is_jsx());
+        assert!(jsx.is_unambiguous());
+
+        let tsx: OxcSourceType = grammar_source_type(Language::TSX);
+
+        assert!(tsx.is_typescript());
+        assert!(!tsx.is_javascript());
+        assert!(tsx.is_jsx());
+        assert!(tsx.is_unambiguous());
+    }
+
+    #[test]
+    fn test_with_module_kind() {
+        let grammar: OxcSourceType = grammar_source_type(Language::JS);
+
+        let script: OxcSourceType =
+            with_module_kind(grammar, SourceType::Script);
+
+        assert!(script.is_script());
+        assert!(!script.is_module());
+        assert!(!script.is_commonjs());
+        assert!(!script.is_unambiguous());
+
+        let commonjs: OxcSourceType =
+            with_module_kind(grammar, SourceType::CommonJS);
+
+        assert!(commonjs.is_commonjs());
+        assert!(!commonjs.is_module());
+        assert!(!commonjs.is_script());
+
+        let module: OxcSourceType =
+            with_module_kind(grammar, SourceType::Module);
+
+        assert!(module.is_module());
+        assert!(!module.is_script());
+        assert!(!module.is_commonjs());
+
+        let unambiguous: OxcSourceType =
+            with_module_kind(grammar, SourceType::Unambiguous);
+
+        assert!(unambiguous.is_unambiguous());
+        assert!(!unambiguous.is_script());
+        assert!(!unambiguous.is_module());
     }
 }

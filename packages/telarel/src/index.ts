@@ -1,5 +1,10 @@
 export type { BuiltinPlugin } from "#/@types/builtin";
-export type { CompileOptions, CompileResult } from "#/@types/compile";
+export type {
+    Language,
+    SourceType,
+    CompileOptions,
+    CompileResult,
+} from "#/@types/compile";
 export type {
     Options,
     Plugin,

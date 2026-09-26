@@ -18,6 +18,8 @@ const compile = async (options: CompileOptions): Promise<CompileResult> => {
         cwd: options.cwd,
         file: options.file,
         code: options.code,
+        language: options.language,
+        sourceType: options.sourceType,
         plugins,
     });
 };

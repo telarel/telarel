@@ -46,7 +46,7 @@ pub mod sourcemap {
 
 pub use telarel_common::{
     CodegenOptions, CodegenResult, CompileContext, CompileError,
-    CompileOptions, HookUsage, ParseOptions, ParseResult,
+    CompileOptions, HookUsage, Language, ParseOptions, ParseResult, SourceType,
 };
 
 pub use telarel_plugin::{
