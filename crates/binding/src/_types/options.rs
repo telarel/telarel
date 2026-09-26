@@ -5,8 +5,9 @@ use telarel_common::CompileOptions;
 /// JS-facing compile options.
 #[napi_derive::napi(object)]
 pub struct JsOptions {
-    /// Current working directory.
-    pub cwd: String,
+    /// Current working directory;
+    /// omitted on the JS side resolves to the process working directory.
+    pub cwd: Option<String>,
     /// The file to compile.
     pub file: String,
     /// The source code to compile.

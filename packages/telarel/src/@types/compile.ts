@@ -35,7 +35,9 @@ type CompleteCompileOptions = Options & {
 /**
  * User options for a compile run.
  */
-type CompileOptions = Format<Partial<CompleteCompileOptions, "plugins">>;
+type CompileOptions = Format<
+    Partial<CompleteCompileOptions, "cwd" | "plugins">
+>;
 
 /**
  * Result of `compile`.
@@ -52,4 +54,3 @@ type CompileResult = {
 };
 
 export type { CompleteCompileOptions, CompileOptions, CompileResult, Options };
-export type { SourceMap } from "#/@types/source-map";

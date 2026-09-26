@@ -26,11 +26,7 @@ fn read_fixture(name: &str) -> String {
 }
 
 fn options(code: String) -> CompileOptions {
-    CompileOptions {
-        cwd: "/repo".to_string(),
-        file: "index.tsx".to_string(),
-        code,
-    }
+    CompileOptions { file: "index.tsx".to_string(), code, ..Default::default() }
 }
 
 fn bench_case(

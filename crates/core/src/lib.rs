@@ -76,12 +76,21 @@ pub async fn compile(
 
     let mut resolved: CompileOptions = options;
 
+    resolved.cwd.get_or_insert_with(|| {
+        std::env::current_dir()
+            .map(|p: std::path::PathBuf| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| String::from("/"))
+    });
+
     driver.options(&mut resolved).await.map_err(|error| {
         CompileError::from_message(&format!("options hook: {error:#}"))
     })?;
 
-    let ctx: CompileContext<'_> =
-        CompileContext::new(&resolved.cwd, &resolved.file, &resolved.code);
+    let ctx: CompileContext<'_> = CompileContext::new(
+        resolved.cwd.as_deref().unwrap_or("/"),
+        &resolved.file,
+        &resolved.code,
+    );
 
     driver
         .pre(&ctx, &PreArgs { file: &resolved.file, code: &resolved.code })
@@ -318,6 +327,30 @@ mod tests {
     }
 
     #[derive(Debug)]
+    struct ObserveCwdOptionsPlugin {
+        observed: std::sync::Arc<std::sync::Mutex<Vec<Option<String>>>>,
+    }
+
+    impl Plugin for ObserveCwdOptionsPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "observe-cwd-options".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Options
+        }
+
+        async fn options(
+            &self,
+            options: &mut CompileOptions,
+        ) -> anyhow::Result<()> {
+            self.observed.lock().unwrap().push(options.cwd.clone());
+
+            Ok(())
+        }
+    }
+
+    #[derive(Debug)]
     struct FailingPrePlugin;
 
     impl Plugin for FailingPrePlugin {
@@ -361,7 +394,7 @@ mod tests {
 
     fn options() -> CompileOptions {
         CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;".to_string(),
         }
@@ -378,7 +411,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_noop_plugin_leaves_output_unchanged() {
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
@@ -394,7 +427,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_strips_trailing_newline() {
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;\n".to_string(),
         };
@@ -408,7 +441,7 @@ mod tests {
     async fn test_compile_strips_crlf_trailing_newline() {
         // CRLF sources must not leave a stray `\r` after the `\n` strip.
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;\r\n".to_string(),
         };
@@ -422,7 +455,7 @@ mod tests {
     async fn test_compile_preserves_interior_crlf() {
         // Only the trailing terminator is stripped; interior CRLF is intact.
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;\r\nconst b = 2;".to_string(),
         };
@@ -437,7 +470,7 @@ mod tests {
         // A lone `\r` terminator is also stripped, matching the documented
         // behavior of the trim (`\n`, `\r\n`, and lone `\r`).
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;\r".to_string(),
         };
@@ -459,7 +492,7 @@ mod tests {
     async fn test_compile_transform_plugin_replaces() {
         // RenameCalleePlugin over `console.log(1);` must yield `consolex`.
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
@@ -482,7 +515,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_sourcemap_points_at_original() {
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
@@ -503,7 +536,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_invalid_code_errors_with_transform_plugin() {
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const = ;".to_string(),
         };
@@ -521,7 +554,7 @@ mod tests {
         // Invalid syntax passes through unparsed when no plugin uses
         // `transform` — the skip path never parses.
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const = ;".to_string(),
         };
@@ -534,7 +567,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_compile_no_transform_usage_identity_map() {
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;\nconst b = 2;\n".to_string(),
         };
@@ -559,7 +592,7 @@ mod tests {
         // stays verbatim (proves NoopPlugin's PRE declaration doesn't leak
         // into the transform decision).
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);\n".to_string(),
         };
@@ -603,7 +636,7 @@ mod tests {
         // `SourceMap` in `CompileOutput` must be the owned-map alias: assign it
         // to an explicitly-aliased variable to prove the types agree.
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "const a = 1;".to_string(),
         };
@@ -635,7 +668,7 @@ mod tests {
         // second plugin and both transformations must appear in the final
         // code (proves the chain carries each replacement by reference).
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
@@ -657,7 +690,7 @@ mod tests {
         // A transform plugin that keeps the parsed original in place must
         // leave it untouched for codegen: the code is unchanged verbatim.
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
@@ -677,7 +710,7 @@ mod tests {
         // reach codegen, and the surrounding noop plugins must not reset
         // the tree to the original.
         let opts: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
@@ -692,5 +725,34 @@ mod tests {
 
         assert!(out.code.contains("consolex"), "{}", out.code);
         assert_eq!(out.map.get_source(0), Some("index.ts"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_omitted_cwd_resolves_to_process_cwd() {
+        let observed: std::sync::Arc<std::sync::Mutex<Vec<Option<String>>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(ObserveCwdOptionsPlugin {
+                observed: std::sync::Arc::clone(&observed),
+            })];
+
+        let opts: CompileOptions = CompileOptions {
+            cwd: None,
+            file: "index.ts".to_string(),
+            code: "const a = 1;".to_string(),
+        };
+
+        compile(opts, plugins).await.unwrap();
+
+        let expected: Option<String> = Some(
+            std::env::current_dir()
+                .map(|p: std::path::PathBuf| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| String::from("/")),
+        );
+
+        let recorded: Vec<Option<String>> = observed.lock().unwrap().clone();
+
+        assert_eq!(recorded, vec![expected]);
     }
 }

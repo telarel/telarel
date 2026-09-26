@@ -6,7 +6,7 @@ This is a architecture documentation of the compiler.
 
 Telarel is an extensible JavaScript compiler written in Rust, powered by [oxc](https://oxc.rs) and built around plugin hooks.
 
-The [`compile`](./crates/core/src/lib.rs#L61) function takes compile options (`cwd`, `file`, `code`) plus a list of plugins, and returns a `CompileOutput` which generated code with a source map.
+The [`compile`](./crates/core/src/lib.rs#L61) function takes compile options (`file`, `code`, and an optional `cwd` which defaults to the current working directory when omitted) plus a list of plugins, and returns a `CompileOutput` which generated code with a source map.
 
 ## Dependencies
 

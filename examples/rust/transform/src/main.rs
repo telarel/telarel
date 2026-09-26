@@ -8,9 +8,9 @@ use telarel_plugin_transform::{
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let options: CompileOptions = CompileOptions {
-        cwd: std::env::current_dir().unwrap().to_string_lossy().into_owned(),
         file: "index.ts".to_string(),
         code: "const value: number = 1;\nasync function run(): Promise<void> { await work(); }\n".to_string(),
+        ..CompileOptions::default()
     };
 
     let plugin: TransformPlugin =

@@ -218,6 +218,34 @@ describe("compile", (): void => {
         expect(result.code).toBe("const b = 2;");
     });
 
+    it("defaults an omitted cwd to the process working directory", async (): Promise<void> => {
+        // `cwd` is optional in `CompileOptions`; when omitted, the core
+        // resolves it to the runtime process's working directory before any
+        // plugin hook runs, so hooks always observe it as a string. The
+        // resolved value is runtime-dependent (the native binding reports
+        // Node's `process.cwd()` while the WASI runtime starts at `/`) —
+        // pin each runtime's own default.
+        const isWasi: boolean = process.env.NAPI_RS_FORCE_WASI === "error";
+        const expected: string = isWasi ? "/" : process.cwd();
+        const seen: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "default-cwd",
+                    options: (options): void => {
+                        seen.push(options.cwd);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([expected]);
+        expect(result.code).toBe("const a = 1;");
+    });
+
     it("awaits an async options hook", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",

@@ -25,7 +25,6 @@ const fixtures: Array<{ code: string; name: string }> = ["react-page.tsx"].map(
 
 const compileOptions = (code: string): CompileOptions => {
     return {
-        cwd: "/repo",
         file: "index.tsx",
         code,
     };

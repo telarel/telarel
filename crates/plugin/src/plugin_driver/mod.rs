@@ -148,7 +148,7 @@ mod tests {
             &self,
             options: &mut CompileOptions,
         ) -> anyhow::Result<()> {
-            options.cwd = "/changed".to_string();
+            options.cwd = Some("/changed".into());
             Ok(())
         }
     }
@@ -541,14 +541,14 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let mut options: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
 
         driver.options(&mut options).await.unwrap();
 
-        assert_eq!(options.cwd, "/changed");
+        assert_eq!(options.cwd.as_deref(), Some("/changed"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -559,14 +559,14 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let mut options: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
 
         driver.options(&mut options).await.unwrap();
 
-        assert_eq!(options.cwd, "/repo");
+        assert_eq!(options.cwd.as_deref(), Some("/repo"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -577,16 +577,16 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let mut options: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
 
         driver.options(&mut options).await.unwrap();
 
-        assert_eq!(options.code, "const rewritten = 7;");
-        assert_eq!(options.cwd, "/repo");
+        assert_eq!(options.cwd.as_deref(), Some("/repo"));
         assert_eq!(options.file, "a.ts");
+        assert_eq!(options.code, "const rewritten = 7;");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -604,9 +604,9 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let mut options: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         driver.options(&mut options).await.unwrap();
@@ -626,7 +626,7 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let mut options: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
@@ -644,7 +644,7 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let mut options: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
+            cwd: Some("/repo".into()),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
         };
@@ -949,14 +949,14 @@ mod tests {
         assert_eq!(plugin.call_name(), "options");
 
         let mut options: CompileOptions = CompileOptions {
-            cwd: "/repo".to_string(),
             file: "a.ts".to_string(),
             code: "console.log(1);".to_string(),
+            ..Default::default()
         };
 
         plugin.call_options(&mut options).await.unwrap();
 
-        assert_eq!(options.cwd, "/changed");
+        assert_eq!(options.cwd.as_deref(), Some("/changed"));
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -50,23 +50,17 @@ describe("validation", (): void => {
         expect(result.code).toBe("const = ;");
     });
 
-    it("rejects on missing required compile options", async (): Promise<void> => {
+    it("rejects on a missing required compile option", async (): Promise<void> => {
         // Pinned observed behavior: the napi bridge validates the options
         // record before the pipeline runs and rejects with a serde-style
-        // `Missing field` error naming the first absent field, regardless
-        // of field order.
-        const noCwd: unknown = {
-            file: "index.ts",
-            code: "const a = 1;",
-        };
+        // `Missing field` error naming the absent field. `cwd` is optional
+        // and defaults to the process working directory, so `code` is the
+        // remaining required field without a default.
         const noCode: unknown = {
             cwd: "/repo",
             file: "index.ts",
         };
 
-        await expect(compile(noCwd as Options)).rejects.toThrow(
-            "Missing field `cwd`",
-        );
         await expect(compile(noCode as Options)).rejects.toThrow(
             "Missing field `code`",
         );

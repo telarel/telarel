@@ -96,7 +96,7 @@ impl Pluginable for JsPlugin {
             };
 
             let call: OptionsCall = OptionsCall {
-                cwd: SharedStr::new(&options.cwd),
+                cwd: SharedStr::new(options.cwd.as_deref().unwrap_or("")),
                 file: SharedStr::new(&options.file),
                 code: SharedStr::new(&options.code),
                 plugins: self.plugins.clone(),
@@ -116,7 +116,7 @@ impl Pluginable for JsPlugin {
                 return Ok(());
             };
 
-            options.cwd = output.cwd;
+            options.cwd = Some(output.cwd);
             options.file = output.file;
             options.code = output.code;
 
