@@ -77,17 +77,21 @@ This repository contains Rust and TypeScript/JavaScript code.
 - preserve the surrounding code style
 - reuse existing utilities and abstractions before introducing new ones
 
+### Comments
+
+- prefer clearer names and smaller functions over explanatory comments
+- avoid comments that restate what the code does, especially on private functions
+- reserve comments for non-obvious intent the code cannot express
+- document public APIs where behavior is not self-evident
+
 ## Editing Rules
 
 When modifying code:
 
 - always ask before changing public API semantics
-- if behavior changes, update tests and docs (like `./ARCHITECTURE.md`) accordingly
-
-If uncertain about intended behavior:
-
-- ask directly, do not guess
+- if uncertain about intended behavior, ask directly, do not guess
 - prefer reading tests as source of truth
+- if behavior changes, update tests and docs (like `./ARCHITECTURE.md`) accordingly
 
 ## Testing Rules
 
@@ -138,9 +142,9 @@ Therefore, the artifact distribution runs. Avoid invoke `napi build` directly.
 - violate dependency boundaries
 - introduce circular dependencies
 - add unnecessary dependencies
-- refactor unrelated code during a focuesd change
+- refactor unrelated code during a focused change
 - modify generated artifacts directly when a generation workflow exists
-- migrate tooling without an explicit requirement
-- intoruce a second package manager
 - introduce unnecessary mutation
+- migrate tooling without an explicit requirement
+- introduce a second package manager
 - commit or push Git changes unless explicitly requested
