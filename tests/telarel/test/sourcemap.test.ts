@@ -1,15 +1,16 @@
-import type { CompileResult, PluginContext } from "telarel";
+import type {
+    CompileResult,
+    PluginContext,
+    TransformArgs,
+    TransformResult,
+} from "telarel";
+
+import type { ProgramFixture } from "#/functions/ast";
 
 import { compile } from "telarel";
 import { describe, expect, it } from "vitest";
 
-type ProgramFixture = {
-    body: Array<{
-        declarations: Array<{
-            id: { type: string; name: string };
-        }>;
-    }>;
-};
+import { renameRootIdentifier } from "#/functions/ast";
 
 describe("sourcemap", (): void => {
     it("emits a v3 map with observed exact fields", async (): Promise<void> => {
@@ -42,24 +43,15 @@ describe("sourcemap", (): void => {
             plugins: [
                 {
                     name: "renamer",
-                    transform: (_ctx: PluginContext, args) => {
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
                         const program: ProgramFixture =
                             args.ast as unknown as ProgramFixture;
-                        const statement:
-                            | ProgramFixture["body"][number]
-                            | undefined = program.body[0];
-                        if (!statement) {
-                            throw new Error("expected a top-level statement");
-                        }
-                        const declaration:
-                            | ProgramFixture["body"][number]["declarations"][number]
-                            | undefined = statement.declarations[0];
-                        if (declaration?.id.type !== "Identifier") {
-                            throw new Error(
-                                "expected an identifier declaration",
-                            );
-                        }
-                        declaration.id.name = "renamed";
+                        renameRootIdentifier({ program, name: "renamed" });
+
+                        return { ast: args.ast };
                     },
                 },
             ],
@@ -101,7 +93,6 @@ describe("sourcemap", (): void => {
         );
         expect(result.map.version).toBe(3);
         expect(result.map.sources).toEqual(["index.ts"]);
-        // Skip path: identity mappings — one column-0 token per line.
         expect(result.map.mappings).toBe("AAAA");
         // `sourcesContent` mirrors the original text, but the leading BOM's
         // survival is runtime-dependent (the WASI TextDecoder strips a
@@ -140,7 +131,6 @@ describe("sourcemap", (): void => {
         expect(result.map.sourcesContent).toEqual([
             "const a = 1;\r\nconst b = 2;",
         ]);
-        // Skip path: identity mappings — one column-0 token per line.
         expect(result.map.mappings).toBe("AAAA;AACA");
     });
 
@@ -166,7 +156,6 @@ describe("sourcemap", (): void => {
         });
 
         expect(result.map.sources).toEqual(["entry.tsx"]);
-        // Skip path: identity mappings — one column-0 token per line.
         expect(result.map.mappings).toBe("AAAA");
     });
 
@@ -218,29 +207,15 @@ describe("sourcemap", (): void => {
             plugins: [
                 {
                     name: "renamer",
-                    transform: (_ctx: PluginContext, args) => {
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
                         const program: ProgramFixture =
                             args.ast as unknown as ProgramFixture;
+                        renameRootIdentifier({ program, name: "renamed-long" });
 
-                        const statement:
-                            | ProgramFixture["body"][number]
-                            | undefined = program.body[0];
-
-                        if (!statement) {
-                            throw new Error("expected a top-level statement");
-                        }
-
-                        const declaration:
-                            | ProgramFixture["body"][number]["declarations"][number]
-                            | undefined = statement.declarations[0];
-
-                        if (declaration?.id.type !== "Identifier") {
-                            throw new Error(
-                                "expected an identifier declaration",
-                            );
-                        }
-
-                        declaration.id.name = "renamed-long";
+                        return { ast: args.ast };
                     },
                 },
             ],
@@ -268,7 +243,6 @@ describe("sourcemap", (): void => {
 
         expect(result.code).toBe("const a = 1;\nconst b = 2;\nconst c = 3;");
         expect(result.map.version).toBe(3);
-        // Skip path: identity mappings — one column-0 token per line.
         expect(result.map.mappings).toBe("AAAA;AACA;AACA");
     });
 });

@@ -61,9 +61,8 @@ impl ResolvedHelpers {
 
 /// Resolve the effective helper state from the telarel layer.
 ///
-/// The raw `oxc` base layer's helper state is ignored entirely; when no
-/// telarel helper options are given, the mode defaults to
-/// [`HelperLoaderMode::default`] (`Inline`) and the module name defaults to
+/// The raw `oxc` base layer's helper state is ignored entirely; absent
+/// telarel options default to [`HelperLoaderMode::default`] (`Inline`) and
 /// [`DEFAULT_HELPER_MODULE_NAME`].
 pub fn resolve_helpers(
     helper: Option<&HelperLoaderOptions>

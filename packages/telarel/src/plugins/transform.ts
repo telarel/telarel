@@ -14,6 +14,7 @@ export type {
 } from "#/@types/builtin/transform";
 export type { DefineValue } from "#/@types/builtin/transform/define";
 export type {
+    InjectMode,
     InjectObject,
     InjectShorthand,
 } from "#/@types/builtin/transform/inject";

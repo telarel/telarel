@@ -1,0 +1,41 @@
+import type { Language, SourceType } from "#/@types/grammar";
+
+/**
+ * Shared cross-plugin ambient state for one `compile()` call.
+ */
+type PluginState = Map<string, unknown>;
+
+/**
+ * Common plugin context: available to every hook, including `options`.
+ */
+type CommonPluginContext = {
+    state: PluginState;
+};
+
+type ModuleInfo = {
+    file: string;
+    code: string;
+    /**
+     * The language of the source code. By default, it is inferred from the file
+     * extension.
+     */
+    language: Language | void;
+    /**
+     * The module system of the source code. By default, it is resolved from the
+     * language.
+     */
+    sourceType: SourceType | void;
+};
+
+/**
+ * Plugin context for hooks that run after the options stage.
+ */
+type PluginContext = CommonPluginContext & {
+    /**
+     * Current working directory. By default, it is `process.cwd()`.
+     */
+    cwd: string;
+    module: ModuleInfo;
+};
+
+export type { CommonPluginContext, ModuleInfo, PluginContext, PluginState };

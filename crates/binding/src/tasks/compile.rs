@@ -1,29 +1,32 @@
+use std::sync::Arc;
+
 use napi::{Env, Task};
 
 use telarel_common::CompileOptions;
 use telarel_core::{CompileOutput, compile};
 use telarel_plugin::SharedPluginable;
 
-use crate::plugin::hooks::SharedRef;
+use crate::plugin::hooks::RefList;
 
 /// Run the compile pipeline on a libuv worker thread.
 pub struct CompileTask {
     options: CompileOptions,
     plugins: Vec<SharedPluginable>,
-    /// Rooted object references created for this compile;
-    /// released on the JS thread when the compile finishes.
-    ///
-    /// For example, plugin array, and one per plugin object.
-    refs: Vec<SharedRef>,
+    /// The compile's dynamic release list: the entry plugins' references plus
+    /// every late plugin the `options` fixpoint wraps. Drained on the JS
+    /// thread when the compile finishes — the list must still observe
+    /// additions made during the pipeline, hence the shared handle instead
+    /// of a fixed vector.
+    refs: Arc<RefList>,
 }
 
 impl CompileTask {
     /// Create a task from Rust options, bridged plugins,
-    /// and the rooted references to release when the compile finishes.
+    /// and the dynamic release list to drain when the compile finishes.
     pub fn new(
         options: CompileOptions,
         plugins: Vec<SharedPluginable>,
-        refs: Vec<SharedRef>,
+        refs: Arc<RefList>,
     ) -> Self {
         Self { options, plugins, refs }
     }
@@ -55,10 +58,6 @@ impl Task for CompileTask {
         })
     }
 
-    /// Release every rooted reference created for this compile.
-    ///
-    /// Every reference is released even if one release fails;
-    /// the first error is returned after the loop so no reference leaks on the failure path.
     fn finally(
         self,
         env: Env,
@@ -68,19 +67,6 @@ impl Task for CompileTask {
         // so the references are no longer used.
         drop(self.plugins);
 
-        let mut first_error: Option<napi::Error> = None;
-
-        for reference in &self.refs {
-            if let Err(error) = reference.release(&env)
-                && first_error.is_none()
-            {
-                first_error = Some(error);
-            }
-        }
-
-        match first_error {
-            | Some(error) => Err(error),
-            | None => Ok(()),
-        }
+        self.refs.release(&env)
     }
 }

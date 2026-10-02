@@ -1,4 +1,9 @@
-import type { Plugin, PluginContext, TransformArgs } from "telarel";
+import type {
+    Plugin,
+    PluginContext,
+    TransformArgs,
+    TransformResult,
+} from "telarel";
 
 import { walk } from "telarel/walker";
 
@@ -8,7 +13,7 @@ const RENAMED: string = `${TARGET}x`;
 
 const transformPlugin: Plugin = {
     name: "rename-jsx-elements",
-    transform: (_: PluginContext, args: TransformArgs): void => {
+    transform: (_: PluginContext, args: TransformArgs): TransformResult => {
         walk(args.ast, {
             enter(node): void {
                 if (node.type === "JSXIdentifier" && node.name === TARGET) {
@@ -20,6 +25,8 @@ const transformPlugin: Plugin = {
                 }
             },
         });
+
+        return { ast: args.ast };
     },
 };
 

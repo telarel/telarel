@@ -1,16 +1,29 @@
-import type { CompileResult, Plugin, PluginContext } from "telarel";
+import type {
+    CommonPluginContext,
+    CompileEndArgs,
+    CompileResult,
+    CompileStartArgs,
+    Options,
+    OptionsArgs,
+    Plugin,
+    PluginContext,
+    PostArgs,
+    PostResult,
+    PreArgs,
+    PreResult,
+    ResolvedOptions,
+    SourceMap,
+    TransformArgs,
+    TransformResult,
+} from "telarel";
+
+import type { ProgramFixture } from "#/functions/ast";
 
 import { compile } from "telarel";
 import { walk } from "telarel/walker";
 import { describe, expect, it } from "vitest";
 
-type ProgramFixture = {
-    body: Array<{
-        declarations: Array<{
-            id: { type: string; name: string };
-        }>;
-    }>;
-};
+import { renameRootIdentifier } from "#/functions/ast";
 
 type CallFixture = {
     body: Array<{
@@ -41,7 +54,7 @@ describe("compile", (): void => {
         expect(result.map.mappings.length).toBeGreaterThan(0);
     });
 
-    it("skips ast read-back when the transform hook does not mutate", async (): Promise<void> => {
+    it("treats a pass-through transform hook as no change", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
@@ -69,7 +82,10 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "spy",
-                    transform: (_ctx: PluginContext, args) => {
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): void => {
                         // Manual structural traversal: cast `args.ast` to a
                         // narrow type and walk it in place.
                         const program: CallFixture =
@@ -91,7 +107,7 @@ describe("compile", (): void => {
         expect(result.map.mappings.length).toBeGreaterThan(0);
     });
 
-    it("shares metadata across plugins", async (): Promise<void> => {
+    it("shares state across plugins and hooks", async (): Promise<void> => {
         const seen: Array<unknown> = [];
 
         const result: CompileResult = await compile({
@@ -101,28 +117,64 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "writer",
-                    pre: (ctx: PluginContext): void => {
-                        ctx.metadata.set("marker", "from-writer");
+                    compileStart: (ctx: PluginContext): void => {
+                        ctx.state.set("marker", "from-compile-start");
                     },
                 },
                 {
                     name: "reader",
-                    transform: (ctx: PluginContext) => {
-                        seen.push(ctx.metadata.get("marker"));
-                        // no mutation: pass-through
+                    pre: (ctx: PluginContext): void => {
+                        seen.push(ctx.state.get("marker"));
                     },
                 },
                 {
                     name: "verifier",
                     post: (ctx: PluginContext): void => {
-                        seen.push(ctx.metadata.get("marker"));
+                        seen.push(ctx.state.get("marker"));
                     },
                 },
             ],
         });
 
         expect(result.code).toBe("const a = 1;");
-        expect(seen).toEqual(["from-writer", "from-writer"]);
+        expect(seen).toEqual(["from-compile-start", "from-compile-start"]);
+    });
+
+    it("injects the same state Map instance into every hook", async (): Promise<void> => {
+        const maps: Array<unknown> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "collect-options",
+                    options: (ctx: CommonPluginContext): void => {
+                        maps.push(ctx.state);
+                    },
+                },
+                {
+                    name: "collect-rest",
+                    pre: (ctx: PluginContext): void => {
+                        maps.push(ctx.state);
+                    },
+                    transform: (ctx: PluginContext): void => {
+                        maps.push(ctx.state);
+                    },
+                    post: (ctx: PluginContext): void => {
+                        maps.push(ctx.state);
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+        expect(maps).toHaveLength(4);
+        for (const map of maps) {
+            expect(map).toBe(maps[0]);
+        }
+        expect(new Set(maps).size).toBe(1);
     });
 
     it("chains options hooks last-wins", async (): Promise<void> => {
@@ -132,40 +184,64 @@ describe("compile", (): void => {
             code: "const a = 1;",
             plugins: [
                 {
-                    name: "opts",
-                    options: (options): void => {
-                        options.code = "const b = 2;";
-                    },
+                    name: "rewrite-b",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => ({
+                        ...args.options,
+                        code: "const b = 2;",
+                    }),
+                },
+                {
+                    name: "rewrite-c",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => ({
+                        ...args.options,
+                        code: "const c = 3;",
+                    }),
                 },
             ],
         });
 
-        expect(result.code).toContain("const b = 2");
+        expect(result.code).toContain("const c = 3");
+        expect(result.code).not.toContain("const b = 2");
     });
 
-    it("chains options hooks last-wins across a pass-through plugin", async (): Promise<void> => {
-        // A no-op plugin between two mutating ones is a pass-through: the
-        // first mutation is still visible to the second.
+    it("keeps the bag unchanged when an options hook returns null", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
             plugins: [
                 {
-                    name: "first",
-                    options: (options): void => {
-                        options.code = "const b = 2;";
-                    },
+                    name: "rewrite-b",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => ({
+                        ...args.options,
+                        code: "const b = 2;",
+                    }),
                 },
                 {
                     name: "passthrough",
-                    options: (): void => void 0,
+                    options: (
+                        _ctx: CommonPluginContext,
+                        _args: OptionsArgs,
+                    ): null => null,
                 },
                 {
-                    name: "second",
-                    options: (options): void => {
-                        options.code = `${options.code}; const c = 3;`;
-                    },
+                    name: "appender",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => ({
+                        ...args.options,
+                        code: `${args.options.code}; const c = 3;`,
+                    }),
                 },
             ],
         });
@@ -174,9 +250,9 @@ describe("compile", (): void => {
         expect(result.code).toContain("const c = 3");
     });
 
-    it("propagates in-place options mutations across plugins", async (): Promise<void> => {
-        // Each plugin mutates the fields it wants; the second plugin
-        // observes the first mutation and rewrites the file.
+    it("propagates returned options bags across plugins", async (): Promise<void> => {
+        // Each plugin returns the bag it wants; the second plugin observes
+        // the first return and rewrites the file.
         const seen: Array<string> = [];
 
         const result: CompileResult = await compile({
@@ -186,24 +262,34 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "rewrite-code",
-                    options: (options): void => {
-                        options.code = "const b = 2;";
-                    },
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => ({
+                        ...args.options,
+                        code: "const b = 2;",
+                    }),
                 },
                 {
                     name: "rewrite-file",
-                    options: (options): void => {
-                        seen.push(options.code);
-                        seen.push(options.cwd);
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => {
+                        seen.push(args.options.code ?? "");
+                        seen.push(args.options.cwd ?? "");
 
-                        options.file = "renamed.ts";
+                        return {
+                            ...args.options,
+                            file: "renamed.ts",
+                        };
                     },
                 },
                 {
                     name: "observe",
                     pre: (ctx: PluginContext): void => {
-                        seen.push(ctx.file);
-                        seen.push(ctx.code);
+                        seen.push(ctx.module.file);
+                        seen.push(ctx.module.code);
                     },
                 },
             ],
@@ -216,6 +302,40 @@ describe("compile", (): void => {
             "const b = 2;",
         ]);
         expect(result.code).toBe("const b = 2;");
+    });
+
+    it("applies a returned bag as full-bag replace with defaults", async (): Promise<void> => {
+        // Fields the returned bag omits fall back to their defaults; a bag
+        // carrying only `code` compiles with the default file `index.js`.
+        const seen: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "replace-bag",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => {
+                        expect(_ctx.state).toBeInstanceOf(Map);
+                        seen.push("has-state");
+                        seen.push(args.options.file ?? "");
+
+                        return { code: "const replaced = 1;" };
+                    },
+                    pre: (ctx: PluginContext): void => {
+                        seen.push(ctx.module.file);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["has-state", "index.ts", "index.js"]);
+        expect(result.map.sources).toEqual(["index.js"]);
+        expect(result.code).toBe("const replaced = 1;");
     });
 
     it("defaults an omitted cwd to the process working directory", async (): Promise<void> => {
@@ -235,8 +355,13 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "default-cwd",
-                    options: (options): void => {
-                        seen.push(options.cwd);
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): null => {
+                        seen.push(args.options.cwd ?? "");
+
+                        return null;
                     },
                 },
             ],
@@ -246,7 +371,42 @@ describe("compile", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
-    it("awaits an async options hook", async (): Promise<void> => {
+    it("re-resolves a cwd omitted by a late options hook to the process working directory", async (): Promise<void> => {
+        const isWasi: boolean = process.env.NAPI_RS_FORCE_WASI === "error";
+        const expected: string = isWasi ? "/" : process.cwd();
+        const seen: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "drop-cwd",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options => {
+                        return { ...args.options, cwd: void 0 };
+                    },
+                },
+                {
+                    name: "observe-compile-start-cwd",
+                    compileStart: (
+                        _ctx: PluginContext,
+                        args: CompileStartArgs,
+                    ): void => {
+                        seen.push(args.options.cwd);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([expected]);
+        expect(result.code).toBe("const a = 1;");
+    });
+
+    it("awaits an async options hook and applies the returned bag", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
@@ -254,17 +414,127 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "async-options",
-                    options: async (options): Promise<void> => {
+                    options: async (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Promise<Options> => {
                         await new Promise<void>((resolve): void => {
                             setTimeout(resolve, 0);
                         });
-                        options.code = "const replaced = 2;";
+
+                        return {
+                            ...args.options,
+                            code: "const replaced = 2;",
+                        };
                     },
                 },
             ],
         });
 
         expect(result.code).toBe("const replaced = 2;");
+    });
+
+    it("injects a plugin through a returned options bag", async (): Promise<void> => {
+        // The options hook replaces the bag incl. `plugins`: the injected
+        // plugin is wrapped, joins the settled list, and runs like any
+        // entry plugin. The injection appends only once, so the fixpoint
+        // converges.
+        let isInjected: boolean = false;
+        const seen: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "injector",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => {
+                        if (isInjected) {
+                            return null;
+                        }
+                        isInjected = true;
+
+                        return {
+                            ...args.options,
+                            plugins: [
+                                ...(args.options.plugins ?? []),
+                                {
+                                    name: "injected",
+                                    pre: (): PreResult | null => {
+                                        seen.push("injected.pre");
+
+                                        return { code: "const injected = 3;" };
+                                    },
+                                },
+                            ],
+                        };
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["injected.pre"]);
+        expect(result.code).toBe("const injected = 3;");
+    });
+
+    it("runs the injected plugin's options hook in the next fixpoint pass", async (): Promise<void> => {
+        let isInjected: boolean = false;
+        const seen: Array<string> = [];
+
+        await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "injector-observer",
+                    options: (
+                        ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => {
+                        seen.push(
+                            `in:${String(ctx.state.get("injected-ran") === true)}`,
+                        );
+
+                        if (isInjected) {
+                            return null;
+                        }
+                        isInjected = true;
+
+                        const next: Options = {
+                            ...args.options,
+                            code: "const replaced = 2;",
+                            plugins: [
+                                ...(args.options.plugins ?? []),
+                                {
+                                    name: "late",
+                                    options: (
+                                        lateCtx: CommonPluginContext,
+                                        _lateArgs: OptionsArgs,
+                                    ): void => {
+                                        lateCtx.state.set("injected-ran", true);
+                                        seen.push("late.options");
+                                    },
+                                },
+                            ],
+                        };
+
+                        return next;
+                    },
+                },
+            ],
+        });
+
+        // Pass 1 runs the injector, which appends `late`; pass 2 runs the
+        // injector again (before `late`, so `injected-ran` is still unset)
+        // and then `late`, whose options hook writes the state marker. The
+        // fixpoint then converges: no further pass runs the injector after
+        // `late`, so `in` is never observed as `true`.
+        expect(seen).toEqual(["in:false", "in:false", "late.options"]);
     });
 
     it("rejects on hook errors with plugin context", async (): Promise<void> => {
@@ -423,21 +693,28 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "async-all",
-                    options: (options): void => {
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => {
                         seen.push("options");
-                        options.code = "const b = 2;";
+
+                        return {
+                            ...args.options,
+                            code: "const b = 2;",
+                        };
                     },
                     pre: async (ctx: PluginContext): Promise<void> => {
                         seen.push("pre");
-                        ctx.metadata.set("marker", "from-async-pre");
+                        ctx.state.set("marker", "from-async-pre");
                     },
-                    transform: async (ctx: PluginContext) => {
+                    transform: async (ctx: PluginContext): Promise<void> => {
                         seen.push("transform");
-                        seen.push(String(ctx.metadata.get("marker")));
+                        seen.push(String(ctx.state.get("marker")));
                     },
                     post: async (ctx: PluginContext): Promise<void> => {
                         seen.push("post");
-                        seen.push(String(ctx.metadata.get("marker")));
+                        seen.push(String(ctx.state.get("marker")));
                     },
                 },
             ],
@@ -467,7 +744,7 @@ describe("compile", (): void => {
                     pre: (): void => {
                         seen.push("first.pre");
                     },
-                    transform: (_ctx: PluginContext) => {
+                    transform: (_ctx: PluginContext): void => {
                         seen.push("first.transform");
                     },
                     post: (): void => {
@@ -479,7 +756,7 @@ describe("compile", (): void => {
                     pre: (): void => {
                         seen.push("second.pre");
                     },
-                    transform: (_ctx: PluginContext) => {
+                    transform: (_ctx: PluginContext): void => {
                         seen.push("second.transform");
                     },
                     post: (): void => {
@@ -500,62 +777,43 @@ describe("compile", (): void => {
         ]);
     });
 
-    it("chains transforms ast to ast across plugins", async (): Promise<void> => {
+    it("chains transforms return value to return value across plugins", async (): Promise<void> => {
+        // oxlint-disable-next-line unicorn/consistent-function-scoping
+        const rename = (
+            name: string,
+        ): ((ctx: PluginContext, args: TransformArgs) => TransformResult) => {
+            return (
+                _ctx: PluginContext,
+                args: TransformArgs,
+            ): TransformResult => {
+                const program: ProgramFixture =
+                    args.ast as unknown as ProgramFixture;
+                if (
+                    name === "second" &&
+                    program.body[0]?.declarations[0]?.id.name !== "first"
+                ) {
+                    throw new Error("expected the first rename to be visible");
+                }
+                renameRootIdentifier({ program, name });
+
+                return { ast: args.ast };
+            };
+        };
+
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
             plugins: [
-                {
-                    name: "rename-a",
-                    transform: (_ctx: PluginContext, args) => {
-                        const program: ProgramFixture =
-                            args.ast as unknown as ProgramFixture;
-                        const statement:
-                            | ProgramFixture["body"][number]
-                            | undefined = program.body[0];
-                        const declaration:
-                            | ProgramFixture["body"][number]["declarations"][number]
-                            | undefined = statement?.declarations[0];
-                        if (declaration?.id.type !== "Identifier") {
-                            throw new Error(
-                                "expected an identifier declaration",
-                            );
-                        }
-                        declaration.id.name = "first";
-                    },
-                },
-                {
-                    name: "rename-b",
-                    transform: (_ctx: PluginContext, args) => {
-                        const program: ProgramFixture =
-                            args.ast as unknown as ProgramFixture;
-                        const statement:
-                            | ProgramFixture["body"][number]
-                            | undefined = program.body[0];
-                        const declaration:
-                            | ProgramFixture["body"][number]["declarations"][number]
-                            | undefined = statement?.declarations[0];
-                        if (declaration?.id.type !== "Identifier") {
-                            throw new Error(
-                                "expected an identifier declaration",
-                            );
-                        }
-                        if (declaration.id.name !== "first") {
-                            throw new Error(
-                                "expected the first rename to be visible",
-                            );
-                        }
-                        declaration.id.name = "second";
-                    },
-                },
+                { name: "rename-a", transform: rename("first") },
+                { name: "rename-b", transform: rename("second") },
             ],
         });
 
         expect(result.code).toBe("const second = 1;");
     });
 
-    it("propagates metadata writes from transform to post", async (): Promise<void> => {
+    it("propagates state writes from transform to post", async (): Promise<void> => {
         const seen: Array<unknown> = [];
 
         const result: CompileResult = await compile({
@@ -565,14 +823,14 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "transform-writer",
-                    transform: (ctx: PluginContext) => {
-                        ctx.metadata.set("marker", "from-transform");
+                    transform: (ctx: PluginContext): void => {
+                        ctx.state.set("marker", "from-transform");
                     },
                 },
                 {
                     name: "post-reader",
                     post: (ctx: PluginContext): void => {
-                        seen.push(ctx.metadata.get("marker"));
+                        seen.push(ctx.state.get("marker"));
                     },
                 },
             ],
@@ -582,7 +840,7 @@ describe("compile", (): void => {
         expect(seen).toEqual(["from-transform"]);
     });
 
-    it("isolates metadata across concurrent compiles", async (): Promise<void> => {
+    it("isolates state across concurrent compiles", async (): Promise<void> => {
         const seen: Array<unknown> = [];
 
         const compileWith = async (name: string): Promise<CompileResult> =>
@@ -594,7 +852,7 @@ describe("compile", (): void => {
                     {
                         name: "writer",
                         pre: (ctx: PluginContext): void => {
-                            ctx.metadata.set("marker", name);
+                            ctx.state.set("marker", name);
                         },
                     },
                     {
@@ -604,7 +862,7 @@ describe("compile", (): void => {
                     {
                         name: "verifier",
                         post: (ctx: PluginContext): void => {
-                            seen.push(ctx.metadata.get("marker"));
+                            seen.push(ctx.state.get("marker"));
                         },
                     },
                 ],
@@ -619,17 +877,14 @@ describe("compile", (): void => {
         expect(seen).toEqual(expect.arrayContaining(["first", "second"]));
     });
 
-    it("passes hook arguments with cwd, file, and code to each hook", async (): Promise<void> => {
+    it("passes hook contexts with cwd, module, and code to each hook", async (): Promise<void> => {
         const seen: Array<{ cwd: string; file: string; code: string }> = [];
 
-        const record = (
-            ctx: PluginContext,
-            args: { file: string; code: string },
-        ): void => {
+        const record = (ctx: PluginContext, code: string): void => {
             seen.push({
                 cwd: ctx.cwd,
-                file: args.file,
-                code: args.code,
+                file: ctx.module.file,
+                code,
             });
         };
 
@@ -640,17 +895,14 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "fidelity",
-                    pre: (ctx: PluginContext, args): void => {
-                        record(ctx, args);
+                    pre: (ctx: PluginContext, args: PreArgs): void => {
+                        record(ctx, args.code);
                     },
-                    transform: (ctx: PluginContext, args) => {
-                        record(ctx, {
-                            file: args.file,
-                            code: ctx.code,
-                        });
+                    transform: (ctx: PluginContext): void => {
+                        record(ctx, ctx.module.code);
                     },
-                    post: (ctx: PluginContext, args): void => {
-                        record(ctx, args);
+                    post: (ctx: PluginContext, args: PostArgs): void => {
+                        record(ctx, args.code);
                     },
                 },
             ],
@@ -670,23 +922,24 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "options-rewrite",
-                    options: (options): void => {
-                        options.code = "const b = 2;";
-                    },
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): Options | null | void => ({
+                        ...args.options,
+                        code: "const b = 2;",
+                    }),
                 },
                 {
                     name: "fidelity",
-                    pre: (ctx: PluginContext, args): void => {
-                        record(ctx, args);
+                    pre: (ctx: PluginContext, args: PreArgs): void => {
+                        record(ctx, args.code);
                     },
-                    transform: (ctx: PluginContext, args) => {
-                        record(ctx, {
-                            file: args.file,
-                            code: ctx.code,
-                        });
+                    transform: (ctx: PluginContext): void => {
+                        record(ctx, ctx.module.code);
                     },
-                    post: (ctx: PluginContext, args): void => {
-                        record(ctx, args);
+                    post: (ctx: PluginContext, args: PostArgs): void => {
+                        record(ctx, args.code);
                     },
                 },
             ],
@@ -700,7 +953,7 @@ describe("compile", (): void => {
         ]);
     });
 
-    it("applies a nested ast mutation through json", async (): Promise<void> => {
+    it("applies a returned ast mutation through json", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
@@ -708,7 +961,10 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "nested-mutator",
-                    transform: (_ctx: PluginContext, args) => {
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
                         const program: InitFixture =
                             args.ast as unknown as InitFixture;
                         const statement:
@@ -721,6 +977,8 @@ describe("compile", (): void => {
                             throw new Error("expected a literal initializer");
                         }
                         declaration.init.value = "new";
+
+                        return { ast: args.ast };
                     },
                 },
             ],
@@ -731,35 +989,25 @@ describe("compile", (): void => {
         expect(result.map.mappings.length).toBeGreaterThan(0);
     });
 
-    it("applies an in-place ast mutation when transform returns void", async (): Promise<void> => {
-        // The wrapper re-stringifies the tree after the hook and compares it
-        // with the pre-call string; the mutation flows back into Rust.
+    it("applies an in-place mutation when the mutated tree is returned", async (): Promise<void> => {
+        // Return-based contract: mutating `args.ast` in place only flows
+        // back into Rust when the hook returns the mutated tree.
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
             plugins: [
                 {
-                    name: "mutate-in-place",
-                    transform: (_ctx: PluginContext, args): void => {
+                    name: "mutate-and-return",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
                         const program: ProgramFixture =
                             args.ast as unknown as ProgramFixture;
+                        renameRootIdentifier({ program, name: "mutated" });
 
-                        const statement:
-                            | ProgramFixture["body"][number]
-                            | undefined = program.body[0];
-
-                        const declaration:
-                            | ProgramFixture["body"][number]["declarations"][number]
-                            | undefined = statement?.declarations[0];
-
-                        if (declaration?.id.type !== "Identifier") {
-                            throw new Error(
-                                "expected an identifier declaration",
-                            );
-                        }
-
-                        declaration.id.name = "mutated";
+                        return { ast: args.ast };
                     },
                 },
             ],
@@ -768,35 +1016,49 @@ describe("compile", (): void => {
         expect(result.code).toBe("const mutated = 1;");
     });
 
-    it("applies a whole-root reassignment of args.ast when transform returns void", async (): Promise<void> => {
-        // The wrapper re-stringifies the args-bag property after the hook,
-        // so a plugin can replace the whole tree (not just mutate it in
-        // place) and the replacement must flow back into Rust.
+    it("treats an in-place mutation without return as a no-op", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
             plugins: [
                 {
-                    name: "root-reassign",
-                    transform: (_ctx: PluginContext, args): void => {
+                    name: "mutate-in-place",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): void => {
+                        const program: ProgramFixture =
+                            args.ast as unknown as ProgramFixture;
+                        renameRootIdentifier({ program, name: "not-applied" });
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+    });
+
+    it("applies a whole-root replacement returned from transform", async (): Promise<void> => {
+        // The returned `{ ast }` is the replacement: a plugin can build a
+        // fresh tree (clone-plus-edit) and return it instead of mutating.
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "root-replace",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
                         const program: ProgramFixture = structuredClone(
                             args.ast,
                         ) as unknown as ProgramFixture;
+                        renameRootIdentifier({ program, name: "replaced" });
 
-                        const declaration:
-                            | ProgramFixture["body"][number]["declarations"][number]
-                            | undefined = program.body[0]?.declarations[0];
-
-                        if (declaration?.id.type !== "Identifier") {
-                            throw new Error(
-                                "expected an identifier declaration",
-                            );
-                        }
-
-                        declaration.id.name = "replaced";
-
-                        args.ast = program as never;
+                        return { ast: program as never };
                     },
                 },
             ],
@@ -805,26 +1067,32 @@ describe("compile", (): void => {
         expect(result.code).toBe("const replaced = 1;");
     });
 
-    it("silently ignores a returned value from transform", async (): Promise<void> => {
-        // Intentional behavior change: the wrapper calls the hook and
-        // silently ignores the return value (no `TypeError`), so a
-        // replacement object returned without mutating is a pass-through
-        // and the original code survives.
-        const plugin: unknown = {
-            name: "ignored-return",
-            transform: (): unknown => ({
-                ast: { type: "Program", body: [] },
-            }),
-        };
-
+    it("applies a returned ast to the compile", async (): Promise<void> => {
+        // The hook returns a NEW tree without mutating `args.ast`; the
+        // returned one is what Rust reads back.
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
-            plugins: [plugin as Plugin],
+            plugins: [
+                {
+                    name: "returned-tree",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
+                        const program: ProgramFixture = structuredClone(
+                            args.ast,
+                        ) as unknown as ProgramFixture;
+                        renameRootIdentifier({ program, name: "returned" });
+
+                        return { ast: program as never };
+                    },
+                },
+            ],
         });
 
-        expect(result.code).toBe("const a = 1;");
+        expect(result.code).toBe("const returned = 1;");
         expect(result.map.version).toBe(3);
         expect(result.map.mappings.length).toBeGreaterThan(0);
     });
@@ -837,7 +1105,10 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "walker-rename",
-                    transform: (_ctx: PluginContext, args): void => {
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
                         walk(
                             args.ast as unknown as Parameters<typeof walk>[0],
                             {
@@ -851,6 +1122,8 @@ describe("compile", (): void => {
                                 },
                             },
                         );
+
+                        return { ast: args.ast };
                     },
                 },
             ],
@@ -900,7 +1173,8 @@ describe("compile", (): void => {
         );
     });
 
-    it("rejects with the late error after a prior plugin mutated the ast", async (): Promise<void> => {
+    it("rejects with the late error after a prior plugin replaced the ast", async (): Promise<void> => {
+        // oxlint-disable-next-line unicorn/consistent-function-scoping
         const build = async (): Promise<CompileResult> =>
             await compile({
                 cwd: "/repo",
@@ -909,21 +1183,15 @@ describe("compile", (): void => {
                 plugins: [
                     {
                         name: "rename",
-                        transform: (_ctx: PluginContext, args) => {
+                        transform: (
+                            _ctx: PluginContext,
+                            args: TransformArgs,
+                        ): TransformResult => {
                             const program: ProgramFixture =
                                 args.ast as unknown as ProgramFixture;
-                            const statement:
-                                | ProgramFixture["body"][number]
-                                | undefined = program.body[0];
-                            const declaration:
-                                | ProgramFixture["body"][number]["declarations"][number]
-                                | undefined = statement?.declarations[0];
-                            if (declaration?.id.type !== "Identifier") {
-                                throw new Error(
-                                    "expected an identifier declaration",
-                                );
-                            }
-                            declaration.id.name = "renamed";
+                            renameRootIdentifier({ program, name: "renamed" });
+
+                            return { ast: args.ast };
                         },
                     },
                     {
@@ -938,7 +1206,7 @@ describe("compile", (): void => {
         await expect(build()).rejects.toThrow("late-kaboom");
     });
 
-    it("preserves non-string metadata values across hooks", async (): Promise<void> => {
+    it("preserves non-string state values across hooks", async (): Promise<void> => {
         const seen: Array<unknown> = [];
         const seenObject: Array<unknown> = [];
 
@@ -950,15 +1218,15 @@ describe("compile", (): void => {
                 {
                     name: "writer",
                     pre: (ctx: PluginContext): void => {
-                        ctx.metadata.set("count", 42);
-                        ctx.metadata.set("obj", { nested: true });
+                        ctx.state.set("count", 42);
+                        ctx.state.set("obj", { nested: true });
                     },
                 },
                 {
                     name: "reader",
-                    transform: (ctx: PluginContext) => {
-                        seen.push(ctx.metadata.get("count"));
-                        seenObject.push(ctx.metadata.get("obj"));
+                    transform: (ctx: PluginContext): void => {
+                        seen.push(ctx.state.get("count"));
+                        seenObject.push(ctx.state.get("obj"));
                     },
                 },
             ],
@@ -969,16 +1237,503 @@ describe("compile", (): void => {
         expect(seenObject).toEqual([{ nested: true }]);
     });
 
-    it("reuses the same plugin objects across repeated sequential compiles", async (): Promise<void> => {
+    it("invokes compileStart with the resolved options", async (): Promise<void> => {
+        const seen: Array<ResolvedOptions> = [];
+        const seenFiles: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "first",
+                    pre: (): void => void 0,
+                },
+                {
+                    name: "observe",
+                    transform: (): void => void 0,
+                    compileStart: (
+                        ctx: PluginContext,
+                        args: CompileStartArgs,
+                    ): void => {
+                        seen.push(args.options);
+                        seenFiles.push(ctx.module.file);
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+        expect(seen).toHaveLength(1);
+        expect(seenFiles).toEqual(["index.ts"]);
+        // Scalars are fully resolved: language inferred from the extension,
+        // sourceType resolved from the language.
+        const options: ResolvedOptions = seen[0] as ResolvedOptions;
+        expect(options.language).toBe("ts");
+        expect(options.sourceType).toBe("unambiguous");
+        expect(options.file).toBe("index.ts");
+        expect(options.code).toBe("const a = 1;");
+        // The settled plugin-name list preserves order and duplicates.
+        expect(options.plugins).toEqual(["first", "observe"]);
+    });
+
+    it("resolves the defaulted cwd for compileStart", async (): Promise<void> => {
+        const isWasi: boolean = process.env.NAPI_RS_FORCE_WASI === "error";
+        const expected: string = isWasi ? "/" : process.cwd();
+        const seen: Array<string> = [];
+
+        await compile({
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "observe",
+                    compileStart: (
+                        _ctx: PluginContext,
+                        args: CompileStartArgs,
+                    ): void => {
+                        seen.push(args.options.cwd);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([expected]);
+    });
+
+    it("passes the compile context to compileStart with the resolved module info", async (): Promise<void> => {
+        const seen: Array<{
+            cwd: string;
+            language: string;
+            sourceType: string;
+        }> = [];
+
+        await compile({
+            cwd: "/repo",
+            file: "index.cjs",
+            code: "module.exports = 1;",
+            plugins: [
+                {
+                    name: "observe",
+                    compileStart: (ctx: PluginContext): void => {
+                        seen.push({
+                            cwd: ctx.cwd,
+                            language: String(ctx.module.language),
+                            sourceType: String(ctx.module.sourceType),
+                        });
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([
+            { cwd: "/repo", language: "js", sourceType: "commonjs" },
+        ]);
+    });
+
+    it("ignores a garbage return value from compileStart", async (): Promise<void> => {
+        const seen: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "notify",
+                    compileStart: (
+                        _ctx: PluginContext,
+                        _args: CompileStartArgs,
+                    ): void | Promise<void> => {
+                        seen.push("started");
+
+                        return void 0;
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["started"]);
+        expect(result.code).toBe("const a = 1;");
+        expect(result.map.sources).toEqual(["index.ts"]);
+    });
+
+    it("invokes compileEnd on the success path with the compiled output", async (): Promise<void> => {
+        const seen: Array<{
+            code: string;
+            map: unknown;
+            err: Error | undefined;
+        }> = [];
+        const seenFiles: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "observe",
+                    compileEnd: (
+                        ctx: PluginContext,
+                        args: CompileEndArgs,
+                    ): void => {
+                        seen.push({
+                            code: args.code,
+                            map: args.map,
+                            err: args.err,
+                        });
+                        seenFiles.push(ctx.module.file);
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+        expect(seen).toHaveLength(1);
+        expect(seenFiles).toEqual(["index.ts"]);
+        expect(seen[0]?.code).toBe("const a = 1;");
+        expect(seen[0]?.err).toBeUndefined();
+
+        // The final map is the v3 object (parsed from the JSON transport).
+        const map: SourceMap = seen[0]?.map as SourceMap;
+        expect(map.version).toBe(3);
+        expect(map.mappings.length).toBeGreaterThan(0);
+    });
+
+    it("invokes compileEnd on the error path with the last good state", async (): Promise<void> => {
+        const seen: Array<{ code: string; map: unknown; err: string }> = [];
+
+        const build = async (): Promise<CompileResult> =>
+            await compile({
+                cwd: "/repo",
+                file: "index.ts",
+                code: "const a = 1;",
+                plugins: [
+                    {
+                        name: "observer",
+                        compileEnd: (
+                            _ctx: PluginContext,
+                            args: CompileEndArgs,
+                        ): void => {
+                            seen.push({
+                                code: args.code,
+                                map: args.map,
+                                err: String(args.err),
+                            });
+                        },
+                    },
+                    {
+                        name: "boom",
+                        transform: (): never => {
+                            throw new Error("kaboom");
+                        },
+                    },
+                ],
+            });
+
+        await expect(build()).rejects.toThrow("kaboom");
+
+        // compileEnd always runs: on the error path it carries the
+        // stage-wrapped error and the last good code (the untouched source;
+        // no map yet).
+        expect(seen).toHaveLength(1);
+        expect(seen[0]?.err).toContain("kaboom");
+        expect(seen[0]?.err).toContain("transform hook");
+        expect(seen[0]?.code).toBe("const a = 1;");
+        expect(seen[0]?.map).toBeNull();
+    });
+
+    it("replaces the source through a returned pre result", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "pre-rewrite",
+                    pre: (ctx: PluginContext): PreResult => {
+                        ctx.state.set("stage", "pre");
+
+                        return { code: "const b = 2;" };
+                    },
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
+                        // Return the received tree (no mutation): a
+                        // declared `transform` forces the parse path so the
+                        // pre-returned code is the parse input.
+                        return { ast: args.ast };
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const b = 2;");
+    });
+
+    it("keeps the source when a pre hook returns null", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "pre-null",
+                    pre: (): null => null,
+                    transform: (): void => void 0,
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+    });
+
+    it("keeps the source when a pre hook returns undefined", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "pre-void",
+                    pre: (): void => void 0,
+                    transform: (): void => void 0,
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+    });
+
+    it("applies a returned pre map to the final output map", async (): Promise<void> => {
+        // The pre hook deletes the original's first line and returns its
+        // incremental map (dst(0,0) -> src(1,0), encoded `AAAC`): the
+        // composed output map resolves the parse input back to the
+        // ORIGINAL source line 1, so the mappings must be `AAAC`, not the
+        // plain identity `AAAA` (the composed map is NOT the raw identity).
+        const original: string = "const a = 1;\nlet b = 2;";
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: original,
+            plugins: [
+                {
+                    name: "pre-with-map",
+                    pre: (): PreResult => ({
+                        code: "let b = 2;",
+                        map: {
+                            version: 3,
+                            mappings: "AAAC",
+                            sources: ["index.ts"],
+                            names: [],
+                            sourcesContent: ["let b = 2;"],
+                        },
+                    }),
+                },
+            ],
+        });
+
+        expect(result.code).toBe("let b = 2;");
+        expect(result.map.mappings).toBe("AAAC");
+        // The composed map carries the ORIGINAL source list, not the
+        // pre-returned one.
+        expect(result.map.sources).toEqual(["index.ts"]);
+    });
+
+    it("keeps the identity map when a pre hook omits its map", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "let b = 2;",
+            plugins: [
+                {
+                    name: "pre-no-map",
+                    pre: (): PreResult => ({ code: "let c = 3;" }),
+                },
+            ],
+        });
+
+        expect(result.code).toBe("let c = 3;");
+        // No map returned: the composition is skipped and the identity map
+        // over the parse input carries through.
+        expect(result.map.mappings).toBe("AAAA");
+    });
+
+    it("carries a pre rewrite into the next pre hook", async (): Promise<void> => {
+        // The `pre` fold is carried: the second hook must receive the
+        // first's returned code, not the original source. A fixed-input
+        // bridge would record `"const original = 1;"` here.
+        const seen: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const original = 1;",
+            plugins: [
+                {
+                    name: "pre-first",
+                    pre: (): PreResult => ({ code: "const injected = 1;" }),
+                },
+                {
+                    name: "pre-probe",
+                    pre: (_ctx: PluginContext, args: PreArgs): void => {
+                        seen.push(args.code);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["const injected = 1;"]);
+        expect(result.code).toBe("const injected = 1;");
+    });
+
+    it("replaces the output through a returned post result", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                {
+                    name: "force-parse",
+                    transform: (): void => void 0,
+                },
+                {
+                    name: "post-rewrite",
+                    post: (ctx: PluginContext): PostResult => {
+                        ctx.state.set("stage", "post");
+
+                        return { code: "const replaced = 1;" };
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const replaced = 1;");
+    });
+
+    it("applies a returned post map to the final output map", async (): Promise<void> => {
+        // The post hook rewrites the generated code and returns a
+        // single-token incremental map: the post map owns the OUTPUT dst
+        // positions (composed with the codegen map), so the final mappings
+        // carry the post map's single dst token instead of the multi-token
+        // codegen map.
+        const baseline: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "console.log(1);",
+            plugins: [{ name: "force-parse", transform: (): void => void 0 }],
+        });
+
+        expect(baseline.map.mappings).not.toBe("AAAA");
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "console.log(1);",
+            plugins: [
+                { name: "force-parse", transform: (): void => void 0 },
+                {
+                    name: "post-with-map",
+                    post: (): PostResult => ({
+                        code: "// banner\nconsole.log(1);",
+                        map: {
+                            version: 3,
+                            mappings: "AAAC",
+                            sources: ["index.ts"],
+                            names: [],
+                            sourcesContent: ["// banner\nconsole.log(1);"],
+                        },
+                    }),
+                },
+            ],
+        });
+
+        expect(result.code).toBe("// banner\nconsole.log(1);");
+        // The single post token dst(0,0)->src(1,0): the banner line maps
+        // through the codegen map back to the generated line 1.
+        expect(result.map.mappings).not.toBe(baseline.map.mappings);
+        expect(result.map.mappings.length).toBeGreaterThan(0);
+    });
+
+    it("keeps the codegen map when a post hook omits its map", async (): Promise<void> => {
+        const baseline: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "console.log(1);",
+            plugins: [{ name: "force-parse", transform: (): void => void 0 }],
+        });
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "console.log(1);",
+            plugins: [
+                { name: "force-parse", transform: (): void => void 0 },
+                {
+                    name: "post-no-map",
+                    post: (): PostResult => ({ code: "console.log(2);" }),
+                },
+            ],
+        });
+
+        expect(result.code).toContain("console.log(2);");
+        // No post map returned: the codegen map over the original parse
+        // input carries through UNCHANGED.
+        expect(result.map.mappings).toBe(baseline.map.mappings);
+    });
+
+    it("carries a post rewrite into the next post hook", async (): Promise<void> => {
+        // The `post` fold is carried: the second hook must receive the
+        // first's returned code, not the generated code. A fixed-input
+        // bridge would record `"const a = 1;"` here.
+        const seen: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                { name: "force-parse", transform: (): void => void 0 },
+                {
+                    name: "post-first",
+                    post: (): PostResult => ({ code: "const injected = 1;" }),
+                },
+                {
+                    name: "post-probe",
+                    post: (_ctx: PluginContext, args: PostArgs): void => {
+                        seen.push(args.code);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["const injected = 1;"]);
+        expect(result.code).toBe("const injected = 1;");
+    });
+
+    it("reuses the same plugin object across compiles with per-compile state", async (): Promise<void> => {
+        // The SAME plugin objects run across five sequential compiles, but
+        // each `compile()` builds a fresh `state` Map: the marker written by
+        // the first compile must not leak into the later ones.
+        const seen: Array<unknown> = [];
+        let shouldWrite: boolean = true;
+
         const writer: Plugin = {
             name: "loop-writer",
             pre: (ctx: PluginContext): void => {
-                ctx.metadata.set("marker", "loop");
+                if (shouldWrite) {
+                    ctx.state.set("marker", "loop");
+                }
             },
         };
         const reader: Plugin = {
             name: "loop-reader",
-            transform: (): void => void 0,
+            transform: (ctx: PluginContext): void => {
+                seen.push(ctx.state.get("marker") ?? "__NO_MARKER__");
+            },
         };
 
         const results: Array<CompileResult> = [];
@@ -990,6 +1745,7 @@ describe("compile", (): void => {
                 plugins: [writer, reader],
             });
             results.push(result);
+            shouldWrite = false;
         }
 
         expect(results).toHaveLength(5);
@@ -998,6 +1754,14 @@ describe("compile", (): void => {
             expect(result.code).toBe("const a = 1;");
             expect(result.map.mappings.length).toBeGreaterThan(0);
         }
+
+        expect(seen).toEqual([
+            "loop",
+            "__NO_MARKER__",
+            "__NO_MARKER__",
+            "__NO_MARKER__",
+            "__NO_MARKER__",
+        ]);
     });
 
     it("runs concurrent compiles with mixed sync and async hooks", async (): Promise<void> => {
@@ -1017,17 +1781,17 @@ describe("compile", (): void => {
                             name: `mixed-${marker}`,
                             pre: isOdd
                                 ? async (ctx: PluginContext): Promise<void> => {
-                                      ctx.metadata.set("id", marker);
+                                      ctx.state.set("id", marker);
                                   }
                                 : (ctx: PluginContext): void => {
-                                      ctx.metadata.set("id", marker);
+                                      ctx.state.set("id", marker);
                                   },
                             transform: isOdd
-                                ? (ctx: PluginContext) => {
-                                      seen.push(String(ctx.metadata.get("id")));
+                                ? (ctx: PluginContext): void => {
+                                      seen.push(String(ctx.state.get("id")));
                                   }
-                                : async (ctx: PluginContext) => {
-                                      seen.push(String(ctx.metadata.get("id")));
+                                : async (ctx: PluginContext): Promise<void> => {
+                                      seen.push(String(ctx.state.get("id")));
                                   },
                         },
                     ],

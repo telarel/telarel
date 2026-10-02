@@ -1,4 +1,12 @@
-import type { CompileResult, Options, Plugin, PluginContext } from "telarel";
+import type {
+    CommonPluginContext,
+    CompileOptions,
+    CompileResult,
+    Options,
+    OptionsArgs,
+    Plugin,
+    PluginContext,
+} from "telarel";
 
 import { compile } from "telarel";
 import { describe, expect, it } from "vitest";
@@ -61,15 +69,14 @@ describe("validation", (): void => {
             file: "index.ts",
         };
 
-        await expect(compile(noCode as Options)).rejects.toThrow(
+        await expect(compile(noCode as CompileOptions)).rejects.toThrow(
             "Missing field `code`",
         );
     });
 
     it("leaves options unchanged when an options hook returns null", async (): Promise<void> => {
-        // The wrapper calls the hook, silently ignores the `null` return,
-        // and sends the full options bag back; the compile options are
-        // carried over unchanged.
+        // `null` = no change: the returned-bag fold keeps the current bag;
+        // the compile options are carried over unchanged.
         const plugin: unknown = {
             name: "null-options",
             options: (): null => null,
@@ -86,8 +93,8 @@ describe("validation", (): void => {
     });
 
     it("leaves options unchanged when an options hook returns undefined", async (): Promise<void> => {
-        // Companion to the `null` case above; the wrapper ignores the
-        // return either way and the options bag comes back unchanged.
+        // Companion to the `null` case above; `void` = no change either way
+        // and the options bag comes back unchanged.
         const plugin: unknown = {
             name: "void-options",
             options: (): void => void 0,
@@ -103,20 +110,25 @@ describe("validation", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
-    it("applies an in-place options mutation", async (): Promise<void> => {
-        // Intentional behavior change: the hook mutates the options bag in
-        // place; the wrapper sends the full record back to Rust, so the
-        // transform observes the mutated `code` with the current `cwd`
-        // and `file` carried over.
+    it("applies a returned options bag", async (): Promise<void> => {
+        // Return-based contract: the hook returns the replacement bag; the
+        // transform observes the new `code` with the current `cwd` and
+        // `file` carried over by the spread.
         const plugin: unknown = {
-            name: "mutate-options",
-            options: (options: Options): void => {
-                options.code = "const b = 2;";
+            name: "return-options",
+            options: (ctx: CommonPluginContext, args: OptionsArgs): Options => {
+                ctx.state.set("stage", "options");
+
+                return {
+                    ...args.options,
+                    code: "const b = 2;",
+                };
             },
             transform: (ctx: PluginContext): void => {
+                expect(ctx.state.get("stage")).toBe("options");
                 expect(ctx.cwd).toBe("/repo");
-                expect(ctx.file).toBe("index.ts");
-                expect(ctx.code).toBe("const b = 2;");
+                expect(ctx.module.file).toBe("index.ts");
+                expect(ctx.module.code).toBe("const b = 2;");
             },
         };
 
@@ -130,13 +142,18 @@ describe("validation", (): void => {
         expect(result.code).toBe("const b = 2;");
     });
 
-    it("silently ignores a returned options value", async (): Promise<void> => {
-        // Intentional behavior change: a returned value is discarded by
-        // the wrapper (no `TypeError`), so a hook that returns a
-        // replacement without mutating is a pass-through.
+    it("applies a returned bag that omits plugins as full-bag replace", async (): Promise<void> => {
+        // Full-bag semantics: a returned bag replacing the whole bag, so a
+        // bag that carries only `code` drops the plugin list (default: the
+        // EMPTY list) and every omitted scalar falls back to its default.
+        // This compile's only plugin replaces the bag without `plugins`,
+        // so nobody survives to carry a `code` rewrite: the compile itself
+        // uses the returned bag verbatim.
         const plugin: unknown = {
-            name: "ignored-return",
-            options: (): unknown => ({ code: "const b = 2;" }),
+            name: "returned-bag",
+            options: (): Options => ({
+                code: "const replaced = 2;",
+            }),
         };
 
         const result: CompileResult = await compile({
@@ -146,7 +163,7 @@ describe("validation", (): void => {
             plugins: [plugin as Plugin],
         });
 
-        expect(result.code).toBe("const a = 1;");
+        expect(result.code).toBe("const replaced = 2;");
     });
 
     it("allows duplicate plugin names in registration order", async (): Promise<void> => {
@@ -161,14 +178,14 @@ describe("validation", (): void => {
                     name: "dup",
                     pre: (ctx: PluginContext): void => {
                         seen.push("dup.first");
-                        ctx.metadata.set("marker", "first");
+                        ctx.state.set("marker", "first");
                     },
                 },
                 {
                     name: "dup",
                     pre: (ctx: PluginContext): void => {
                         seen.push("dup.second");
-                        seen.push(String(ctx.metadata.get("marker")));
+                        seen.push(String(ctx.state.get("marker")));
                     },
                 },
             ],

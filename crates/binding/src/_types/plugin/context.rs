@@ -11,6 +11,10 @@ pub struct JsPluginContext {
     pub file: SharedStr,
     /// The original code.
     pub code: SharedStr,
+    /// The grammar of the code.
+    pub language: SharedStr,
+    /// The module system of the code.
+    pub source_type: SharedStr,
 }
 
 impl ToNapiValue for JsPluginContext {
@@ -27,6 +31,10 @@ impl ToNapiValue for JsPluginContext {
         object.set("file", val.file)?;
 
         object.set("code", val.code)?;
+
+        object.set("language", val.language)?;
+
+        object.set("sourceType", val.source_type)?;
 
         Ok(JsValue::raw(&object))
     }

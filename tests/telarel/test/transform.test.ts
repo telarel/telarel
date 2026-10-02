@@ -296,14 +296,14 @@ describe("transform", (): void => {
         const jsPlugin: Plugin = {
             name: "observer",
             transform: (ctx: PluginContext): void => {
-                seen.push(ctx.metadata.get("marker"));
+                seen.push(ctx.state.get("marker"));
             },
         };
 
         const writer: Plugin = {
             name: "writer",
             pre: (ctx: PluginContext): void => {
-                ctx.metadata.set("marker", "from-writer");
+                ctx.state.set("marker", "from-writer");
             },
         };
 
@@ -328,10 +328,10 @@ describe("transform", (): void => {
                     type: string;
                 }>;
 
-                ctx.metadata.set("firstNode", body[0]?.type ?? "missing");
+                ctx.state.set("firstNode", body[0]?.type ?? "missing");
             },
             post: (ctx: PluginContext): void => {
-                seen.push(ctx.metadata.get("firstNode"));
+                seen.push(ctx.state.get("firstNode"));
             },
         };
 
@@ -390,10 +390,10 @@ describe("transform", (): void => {
         const plugin: Plugin = {
             name: "builtin:custom",
             pre: (ctx: PluginContext): void => {
-                ctx.metadata.set("marker", "from-builtin-custom");
+                ctx.state.set("marker", "from-builtin-custom");
             },
             transform: (ctx: PluginContext): void => {
-                seen.push(ctx.metadata.get("marker"));
+                seen.push(ctx.state.get("marker"));
             },
         };
 

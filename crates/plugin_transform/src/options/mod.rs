@@ -14,18 +14,17 @@ use oxc_transformer_plugins::{
     InjectGlobalVariablesConfig, ReplaceGlobalDefinesConfig,
 };
 
+use crate::options::define::DefineOptions;
+use crate::options::helper_loader::HelperLoaderOptions;
 use crate::options::helper_loader::ResolvedHelpers;
 use crate::options::helper_loader::overlay_helper_loader;
 use crate::options::helper_loader::resolve_helpers;
+use crate::options::inject::InjectOptions;
+use crate::options::jsx::JsxOptions;
 use crate::options::jsx::overlay_jsx;
+use crate::options::target::TransformTarget;
+use crate::options::typescript::TypeScriptOptions;
 use crate::options::typescript::overlay_typescript;
-
-pub use define::DefineOptions;
-pub use helper_loader::{HelperLoaderMode, HelperLoaderOptions};
-pub use inject::{InjectEntry, InjectOptions, InjectSpecifier};
-pub use jsx::{JsxOptions, JsxRuntime};
-pub use target::TransformTarget;
-pub use typescript::TypeScriptOptions;
 
 /// The transform plugin options.
 #[derive(Debug, Clone, Default)]
@@ -149,7 +148,9 @@ mod tests {
     use oxc_compat::Version;
 
     use crate::options::define::DefineOptions;
-    use crate::options::helper_loader::DEFAULT_HELPER_MODULE_NAME;
+    use crate::options::helper_loader::{
+        DEFAULT_HELPER_MODULE_NAME, HelperLoaderMode, HelperLoaderOptions,
+    };
     use crate::options::inject::{InjectEntry, InjectOptions, InjectSpecifier};
     use crate::options::jsx::{JsxOptions, JsxRuntime};
     use crate::options::target::TransformTarget;

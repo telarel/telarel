@@ -4,10 +4,8 @@ use telarel_plugin_transform::DefineOptions;
 
 /// Parse the `define` options: a `Record<string, string | number | boolean>`.
 ///
-/// `serde_json::Map` sorts keys without the `preserve_order` feature, so
-/// entries arrive in alphabetical key order; duplicate keys cannot reach the
-/// binding through the Record shape, so the first-match-wins rule stays
-/// unreachable and the ordering is deterministic.
+/// `serde_json::Map` sorts keys without the `preserve_order` feature,
+/// so entries arrive in alphabetical key order and the ordering is deterministic.
 pub fn parse_define(value: serde_json::Value) -> Result<DefineOptions> {
     let map: serde_json::Map<String, serde_json::Value> = match value {
         | serde_json::Value::Object(map) => map,

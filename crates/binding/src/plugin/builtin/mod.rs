@@ -10,6 +10,7 @@ use crate::plugin::builtin::transform::{TRANSFORM_NAME, to_transform_plugin};
 /// The napi-visible names of every supported builtin plugin.
 #[napi_derive::napi(string_enum)]
 pub enum BindingBuiltinPluginName {
+    /// The transform plugin.
     #[napi(value = "builtin:transform")]
     Transform,
 }

@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use telarel::allocator::Allocator;
+use telarel::allocator::CloneIn;
 use telarel::ast::ast::{IdentifierReference, JSXIdentifier};
 use telarel::str::{Ident, Str};
 use telarel::traverse::{Traverse, TraverseCtx, traverse_mut};
@@ -47,12 +48,15 @@ impl telarel::Plugin for TraversePlugin {
         telarel::HookUsage::Transform
     }
 
-    async fn transform<'a, 'ast>(
+    async fn transform<'a, 'ast: 'a>(
         &'a self,
-        _: &'a telarel::CompileContext<'a>,
-        args: telarel::TransformArgs<'a, 'ast>,
-    ) -> telarel::TransformReturn {
-        let mut renamer: TraverseRenamer<'_> =
+        _ctx: &'a telarel::PluginContext<'a>,
+        args: telarel::TransformArgs<'ast>,
+    ) -> telarel::TransformReturn<'ast> {
+        let mut current: telarel::ast::ast::Program<'ast> =
+            (*args.ast).clone_in(args.allocator);
+
+        let mut renamer: TraverseRenamer<'ast> =
             TraverseRenamer { allocator: args.allocator };
 
         // `oxc_traverse` reads scope IDs stamped onto AST nodes during the
@@ -60,12 +64,15 @@ impl telarel::Plugin for TraversePlugin {
         // using a default (empty) one (mirrors oxc's `rebuild_scoping`).
         let scoping: telarel::semantic::Scoping =
             telarel::semantic::SemanticBuilder::new()
-                .build(args.program)
+                .build(&current)
                 .semantic
                 .into_scoping();
 
-        traverse_mut(&mut renamer, args.allocator, args.program, scoping, ());
+        traverse_mut(&mut renamer, args.allocator, &mut current, scoping, ());
 
-        Ok(())
+        let ast: &'ast telarel::ast::ast::Program<'ast> =
+            args.allocator.alloc(current);
+
+        Ok(Some(telarel::TransformOutput { ast }))
     }
 }

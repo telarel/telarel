@@ -2,9 +2,10 @@
 //!
 //! A transform plugin for the compiler.
 //!
-//! This crate implements [`telarel_plugin::Plugin`] over the oxc transformer:
-//! it resolves telarel-owned options into oxc [`TransformOptions`], then runs
-//! the TypeScript, JSX, and syntax-lowering pipeline on the program in place.
+//! Implements [`telarel_plugin::Plugin`] over the oxc transformer: resolves
+//! telarel-owned options into oxc [`TransformOptions`], clones the read-only
+//! program into the compile allocator, and runs the TypeScript, JSX, and
+//! syntax-lowering pipeline over the clone, returning it when it changed.
 
 mod helpers;
 mod options;
@@ -14,9 +15,13 @@ pub mod oxc {
     pub use oxc::transformer::*;
 }
 
-pub use crate::options::{
-    DefineOptions, HelperLoaderMode, HelperLoaderOptions, InjectEntry,
-    InjectOptions, InjectSpecifier, JsxOptions, JsxRuntime, TransformOptions,
-    TransformTarget, TypeScriptOptions,
+pub use crate::options::TransformOptions;
+pub use crate::options::define::DefineOptions;
+pub use crate::options::helper_loader::{
+    HelperLoaderMode, HelperLoaderOptions,
 };
+pub use crate::options::inject::{InjectEntry, InjectOptions, InjectSpecifier};
+pub use crate::options::jsx::{JsxOptions, JsxRuntime};
+pub use crate::options::target::TransformTarget;
+pub use crate::options::typescript::TypeScriptOptions;
 pub use crate::plugin::{NAME, TransformPlugin};

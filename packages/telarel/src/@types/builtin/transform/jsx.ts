@@ -8,9 +8,7 @@ type JsxRuntime = "classic" | "automatic";
  */
 type JsxOptions = {
     /**
-     * The JSX runtime to emit.
-     *
-     * By default, it is `automatic`.
+     * The JSX runtime to emit. By default, it is `automatic`.
      */
     runtime?: JsxRuntime;
     /**

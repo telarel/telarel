@@ -11,10 +11,6 @@ import type { HelperLoaderMode } from "#/@types/builtin/transform/oxc/helper-loa
 
 /**
  * The oxc escape hatch: a serializable mirror of oxc's transform options.
- *
- * The binding accepts a subset of oxc's shape — `assumptions`, `typescript`,
- * `decorator`, `jsx`, `env`, `helperLoader` — and rejects unknown fields,
- * including the Babel-only `cwd`, `plugins`, and `proposals`.
  */
 type OxcTransformOptions = {
     /**
@@ -46,14 +42,11 @@ type OxcTransformOptions = {
      */
     helperLoader?: {
         /**
-         * Strategy used to resolve helper calls.
-         *
-         * By default, it is `inline`.
+         * Strategy used to resolve helper calls. By default, it is `inline`.
          */
         mode?: HelperLoaderMode;
         /**
          * The module to import helper functions from, work in `runtime` mode.
-         *
          * By default, it is `@oxc-project/runtime`.
          */
         moduleName?: string;

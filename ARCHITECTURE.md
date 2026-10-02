@@ -6,7 +6,7 @@ This is a architecture documentation of the compiler.
 
 Telarel is an extensible JavaScript compiler written in Rust, powered by [oxc](https://oxc.rs) and built around plugin hooks.
 
-The [`compile`](./crates/core/src/lib.rs#L61) function takes compile options (`file`, `code`, and an optional `cwd` which defaults to the current working directory when omitted) plus a list of plugins, and returns a `CompileOutput` which generated code with a source map.
+The [`compile`](./crates/core/src/lib.rs#L326) function takes compile options (`cwd`, `file`, `code` etc) plus a list of plugins, and returns a `CompileOutput` which generated code with a source map.
 
 ## Dependencies
 
@@ -36,57 +36,61 @@ There are no cycles.
 
 ```mermaid
 flowchart TD
-    Options[<b>options</b><br/>chained in-place mutation of options]
-    Pre[<b>pre</b><br/>notify-all; first error aborts]
-    TransformNeeded{any transform plugin?}
-    Parse[parse into allocator]
-    Transform[<b>transform</b><br/>chained in-place mutation]
-    Codegen[codegen: code + map]
-    Skip[skip parse<br/>codegen: map]
-    Post[<b>post</b><br/>notify-all; first error aborts]
+    Options[<b>options</b>]
+    Start[<b>compile_start</b>]
+    Pre[<b>pre</b>]
+    Transform[<b>transform</b>]
+    Post[<b>post</b>]
+    End[<b>compile_end</b>]
     Output([code + map])
 
-    Options --> Pre --> TransformNeeded
-    TransformNeeded -->|yes| Parse --> Transform --> Codegen --> Post
-    TransformNeeded -->|no| Skip --> Post
-    Post --> Output
+    Options --> Start --> Pre
+    Pre -- "parse" --> Transform
+    Transform -- "codegen" --> Post
+    Post --> End --> Output
+    Pre -- "no transform plugin: skip parse (identity map)" --> Post
 ```
 
-The plugin implements 4 hooks (all with no operation by default). `options` goes without context since the context is built from the resolved options.
+The plugin implements different hooks (all with no operation by default). Every hook is return-based: the core owns all state and applies the returned value. Normal hooks (`options`, `pre`, `transform`, `post`) return the new value (`Some` replaces, `None` keep the current one); notify hooks (`compile_start`, `compile_end`) ignore the returned value.
 
-| Hook      | Context | Arguments                          | Return | Merge   |
-| --------- | ------- | ---------------------------------- | ------ | ------- |
-| options   | –       | options (mutable)                  | `()`   | chained |
-| pre       | ✓       | file, code (read-only)             | `()`   | notify  |
-| transform | ✓       | allocator, file, program (mutable) | `()`   | chained |
-| post      | ✓       | file, final code                   | `()`   | notify  |
+Hooks receive a context: `options` gets the [`CommonPluginContext`](./crates/plugin/src/_types/context.rs#L5) (carrying the shared [`PluginState`](./crates/common/src/_types/plugin/state.rs#L5)), while later hooks get the flat [`PluginContext`](./crates/plugin/src/_types/context.rs#L25) with `cwd`, `module` info, and a borrow of the same state.
 
-Merge semantics:
+| Hook          | Arguments        | Return    | Semantics        |
+| ------------- | ---------------- | --------- | ---------------- |
+| options       | options          | options   | Fixpoint replace |
+| compile_start | resolved options | ()        | Notify           |
+| pre           | code             | code, map | Carried fold     |
+| transform     | allocator, ast   | ast       | Carried fold     |
+| post          | code             | code, map | Carried fold     |
+| compile_end   | code, map, err?  | ()        | Notify           |
 
-- **Chained** — each plugin mutates the same argument in place; mutations are visible to following plugins
-    - `options` — mutable [`CompileOptions`](./crates/common/src/_types/options/compile.rs#L3) bag
-    - `transform` — mutable [`Program`](./crates/plugin/src/_types/hooks/transform.rs#L6)
-- **Notify** — `pre` and `post` run for side effects in registration order; the first error aborts
+Semantics:
 
-For `options`, the [driver](./crates/plugin/src/plugin_driver/hooks/options.rs) loops with `&mut` over one options bag.
+- **Fixpoint replace** — `options` returns a whole [`OptionsArgs`](./crates/plugin/src/_types/hooks/options.rs#L10) to replace the current one
+- **Notify** — `compile_start` and `compile_end` ignore the return value
+- **Carried fold** — `pre`, `transform`, and `post` carry a value from plugin to plugin
 
-For `transform`, a plugin may swap the entire root by assigning `*args.program` with a tree allocated in the shared allocator — pointer stability is the [driver's](./crates/plugin/src/plugin_driver/hooks/transform.rs) job.
+**Fixpoint replace** is struct-level replacement, not a patch: fields the returned `OptionsArgs` omits are dropped, and `None` keeps the current args. Returned `plugins` may inject new plugins, whose own `options` hooks then run — a fixpoint over the list (see [`crates/plugin/src/options/fixpoint.rs`](./crates/plugin/src/options/fixpoint.rs#L26)).
+
+**Notify** hooks run in registration order; `compile_end` runs on every path after the `options` fixpoint settles, including errors, but is not run when the `options` stage itself fails.
+
+**Carried fold** replaces the carried value on `Some(output)` and keeps it on `None`; for `transform` the driver carries a program reference and reports the **last** `Some` (a later `None` cannot change it — see [`crates/plugin/src/plugin_driver/hooks/transform.rs`](./crates/plugin/src/plugin_driver/hooks/transform.rs#L17)).
 
 ### Hook Usage Declaration
 
-[`register_hook_usage`](./crates/plugin/src/plugin/mod.rs#L22) is required and affects how the driver runs plugins. If a hook isn't declared, it won't be called.
+[`register_hook_usage`](./crates/plugin/src/plugin/mod.rs#L35) is required and affects how the driver runs plugins. It only gates `pre`, `transform`, and `post`: if one of these isn't declared, it won't be called. `options`, `compile_start`, and `compile_end` run on every settled plugin regardless of declared usage.
 
 On the JS side, usage is inferred from the hook properties on the plugin object. Therefore, even if `transform` never mutates the program, it still triggers parse + codegen.
 
 ### Parse Skip
 
-The driver's aggregate [`HookUsage`](./crates/common/src/_types/hooks/usage.rs#L6) determines whether the source needs to be parsed. If no plugin declares `Transform`, parsing and codegen are skipped entirely. In that case, even invalid syntax is passed through, a [per-line identity map](./crates/core/src/lib.rs#L31) is returned instead of producing a parse error.
+The driver's aggregate [`HookUsage`](./crates/common/src/_types/hooks/usage.rs#L8) determines whether the source needs to be parsed. If no plugin declares `Transform`, parsing and codegen are skipped entirely. In that case, even invalid syntax is passed through, a [per-line identity map](./crates/core/src/lib.rs#L44) is returned instead of producing a parse error.
 
 Declaring only `pre` or `post` does not trigger parsing.
 
 ## JS Plugin Bridge
 
-The [binding](./crates/binding/src/plugin/pluginable.rs#L37) wraps JS plugin objects in `Pluginable` implementations that call JS through thread-safe function calls (TSFNs). The AST crosses the boundary as a JSON-serialized ESTree string via `oxc_estree_codec`:
+The [binding](./crates/binding/src/plugin/pluginable.rs#L341) wraps JS plugin objects in `Pluginable` implementations that call JS through thread-safe function calls (TSFNs). The AST crosses the boundary as a JSON-serialized ESTree string via `oxc_estree_codec`:
 
 ```mermaid
 flowchart LR
@@ -94,11 +98,9 @@ flowchart LR
     E -- stringify --> S -- deserialize --> P
 ```
 
-The JS `options` hook receives the current `{ cwd, file, code }` bag and the wrapper always sends the full record back to Rust, so unmutated fields keep their values.
+The JS `options` hook receives the bag and the wrapper maps each user hook's return value to the raw output shape the binding expects; the binding unmarshals it back into the pipeline types.
 
-The JS `transform` hook is mutation-based: the wrapper parses the serialized tree, calls the hook, re-stringifies the tree, and compares it with the pre-call string. Equal — nothing crosses back into Rust; different — the JSON is parsed back into the compile allocator and swapped in as the root.
-
-A shared `metadata` object is created for each compile and released in `Task::finally`, so it remains isolated between different compiles.
+The JS `transform` hook send the returned AST as `astJson`. The binding keeps an equality short-circuit (`ast_json` unchanged -> `None`) as defense in depth for raw/unwrapped plugins.
 
 ## Builtin Plugin Bridge
 
@@ -121,11 +123,9 @@ flowchart LR
 
 The [binding](./crates/binding/src/plugin/build.rs) routes a plugin to its Rust builtin only when the object carries the explicit `__builtin: true` property — no name prefix is reserved, so a user JS plugin may use any name.
 
-Each builtin's name is defined once in its plugin crate and mirrored by the binding's napi enum.
-
 ## Execution Model
 
-The transform hook's future is intentionally non-`Send` (`LocalHookFuture`) because programs borrow from the compile allocator. On native, each `compile` call runs on a libuv worker thread and `block_on`s a per-thread, reused current-thread Tokio runtime ([`block_on_compile`](./crates/binding/src/tasks/mod.rs), used by [`CompileTask`](./crates/binding/src/tasks/compile.rs#L10)). The non-`Send` transform future never escapes the worker thread: it is fully driven and dropped inside `block_on`.
+The transform hook's future is intentionally non-`Send` (`LocalHookFuture`) because programs borrow from the compile allocator. On native, each `compile` call runs on a libuv worker thread and `block_on`s a per-thread, reused current-thread Tokio runtime ([`block_on_compile`](./crates/binding/src/tasks/mod.rs), used by [`CompileTask`](./crates/binding/src/tasks/compile.rs#L12)). The non-`Send` transform future never escapes the worker thread: it is fully driven and dropped inside `block_on`.
 
 The same TSFN-based binding also works with `wasm32-wasip1-threads`, and the JS test suite runs against both backends.
 

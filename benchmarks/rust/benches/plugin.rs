@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use telarel::allocator::Allocator;
+use telarel::allocator::CloneIn;
 use telarel::ast::ast::{IdentifierReference, JSXIdentifier};
 use telarel::ast_visit::VisitMut;
 use telarel::ast_visit::walk_mut;
@@ -46,15 +47,21 @@ impl telarel::Plugin for TransformPlugin {
         telarel::HookUsage::Transform
     }
 
-    async fn transform<'a, 'ast>(
+    async fn transform<'a, 'ast: 'a>(
         &'a self,
-        _: &'a telarel::CompileContext<'a>,
-        args: telarel::TransformArgs<'a, 'ast>,
-    ) -> telarel::TransformReturn {
-        let mut renamer: Renamer<'_> = Renamer { allocator: args.allocator };
+        _ctx: &'a telarel::PluginContext<'a>,
+        args: telarel::TransformArgs<'ast>,
+    ) -> telarel::TransformReturn<'ast> {
+        let mut current: telarel::ast::ast::Program<'ast> =
+            (*args.ast).clone_in(args.allocator);
 
-        walk_mut::walk_program(&mut renamer, args.program);
+        let mut renamer: Renamer<'ast> = Renamer { allocator: args.allocator };
 
-        Ok(())
+        walk_mut::walk_program(&mut renamer, &mut current);
+
+        let ast: &'ast telarel::ast::ast::Program<'ast> =
+            args.allocator.alloc(current);
+
+        Ok(Some(telarel::TransformOutput { ast }))
     }
 }

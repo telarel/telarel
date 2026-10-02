@@ -1,4 +1,4 @@
-import type { CompileResult, Options } from "telarel";
+import type { CompileOptions, CompileResult } from "telarel";
 
 import { compile } from "telarel";
 import { describe, expect, it } from "vitest";
@@ -155,11 +155,11 @@ describe("language", (): void => {
             language: "banana",
         };
 
-        await expect(compile(json as Options)).rejects.toThrow(
+        await expect(compile(json as CompileOptions)).rejects.toThrow(
             'invalid language "json": expected "js", "ts", "dts", "jsx" or "tsx"',
         );
 
-        await expect(compile(banana as Options)).rejects.toThrow(
+        await expect(compile(banana as CompileOptions)).rejects.toThrow(
             'invalid language "banana": expected "js", "ts", "dts", "jsx" or "tsx"',
         );
     });
@@ -415,11 +415,11 @@ describe("source type", (): void => {
             sourceType: "banana",
         };
 
-        await expect(compile(js as Options)).rejects.toThrow(
+        await expect(compile(js as CompileOptions)).rejects.toThrow(
             'invalid source type "js": expected "script", "commonjs", "module" or "unambiguous"',
         );
 
-        await expect(compile(banana as Options)).rejects.toThrow(
+        await expect(compile(banana as CompileOptions)).rejects.toThrow(
             'invalid source type "banana": expected "script", "commonjs", "module" or "unambiguous"',
         );
     });

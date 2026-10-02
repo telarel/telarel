@@ -2,17 +2,21 @@ pub mod hooks;
 
 use std::sync::Arc;
 
-use telarel_common::{CompileContext, CompileOptions, HookUsage};
+use telarel_common::HookUsage;
 
+use crate::_types::context::PluginContext;
+use crate::_types::hooks::compile_end::CompileEndArgs;
+use crate::_types::hooks::compile_start::CompileStartArgs;
 use crate::_types::hooks::post::PostArgs;
 use crate::_types::hooks::pre::PreArgs;
-use crate::_types::hooks::transform::TransformArgs;
+use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
 use crate::plugin::pluginable::SharedPluginable;
 
 /// Drives plugins through the hooks in registration order.
 pub struct PluginDriver {
+    /// The full settled plugin list; `compile_start`/`compile_end` iterate it.
+    all_plugins: Vec<SharedPluginable>,
     usage: HookUsage,
-    options_plugins: Vec<SharedPluginable>,
     pre_plugins: Vec<SharedPluginable>,
     transform_plugins: Vec<SharedPluginable>,
     post_plugins: Vec<SharedPluginable>,
@@ -22,11 +26,12 @@ impl PluginDriver {
     /// Create a driver from plugins in registration order.
     ///
     /// Plugins are partitioned by their declared [`HookUsage`];
-    /// a hook only iterates the plugins that declared it.
+    /// a hook only iterates the plugins that declared it. There is no
+    /// `options` partition: the `options` stage is the fixpoint runner
+    /// ([`crate::options_fixpoint`]), not the driver.
     pub fn new(plugins: Vec<SharedPluginable>) -> Self {
         let mut usage: HookUsage = HookUsage::default();
 
-        let mut options_plugins: Vec<SharedPluginable> = Vec::new();
         let mut pre_plugins: Vec<SharedPluginable> = Vec::new();
         let mut transform_plugins: Vec<SharedPluginable> = Vec::new();
         let mut post_plugins: Vec<SharedPluginable> = Vec::new();
@@ -35,10 +40,6 @@ impl PluginDriver {
             let declared: HookUsage = plugin.call_register_hook_usage();
 
             usage |= declared;
-
-            if declared.contains(HookUsage::Options) {
-                options_plugins.push(Arc::clone(plugin));
-            }
 
             if declared.contains(HookUsage::Pre) {
                 pre_plugins.push(Arc::clone(plugin));
@@ -54,8 +55,8 @@ impl PluginDriver {
         }
 
         Self {
+            all_plugins: plugins,
             usage,
-            options_plugins,
             pre_plugins,
             transform_plugins,
             post_plugins,
@@ -67,64 +68,95 @@ impl PluginDriver {
         self.usage
     }
 
-    /// Run the `options` hook chain;
-    /// each plugin mutates the carried [`CompileOptions`] in place.
-    pub async fn options(
-        &self,
-        options: &mut CompileOptions,
-    ) -> anyhow::Result<()> {
-        hooks::options::options(&self.options_plugins, options).await
+    /// The settled plugin names in registration order; duplicates preserved.
+    pub fn settled_names(&self) -> Vec<String> {
+        self.all_plugins
+            .iter()
+            .map(|plugin| plugin.call_name().into_owned())
+            .collect()
     }
 
-    /// Run the `pre` hook on every plugin in registration order.
+    /// Run the `compile_start` hook on EVERY settled plugin (not partitioned
+    /// by usage); the first error aborts. Notify-only.
+    pub async fn compile_start(
+        &self,
+        ctx: &PluginContext<'_>,
+        args: &CompileStartArgs,
+    ) -> anyhow::Result<()> {
+        hooks::compile_start::compile_start(&self.all_plugins, ctx, args).await
+    }
+
+    /// Run the `pre` hook on every plugin in registration order;
+    /// `Some` replaces the carried code, `None` keeps it. The fold result
+    /// carries every returned map in fold order so the caller composes the
+    /// full chain (see [`hooks::pre::PreFold`]).
     pub async fn pre(
         &self,
-        ctx: &CompileContext<'_>,
+        ctx: &PluginContext<'_>,
         args: &PreArgs<'_>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<hooks::pre::PreFold> {
         hooks::pre::pre(&self.pre_plugins, ctx, args).await
     }
 
     /// Run the `transform` hook chain;
-    /// each plugin mutates the carried [`oxc::ast::ast::Program`] in place.
-    pub async fn transform<'a, 'ast>(
+    /// `Some` carries the last returned program, `None` = unchanged.
+    pub async fn transform<'a, 'ast: 'a>(
         &'a self,
-        ctx: &'a CompileContext<'a>,
-        args: &mut TransformArgs<'a, 'ast>,
-    ) -> anyhow::Result<()> {
+        ctx: &'a PluginContext<'a>,
+        args: &TransformArgs<'ast>,
+    ) -> anyhow::Result<Option<TransformOutput<'ast>>> {
         hooks::transform::transform(&self.transform_plugins, ctx, args).await
     }
 
-    /// Run the `post` hook on every plugin in registration order.
+    /// Run the `post` hook on every plugin in registration order;
+    /// `Some` replaces the carried code, `None` keeps it. The fold result
+    /// carries every returned map in fold order so the caller composes the
+    /// full chain (see [`hooks::post::PostFold`]).
     pub async fn post(
         &self,
-        ctx: &CompileContext<'_>,
+        ctx: &PluginContext<'_>,
         args: &PostArgs<'_>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<hooks::post::PostFold> {
         hooks::post::post(&self.post_plugins, ctx, args).await
+    }
+
+    /// Run the `compile_end` hook on EVERY settled plugin (not partitioned by
+    /// usage); every hook runs even after one fails, and the first error is
+    /// returned after the loop. Notify-only.
+    pub async fn compile_end(
+        &self,
+        ctx: &PluginContext<'_>,
+        args: &CompileEndArgs,
+    ) -> anyhow::Result<()> {
+        hooks::compile_end::compile_end(&self.all_plugins, ctx, args).await
     }
 }
 
-// The frozen driver test keeps the explicit RPITIT shape for `MarkPlugin::
-// transform`; converting it to `async fn` would be a second edit to the
-// frozen file, so the `manual_async_fn` lint is suppressed here instead.
+// The house style for the hook impls is the explicit RPITIT form (never
+// `async fn`), so the `manual_async_fn` lint is suppressed here.
 #[cfg(test)]
 #[allow(clippy::manual_async_fn)]
 mod tests {
     use std::borrow::Cow;
-    use std::future::Future;
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::MutexGuard;
 
+    use oxc::allocator::Allocator;
+    use oxc::allocator::CloneIn;
+    use oxc::ast::ast::{Directive, Program, StringLiteral};
+    use oxc::ast::builder::AstBuilder;
+    use oxc::span::SPAN;
+
     use telarel_common::{
-        CompileContext, CompileOptions, HookUsage, ParseOptions, ParseResult,
-        parse,
+        CompileContext, HookUsage, Language, ParseOptions, ParseResult,
+        SourceType, parse,
     };
 
-    use oxc::allocator::Allocator;
-    use oxc::ast::ast::Program;
-
+    use crate::_types::context::{CommonPluginContext, ModuleInfo};
+    use crate::_types::hooks::notify::NotifyReturn;
+    use crate::_types::hooks::post::PostReturn;
+    use crate::_types::hooks::pre::PreReturn;
     use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
     use crate::SharedPluginable;
     use crate::plugin::Plugin;
@@ -132,109 +164,36 @@ mod tests {
 
     use super::*;
 
-    #[derive(Debug)]
-    struct OptionsPlugin;
+    fn common_ctx() -> CommonPluginContext {
+        CommonPluginContext::default()
+    }
 
-    impl Plugin for OptionsPlugin {
-        fn name(&self) -> Cow<'static, str> {
-            "options".into()
-        }
-
-        fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Options
-        }
-
-        async fn options(
-            &self,
-            options: &mut CompileOptions,
-        ) -> anyhow::Result<()> {
-            options.cwd = Some("/changed".into());
-            Ok(())
+    fn make_module<'a>(code: &'a str) -> ModuleInfo<'a> {
+        ModuleInfo {
+            file: "a.ts",
+            code,
+            language: Language::TS,
+            source_type: SourceType::Module,
         }
     }
 
-    #[derive(Debug)]
-    struct NoopOptionsPlugin;
+    fn test_parse_program<'a>(allocator: &'a Allocator) -> ParseResult<'a> {
+        let ctx: telarel_common::CompileContext<'_> =
+            telarel_common::CompileContext::new(
+                "/repo",
+                "a.ts",
+                "console.log(1);",
+            );
 
-    impl Plugin for NoopOptionsPlugin {
-        fn name(&self) -> Cow<'static, str> {
-            "noop-options".into()
-        }
-
-        fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Options
-        }
-    }
-
-    #[derive(Debug)]
-    struct RewriteCodeOptionsPlugin;
-
-    impl Plugin for RewriteCodeOptionsPlugin {
-        fn name(&self) -> Cow<'static, str> {
-            "rewrite-code-options".into()
-        }
-
-        fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Options
-        }
-
-        async fn options(
-            &self,
-            options: &mut CompileOptions,
-        ) -> anyhow::Result<()> {
-            options.code = "const rewritten = 7;".to_string();
-            Ok(())
-        }
-    }
-
-    #[derive(Debug)]
-    struct ObserveOptionsPlugin {
-        observed: Arc<Mutex<Vec<String>>>,
-    }
-
-    impl ObserveOptionsPlugin {
-        fn new(observed: Arc<Mutex<Vec<String>>>) -> Self {
-            Self { observed }
-        }
-    }
-
-    impl Plugin for ObserveOptionsPlugin {
-        fn name(&self) -> Cow<'static, str> {
-            "observe-options".into()
-        }
-
-        fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Options
-        }
-
-        async fn options(
-            &self,
-            options: &mut CompileOptions,
-        ) -> anyhow::Result<()> {
-            self.observed.lock().unwrap().push(options.code.clone());
-
-            Ok(())
-        }
-    }
-
-    #[derive(Debug)]
-    struct FailingOptionsPlugin;
-
-    impl Plugin for FailingOptionsPlugin {
-        fn name(&self) -> Cow<'static, str> {
-            "fail-options".into()
-        }
-
-        fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Options
-        }
-
-        async fn options(
-            &self,
-            _options: &mut CompileOptions,
-        ) -> anyhow::Result<()> {
-            Err(anyhow::anyhow!("boom"))
-        }
+        parse(ParseOptions {
+            context: &ctx,
+            allocator,
+            file: "a.ts",
+            code: "console.log(1);",
+            language: None,
+            source_type: None,
+        })
+        .unwrap()
     }
 
     #[derive(Debug)]
@@ -266,22 +225,28 @@ mod tests {
             HookUsage::Pre | HookUsage::Post
         }
 
-        async fn pre(
-            &self,
-            _ctx: &CompileContext<'_>,
-            _args: &PreArgs<'_>,
-        ) -> anyhow::Result<()> {
-            self.record();
-            Ok(())
+        fn pre<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a PreArgs<'_>,
+        ) -> impl Future<Output = PreReturn> + Send {
+            async move {
+                self.record();
+
+                Ok(None)
+            }
         }
 
-        async fn post(
-            &self,
-            _ctx: &CompileContext<'_>,
-            _args: &PostArgs<'_>,
-        ) -> anyhow::Result<()> {
-            self.record();
-            Ok(())
+        fn post<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a PostArgs<'_>,
+        ) -> impl Future<Output = PostReturn> + Send {
+            async move {
+                self.record();
+
+                Ok(None)
+            }
         }
     }
 
@@ -297,12 +262,12 @@ mod tests {
             HookUsage::Pre
         }
 
-        async fn pre(
-            &self,
-            _ctx: &CompileContext<'_>,
-            _args: &PreArgs<'_>,
-        ) -> anyhow::Result<()> {
-            Err(anyhow::anyhow!("boom"))
+        fn pre<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a PreArgs<'_>,
+        ) -> impl Future<Output = PreReturn> + Send {
+            async move { Err(anyhow::anyhow!("boom")) }
         }
     }
 
@@ -318,30 +283,33 @@ mod tests {
             HookUsage::Transform
         }
 
-        fn transform<'a, 'ast>(
+        fn transform<'a, 'ast: 'a>(
             &'a self,
-            ctx: &'a CompileContext<'a>,
-            args: TransformArgs<'a, 'ast>,
-        ) -> impl Future<Output = TransformReturn> {
+            _ctx: &'a PluginContext<'a>,
+            args: TransformArgs<'ast>,
+        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
             async move {
                 let code: &'ast str = args.allocator.alloc_str("\"mark\";");
 
-                let file: &'ast str = args.allocator.alloc_str(args.file);
+                let file: &'ast str =
+                    args.allocator.alloc_str(_ctx.module.file);
 
-                let options: ParseOptions<'_, '_> = ParseOptions {
-                    context: ctx,
+                let ctx: CompileContext<'_> =
+                    CompileContext::new("/repo", file, code);
+
+                let parsed: ParseResult<'ast> = parse(ParseOptions {
+                    context: &ctx,
                     allocator: args.allocator,
                     file,
                     code,
                     language: None,
                     source_type: None,
-                };
+                })?;
 
-                let parsed: ParseResult<'_> = parse(options).unwrap();
+                let rooted: &'ast Program<'ast> =
+                    args.allocator.alloc(parsed.program);
 
-                *args.program = parsed.program;
-
-                Ok(())
+                Ok(Some(crate::TransformOutput { ast: rooted }))
             }
         }
     }
@@ -375,73 +343,104 @@ mod tests {
             HookUsage::Transform
         }
 
-        fn transform<'a, 'ast>(
+        fn transform<'a, 'ast: 'a>(
             &'a self,
-            _ctx: &'a CompileContext<'a>,
-            args: TransformArgs<'a, 'ast>,
-        ) -> impl Future<Output = TransformReturn> {
+            _ctx: &'a PluginContext<'a>,
+            args: TransformArgs<'ast>,
+        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
             async move {
-                self.record(args.program);
-                Ok(())
+                self.record(args.ast);
+
+                Ok(None)
             }
         }
     }
 
     #[derive(Debug)]
-    struct RecordingMutatorPlugin {
-        seen: Arc<Mutex<Vec<usize>>>,
-    }
+    struct ReplaceRootPlugin;
 
-    impl RecordingMutatorPlugin {
-        fn new(seen: Arc<Mutex<Vec<usize>>>) -> Self {
-            Self { seen }
-        }
-
-        fn record(
-            &self,
-            program: &Program<'_>,
-        ) {
-            let mut seen: MutexGuard<'_, Vec<usize>> =
-                self.seen.lock().unwrap();
-            seen.push(std::ptr::from_ref(program) as usize);
-        }
-    }
-
-    impl Plugin for RecordingMutatorPlugin {
+    impl Plugin for ReplaceRootPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "record-mutate".into()
+            "replace-root".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
             HookUsage::Transform
         }
 
-        fn transform<'a, 'ast>(
+        fn transform<'a, 'ast: 'a>(
             &'a self,
-            ctx: &'a CompileContext<'a>,
-            args: TransformArgs<'a, 'ast>,
-        ) -> impl Future<Output = TransformReturn> {
+            _ctx: &'a PluginContext<'a>,
+            args: TransformArgs<'ast>,
+        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
             async move {
-                self.record(args.program);
+                let code: &'ast str = args.allocator.alloc_str("\"replaced\";");
 
-                let code: &'ast str = args.allocator.alloc_str("\"mark\";");
+                let file: &'ast str =
+                    args.allocator.alloc_str(_ctx.module.file);
 
-                let file: &'ast str = args.allocator.alloc_str(args.file);
+                let ctx: CompileContext<'_> =
+                    CompileContext::new("/repo", file, code);
 
-                let options: ParseOptions<'_, '_> = ParseOptions {
-                    context: ctx,
+                let parsed: ParseResult<'_> = parse(ParseOptions {
+                    context: &ctx,
                     allocator: args.allocator,
                     file,
                     code,
                     language: None,
                     source_type: None,
-                };
+                })?;
 
-                let parsed: ParseResult<'_> = parse(options).unwrap();
+                let fresh: &'ast Program<'ast> =
+                    args.allocator.alloc(parsed.program);
 
-                *args.program = parsed.program;
+                Ok(Some(crate::TransformOutput { ast: fresh }))
+            }
+        }
+    }
 
-                Ok(())
+    #[derive(Debug)]
+    struct AppendDirectivePlugin;
+
+    const APPEND_DIRECTIVE: &str = "x-appended";
+
+    impl Plugin for AppendDirectivePlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "append-directive".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Transform
+        }
+
+        // Clone the carried program, append a directive, and return the
+        // clone.
+        fn transform<'a, 'ast: 'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'a>,
+            args: TransformArgs<'ast>,
+        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+            async move {
+                let mut working: Program<'ast> =
+                    (*args.ast).clone_in(args.allocator);
+
+                let builder: AstBuilder<'ast> = AstBuilder::new(args.allocator);
+
+                let string_literal: StringLiteral<'ast> =
+                    StringLiteral::new(SPAN, APPEND_DIRECTIVE, None, &builder);
+
+                let directive: Directive<'ast> = Directive::new(
+                    SPAN,
+                    string_literal,
+                    APPEND_DIRECTIVE,
+                    &builder,
+                );
+
+                working.directives.push(directive);
+
+                let rooted: &'ast Program<'ast> = args.allocator.alloc(working);
+
+                Ok(Some(crate::TransformOutput { ast: rooted }))
             }
         }
     }
@@ -458,11 +457,11 @@ mod tests {
             HookUsage::Transform
         }
 
-        fn transform<'a, 'ast>(
+        fn transform<'a, 'ast: 'a>(
             &'a self,
-            _ctx: &'a CompileContext<'a>,
-            _args: TransformArgs<'a, 'ast>,
-        ) -> impl Future<Output = TransformReturn> {
+            _ctx: &'a PluginContext<'a>,
+            _args: TransformArgs<'ast>,
+        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
             async move { Err(anyhow::anyhow!("boom")) }
         }
     }
@@ -479,12 +478,12 @@ mod tests {
             HookUsage::Post
         }
 
-        async fn post(
+        fn post(
             &self,
-            _ctx: &CompileContext<'_>,
+            _ctx: &PluginContext<'_>,
             _args: &PostArgs<'_>,
-        ) -> anyhow::Result<()> {
-            Err(anyhow::anyhow!("boom"))
+        ) -> impl Future<Output = PostReturn> + Send {
+            async move { Err(anyhow::anyhow!("boom")) }
         }
     }
 
@@ -514,154 +513,27 @@ mod tests {
             HookUsage::Pre
         }
 
-        async fn pre(
-            &self,
-            _ctx: &CompileContext<'_>,
-            _args: &PreArgs<'_>,
-        ) -> anyhow::Result<()> {
-            self.record();
-            Ok(())
-        }
-
-        fn transform<'a, 'ast>(
+        fn pre<'a>(
             &'a self,
-            _ctx: &'a CompileContext<'a>,
-            _args: TransformArgs<'a, 'ast>,
-        ) -> impl Future<Output = TransformReturn> {
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a PreArgs<'_>,
+        ) -> impl Future<Output = PreReturn> + Send {
             async move {
                 self.record();
-                Ok(())
+
+                Ok(None)
             }
         }
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn test_options_chain_mutates_in_place() {
-        let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(OptionsPlugin),
-            Plugin::new_shared(OptionsPlugin),
-        ];
-
-        let driver: PluginDriver = PluginDriver::new(plugins);
-
-        let mut options: CompileOptions = CompileOptions {
-            file: "a.ts".to_string(),
-            code: "console.log(1);".to_string(),
-            ..Default::default()
-        };
-
-        driver.options(&mut options).await.unwrap();
-
-        assert_eq!(options.cwd.as_deref(), Some("/changed"));
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn test_options_noop_keeps_current() {
-        let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(NoopOptionsPlugin)];
-
-        let driver: PluginDriver = PluginDriver::new(plugins);
-
-        let mut options: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
-            file: "a.ts".to_string(),
-            code: "console.log(1);".to_string(),
-            ..Default::default()
-        };
-
-        driver.options(&mut options).await.unwrap();
-
-        assert_eq!(options.cwd.as_deref(), Some("/repo"));
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn test_options_mutation_keeps_other_fields() {
-        let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(RewriteCodeOptionsPlugin)];
-
-        let driver: PluginDriver = PluginDriver::new(plugins);
-
-        let mut options: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
-            file: "a.ts".to_string(),
-            code: "console.log(1);".to_string(),
-            ..Default::default()
-        };
-
-        driver.options(&mut options).await.unwrap();
-
-        assert_eq!(options.cwd.as_deref(), Some("/repo"));
-        assert_eq!(options.file, "a.ts");
-        assert_eq!(options.code, "const rewritten = 7;");
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn test_options_mutation_visible_to_later_plugin() {
-        let observed: Arc<Mutex<Vec<String>>> =
-            Arc::new(Mutex::new(Vec::new()));
-
-        let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(RewriteCodeOptionsPlugin),
-            Plugin::new_shared(ObserveOptionsPlugin::new(Arc::clone(
-                &observed,
-            ))),
-        ];
-
-        let driver: PluginDriver = PluginDriver::new(plugins);
-
-        let mut options: CompileOptions = CompileOptions {
-            file: "a.ts".to_string(),
-            code: "console.log(1);".to_string(),
-            ..Default::default()
-        };
-
-        driver.options(&mut options).await.unwrap();
-
-        assert_eq!(options.code, "const rewritten = 7;");
-
-        let recorded: Vec<String> = observed.lock().unwrap().clone();
-
-        assert_eq!(recorded, vec!["const rewritten = 7;".to_string()],);
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn test_options_error_propagates() {
-        let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(FailingOptionsPlugin)];
-
-        let driver: PluginDriver = PluginDriver::new(plugins);
-
-        let mut options: CompileOptions = CompileOptions {
-            file: "a.ts".to_string(),
-            code: "console.log(1);".to_string(),
-            ..Default::default()
-        };
-
-        let result: anyhow::Result<()> = driver.options(&mut options).await;
-
-        assert!(result.is_err());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn test_options_error_names_plugin() {
-        let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(FailingOptionsPlugin)];
-
-        let driver: PluginDriver = PluginDriver::new(plugins);
-
-        let mut options: CompileOptions = CompileOptions {
-            file: "a.ts".to_string(),
-            code: "console.log(1);".to_string(),
-            ..Default::default()
-        };
-
-        let err: anyhow::Error =
-            driver.options(&mut options).await.unwrap_err();
-
-        assert!(
-            format!("{err:#}").contains("`fail-options` options"),
-            "{err:#}"
-        );
+    fn make_plugin_ctx<'a>(
+        common: &'a CommonPluginContext
+    ) -> PluginContext<'a> {
+        PluginContext::new(
+            &common.state,
+            "/repo",
+            make_module("console.log(1);"),
+        )
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -675,13 +547,17 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let ctx: CompileContext<'_> =
-            CompileContext::new("/repo", "a.ts", "console.log(1);");
+        let common: CommonPluginContext = common_ctx();
 
-        let args: PreArgs<'_> =
-            PreArgs { file: "a.ts", code: "console.log(1);" };
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        driver.pre(&ctx, &args).await.unwrap();
+        let args: PreArgs<'_> = PreArgs { code: "console.log(1);" };
+
+        let fold: hooks::pre::PreFold = driver.pre(&ctx, &args).await.unwrap();
+
+        assert!(fold.output.is_none());
+
+        assert!(fold.maps.is_empty());
 
         let recorded: Vec<String> = log.lock().unwrap().clone();
 
@@ -700,11 +576,11 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let ctx: CompileContext<'_> =
-            CompileContext::new("/repo", "a.ts", "console.log(1);");
+        let common: CommonPluginContext = common_ctx();
 
-        let args: PreArgs<'_> =
-            PreArgs { file: "a.ts", code: "console.log(1);" };
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let args: PreArgs<'_> = PreArgs { code: "console.log(1);" };
 
         let err: anyhow::Error = driver.pre(&ctx, &args).await.unwrap_err();
 
@@ -715,27 +591,16 @@ mod tests {
     async fn test_transform_chains_programs() {
         let allocator: Allocator = Allocator::default();
 
-        let ctx: CompileContext<'_> =
-            CompileContext::new("/repo", "a.ts", "console.log(1);");
+        let common: CommonPluginContext = common_ctx();
 
-        let options: ParseOptions<'_, '_> = ParseOptions {
-            context: &ctx,
-            allocator: &allocator,
-            file: "a.ts",
-            code: "console.log(1);",
-            language: None,
-            source_type: None,
-        };
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        let parsed: ParseResult<'_> = parse(options).unwrap();
+        let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
-        let mut program: Program<'_> = parsed.program;
+        let program: Program<'_> = parsed.program;
 
-        let mut args: TransformArgs<'_, '_> = TransformArgs {
-            allocator: &allocator,
-            file: "a.ts",
-            program: &mut program,
-        };
+        let args: TransformArgs<'_> =
+            TransformArgs { allocator: &allocator, ast: &program };
 
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(MarkPlugin),
@@ -744,12 +609,13 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        driver.transform(&ctx, &mut args).await.unwrap();
+        let output: Option<crate::TransformOutput<'_>> =
+            driver.transform(&ctx, &args).await.unwrap();
 
-        // the chain swapped the root in place; the final program is the
-        // last "mark" swap, still rooted in the allocator
-        let out: String =
-            oxc::codegen::Codegen::new().build(&*args.program).code;
+        let output: crate::TransformOutput<'_> =
+            output.expect("the chain changed the program");
+
+        let out: String = oxc::codegen::Codegen::new().build(output.ast).code;
 
         assert!(out.contains("mark"), "{out}");
     }
@@ -758,27 +624,16 @@ mod tests {
     async fn test_transform_error_names_plugin() {
         let allocator: Allocator = Allocator::default();
 
-        let ctx: CompileContext<'_> =
-            CompileContext::new("/repo", "a.ts", "console.log(1);");
+        let common: CommonPluginContext = common_ctx();
 
-        let options: ParseOptions<'_, '_> = ParseOptions {
-            context: &ctx,
-            allocator: &allocator,
-            file: "a.ts",
-            code: "console.log(1);",
-            language: None,
-            source_type: None,
-        };
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        let parsed: ParseResult<'_> = parse(options).unwrap();
+        let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
-        let mut program: Program<'_> = parsed.program;
+        let program: Program<'_> = parsed.program;
 
-        let mut args: TransformArgs<'_, '_> = TransformArgs {
-            allocator: &allocator,
-            file: "a.ts",
-            program: &mut program,
-        };
+        let args: TransformArgs<'_> =
+            TransformArgs { allocator: &allocator, ast: &program };
 
         let plugins: Vec<SharedPluginable> =
             vec![Plugin::new_shared(FailingTransformPlugin)];
@@ -786,7 +641,7 @@ mod tests {
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         let err: anyhow::Error =
-            driver.transform(&ctx, &mut args).await.unwrap_err();
+            driver.transform(&ctx, &args).await.unwrap_err();
 
         assert!(
             format!("{err:#}").contains("`fail-transform` transform"),
@@ -798,27 +653,16 @@ mod tests {
     async fn test_transform_returns_original_program_by_reference() {
         let allocator: Allocator = Allocator::default();
 
-        let ctx: CompileContext<'_> =
-            CompileContext::new("/repo", "a.ts", "console.log(1);");
+        let common: CommonPluginContext = common_ctx();
 
-        let options: ParseOptions<'_, '_> = ParseOptions {
-            context: &ctx,
-            allocator: &allocator,
-            file: "a.ts",
-            code: "console.log(1);",
-            language: None,
-            source_type: None,
-        };
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        let parsed: ParseResult<'_> = parse(options).unwrap();
+        let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
-        let mut program: Program<'_> = parsed.program;
+        let program: Program<'_> = parsed.program;
 
-        let mut args: TransformArgs<'_, '_> = TransformArgs {
-            allocator: &allocator,
-            file: "a.ts",
-            program: &mut program,
-        };
+        let args: TransformArgs<'_> =
+            TransformArgs { allocator: &allocator, ast: &program };
 
         let seen: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -827,41 +671,82 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        driver.transform(&ctx, &mut args).await.unwrap();
+        let output: Option<crate::TransformOutput<'_>> =
+            driver.transform(&ctx, &args).await.unwrap();
+
+        assert!(output.is_none());
 
         let recorded: Vec<usize> = seen.lock().unwrap().clone();
 
-        // no plugin mutated, so the hook runner must hand the original
-        // program to the plugin by reference instead of cloning it into
-        // the allocator first
-        assert_eq!(recorded, vec![std::ptr::from_ref(&*args.program) as usize],);
+        // no plugin returned `Some`, so the fold must hand the original
+        // program to the plugin by reference instead of cloning it
+        assert_eq!(recorded, vec![std::ptr::from_ref(&program) as usize],);
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_transform_mutations_flow_by_reference() {
+    async fn test_transform_some_program_reaches_later_plugins() {
+        // A `Some`-returning plugin's program is what the following plugin
+        // receives AND what the fold returns. The regression this pins: a
+        // fold that kept handing later plugins the original program.
         let allocator: Allocator = Allocator::default();
 
-        let ctx: CompileContext<'_> =
-            CompileContext::new("/repo", "a.ts", "console.log(1);");
+        let common: CommonPluginContext = common_ctx();
 
-        let options: ParseOptions<'_, '_> = ParseOptions {
-            context: &ctx,
-            allocator: &allocator,
-            file: "a.ts",
-            code: "console.log(1);",
-            language: None,
-            source_type: None,
-        };
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        let parsed: ParseResult<'_> = parse(options).unwrap();
+        let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
-        let mut program: Program<'_> = parsed.program;
+        let program: Program<'_> = parsed.program;
 
-        let mut args: TransformArgs<'_, '_> = TransformArgs {
-            allocator: &allocator,
-            file: "a.ts",
-            program: &mut program,
-        };
+        let args: TransformArgs<'_> =
+            TransformArgs { allocator: &allocator, ast: &program };
+
+        let seen: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(ReplaceRootPlugin),
+            Plugin::new_shared(RecordingPlugin::new(Arc::clone(&seen))),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let output: Option<crate::TransformOutput<'_>> =
+            driver.transform(&ctx, &args).await.unwrap();
+
+        let output: crate::TransformOutput<'_> =
+            output.expect("the chain changed the program");
+
+        // the following plugin observed the replaced program, not the parse
+        // result
+        let recorded: usize = seen.lock().unwrap()[0];
+
+        assert_eq!(
+            recorded,
+            std::ptr::from_ref(output.ast) as usize,
+            "later plugin must receive the Some-returned program"
+        );
+
+        let out: String = oxc::codegen::Codegen::new().build(output.ast).code;
+
+        assert!(out.contains("replaced"), "{out}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_all_none_returns_none() {
+        // An all-`None` chain changes nothing: the fold returns `None` and
+        // the carried program stays the original.
+        let allocator: Allocator = Allocator::default();
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let parsed: ParseResult<'_> = test_parse_program(&allocator);
+
+        let program: Program<'_> = parsed.program;
+
+        let args: TransformArgs<'_> =
+            TransformArgs { allocator: &allocator, ast: &program };
 
         let first_seen: Arc<Mutex<Vec<usize>>> =
             Arc::new(Mutex::new(Vec::new()));
@@ -869,44 +754,101 @@ mod tests {
         let second_seen: Arc<Mutex<Vec<usize>>> =
             Arc::new(Mutex::new(Vec::new()));
 
-        let final_seen: Arc<Mutex<Vec<usize>>> =
-            Arc::new(Mutex::new(Vec::new()));
-
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(RecordingMutatorPlugin::new(Arc::clone(
-                &first_seen,
-            ))),
-            Plugin::new_shared(RecordingMutatorPlugin::new(Arc::clone(
-                &second_seen,
-            ))),
-            Plugin::new_shared(RecordingPlugin::new(Arc::clone(&final_seen))),
+            Plugin::new_shared(RecordingPlugin::new(Arc::clone(&first_seen))),
+            Plugin::new_shared(RecordingPlugin::new(Arc::clone(&second_seen))),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        driver.transform(&ctx, &mut args).await.unwrap();
+        let output: Option<crate::TransformOutput<'_>> =
+            driver.transform(&ctx, &args).await.unwrap();
 
-        let original: usize = std::ptr::from_ref(&*args.program) as usize;
+        assert!(output.is_none());
 
-        let first: usize = first_seen.lock().unwrap()[0];
+        let original: usize = std::ptr::from_ref(&program) as usize;
 
-        let second: usize = second_seen.lock().unwrap()[0];
+        assert_eq!(first_seen.lock().unwrap()[0], original);
 
-        let final_seen: usize = final_seen.lock().unwrap()[0];
+        assert_eq!(second_seen.lock().unwrap()[0], original);
+    }
 
-        // in-place mutation: every plugin observes the same root Program,
-        // never a copy
-        assert_eq!(first, original);
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_last_some_wins() {
+        // Two `Some`-returning plugins: the fold returns the LAST one's
+        // program, and the earlier replacement is not carried forward into
+        // the output.
+        let allocator: Allocator = Allocator::default();
 
-        assert_eq!(second, original);
+        let common: CommonPluginContext = common_ctx();
 
-        assert_eq!(final_seen, original);
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        // the mutations are visible: the last root swap is the content
-        let out: String =
-            oxc::codegen::Codegen::new().build(&*args.program).code;
+        let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
+        let program: Program<'_> = parsed.program;
+
+        let args: TransformArgs<'_> =
+            TransformArgs { allocator: &allocator, ast: &program };
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(ReplaceRootPlugin),
+            Plugin::new_shared(MarkPlugin),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let output: Option<crate::TransformOutput<'_>> =
+            driver.transform(&ctx, &args).await.unwrap();
+
+        let output: crate::TransformOutput<'_> =
+            output.expect("the chain changed the program");
+
+        let out: String = oxc::codegen::Codegen::new().build(output.ast).code;
+
+        // the last Some (MarkPlugin's parse of `"mark";`) wins, replacing
+        // the earlier `"replaced";` root
         assert!(out.contains("mark"), "{out}");
+
+        assert!(!out.contains("replaced"), "{out}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_some_then_second_some_keeps_both_edits() {
+        // ReplaceRootPlugin then AppendDirectivePlugin: the second clone
+        // starts from the replaced root, so the final output carries both
+        // the replacement and the appended directive.
+        let allocator: Allocator = Allocator::default();
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let parsed: ParseResult<'_> = test_parse_program(&allocator);
+
+        let program: Program<'_> = parsed.program;
+
+        let args: TransformArgs<'_> =
+            TransformArgs { allocator: &allocator, ast: &program };
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(ReplaceRootPlugin),
+            Plugin::new_shared(AppendDirectivePlugin),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let output: Option<crate::TransformOutput<'_>> =
+            driver.transform(&ctx, &args).await.unwrap();
+
+        let output: crate::TransformOutput<'_> =
+            output.expect("the chain changed the program");
+
+        let out: String = oxc::codegen::Codegen::new().build(output.ast).code;
+
+        assert!(out.contains("replaced"), "{out}");
+
+        assert!(out.contains(APPEND_DIRECTIVE), "{out}");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -920,13 +862,18 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let ctx: CompileContext<'_> =
-            CompileContext::new("/repo", "a.ts", "console.log(1);");
+        let common: CommonPluginContext = common_ctx();
 
-        let args: PostArgs<'_> =
-            PostArgs { file: "a.ts", code: "console.log(1);" };
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        driver.post(&ctx, &args).await.unwrap();
+        let args: PostArgs<'_> = PostArgs { code: "console.log(1);" };
+
+        let fold: hooks::post::PostFold =
+            driver.post(&ctx, &args).await.unwrap();
+
+        assert!(fold.output.is_none());
+
+        assert!(fold.maps.is_empty());
 
         let recorded: Vec<String> = log.lock().unwrap().clone();
 
@@ -945,11 +892,11 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let ctx: CompileContext<'_> =
-            CompileContext::new("/repo", "a.ts", "console.log(1);");
+        let common: CommonPluginContext = common_ctx();
 
-        let args: PostArgs<'_> =
-            PostArgs { file: "a.ts", code: "console.log(1);" };
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let args: PostArgs<'_> = PostArgs { code: "console.log(1);" };
 
         let err: anyhow::Error = driver.post(&ctx, &args).await.unwrap_err();
 
@@ -958,45 +905,29 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_pluginable_dispatch() {
-        let plugin: Arc<dyn Pluginable> = Plugin::new_shared(OptionsPlugin);
+        let plugin: Arc<dyn Pluginable> = Plugin::new_shared(MarkPlugin);
 
-        assert_eq!(plugin.call_name(), "options");
+        assert_eq!(plugin.call_name(), "mark");
 
-        let mut options: CompileOptions = CompileOptions {
-            file: "a.ts".to_string(),
-            code: "console.log(1);".to_string(),
-            ..Default::default()
-        };
-
-        plugin.call_options(&mut options).await.unwrap();
-
-        assert_eq!(options.cwd.as_deref(), Some("/changed"));
+        assert!(
+            plugin.call_register_hook_usage().contains(HookUsage::Transform)
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_skips_plugins_without_usage() {
         let allocator: Allocator = Allocator::default();
 
-        let ctx: CompileContext<'_> =
-            CompileContext::new("/repo", "a.ts", "console.log(1);");
+        let common: CommonPluginContext = common_ctx();
 
-        let parsed: ParseResult<'_> = parse(ParseOptions {
-            context: &ctx,
-            allocator: &allocator,
-            file: "a.ts",
-            code: "console.log(1);",
-            language: None,
-            source_type: None,
-        })
-        .unwrap();
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        let mut program: Program<'_> = parsed.program;
+        let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
-        let mut args: TransformArgs<'_, '_> = TransformArgs {
-            allocator: &allocator,
-            file: "a.ts",
-            program: &mut program,
-        };
+        let program: Program<'_> = parsed.program;
+
+        let args: TransformArgs<'_> =
+            TransformArgs { allocator: &allocator, ast: &program };
 
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -1005,7 +936,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        driver.transform(&ctx, &mut args).await.unwrap();
+        driver.transform(&ctx, &args).await.unwrap();
 
         let recorded: Vec<String> = log.lock().unwrap().clone();
 
@@ -1015,8 +946,13 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_driver_aggregates_usage() {
+        // An options-only plugin still contributes its declared bit to the
+        // aggregate (no options partition exists — the fixpoint runner owns
+        // the options stage).
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(OptionsPlugin),
+            Plugin::new_shared(PreOnlyPlugin::new(Arc::new(Mutex::new(
+                Vec::new(),
+            )))),
             Plugin::new_shared(FailingPrePlugin),
             Plugin::new_shared(MarkPlugin),
             Plugin::new_shared(FailingPostPlugin),
@@ -1026,10 +962,391 @@ mod tests {
 
         assert_eq!(
             driver.usage(),
-            HookUsage::Options
-                | HookUsage::Pre
-                | HookUsage::Transform
-                | HookUsage::Post
+            HookUsage::Pre | HookUsage::Transform | HookUsage::Post
+        );
+    }
+
+    #[derive(Debug)]
+    struct NotifyOrderPlugin {
+        name: &'static str,
+        stage: &'static str,
+        log: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl NotifyOrderPlugin {
+        fn record(&self) {
+            let mut log: MutexGuard<'_, Vec<String>> = self.log.lock().unwrap();
+            log.push([self.name.to_string(), self.stage.to_string()].join(":"));
+        }
+    }
+
+    impl Plugin for NotifyOrderPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            self.name.into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Pre
+        }
+
+        fn compile_start<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a crate::CompileStartArgs,
+        ) -> impl Future<Output = NotifyReturn> {
+            async {
+                self.record();
+
+                Ok(())
+            }
+        }
+
+        fn compile_end<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a crate::CompileEndArgs,
+        ) -> impl Future<Output = NotifyReturn> {
+            async {
+                self.record();
+
+                Ok(())
+            }
+        }
+    }
+
+    // Observes the notify-hook args: the compile_start options and the
+    // compile_end payload shape.
+    #[derive(Debug)]
+    struct NotifyArgsPlugin {
+        start: Arc<Mutex<Option<String>>>,
+        end: Arc<Mutex<Option<String>>>,
+    }
+
+    impl Plugin for NotifyArgsPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "notify-args".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::CompileStart | HookUsage::CompileEnd
+        }
+
+        fn compile_start<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            args: &'a crate::CompileStartArgs,
+        ) -> impl Future<Output = NotifyReturn> {
+            let cwd: String = args.options.cwd.clone();
+
+            async move {
+                *self.start.lock().unwrap() = Some(cwd);
+
+                Ok(())
+            }
+        }
+
+        fn compile_end<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            args: &'a crate::CompileEndArgs,
+        ) -> impl Future<Output = NotifyReturn> {
+            let shape: String = format!(
+                "{}|{}|{}",
+                args.code,
+                args.err.as_deref().unwrap_or(""),
+                args.map.is_some(),
+            );
+
+            async move {
+                *self.end.lock().unwrap() = Some(shape);
+
+                Ok(())
+            }
+        }
+    }
+
+    fn make_start_args() -> crate::CompileStartArgs {
+        crate::CompileStartArgs {
+            options: telarel_common::ResolvedOptions {
+                cwd: String::from("/repo"),
+                file: String::from("a.ts"),
+                code: String::from("console.log(1);"),
+                language: Language::TS,
+                source_type: SourceType::Module,
+                plugins: vec![],
+            },
+        }
+    }
+
+    fn make_end_args() -> crate::CompileEndArgs {
+        crate::CompileEndArgs {
+            code: String::from("out"),
+            map: None,
+            err: None,
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_end_receives_payload_shape() {
+        // The compile_end args carry the code, the err (unset here), and the
+        // map presence flag.
+        let end: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+
+        let start: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(NotifyArgsPlugin {
+                start: Arc::clone(&start),
+                end: Arc::clone(&end),
+            })];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        driver.compile_start(&ctx, &make_start_args()).await.unwrap();
+
+        assert_eq!(start.lock().unwrap().as_deref(), Some("/repo"));
+
+        driver.compile_end(&ctx, &make_end_args()).await.unwrap();
+
+        let recorded: Option<String> = end.lock().unwrap().clone();
+
+        assert_eq!(recorded.as_deref(), Some("out||false"));
+    }
+
+    #[derive(Debug)]
+    struct FailingNotifyPlugin {
+        hook: &'static str,
+    }
+
+    impl Plugin for FailingNotifyPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            match self.hook {
+                | "compile_start" => "fail-start".into(),
+                | _ => "fail-end".into(),
+            }
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::CompileStart | HookUsage::CompileEnd
+        }
+
+        fn compile_start<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a crate::CompileStartArgs,
+        ) -> impl Future<Output = NotifyReturn> {
+            async {
+                if self.hook == "compile_start" {
+                    Err(anyhow::anyhow!("boom"))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+
+        fn compile_end<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a crate::CompileEndArgs,
+        ) -> impl Future<Output = NotifyReturn> {
+            async {
+                if self.hook == "compile_end" {
+                    Err(anyhow::anyhow!("boom"))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    /// A compile_end-only failure carrying an explicit name, so two
+    /// failing plugins can be distinguished by name.
+    #[derive(Debug)]
+    struct FailingNotifyPluginAt {
+        name: &'static str,
+        ran: Arc<Mutex<bool>>,
+    }
+
+    impl Plugin for FailingNotifyPluginAt {
+        fn name(&self) -> Cow<'static, str> {
+            self.name.into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::CompileEnd
+        }
+
+        fn compile_end<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a crate::CompileEndArgs,
+        ) -> impl Future<Output = NotifyReturn> {
+            let ran: Arc<Mutex<bool>> = Arc::clone(&self.ran);
+
+            async move {
+                *ran.lock().unwrap() = true;
+
+                Err(anyhow::anyhow!("boom"))
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_start_runs_all_plugins_not_partitioned() {
+        // compile_start reaches plugins that did NOT declare it via usage
+        // partitioning... actually it reaches ALL settled plugins: the
+        // OrderPlugin declares Pre|Post only, yet its compile_start must
+        // still run (R5: invoke on all plugins).
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(NotifyOrderPlugin {
+                name: "first",
+                stage: "start",
+                log: Arc::clone(&log),
+            }),
+            Plugin::new_shared(NotifyOrderPlugin {
+                name: "second",
+                stage: "start",
+                log: Arc::clone(&log),
+            }),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        driver.compile_start(&ctx, &make_start_args()).await.unwrap();
+
+        let recorded: Vec<String> = log.lock().unwrap().clone();
+
+        assert_eq!(
+            recorded,
+            vec!["first:start".to_string(), "second:start".to_string(),],
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_start_error_names_plugin() {
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(NotifyOrderPlugin {
+                name: "first",
+                stage: "start",
+                log: Arc::new(Mutex::new(Vec::new())),
+            }),
+            Plugin::new_shared(FailingNotifyPlugin { hook: "compile_start" }),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let err: anyhow::Error =
+            driver.compile_start(&ctx, &make_start_args()).await.unwrap_err();
+
+        assert!(
+            format!("{err:#}").contains("`fail-start` compile_start"),
+            "{err:#}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_end_runs_all_plugins_after_first_error() {
+        // compile_end runs for EVERY plugin even after one fails; the first
+        // error is returned only after the loop, and the first plugin's
+        // failure is the reported one (ordering: the loop never stops).
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(NotifyOrderPlugin {
+                name: "first",
+                stage: "end",
+                log: Arc::clone(&log),
+            }),
+            Plugin::new_shared(FailingNotifyPlugin { hook: "compile_end" }),
+            Plugin::new_shared(NotifyOrderPlugin {
+                name: "third",
+                stage: "end",
+                log: Arc::clone(&log),
+            }),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let err: anyhow::Error =
+            driver.compile_end(&ctx, &make_end_args()).await.unwrap_err();
+
+        assert!(
+            format!("{err:#}").contains("`fail-end` compile_end"),
+            "{err:#}"
+        );
+
+        let recorded: Vec<String> = log.lock().unwrap().clone();
+
+        assert_eq!(
+            recorded,
+            vec!["first:end".to_string(), "third:end".to_string()],
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_end_first_error_reported() {
+        // Two failing compile_end plugins: the FIRST error (in registration
+        // order) surfaces, and both hooks still run.
+        let second_ran: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(FailingNotifyPluginAt {
+                name: "fail-end-1",
+                ran: Arc::new(Mutex::new(false)),
+            }),
+            Plugin::new_shared(FailingNotifyPluginAt {
+                name: "fail-end-2",
+                ran: Arc::clone(&second_ran),
+            }),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let err: anyhow::Error =
+            driver.compile_end(&ctx, &make_end_args()).await.unwrap_err();
+
+        assert!(
+            format!("{err:#}").contains("`fail-end-1` compile_end"),
+            "{err:#}"
+        );
+
+        assert!(*second_ran.lock().unwrap(), "second hook still ran");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_settled_names_preserves_duplicates() {
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(MarkPlugin),
+            Plugin::new_shared(MarkPlugin),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        assert_eq!(
+            driver.settled_names(),
+            vec![String::from("mark"), String::from("mark")],
         );
     }
 }

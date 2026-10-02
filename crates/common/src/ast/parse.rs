@@ -44,7 +44,7 @@ fn strip_id_suffix(module_id: &str) -> &str {
 
 /// Infer the source type from a module id, falling back to the default
 /// (an ES module) for extensionless or unknown virtual files.
-fn source_type_for_module_id(module_id: &str) -> OxcSourceType {
+pub fn source_type_for_module_id(module_id: &str) -> OxcSourceType {
     let path: &str = strip_id_suffix(module_id);
     OxcSourceType::from_path(path).unwrap_or_default()
 }

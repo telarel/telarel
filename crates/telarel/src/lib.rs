@@ -1,10 +1,3 @@
-//! # Telarel
-//!
-//! An extensible JavaScript compiler.
-//!
-//! This crate is the public-facing API, re-exporting the compile pipeline,
-//! the plugin system, and the shared types.
-
 pub mod allocator {
     pub use oxc::allocator::*;
 }
@@ -46,11 +39,15 @@ pub mod sourcemap {
 
 pub use telarel_common::{
     CodegenOptions, CodegenResult, CompileContext, CompileError,
-    CompileOptions, HookUsage, Language, ParseOptions, ParseResult, SourceType,
+    CompileOptions, HookUsage, Language, ParseOptions, ParseResult,
+    PluginState, ResolvedOptions, SourceMap, SourceType, compose_maps,
 };
 
 pub use telarel_plugin::{
-    Plugin, Pluginable, PostArgs, PreArgs, SharedPluginable, TransformArgs,
+    CommonPluginContext, CompileEndArgs, CompileStartArgs, ModuleInfo,
+    NotifyReturn, OptionsArgs, OptionsReturn, Plugin, PluginContext,
+    Pluginable, PostArgs, PostOutput, PostReturn, PreArgs, PreOutput,
+    PreReturn, SharedPluginable, TransformArgs, TransformOutput,
     TransformReturn,
 };
 

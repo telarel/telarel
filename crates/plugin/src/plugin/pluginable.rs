@@ -5,10 +5,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use telarel_common::{CompileContext, CompileOptions, HookUsage};
+use telarel_common::HookUsage;
 
-use crate::_types::hooks::post::PostArgs;
-use crate::_types::hooks::pre::PreArgs;
+use crate::_types::context::{CommonPluginContext, PluginContext};
+use crate::_types::hooks::compile_end::CompileEndArgs;
+use crate::_types::hooks::compile_start::CompileStartArgs;
+use crate::_types::hooks::notify::NotifyReturn;
+use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
+use crate::_types::hooks::post::{PostArgs, PostReturn};
+use crate::_types::hooks::pre::{PreArgs, PreReturn};
 use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
 use crate::plugin::Plugin;
 
@@ -32,32 +37,47 @@ pub trait Pluginable: Any + Send + Sync + 'static {
     /// Query which hooks the plugin implements.
     fn call_register_hook_usage(&self) -> HookUsage;
 
-    /// Call the `options` hook.
+    /// Call the `options` hook; a returned bag replaces the whole bag.
     fn call_options<'a>(
         &'a self,
-        options: &'a mut CompileOptions,
-    ) -> HookFuture<'a, anyhow::Result<()>>;
+        ctx: &'a CommonPluginContext,
+        args: &'a OptionsArgs,
+    ) -> HookFuture<'a, OptionsReturn>;
+
+    /// Call the `compile_start` hook; notify-only.
+    fn call_compile_start<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: &'a CompileStartArgs,
+    ) -> HookFuture<'a, NotifyReturn>;
 
     /// Call the `pre` hook.
     fn call_pre<'a>(
         &'a self,
-        ctx: &'a CompileContext<'_>,
+        ctx: &'a PluginContext<'_>,
         args: &'a PreArgs<'_>,
-    ) -> HookFuture<'a, anyhow::Result<()>>;
+    ) -> HookFuture<'a, PreReturn>;
 
     /// Call the `transform` hook.
-    fn call_transform<'a, 'ast>(
+    fn call_transform<'a, 'ast: 'a>(
         &'a self,
-        ctx: &'a CompileContext<'a>,
-        args: TransformArgs<'a, 'ast>,
-    ) -> LocalHookFuture<'a, TransformReturn>;
+        ctx: &'a PluginContext<'a>,
+        args: TransformArgs<'ast>,
+    ) -> LocalHookFuture<'a, TransformReturn<'ast>>;
 
     /// Call the `post` hook.
     fn call_post<'a>(
         &'a self,
-        ctx: &'a CompileContext<'_>,
+        ctx: &'a PluginContext<'_>,
         args: &'a PostArgs<'_>,
-    ) -> HookFuture<'a, anyhow::Result<()>>;
+    ) -> HookFuture<'a, PostReturn>;
+
+    /// Call the `compile_end` hook; notify-only.
+    fn call_compile_end<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: &'a CompileEndArgs,
+    ) -> HookFuture<'a, NotifyReturn>;
 }
 
 impl<T: Plugin> Pluginable for T {
@@ -71,33 +91,50 @@ impl<T: Plugin> Pluginable for T {
 
     fn call_options<'a>(
         &'a self,
-        options: &'a mut CompileOptions,
-    ) -> HookFuture<'a, anyhow::Result<()>> {
-        Box::pin(Plugin::options(self, options))
+        ctx: &'a CommonPluginContext,
+        args: &'a OptionsArgs,
+    ) -> HookFuture<'a, OptionsReturn> {
+        Box::pin(Plugin::options(self, ctx, args))
+    }
+
+    fn call_compile_start<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: &'a CompileStartArgs,
+    ) -> HookFuture<'a, NotifyReturn> {
+        Box::pin(Plugin::compile_start(self, ctx, args))
     }
 
     fn call_pre<'a>(
         &'a self,
-        ctx: &'a CompileContext<'_>,
+        ctx: &'a PluginContext<'_>,
         args: &'a PreArgs<'_>,
-    ) -> HookFuture<'a, anyhow::Result<()>> {
+    ) -> HookFuture<'a, PreReturn> {
         Box::pin(Plugin::pre(self, ctx, args))
     }
 
-    fn call_transform<'a, 'ast>(
+    fn call_transform<'a, 'ast: 'a>(
         &'a self,
-        ctx: &'a CompileContext<'a>,
-        args: TransformArgs<'a, 'ast>,
-    ) -> LocalHookFuture<'a, TransformReturn> {
+        ctx: &'a PluginContext<'a>,
+        args: TransformArgs<'ast>,
+    ) -> LocalHookFuture<'a, TransformReturn<'ast>> {
         Box::pin(Plugin::transform(self, ctx, args))
     }
 
     fn call_post<'a>(
         &'a self,
-        ctx: &'a CompileContext<'_>,
+        ctx: &'a PluginContext<'_>,
         args: &'a PostArgs<'_>,
-    ) -> HookFuture<'a, anyhow::Result<()>> {
+    ) -> HookFuture<'a, PostReturn> {
         Box::pin(Plugin::post(self, ctx, args))
+    }
+
+    fn call_compile_end<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: &'a CompileEndArgs,
+    ) -> HookFuture<'a, NotifyReturn> {
+        Box::pin(Plugin::compile_end(self, ctx, args))
     }
 }
 

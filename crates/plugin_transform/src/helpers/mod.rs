@@ -24,20 +24,21 @@ use crate::helpers::usage::collect_usages;
 /// Inline the used runtime helpers into `program`.
 ///
 /// `module_name` is the resolved helper module name the oxc transformer used
-/// for the runtime import specifiers. A no-op when the program contains no
-/// helper import/require statements (which includes every non-inline run,
-/// since the pass is only invoked in inline mode).
+/// for the runtime import specifiers. Returns `Ok(false)` when the program
+/// contains no helper import/require statements (which includes every
+/// non-inline run, since the pass is only invoked in inline mode) and the
+/// program is left untouched; `Ok(true)` reports that edits were applied.
 pub fn run<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
     module_name: &str,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     // Match the usage statements syntactically first: files without helper
     // usages return before paying for the semantic rebuild below.
     let usages: Vec<HelperUsage> = collect_usages(program, module_name);
 
     if usages.is_empty() {
-        return Ok(());
+        return Ok(false);
     }
 
     // The transformed program's scoping is stale; rebuild it so binding
@@ -118,5 +119,5 @@ pub fn run<'a>(
 
     program.body = new_body;
 
-    Ok(())
+    Ok(true)
 }

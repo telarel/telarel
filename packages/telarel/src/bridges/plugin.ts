@@ -1,48 +1,98 @@
 import type { Program } from "@oxc-project/types";
 
 import type { BuiltinPlugin } from "#/@types/builtin";
+import type { Language, SourceType } from "#/@types/grammar";
+import type { Plugin } from "#/@types/plugin";
 import type {
-    Options,
-    Plugin,
+    CommonPluginContext,
     PluginContext,
-    TransformArgs,
-} from "#/@types/plugin";
+    PluginState,
+} from "#/@types/plugin/context";
+import type { CompileEndArgs } from "#/@types/plugin/hooks/compile-end";
+import type { CompileStartArgs } from "#/@types/plugin/hooks/compile-start";
+import type { PostResult } from "#/@types/plugin/hooks/post";
+import type { PreResult } from "#/@types/plugin/hooks/pre";
+import type { TransformResult } from "#/@types/plugin/hooks/transform";
+import type { Options, OptionsArgs } from "#/@types/plugin/options";
+import type { SourceMap } from "#/@types/sourcemap";
 
+/**
+ * Raw plugin context, as carried by every ctx-bearing hook payload: scalar
+ * strings with the label convention (empty string = unset for
+ * `language`/`sourceType`).
+ */
 type RawPluginContext = {
     cwd: string;
     file: string;
     code: string;
+    language: string;
+    sourceType: string;
 };
 
-type RawStageArgs = { file: string; code: string };
+type RawStageArgs = { code: string };
 
-type RawTransformArgs = { file: string; astJson: string };
+type RawStageOutput = { code: string; map?: string };
+
+type RawTransformArgs = { astJson: string };
+
+type RawCompileStartArgs = {
+    cwd: string;
+    file: string;
+    code: string;
+    language: string;
+    sourceType: string;
+    plugins: Array<string>;
+};
+
+type RawCompileEndArgs = {
+    code: string;
+    map?: string;
+    err?: string;
+};
 
 type RawOptionsArgs = {
     cwd: string;
     file: string;
     code: string;
+    language: string;
+    sourceType: string;
+    plugins: Array<RawPlugin>;
 };
 
 type RawOptionsOutput = {
-    cwd: string;
-    file: string;
-    code: string;
+    cwd?: string;
+    file?: string;
+    code?: string;
+    language?: string;
+    sourceType?: string;
+    plugins?: Array<RawPlugin>;
 };
 
 type RawTransformOutput = { astJson: string } | null;
 
 type RawHookPlugin = {
     name: string;
-    options?: (
-        options: RawOptionsArgs,
-    ) => RawOptionsOutput | Promise<RawOptionsOutput>;
-    pre?: (ctx: RawPluginContext, args: RawStageArgs) => unknown;
+    options?: (args: RawOptionsArgs) => Promise<RawOptionsOutput | null>;
+    compileStart?: (
+        ctx: RawPluginContext,
+        args: RawCompileStartArgs,
+    ) => Promise<void>;
+    pre?: (
+        ctx: RawPluginContext,
+        args: RawStageArgs,
+    ) => Promise<RawStageOutput | null>;
     transform?: (
         ctx: RawPluginContext,
         args: RawTransformArgs,
-    ) => RawTransformOutput | Promise<RawTransformOutput>;
-    post?: (ctx: RawPluginContext, args: RawStageArgs) => unknown;
+    ) => Promise<RawTransformOutput | null>;
+    post?: (
+        ctx: RawPluginContext,
+        args: RawStageArgs,
+    ) => Promise<RawStageOutput | null>;
+    compileEnd?: (
+        ctx: RawPluginContext,
+        args: RawCompileEndArgs,
+    ) => Promise<void>;
 };
 
 type RawBuiltinPlugin = {
@@ -53,9 +103,16 @@ type RawBuiltinPlugin = {
 
 type RawPlugin = RawHookPlugin | RawBuiltinPlugin;
 
-/**
- * Check whether the plugin object is a builtin plugin.
- */
+// Marks wrapper-produced descriptors, so a descriptor echoed back through an
+// options bag (the payload's plugin array roots wrapper outputs) is passed
+// through as-is instead of being re-wrapped: re-wrapping would stack the
+// translation a second time and corrupt the hook shapes (raw args re-read as
+// user args).
+const RAW_PLUGIN_MARKER: unique symbol = Symbol("telarel.bridge.rawPlugin");
+
+const isWrappedPlugin = (plugin: Plugin | BuiltinPlugin): boolean =>
+    RAW_PLUGIN_MARKER in plugin;
+
 const isBuiltinPlugin = (
     plugin: Plugin | BuiltinPlugin,
 ): plugin is BuiltinPlugin => {
@@ -65,10 +122,44 @@ const isBuiltinPlugin = (
     );
 };
 
-const toRawPlugin = (
-    plugin: Plugin | BuiltinPlugin,
-    metadata: Map<string, unknown>,
-): RawPlugin => {
+const toLanguage = (language: string): Language | void => {
+    return language.length === 0 ? void 0 : (language as Language);
+};
+
+const toSourceType = (sourceType: string): SourceType | void => {
+    return sourceType.length === 0 ? void 0 : (sourceType as SourceType);
+};
+
+const parseSourceMap = (json: string): SourceMap => {
+    return JSON.parse(json) as SourceMap;
+};
+
+const toRawStageOutput = (
+    result: { code: string; map?: SourceMap | null } | null | void,
+): RawStageOutput | null => {
+    if (result === null || result === void 0) {
+        return null;
+    }
+
+    const output: RawStageOutput = { code: result.code };
+
+    if (result.map !== null && result.map !== void 0) {
+        output.map = JSON.stringify(result.map);
+    }
+
+    return output;
+};
+
+type ToRawPluginOptions = {
+    plugin: Plugin | BuiltinPlugin;
+    state: PluginState;
+};
+
+const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
+    if (isWrappedPlugin(plugin)) {
+        return plugin as unknown as RawPlugin;
+    }
+
     if (typeof plugin.name !== "string" || plugin.name.length === 0) {
         throw new TypeError("plugin.name must be a non-empty string");
     }
@@ -85,94 +176,186 @@ const toRawPlugin = (
             builtin.options = plugin.options;
         }
 
+        Object.defineProperty(builtin, RAW_PLUGIN_MARKER, { value: true });
+
         return builtin;
     }
 
     const raw: RawHookPlugin = { name };
 
-    const toContext = (ctx: RawPluginContext): PluginContext => ({
-        cwd: ctx.cwd,
-        file: ctx.file,
-        code: ctx.code,
-        metadata,
+    Object.defineProperty(raw, RAW_PLUGIN_MARKER, { value: true });
+
+    const toContext = (rawCtx: RawPluginContext): PluginContext => ({
+        cwd: rawCtx.cwd,
+        module: {
+            file: rawCtx.file,
+            code: rawCtx.code,
+            language: toLanguage(rawCtx.language),
+            sourceType: toSourceType(rawCtx.sourceType),
+        },
+        state,
     });
 
-    const options = plugin.options;
+    const options: Plugin["options"] = plugin.options;
 
     if (typeof options === "function") {
         raw.options = async (
             rawArgs: RawOptionsArgs,
-        ): Promise<RawOptionsOutput> => {
-            const current: Options = {
+        ): Promise<RawOptionsOutput | null> => {
+            // The payload's plugin descriptors are the bag's current list as
+            // raw plugin objects (rooted Rust-side): presented to the bag as
+            // `Plugin | BuiltinPlugin` and passed through untouched.
+            const bag: Options = {
                 cwd: rawArgs.cwd,
                 file: rawArgs.file,
                 code: rawArgs.code,
+                plugins: rawArgs.plugins as unknown as Array<
+                    Plugin | BuiltinPlugin
+                >,
             };
 
-            await options(current);
+            if (rawArgs.language.length > 0) {
+                bag.language = rawArgs.language as Language;
+            }
+
+            if (rawArgs.sourceType.length > 0) {
+                bag.sourceType = rawArgs.sourceType as SourceType;
+            }
+
+            const ctx: CommonPluginContext = { state };
+
+            const args: OptionsArgs = { options: bag };
+
+            const result: Options | null | void = await options(ctx, args);
+
+            if (result === null || result === void 0) {
+                return null;
+            }
 
             const output: RawOptionsOutput = {
-                cwd: rawArgs.cwd,
-                file: rawArgs.file,
-                code: rawArgs.code,
+                plugins: result.plugins?.map((entry): RawPlugin =>
+                    toRawPlugin({ plugin: entry, state }),
+                ),
             };
 
-            if (typeof current.cwd === "string") {
-                output.cwd = current.cwd;
+            if (typeof result.cwd === "string") {
+                output.cwd = result.cwd;
             }
 
-            if (typeof current.file === "string") {
-                output.file = current.file;
+            if (typeof result.file === "string") {
+                output.file = result.file;
             }
 
-            if (typeof current.code === "string") {
-                output.code = current.code;
+            if (typeof result.code === "string") {
+                output.code = result.code;
+            }
+
+            if (typeof result.language === "string") {
+                output.language = result.language;
+            }
+
+            if (typeof result.sourceType === "string") {
+                output.sourceType = result.sourceType;
             }
 
             return output;
         };
     }
 
-    const pre = plugin.pre;
+    const compileStart: Plugin["compileStart"] = plugin.compileStart;
 
-    if (typeof pre === "function") {
-        raw.pre = async (
-            ctx: RawPluginContext,
-            args: RawStageArgs,
+    if (typeof compileStart === "function") {
+        raw.compileStart = async (
+            rawCtx: RawPluginContext,
+            rawArgs: RawCompileStartArgs,
         ): Promise<void> => {
-            await pre(toContext(ctx), args);
+            const args: CompileStartArgs = {
+                options: {
+                    cwd: rawArgs.cwd,
+                    file: rawArgs.file,
+                    code: rawArgs.code,
+                    language: rawArgs.language as Language,
+                    sourceType: rawArgs.sourceType as SourceType,
+                    plugins: rawArgs.plugins,
+                },
+            };
+
+            await compileStart(toContext(rawCtx), args);
         };
     }
 
-    const transform = plugin.transform;
+    const pre: Plugin["pre"] = plugin.pre;
+
+    if (typeof pre === "function") {
+        raw.pre = async (
+            rawCtx: RawPluginContext,
+            rawArgs: RawStageArgs,
+        ): Promise<RawStageOutput | null> => {
+            const result: PreResult | null | void = await pre(
+                toContext(rawCtx),
+                { code: rawArgs.code },
+            );
+
+            return toRawStageOutput(result as PreResult | null | void);
+        };
+    }
+
+    const transform: Plugin["transform"] = plugin.transform;
 
     if (typeof transform === "function") {
         raw.transform = async (
-            ctx: RawPluginContext,
+            rawCtx: RawPluginContext,
             rawArgs: RawTransformArgs,
         ): Promise<RawTransformOutput | null> => {
             const ast: Program = JSON.parse(rawArgs.astJson) as Program;
 
-            const args: TransformArgs = { file: rawArgs.file, ast };
+            const result: TransformResult | null | void = await transform(
+                toContext(rawCtx),
+                { ast },
+            );
 
-            await transform(toContext(ctx), args);
+            if (result === null || result === void 0) {
+                return null;
+            }
 
-            const next: string = JSON.stringify(args.ast);
-
-            if (next === rawArgs.astJson) return null;
-
-            return { astJson: next };
+            return { astJson: JSON.stringify(result.ast) };
         };
     }
 
-    const post = plugin.post;
+    const post: Plugin["post"] = plugin.post;
 
     if (typeof post === "function") {
         raw.post = async (
-            ctx: RawPluginContext,
-            args: RawStageArgs,
+            rawCtx: RawPluginContext,
+            rawArgs: RawStageArgs,
+        ): Promise<RawStageOutput | null> => {
+            const result: PostResult | null | void = await post(
+                toContext(rawCtx),
+                { code: rawArgs.code },
+            );
+
+            return toRawStageOutput(result as PostResult | null | void);
+        };
+    }
+
+    const compileEnd: Plugin["compileEnd"] = plugin.compileEnd;
+
+    if (typeof compileEnd === "function") {
+        raw.compileEnd = async (
+            rawCtx: RawPluginContext,
+            rawArgs: RawCompileEndArgs,
         ): Promise<void> => {
-            await post(toContext(ctx), args);
+            const args: CompileEndArgs = {
+                code: rawArgs.code,
+                map:
+                    rawArgs.map === void 0 ? null : parseSourceMap(rawArgs.map),
+            };
+
+            if (rawArgs.err !== void 0) {
+                args.err = new Error(rawArgs.err);
+            }
+
+            await compileEnd(toContext(rawCtx), args);
         };
     }
 

@@ -9,12 +9,8 @@ publish = false
 autobenches = false
 
 [dependencies]
-
-# Workspace
-telarel = { workspace = true, features = ["traverse"] }
-
-[dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
+telarel = { workspace = true, features = ["traverse"] }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [[bench]]
