@@ -19,7 +19,11 @@ import type {
     TransformArgs,
     TransformResult,
 } from "#/@types/plugin/hooks/transform";
-import type { Options, OptionsArgs } from "#/@types/plugin/options";
+import type {
+    Options,
+    OptionsArgs,
+    PluginOption,
+} from "#/@types/plugin/options";
 import type { SourceMap } from "#/@types/sourcemap";
 import type { NormalizedHook } from "#/bridges/normalize-hook";
 
@@ -172,6 +176,11 @@ type ToRawPluginOptions = {
     state: PluginState;
 };
 
+type ToRawPluginsOptions = {
+    plugins: ReadonlyArray<PluginOption>;
+    state: PluginState;
+};
+
 type OptionsHook = (
     ctx: CommonPluginContext,
     args: OptionsArgs,
@@ -202,10 +211,39 @@ type CompileEndHook = (
     args: CompileEndArgs,
 ) => void | Promise<void>;
 
+/**
+ * Flatten a plugin option list into concrete plugins.
+ *
+ * Nested arrays recurse, promises await, and `false`/`null`/`undefined` entries
+ * are skipped. Plugin objects pass through unchanged.
+ */
+const flattenPlugins = async (
+    options: ReadonlyArray<PluginOption>,
+): Promise<Array<Plugin | BuiltinPlugin>> => {
+    const flattened: Array<Plugin | BuiltinPlugin> = [];
+
+    for (const option of options) {
+        const resolved: Awaited<PluginOption> = await option;
+
+        if (resolved === false || resolved === null || resolved === void 0) {
+            continue;
+        }
+
+        if (Array.isArray(resolved)) {
+            flattened.push(...(await flattenPlugins(resolved)));
+            continue;
+        }
+
+        flattened.push(resolved);
+    }
+
+    return flattened;
+};
+
 const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
     if (typeof plugin === "function" || Array.isArray(plugin)) {
         throw new TypeError(
-            "plugin must be an object with a `name`; compose with a spread instead of nesting arrays or passing factories",
+            "plugin must be an object with a `name`; pass a plugin object, not a factory",
         );
     }
 
@@ -266,9 +304,7 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
                 cwd: rawArgs.cwd,
                 file: rawArgs.file,
                 code: rawArgs.code,
-                plugins: rawArgs.plugins as unknown as Array<
-                    Plugin | BuiltinPlugin
-                >,
+                plugins: rawArgs.plugins as unknown as Array<PluginOption>,
             };
 
             if (rawArgs.language.length > 0) {
@@ -293,9 +329,10 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
             }
 
             const output: RawOptionsOutput = {
-                plugins: result.plugins?.map((entry): RawPlugin =>
-                    toRawPlugin({ plugin: entry, state }),
-                ),
+                plugins: await toRawPlugins({
+                    plugins: result.plugins ?? [],
+                    state,
+                }),
             };
 
             if (typeof result.cwd === "string") {
@@ -461,5 +498,17 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
     return raw;
 };
 
+const toRawPlugins = async ({
+    plugins,
+    state,
+}: ToRawPluginsOptions): Promise<RawPlugin[]> => {
+    const flattened: Array<Plugin | BuiltinPlugin> =
+        await flattenPlugins(plugins);
+
+    return flattened.map((plugin: Plugin | BuiltinPlugin): RawPlugin =>
+        toRawPlugin({ plugin, state }),
+    );
+};
+
 export type { RawPlugin };
-export { toRawPlugin };
+export { toRawPlugin, toRawPlugins };

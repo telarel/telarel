@@ -11,6 +11,15 @@ import { compile } from "telarel";
 import { transform } from "telarel/plugins/transform";
 import { describe, expect, it } from "vitest";
 
+const myPlugins = (): Array<Plugin> => [
+    {
+        name: "writer",
+        prepare: (ctx: PluginContext): void => {
+            ctx.state.set("marker", "from-array");
+        },
+    },
+];
+
 describe("transform", (): void => {
     it("compiles TypeScript to JavaScript with the builtin transform", async (): Promise<void> => {
         const result: CompileResult = await compile({
@@ -316,6 +325,27 @@ describe("transform", (): void => {
 
         expect(result.code).not.toContain(": number");
         expect(seen).toEqual(["from-writer"]);
+    });
+
+    it("composes a plugin array next to the builtin transform", async (): Promise<void> => {
+        const seen: Array<unknown> = [];
+
+        const observer: Plugin = {
+            name: "observer",
+            transform: (ctx: PluginContext): void => {
+                seen.push(ctx.state.get("marker"));
+            },
+        };
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a: number = 1;",
+            plugins: [myPlugins(), transform(), observer],
+        });
+
+        expect(result.code).not.toContain(": number");
+        expect(seen).toEqual(["from-array"]);
     });
 
     it("gives a plain js transform hook the post-builtin ast", async (): Promise<void> => {

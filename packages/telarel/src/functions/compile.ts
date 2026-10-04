@@ -1,11 +1,9 @@
-import type { BuiltinPlugin } from "#/@types/builtin";
 import type { CompileOptions, CompileResult } from "#/@types/compile";
-import type { Plugin } from "#/@types/plugin";
 import type { PluginState } from "#/@types/plugin/context";
 import type { RawPlugin } from "#/bridges/plugin";
 
 import { compile as bindingCompile } from "#/binding";
-import { toRawPlugin } from "#/bridges/plugin";
+import { toRawPlugins } from "#/bridges/plugin";
 
 /**
  * Compiles a file with plugins, in memory.
@@ -15,10 +13,10 @@ import { toRawPlugin } from "#/bridges/plugin";
 const compile = async (options: CompileOptions): Promise<CompileResult> => {
     const state: PluginState = new Map();
 
-    const plugins: RawPlugin[] =
-        options.plugins?.map((plugin: Plugin | BuiltinPlugin): RawPlugin =>
-            toRawPlugin({ plugin, state }),
-        ) ?? [];
+    const plugins: RawPlugin[] = await toRawPlugins({
+        plugins: options.plugins ?? [],
+        state,
+    });
 
     return await bindingCompile({
         cwd: options.cwd,

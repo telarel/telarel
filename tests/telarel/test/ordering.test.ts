@@ -11,6 +11,8 @@ import type {
 import { compile } from "telarel";
 import { describe, expect, it } from "vitest";
 
+const isEnabled = (): boolean => false;
+
 describe("ordering", (): void => {
     it("orders each hook independently across plugins", async (): Promise<void> => {
         const seenPrepare: Array<string> = [];
@@ -225,16 +227,89 @@ describe("ordering", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
-    it("rejects a nested array plugin entry", async (): Promise<void> => {
-        const promise: Promise<CompileResult> = compile({
+    it("flattens nested plugin arrays in order", async (): Promise<void> => {
+        const seen: Array<string> = [];
+
+        const collect = (name: string): Plugin => ({
+            name,
+            prepare: (): void => {
+                seen.push(name);
+            },
+        });
+
+        const myPlugins = (): Array<Plugin> => [
+            collect("my-a"),
+            collect("my-b"),
+        ];
+
+        const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
-            plugins: [[{ name: "nested" }] as unknown as Plugin],
+            plugins: [myPlugins(), collect("my-c"), [collect("my-d")]],
         });
 
-        await expect(promise).rejects.toThrow(TypeError);
-        await expect(promise).rejects.toThrow("compose with a spread");
+        expect(seen).toEqual(["my-a", "my-b", "my-c", "my-d"]);
+        expect(result.code).toBe("const a = 1;");
+    });
+
+    it("skips falsy conditional plugin entries", async (): Promise<void> => {
+        const seen: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                false,
+                null,
+                void 0,
+                isEnabled() && {
+                    name: "skipped",
+                    prepare: (): void => {
+                        seen.push("skipped");
+                    },
+                },
+                {
+                    name: "kept",
+                    prepare: (): void => {
+                        seen.push("kept");
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["kept"]);
+        expect(result.code).toBe("const a = 1;");
+    });
+
+    it("awaits promise plugin entries", async (): Promise<void> => {
+        const seen: Array<string> = [];
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: "const a = 1;",
+            plugins: [
+                Promise.resolve({
+                    name: "promised",
+                    prepare: (): void => {
+                        seen.push("promised");
+                    },
+                }),
+                Promise.resolve([
+                    {
+                        name: "promised-nested",
+                        prepare: (): void => {
+                            seen.push("promised-nested");
+                        },
+                    },
+                ]),
+            ],
+        });
+
+        expect(seen).toEqual(["promised", "promised-nested"]);
+        expect(result.code).toBe("const a = 1;");
     });
 
     it("rejects a bare function plugin entry", async (): Promise<void> => {
@@ -249,7 +324,9 @@ describe("ordering", (): void => {
             });
 
         await expect(build()).rejects.toThrow(TypeError);
-        await expect(build()).rejects.toThrow("compose with a spread");
+        await expect(build()).rejects.toThrow(
+            "pass a plugin object, not a factory",
+        );
     });
 
     it("runs pre options hooks before normal and applies last-wins", async (): Promise<void> => {

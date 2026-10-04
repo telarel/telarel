@@ -1,8 +1,21 @@
 import type { Format, Omit, Partial } from "ts-vista";
 
 import type { BuiltinPlugin } from "#/@types/builtin";
+import type { MaybePromise } from "#/@types/common";
 import type { Language, SourceType } from "#/@types/grammar";
 import type { Plugin } from "#/@types/plugin";
+
+/**
+ * A conditional plugin slot that is skipped.
+ */
+type FalsyPlugin = false | null | undefined;
+
+/**
+ * A plugin list entry.
+ */
+type PluginOption = MaybePromise<
+    Plugin | BuiltinPlugin | FalsyPlugin | PluginOption[]
+>;
 
 type CompleteOptions = {
     /**
@@ -36,7 +49,7 @@ type CompleteOptions = {
      *
      * By default, it is `[]`. Duplicates are allowed.
      */
-    plugins: Array<Plugin | BuiltinPlugin>;
+    plugins: Array<PluginOption>;
 };
 
 /**
@@ -63,4 +76,11 @@ type ResolvedOptions = Format<
     }
 >;
 
-export type { CompleteOptions, Options, OptionsArgs, ResolvedOptions };
+export type {
+    CompleteOptions,
+    FalsyPlugin,
+    Options,
+    OptionsArgs,
+    PluginOption,
+    ResolvedOptions,
+};

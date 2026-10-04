@@ -3,8 +3,10 @@ export type { CompileOptions, CompileResult } from "#/@types/compile";
 export type { Language, SourceType } from "#/@types/grammar";
 export type { ObjectHook, Plugin, PluginOrder } from "#/@types/plugin";
 export type {
+    FalsyPlugin,
     Options,
     OptionsArgs,
+    PluginOption,
     ResolvedOptions,
 } from "#/@types/plugin/options";
 export type {
