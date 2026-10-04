@@ -114,10 +114,15 @@ describe("validation", (): void => {
         // Return-based contract: the hook returns the replacement bag; the
         // transform observes the new `code` with the current `cwd` and
         // `file` carried over by the spread.
+        let stage: string = "__NONE__";
+
         const plugin: unknown = {
             name: "return-options",
-            options: (ctx: CommonPluginContext, args: OptionsArgs): Options => {
-                ctx.state.set("stage", "options");
+            options: (
+                _ctx: CommonPluginContext,
+                args: OptionsArgs,
+            ): Options => {
+                stage = "options";
 
                 return {
                     ...args.options,
@@ -125,7 +130,7 @@ describe("validation", (): void => {
                 };
             },
             transform: (ctx: PluginContext): void => {
-                expect(ctx.state.get("stage")).toBe("options");
+                expect(stage).toBe("options");
                 expect(ctx.cwd).toBe("/repo");
                 expect(ctx.module.file).toBe("index.ts");
                 expect(ctx.module.code).toBe("const b = 2;");
@@ -168,6 +173,7 @@ describe("validation", (): void => {
 
     it("allows duplicate plugin names in registration order", async (): Promise<void> => {
         const seen: Array<string> = [];
+        let marker: unknown = "__NO_MARKER__";
 
         const result: CompileResult = await compile({
             cwd: "/repo",
@@ -176,16 +182,16 @@ describe("validation", (): void => {
             plugins: [
                 {
                     name: "dup",
-                    prepare: (ctx: PluginContext): void => {
+                    prepare: (): void => {
                         seen.push("dup.first");
-                        ctx.state.set("marker", "first");
+                        marker = "first";
                     },
                 },
                 {
                     name: "dup",
-                    prepare: (ctx: PluginContext): void => {
+                    prepare: (): void => {
                         seen.push("dup.second");
-                        seen.push(String(ctx.state.get("marker")));
+                        seen.push(String(marker));
                     },
                 },
             ],

@@ -53,7 +53,7 @@ flowchart TD
 
 The plugin implements different hooks (all with no operation by default). Every hook is return-based: the core owns all state and applies the returned value. Normal hooks (`options`, `prepare`, `transform`, `finalize`) return the new value (`Some` replaces, `None` keep the current one); notify hooks (`compile_start`, `compile_end`) ignore the returned value.
 
-Hooks receive a context: `options` gets the [`CommonPluginContext`](./crates/plugin/src/_types/context.rs#L5) (carrying the shared [`PluginState`](./crates/common/src/_types/plugin/state.rs#L5)), while later hooks get the flat [`PluginContext`](./crates/plugin/src/_types/context.rs#L25) with `cwd`, `module` info, and a borrow of the same state.
+Hooks receive a context: `options` gets the [`CommonPluginContext`](./crates/plugin/src/_types/context.rs#L5), while later hooks get the flat [`PluginContext`](./crates/plugin/src/_types/context.rs#L22) with `cwd` and `module` info.
 
 | Hook          | Arguments        | Return    | Semantics        |
 | ------------- | ---------------- | --------- | ---------------- |

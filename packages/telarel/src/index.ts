@@ -13,7 +13,6 @@ export type {
     CommonPluginContext,
     ModuleInfo,
     PluginContext,
-    PluginState,
 } from "#/@types/plugin/context";
 export type { CompileEndArgs } from "#/@types/plugin/hooks/compile-end";
 export type { CompileStartArgs } from "#/@types/plugin/hooks/compile-start";

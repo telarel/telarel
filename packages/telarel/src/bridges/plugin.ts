@@ -6,7 +6,6 @@ import type { Plugin } from "#/@types/plugin";
 import type {
     CommonPluginContext,
     PluginContext,
-    PluginState,
 } from "#/@types/plugin/context";
 import type { CompileEndArgs } from "#/@types/plugin/hooks/compile-end";
 import type { CompileStartArgs } from "#/@types/plugin/hooks/compile-start";
@@ -173,12 +172,10 @@ const toRawStageOutput = (
 
 type ToRawPluginOptions = {
     plugin: Plugin | BuiltinPlugin;
-    state: PluginState;
 };
 
 type ToRawPluginsOptions = {
     plugins: ReadonlyArray<PluginOption>;
-    state: PluginState;
 };
 
 type OptionsHook = (
@@ -240,7 +237,7 @@ const flattenPlugins = async (
     return flattened;
 };
 
-const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
+const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
     if (typeof plugin === "function" || Array.isArray(plugin)) {
         throw new TypeError(
             "plugin must be an object with a `name`; pass a plugin object, not a factory",
@@ -284,7 +281,6 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
             language: toLanguage(rawCtx.language),
             sourceType: toSourceType(rawCtx.sourceType),
         },
-        state,
     });
 
     const options: NormalizedHook<OptionsHook> = normalizeHook<OptionsHook>(
@@ -315,7 +311,7 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
                 bag.sourceType = rawArgs.sourceType as SourceType;
             }
 
-            const ctx: CommonPluginContext = { state };
+            const ctx: CommonPluginContext = {};
 
             const args: OptionsArgs = { options: bag };
 
@@ -331,7 +327,6 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
             const output: RawOptionsOutput = {
                 plugins: await toRawPlugins({
                     plugins: result.plugins ?? [],
-                    state,
                 }),
             };
 
@@ -500,13 +495,12 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
 
 const toRawPlugins = async ({
     plugins,
-    state,
 }: ToRawPluginsOptions): Promise<RawPlugin[]> => {
     const flattened: Array<Plugin | BuiltinPlugin> =
         await flattenPlugins(plugins);
 
     return flattened.map((plugin: Plugin | BuiltinPlugin): RawPlugin =>
-        toRawPlugin({ plugin, state }),
+        toRawPlugin({ plugin }),
     );
 };
 

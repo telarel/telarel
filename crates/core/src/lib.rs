@@ -336,9 +336,8 @@ pub async fn compile(
 
     resolved.cwd.get_or_insert_with(resolve_process_cwd);
 
-    // The common context is constructed ONCE per compile: the `options`
-    // fixpoint runs against this instance, and the same instance is shared
-    // with every later hook through `PluginContext`.
+    // The common context is constructed ONCE per compile:
+    // the `options` fixpoint runs against this instance.
     let common: CommonPluginContext = CommonPluginContext::default();
 
     let args: OptionsArgs = OptionsArgs { options: resolved.clone(), plugins };
@@ -394,8 +393,7 @@ pub async fn compile(
         source_type,
     };
 
-    let plugin_ctx: PluginContext<'_> =
-        PluginContext::new(&common.state, ctx.cwd, module);
+    let plugin_ctx: PluginContext<'_> = PluginContext::new(ctx.cwd, module);
 
     // R5 steps 4-10 with the error path: `compile_end` runs on EVERY path
     // after the settle (`err` set, last-good `code`/`map` on error); the

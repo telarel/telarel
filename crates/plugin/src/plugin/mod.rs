@@ -401,10 +401,7 @@ mod tests {
         }
     }
 
-    fn make_context<'a>(
-        common: &'a CommonPluginContext,
-        code: &'a str,
-    ) -> PluginContext<'a> {
+    fn make_context<'a>(code: &'a str) -> PluginContext<'a> {
         let module: ModuleInfo<'a> = ModuleInfo {
             file: "a.ts",
             code,
@@ -412,7 +409,7 @@ mod tests {
             source_type: SourceType::Module,
         };
 
-        PluginContext::new(&common.state, "/repo", module)
+        PluginContext::new("/repo", module)
     }
 
     fn make_args(plugins: Vec<SharedPluginable>) -> OptionsArgs {
@@ -438,7 +435,7 @@ mod tests {
     async fn test_default_hooks_are_noops() {
         let common: CommonPluginContext = CommonPluginContext::default();
 
-        let ctx: PluginContext<'_> = make_context(&common, "console.log(1);");
+        let ctx: PluginContext<'_> = make_context("console.log(1);");
 
         let shared: SharedPluginable = Plugin::new_shared(ProbePlugin);
 
@@ -540,9 +537,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_prepare_and_finalize_return_outputs() {
-        let common: CommonPluginContext = CommonPluginContext::default();
-
-        let ctx: PluginContext<'_> = make_context(&common, "console.log(1);");
+        let ctx: PluginContext<'_> = make_context("console.log(1);");
 
         let prepare: SharedPluginable =
             Plugin::new_shared(PrepareReplacePlugin);
@@ -578,9 +573,7 @@ mod tests {
     async fn test_transform_none_keeps_original_program() {
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = CommonPluginContext::default();
-
-        let ctx: PluginContext<'_> = make_context(&common, "console.log(1);");
+        let ctx: PluginContext<'_> = make_context("console.log(1);");
 
         let parsed: ParseResult<'_> = parse(ParseOptions {
             context: &telarel_common::CompileContext::new(
@@ -617,9 +610,7 @@ mod tests {
     async fn test_transform_clone_mutation_is_returned() {
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = CommonPluginContext::default();
-
-        let ctx: PluginContext<'_> = make_context(&common, "console.log(1);");
+        let ctx: PluginContext<'_> = make_context("console.log(1);");
 
         let parsed: ParseResult<'_> = parse(ParseOptions {
             context: &telarel_common::CompileContext::new(
@@ -665,9 +656,7 @@ mod tests {
     async fn test_transform_some_returns_replaced_program() {
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = CommonPluginContext::default();
-
-        let ctx: PluginContext<'_> = make_context(&common, "console.log(1);");
+        let ctx: PluginContext<'_> = make_context("console.log(1);");
 
         let parsed: ParseResult<'_> = parse(ParseOptions {
             context: &telarel_common::CompileContext::new(
@@ -704,9 +693,7 @@ mod tests {
 
         let ended: Arc<Mutex<EndedLog>> = Arc::new(Mutex::new(Vec::new()));
 
-        let common: CommonPluginContext = CommonPluginContext::default();
-
-        let ctx: PluginContext<'_> = make_context(&common, "console.log(1);");
+        let ctx: PluginContext<'_> = make_context("console.log(1);");
 
         let shared: SharedPluginable = Plugin::new_shared(NotifyPlugin {
             started: Arc::clone(&started),

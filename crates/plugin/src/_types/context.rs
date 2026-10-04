@@ -1,11 +1,8 @@
-use telarel_common::{Language, PluginState, SourceType};
+use telarel_common::{Language, SourceType};
 
 /// Common plugin context: available to every hook, including `options`.
 #[derive(Debug, Default)]
-pub struct CommonPluginContext {
-    /// Shared cross-plugin ambient state for one compile run.
-    pub state: PluginState,
-}
+pub struct CommonPluginContext {}
 
 /// Info about the module being compiled.
 #[derive(Debug)]
@@ -27,18 +24,15 @@ pub struct PluginContext<'a> {
     pub cwd: &'a str,
     /// Info about the module being compiled.
     pub module: ModuleInfo<'a>,
-    /// Shared cross-plugin ambient state for one compile run.
-    pub state: &'a PluginState,
 }
 
 impl<'a> PluginContext<'a> {
-    /// Create a plugin context from the shared state, a cwd, and module info.
+    /// Create a plugin context from a cwd and module info.
     pub fn new(
-        state: &'a PluginState,
         cwd: &'a str,
         module: ModuleInfo<'a>,
     ) -> Self {
-        Self { state, cwd, module }
+        Self { cwd, module }
     }
 }
 
@@ -49,16 +43,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_common_context_defaults_to_empty_state() {
+    fn test_common_context_defaults() {
         let ctx: CommonPluginContext = CommonPluginContext::default();
 
-        assert!(ctx.state.is_empty());
+        assert_eq!(std::mem::size_of_val(&ctx), 0);
     }
 
     #[test]
-    fn test_context_carries_state_cwd_and_module() {
-        let common: CommonPluginContext = CommonPluginContext::default();
-
+    fn test_context_carries_cwd_and_module() {
         let module: ModuleInfo<'_> = ModuleInfo {
             file: "a.ts",
             code: "let a;",
@@ -66,34 +58,12 @@ mod tests {
             source_type: SourceType::Module,
         };
 
-        let ctx: PluginContext<'_> =
-            PluginContext::new(&common.state, "/repo", module);
+        let ctx: PluginContext<'_> = PluginContext::new("/repo", module);
 
-        assert!(ctx.state.is_empty());
         assert_eq!(ctx.cwd, "/repo");
         assert_eq!(ctx.module.file, "a.ts");
         assert_eq!(ctx.module.code, "let a;");
         assert_eq!(ctx.module.language, Language::TS);
         assert_eq!(ctx.module.source_type, SourceType::Module);
-    }
-
-    #[test]
-    fn test_context_state_shares_the_common_map() {
-        let common: CommonPluginContext = CommonPluginContext::default();
-
-        let module: ModuleInfo<'_> = ModuleInfo {
-            file: "a.ts",
-            code: "let a;",
-            language: Language::TS,
-            source_type: SourceType::Module,
-        };
-
-        let ctx: PluginContext<'_> =
-            PluginContext::new(&common.state, "/repo", module);
-
-        assert_eq!(
-            std::ptr::from_ref(ctx.state),
-            std::ptr::from_ref(&common.state)
-        );
     }
 }

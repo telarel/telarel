@@ -92,7 +92,7 @@ mod tests {
 
     use telarel_common::{HookUsage, Language, SourceType};
 
-    use crate::_types::context::{CommonPluginContext, PluginContext};
+    use crate::_types::context::PluginContext;
     use crate::_types::hooks::prepare::{
         PrepareArgs, PrepareOutput, PrepareReturn,
     };
@@ -178,9 +178,6 @@ mod tests {
     }
 
     async fn run(plugins: Vec<SharedPluginable>) -> PrepareFold {
-        let common: &'static CommonPluginContext =
-            Box::leak(Box::new(CommonPluginContext::default()));
-
         let module: crate::ModuleInfo<'static> = crate::ModuleInfo {
             file: "a.ts",
             code: "console.log(1);",
@@ -188,8 +185,7 @@ mod tests {
             source_type: SourceType::Module,
         };
 
-        let ctx: PluginContext<'static> =
-            PluginContext::new(&common.state, "/repo", module);
+        let ctx: PluginContext<'static> = PluginContext::new("/repo", module);
 
         let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 
@@ -296,9 +292,6 @@ mod tests {
                 Err(anyhow::anyhow!("boom"))
             })];
 
-        let common: &'static CommonPluginContext =
-            Box::leak(Box::new(CommonPluginContext::default()));
-
         let module: crate::ModuleInfo<'static> = crate::ModuleInfo {
             file: "a.ts",
             code: "console.log(1);",
@@ -306,8 +299,7 @@ mod tests {
             source_type: SourceType::Module,
         };
 
-        let ctx: PluginContext<'static> =
-            PluginContext::new(&common.state, "/repo", module);
+        let ctx: PluginContext<'static> = PluginContext::new("/repo", module);
 
         let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 

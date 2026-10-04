@@ -19,4 +19,3 @@ include = ["src/**", "Cargo.toml", "README.md"]
 bitflags = { workspace = true }
 oxc = { workspace = true, features = ["codegen", "regular_expression"] }
 oxc_sourcemap = { workspace = true }
-serde_json = { workspace = true }

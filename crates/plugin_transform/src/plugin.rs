@@ -230,9 +230,7 @@ mod tests {
     use oxc::span::SourceType;
 
     use telarel_common::Language;
-    use telarel_plugin::{
-        CommonPluginContext, ModuleInfo, Plugin, PluginContext, TransformOutput,
-    };
+    use telarel_plugin::{ModuleInfo, Plugin, PluginContext, TransformOutput};
 
     use crate::options::TransformOptions;
     use crate::options::define::DefineOptions;
@@ -268,10 +266,7 @@ mod tests {
         Parser::new(allocator, code, source_type).parse().program
     }
 
-    fn make_context<'a>(
-        common: &'a CommonPluginContext,
-        file: &'a str,
-    ) -> PluginContext<'a> {
+    fn make_context<'a>(file: &'a str) -> PluginContext<'a> {
         let module: ModuleInfo<'a> = ModuleInfo {
             file,
             code: "",
@@ -279,7 +274,7 @@ mod tests {
             source_type: telarel_common::SourceType::Module,
         };
 
-        PluginContext::new(&common.state, CWD, module)
+        PluginContext::new(CWD, module)
     }
 
     async fn run_hook<'a>(
@@ -288,9 +283,7 @@ mod tests {
         file: &str,
         program: &'a Program<'a>,
     ) -> anyhow::Result<Option<TransformOutput<'a>>> {
-        let common: CommonPluginContext = CommonPluginContext::default();
-
-        let ctx: PluginContext<'_> = make_context(&common, file);
+        let ctx: PluginContext<'_> = make_context(file);
 
         let args: TransformArgs<'_> = TransformArgs { allocator, ast: program };
 
@@ -707,8 +700,6 @@ mod tests {
         let program: Program<'_> =
             parse(&allocator, "index.js", "async function main() {}");
 
-        let common: CommonPluginContext = CommonPluginContext::default();
-
         let module: ModuleInfo<'_> = ModuleInfo {
             file: "index.js",
             code: "",
@@ -716,8 +707,7 @@ mod tests {
             source_type: telarel_common::SourceType::Module,
         };
 
-        let ctx: PluginContext<'_> =
-            PluginContext::new(&common.state, "/repo", module);
+        let ctx: PluginContext<'_> = PluginContext::new("/repo", module);
 
         let args: TransformArgs<'_> =
             TransformArgs { allocator: &allocator, ast: &program };

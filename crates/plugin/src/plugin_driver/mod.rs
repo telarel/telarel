@@ -213,7 +213,7 @@ mod tests {
         SourceType, parse,
     };
 
-    use crate::_types::context::{CommonPluginContext, ModuleInfo};
+    use crate::_types::context::ModuleInfo;
     use crate::_types::hooks::finalize::FinalizeReturn;
     use crate::_types::hooks::notify::NotifyReturn;
     use crate::_types::hooks::prepare::PrepareReturn;
@@ -224,10 +224,6 @@ mod tests {
     use crate::plugin::pluginable::Pluginable;
 
     use super::*;
-
-    fn common_ctx() -> CommonPluginContext {
-        CommonPluginContext::default()
-    }
 
     fn make_module<'a>(code: &'a str) -> ModuleInfo<'a> {
         ModuleInfo {
@@ -587,14 +583,8 @@ mod tests {
         }
     }
 
-    fn make_plugin_ctx<'a>(
-        common: &'a CommonPluginContext
-    ) -> PluginContext<'a> {
-        PluginContext::new(
-            &common.state,
-            "/repo",
-            make_module("console.log(1);"),
-        )
+    fn make_plugin_ctx<'a>() -> PluginContext<'a> {
+        PluginContext::new("/repo", make_module("console.log(1);"))
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -608,9 +598,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 
@@ -638,9 +626,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 
@@ -656,9 +642,7 @@ mod tests {
     async fn test_transform_chains_programs() {
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
@@ -689,9 +673,7 @@ mod tests {
     async fn test_transform_error_names_plugin() {
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
@@ -718,9 +700,7 @@ mod tests {
     async fn test_transform_returns_original_program_by_reference() {
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
@@ -755,9 +735,7 @@ mod tests {
         // fold that kept handing later plugins the original program.
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
@@ -802,9 +780,7 @@ mod tests {
         // the carried program stays the original.
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
@@ -845,9 +821,7 @@ mod tests {
         // the output.
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
@@ -885,9 +859,7 @@ mod tests {
         // the replacement and the appended directive.
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
@@ -927,9 +899,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let args: FinalizeArgs<'_> = FinalizeArgs { code: "console.log(1);" };
 
@@ -957,9 +927,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let args: FinalizeArgs<'_> = FinalizeArgs { code: "console.log(1);" };
 
@@ -987,9 +955,7 @@ mod tests {
     async fn test_transform_skips_plugins_without_usage() {
         let allocator: Allocator = Allocator::default();
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let parsed: ParseResult<'_> = test_parse_program(&allocator);
 
@@ -1171,9 +1137,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         driver.compile_start(&ctx, &make_start_args()).await.unwrap();
 
@@ -1287,9 +1251,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         driver.compile_start(&ctx, &make_start_args()).await.unwrap();
 
@@ -1314,9 +1276,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let err: anyhow::Error =
             driver.compile_start(&ctx, &make_start_args()).await.unwrap_err();
@@ -1350,9 +1310,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let err: anyhow::Error =
             driver.compile_end(&ctx, &make_end_args()).await.unwrap_err();
@@ -1389,9 +1347,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let err: anyhow::Error =
             driver.compile_end(&ctx, &make_end_args()).await.unwrap_err();
@@ -1616,9 +1572,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 
@@ -1662,9 +1616,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 
@@ -1700,9 +1652,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 
@@ -1859,9 +1809,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let allocator: Allocator = Allocator::default();
 
@@ -1900,9 +1848,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let args: FinalizeArgs<'_> = FinalizeArgs { code: "console.log(1);" };
 
@@ -1976,9 +1922,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         driver.compile_start(&ctx, &make_start_args()).await.unwrap();
 
@@ -2013,9 +1957,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let common: CommonPluginContext = common_ctx();
-
-        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+        let ctx: PluginContext<'_> = make_plugin_ctx();
 
         driver.compile_start(&ctx, &make_start_args()).await.unwrap();
 

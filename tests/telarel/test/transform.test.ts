@@ -11,11 +11,11 @@ import { compile } from "telarel";
 import { transform } from "telarel/plugins/transform";
 import { describe, expect, it } from "vitest";
 
-const myPlugins = (): Array<Plugin> => [
+const myPlugins = (onPrepare: () => void): Array<Plugin> => [
     {
         name: "writer",
-        prepare: (ctx: PluginContext): void => {
-            ctx.state.set("marker", "from-array");
+        prepare: (): void => {
+            onPrepare();
         },
     },
 ];
@@ -301,18 +301,19 @@ describe("transform", (): void => {
 
     it("runs alongside plain js plugins in one array", async (): Promise<void> => {
         const seen: Array<unknown> = [];
+        let marker: unknown = "__NO_MARKER__";
 
         const jsPlugin: Plugin = {
             name: "observer",
-            transform: (ctx: PluginContext): void => {
-                seen.push(ctx.state.get("marker"));
+            transform: (): void => {
+                seen.push(marker);
             },
         };
 
         const writer: Plugin = {
             name: "writer",
-            prepare: (ctx: PluginContext): void => {
-                ctx.state.set("marker", "from-writer");
+            prepare: (): void => {
+                marker = "from-writer";
             },
         };
 
@@ -329,11 +330,12 @@ describe("transform", (): void => {
 
     it("composes a plugin array next to the builtin transform", async (): Promise<void> => {
         const seen: Array<unknown> = [];
+        let marker: unknown = "__NO_MARKER__";
 
         const observer: Plugin = {
             name: "observer",
-            transform: (ctx: PluginContext): void => {
-                seen.push(ctx.state.get("marker"));
+            transform: (): void => {
+                seen.push(marker);
             },
         };
 
@@ -341,7 +343,13 @@ describe("transform", (): void => {
             cwd: "/repo",
             file: "index.ts",
             code: "const a: number = 1;",
-            plugins: [myPlugins(), transform(), observer],
+            plugins: [
+                myPlugins((): void => {
+                    marker = "from-array";
+                }),
+                transform(),
+                observer,
+            ],
         });
 
         expect(result.code).not.toContain(": number");
@@ -350,18 +358,19 @@ describe("transform", (): void => {
 
     it("gives a plain js transform hook the post-builtin ast", async (): Promise<void> => {
         const seen: Array<unknown> = [];
+        let firstNode: unknown = "__NO_NODE__";
 
         const jsPlugin: Plugin = {
             name: "observer",
-            transform: (ctx: PluginContext, args: TransformArgs): void => {
+            transform: (_ctx: PluginContext, args: TransformArgs): void => {
                 const body: Array<{ type: string }> = args.ast.body as Array<{
                     type: string;
                 }>;
 
-                ctx.state.set("firstNode", body[0]?.type ?? "missing");
+                firstNode = body[0]?.type ?? "missing";
             },
-            finalize: (ctx: PluginContext): void => {
-                seen.push(ctx.state.get("firstNode"));
+            finalize: (): void => {
+                seen.push(firstNode);
             },
         };
 
@@ -416,14 +425,15 @@ describe("transform", (): void => {
 
     it("treats a js plugin named builtin:* with hooks as a js plugin", async (): Promise<void> => {
         const seen: Array<unknown> = [];
+        let marker: unknown = "__NO_MARKER__";
 
         const plugin: Plugin = {
             name: "builtin:custom",
-            prepare: (ctx: PluginContext): void => {
-                ctx.state.set("marker", "from-builtin-custom");
+            prepare: (): void => {
+                marker = "from-builtin-custom";
             },
-            transform: (ctx: PluginContext): void => {
-                seen.push(ctx.state.get("marker"));
+            transform: (): void => {
+                seen.push(marker);
             },
         };
 

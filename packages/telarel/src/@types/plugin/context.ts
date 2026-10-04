@@ -1,19 +1,9 @@
 import type { Language, SourceType } from "#/@types/grammar";
 
 /**
- * Shared cross-plugin ambient state for one `compile()` call.
- */
-type PluginState = Map<string, unknown>;
-
-/**
  * Common plugin context: available to every hook, including `options`.
  */
-type CommonPluginContext = {
-    /**
-     * Shared ambient state, keyed by string, for one `compile()` call.
-     */
-    state: PluginState;
-};
+type CommonPluginContext = Record<never, never>;
 
 /**
  * Information about the module being compiled.
@@ -53,4 +43,4 @@ type PluginContext = CommonPluginContext & {
     module: ModuleInfo;
 };
 
-export type { CommonPluginContext, ModuleInfo, PluginContext, PluginState };
+export type { CommonPluginContext, ModuleInfo, PluginContext };
