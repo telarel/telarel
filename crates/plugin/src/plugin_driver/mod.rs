@@ -38,9 +38,8 @@ pub fn sort_plugins_by_hook_meta(
 /// Drives plugins through the hooks, each ordered by its per-hook meta
 /// (`[pre, normal, post]`, stable within a bucket).
 pub struct PluginDriver {
-    /// The full settled plugin list; `compile_start`/`compile_end` iterate it.
-    all_plugins: Vec<SharedPluginable>,
     usage: HookUsage,
+    settled_names: Vec<String>,
     compile_start_plugins: Vec<SharedPluginable>,
     prepare_plugins: Vec<SharedPluginable>,
     transform_plugins: Vec<SharedPluginable>,
@@ -105,9 +104,14 @@ impl PluginDriver {
                 plugin.call_compile_end_meta()
             });
 
+        let settled_names: Vec<String> = plugins
+            .iter()
+            .map(|plugin| plugin.call_name().into_owned())
+            .collect();
+
         Self {
-            all_plugins: plugins,
             usage,
+            settled_names,
             compile_start_plugins,
             prepare_plugins,
             transform_plugins,
@@ -122,11 +126,8 @@ impl PluginDriver {
     }
 
     /// The settled plugin names in registration order; duplicates preserved.
-    pub fn settled_names(&self) -> Vec<String> {
-        self.all_plugins
-            .iter()
-            .map(|plugin| plugin.call_name().into_owned())
-            .collect()
+    pub fn settled_names(&self) -> &[String] {
+        &self.settled_names
     }
 
     /// Run the `compile_start` hook on EVERY settled plugin (not partitioned

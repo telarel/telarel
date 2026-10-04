@@ -378,7 +378,7 @@ pub async fn compile(
         code: resolved.code.clone(),
         language,
         source_type,
-        plugins: driver.settled_names().into_iter().collect::<Vec<String>>(),
+        plugins: driver.settled_names().to_vec(),
     };
 
     let ctx: CompileContext<'_> = CompileContext::new(
