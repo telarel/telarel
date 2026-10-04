@@ -38,20 +38,20 @@ There are no cycles.
 flowchart TD
     Options[<b>options</b>]
     Start[<b>compile_start</b>]
-    Pre[<b>pre</b>]
+    Prepare[<b>prepare</b>]
     Transform[<b>transform</b>]
-    Post[<b>post</b>]
+    Finalize[<b>finalize</b>]
     End[<b>compile_end</b>]
     Output([code + map])
 
-    Options --> Start --> Pre
-    Pre -- "parse" --> Transform
-    Transform -- "codegen" --> Post
-    Post --> End --> Output
-    Pre -- "no transform plugin: skip parse (identity map)" --> Post
+    Options --> Start --> Prepare
+    Prepare -- "parse" --> Transform
+    Transform -- "codegen" --> Finalize
+    Finalize --> End --> Output
+    Prepare -- "no transform plugin:<br/>skip parse (identity map)" --> Finalize
 ```
 
-The plugin implements different hooks (all with no operation by default). Every hook is return-based: the core owns all state and applies the returned value. Normal hooks (`options`, `pre`, `transform`, `post`) return the new value (`Some` replaces, `None` keep the current one); notify hooks (`compile_start`, `compile_end`) ignore the returned value.
+The plugin implements different hooks (all with no operation by default). Every hook is return-based: the core owns all state and applies the returned value. Normal hooks (`options`, `prepare`, `transform`, `finalize`) return the new value (`Some` replaces, `None` keep the current one); notify hooks (`compile_start`, `compile_end`) ignore the returned value.
 
 Hooks receive a context: `options` gets the [`CommonPluginContext`](./crates/plugin/src/_types/context.rs#L5) (carrying the shared [`PluginState`](./crates/common/src/_types/plugin/state.rs#L5)), while later hooks get the flat [`PluginContext`](./crates/plugin/src/_types/context.rs#L25) with `cwd`, `module` info, and a borrow of the same state.
 
@@ -59,16 +59,16 @@ Hooks receive a context: `options` gets the [`CommonPluginContext`](./crates/plu
 | ------------- | ---------------- | --------- | ---------------- |
 | options       | options          | options   | Fixpoint replace |
 | compile_start | resolved options | ()        | Notify           |
-| pre           | code             | code, map | Carried fold     |
+| prepare       | code             | code, map | Carried fold     |
 | transform     | allocator, ast   | ast       | Carried fold     |
-| post          | code             | code, map | Carried fold     |
+| finalize      | code             | code, map | Carried fold     |
 | compile_end   | code, map, err?  | ()        | Notify           |
 
 Semantics:
 
 - **Fixpoint replace** — `options` returns a whole [`OptionsArgs`](./crates/plugin/src/_types/hooks/options.rs#L10) to replace the current one
 - **Notify** — `compile_start` and `compile_end` ignore the return value
-- **Carried fold** — `pre`, `transform`, and `post` carry a value from plugin to plugin
+- **Carried fold** — `prepare`, `transform`, and `finalize` carry a value from plugin to plugin
 
 **Fixpoint replace** is struct-level replacement, not a patch: fields the returned `OptionsArgs` omits are dropped, and `None` keeps the current args. Returned `plugins` may inject new plugins, whose own `options` hooks then run — a fixpoint over the list (see [`crates/plugin/src/options/fixpoint.rs`](./crates/plugin/src/options/fixpoint.rs#L26)).
 
@@ -78,7 +78,7 @@ Semantics:
 
 ### Hook Usage Declaration
 
-[`register_hook_usage`](./crates/plugin/src/plugin/mod.rs#L35) is required and affects how the driver runs plugins. It only gates `pre`, `transform`, and `post`: if one of these isn't declared, it won't be called. `options`, `compile_start`, and `compile_end` run on every settled plugin regardless of declared usage.
+[`register_hook_usage`](./crates/plugin/src/plugin/mod.rs#L35) is required and affects how the driver runs plugins. It only gates `prepare`, `transform`, and `finalize`: if one of these isn't declared, it won't be called. `options`, `compile_start`, and `compile_end` run on every settled plugin regardless of declared usage.
 
 On the JS side, usage is inferred from the hook properties on the plugin object. Therefore, even if `transform` never mutates the program, it still triggers parse + codegen.
 
@@ -86,7 +86,7 @@ On the JS side, usage is inferred from the hook properties on the plugin object.
 
 The driver's aggregate [`HookUsage`](./crates/common/src/_types/hooks/usage.rs#L8) determines whether the source needs to be parsed. If no plugin declares `Transform`, parsing and codegen are skipped entirely. In that case, even invalid syntax is passed through, a [per-line identity map](./crates/core/src/lib.rs#L44) is returned instead of producing a parse error.
 
-Declaring only `pre` or `post` does not trigger parsing.
+Declaring only `prepare` or `finalize` does not trigger parsing.
 
 ## JS Plugin Bridge
 

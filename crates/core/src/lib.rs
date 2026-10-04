@@ -17,8 +17,8 @@ use telarel_common::{
 };
 use telarel_plugin::__internal::PluginDriver;
 use telarel_plugin::{
-    CommonPluginContext, CompileEndArgs, CompileStartArgs, OptionsArgs,
-    PluginContext, PostArgs, PreArgs, SharedPluginable, TransformArgs,
+    CommonPluginContext, CompileEndArgs, CompileStartArgs, FinalizeArgs,
+    OptionsArgs, PluginContext, PrepareArgs, SharedPluginable, TransformArgs,
     options_fixpoint,
 };
 
@@ -64,7 +64,7 @@ fn identity_map(
     builder.into_owned_sourcemap().into_inner()
 }
 
-/// The pipeline tail after the `post` fold.
+/// The pipeline tail after the `finalize` fold.
 struct TailOutput {
     code: String,
     map: SourceMap,
@@ -97,13 +97,13 @@ pub struct CompileOutput {
     pub map: SourceMap,
 }
 
-/// Run the stage tail (R5 steps 4-9): `compile_start`, `pre`, the gated
-/// parse/transform/codegen path, and `post`.
+/// Run the stage tail (R5 steps 4-9): `compile_start`, `prepare`, the gated
+/// parse/transform/codegen path, and `finalize`.
 ///
-/// R6 map composition: every map returned by a `pre` hook is incremental
-/// relative to the code that hook received, so the pre-side chain composes
+/// R6 map composition: every map returned by a `prepare` hook is incremental
+/// relative to the code that hook received, so the prepare-side chain composes
 /// against the ORIGINAL `resolved.code` via [`compose_maps`]; a chain of
-/// `post` maps composes in the reverse direction (the LAST-served map owns
+/// `finalize` maps composes in the reverse direction (the LAST-served map owns
 /// the final-output dst tokens and the earlier maps chain behind it, ending
 /// with the codegen/identity map that lands in the original source). A hook
 /// that omits its map resets the collection; when NO map was returned the
@@ -131,20 +131,23 @@ async fn run_stages(
             last_good: LastGood { code: resolved.code.clone(), map: None },
         })?;
 
-    // R5 step 5: the `pre` fold over the original source; `Some` replaces
+    // R5 step 5: the `prepare` fold over the original source; `Some` replaces
     // the code. Every returned map is collected in fold order (a returned
     // map-less output resets the collection).
-    let pre_fold: telarel_plugin::__internal::PreFold = driver
-        .pre(plugin_ctx, &PreArgs { code: &resolved.code })
+    let prepare_fold: telarel_plugin::__internal::PrepareFold = driver
+        .prepare(plugin_ctx, &PrepareArgs { code: &resolved.code })
         .await
         .map_err(|error| StageError {
-            error: CompileError::from_message(&format!("pre hook: {error:#}")),
+            error: CompileError::from_message(&format!(
+                "prepare hook: {error:#}"
+            )),
             last_good: LastGood { code: resolved.code.clone(), map: None },
         })?;
 
-    let pre_output: Option<telarel_plugin::PreOutput> = pre_fold.output;
+    let prepare_output: Option<telarel_plugin::PrepareOutput> =
+        prepare_fold.output;
 
-    // The pre-map composition channel (R6): compose the whole CHAIN of
+    // The prepare-map composition channel (R6): compose the whole CHAIN of
     // returned maps, not just the last one. Each hook's map is incremental
     // relative to the code that hook RECEIVED (dst space = hook output,
     // src space = hook input), so resolving the parse input (code_n) back
@@ -153,15 +156,15 @@ async fn run_stages(
     // resolves first. With one map this reduces to the single-map
     // composition. Omitted maps reset the chain (the fold's rule), so the
     // surviving segment composes against the actual parse input.
-    let pre_maps: Vec<SourceMap> = pre_fold
+    let prepare_maps: Vec<SourceMap> = prepare_fold
         .maps
         .iter()
         .rev()
-        .filter_map(|out: &telarel_plugin::PreOutput| out.map.clone())
+        .filter_map(|out: &telarel_plugin::PrepareOutput| out.map.clone())
         .collect::<Vec<SourceMap>>();
 
     let parse_code: String =
-        pre_output.map_or_else(|| resolved.code.clone(), |out| out.code);
+        prepare_output.map_or_else(|| resolved.code.clone(), |out| out.code);
 
     let (code, map): (String, SourceMap) =
         if driver.usage().contains(HookUsage::Transform) {
@@ -186,10 +189,10 @@ async fn run_stages(
                     error,
                     last_good: LastGood {
                         code: parse_code.clone(),
-                        // `pre_maps` is in reverse fold order; the
+                        // `prepare_maps` is in reverse fold order; the
                         // FIRST element is the LAST-SERVED surviving
                         // map (the map closest to the parse input).
-                        map: pre_maps.first().cloned(),
+                        map: prepare_maps.first().cloned(),
                     },
                 })?;
 
@@ -208,7 +211,7 @@ async fn run_stages(
                             code: parse_code.clone(),
                             // Reverse fold order; the first map is the
                             // LAST-SERVED surviving one.
-                            map: pre_maps.first().cloned(),
+                            map: prepare_maps.first().cloned(),
                         },
                     },
                 )?;
@@ -236,7 +239,7 @@ async fn run_stages(
         } else {
             // No plugin uses `transform`: skip parse and codegen entirely and
             // pass the source through with a per-line identity map. A clone is
-            // required here: `ctx` borrows the parse source until the `post`
+            // required here: `ctx` borrows the parse source until the `finalize`
             // hook below, so the strip cannot consume it in place.
             let code: String = strip_trailing_newline(parse_code.clone());
 
@@ -245,61 +248,63 @@ async fn run_stages(
             (code, map)
         };
 
-    // R5 step 9: the `post` fold over the generated code; `Some` replaces
+    // R5 step 9: the `finalize` fold over the generated code; `Some` replaces
     // the carried code. Every returned map is collected in fold order (a
     // returned map-less output resets the collection).
-    let post_fold: telarel_plugin::__internal::PostFold = driver
-        .post(plugin_ctx, &PostArgs { code: &code })
+    let finalize_fold: telarel_plugin::__internal::FinalizeFold = driver
+        .finalize(plugin_ctx, &FinalizeArgs { code: &code })
         .await
         .map_err(|error| {
             // The error-path last good is the UN-composed codegen/pipeline
-            // map (the post hook's own map never composed); `compile_end`
+            // map (the finalize hook's own map never composed); `compile_end`
             // reports last good, composition applies to the OUTPUT map only.
             let last_good: LastGood =
                 LastGood { code: code.clone(), map: Some(map.clone()) };
 
             StageError {
                 error: CompileError::from_message(&format!(
-                    "post hook: {error:#}"
+                    "finalize hook: {error:#}"
                 )),
                 last_good,
             }
         })?;
 
-    let post_output: Option<telarel_plugin::PostOutput> = post_fold.output;
+    let finalize_output: Option<telarel_plugin::FinalizeOutput> =
+        finalize_fold.output;
 
-    let code: String = post_output.map_or_else(|| code.clone(), |out| out.code);
+    let code: String =
+        finalize_output.map_or_else(|| code.clone(), |out| out.code);
 
-    // The post-map composition channel (R6): compose the whole CHAIN of
+    // The finalize-map composition channel (R6): compose the whole CHAIN of
     // returned maps, not just the last one. Each hook's map is incremental
     // relative to the code that hook RECEIVED (dst space = hook output,
     // src space = hook input; the first hook's input is the generated
-    // code). `post_maps` is in REVERSE fold order, so its FIRST element is
+    // code). `finalize_maps` is in REVERSE fold order, so its FIRST element is
     // the LAST-SERVED surviving map — its dst space is the FINAL output and
     // it must own the output dst tokens. Composing it as the `upstream` and
     // every earlier map (then the pipeline map) as an incremental resolves
     // final-output positions backward to the generated code and on to the
     // original source (final -> code_n -> ... -> generated -> original).
     // Omitted maps reset the chain (the fold's rule), so the surviving
-    // segment composes against the actual generated code. With one post map
-    // this reduces to the shipped single-map direction (post map upstream,
+    // segment composes against the actual generated code. With one finalize map
+    // this reduces to the shipped single-map direction (finalize map upstream,
     // pipeline map incremental).
-    let post_maps: Vec<SourceMap> = post_fold
+    let finalize_maps: Vec<SourceMap> = finalize_fold
         .maps
         .iter()
         .rev()
-        .filter_map(|out: &telarel_plugin::PostOutput| out.map.clone())
+        .filter_map(|out: &telarel_plugin::FinalizeOutput| out.map.clone())
         .collect::<Vec<SourceMap>>();
 
     let pipeline_map: SourceMap = compose_maps(
         Some(&resolved.file),
         &map,
-        pre_maps.iter().collect::<Vec<&SourceMap>>().as_slice(),
+        prepare_maps.iter().collect::<Vec<&SourceMap>>().as_slice(),
     );
 
-    let map: SourceMap = match post_maps.split_first() {
+    let map: SourceMap = match finalize_maps.split_first() {
         | Some((upstream, rest)) => {
-            // Earlier post maps chain behind the last one in reverse fold
+            // Earlier finalize maps chain behind the last one in reverse fold
             // order; the pipeline map is the final incremental that lands
             // in the ORIGINAL source (its dst space is the generated code).
             let mut incrementals: Vec<&SourceMap> = rest.iter().collect();
@@ -504,7 +509,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
     }
 
@@ -789,43 +794,45 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct FailingPrePlugin;
+    struct FailingPreparePlugin;
 
-    impl Plugin for FailingPrePlugin {
+    impl Plugin for FailingPreparePlugin {
         fn name(&self) -> Cow<'static, str> {
-            "failing-pre".into()
+            "failing-prepare".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
 
-        fn pre<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            _args: &'a telarel_plugin::PreArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PreReturn> + Send {
+            _args: &'a telarel_plugin::PrepareArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::PrepareReturn> + Send
+        {
             async { Err(anyhow::anyhow!("stage boom")) }
         }
     }
 
     #[derive(Debug)]
-    struct FailingPostPlugin;
+    struct FailingFinalizePlugin;
 
-    impl Plugin for FailingPostPlugin {
+    impl Plugin for FailingFinalizePlugin {
         fn name(&self) -> Cow<'static, str> {
-            "failing-post".into()
+            "failing-finalize".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Post
+            HookUsage::Finalize
         }
 
-        fn post<'a>(
+        fn finalize<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            _args: &'a telarel_plugin::PostArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PostReturn> + Send {
+            _args: &'a telarel_plugin::FinalizeArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::FinalizeReturn> + Send
+        {
             async { Err(anyhow::anyhow!("stage boom")) }
         }
     }
@@ -1093,7 +1100,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_noop_pre_plugin_does_not_parse() {
+    async fn test_compile_noop_prepare_plugin_does_not_parse() {
         // A plugin declaring only PRE must not force the parse path; output
         // stays verbatim (proves NoopPlugin's PRE declaration doesn't leak
         // into the transform decision).
@@ -1124,16 +1131,16 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_pre_hook_error_aborts() {
+    async fn test_compile_prepare_hook_error_aborts() {
         let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(FailingPrePlugin)];
+            vec![Plugin::new_shared(FailingPreparePlugin)];
 
         let error: CompileError =
             compile(options(), plugins).await.unwrap_err();
 
         let message: String = error.to_string();
 
-        assert!(message.contains("pre hook"), "{}", message);
+        assert!(message.contains("prepare hook"), "{}", message);
         assert!(message.contains("stage boom"), "{}", message);
     }
 
@@ -1155,16 +1162,16 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_post_hook_error_aborts() {
+    async fn test_compile_finalize_hook_error_aborts() {
         let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(FailingPostPlugin)];
+            vec![Plugin::new_shared(FailingFinalizePlugin)];
 
         let error: CompileError =
             compile(options(), plugins).await.unwrap_err();
 
         let message: String = error.to_string();
 
-        assert!(message.contains("post hook"), "{}", message);
+        assert!(message.contains("finalize hook"), "{}", message);
         assert!(message.contains("stage boom"), "{}", message);
     }
 
@@ -1454,26 +1461,27 @@ mod tests {
         }
     }
 
-    // A `pre` hook that errors; used to verify the error-path `compile_end`.
+    // A `prepare` hook that errors; used to verify the error-path `compile_end`.
     #[derive(Debug)]
-    struct CompileEndOnPreErrorPlugin {
+    struct CompileEndOnPrepareErrorPlugin {
         seen: std::sync::Arc<std::sync::Mutex<Vec<CompileEndShape>>>,
     }
 
-    impl Plugin for CompileEndOnPreErrorPlugin {
+    impl Plugin for CompileEndOnPrepareErrorPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "compile-end-on-pre-error".into()
+            "compile-end-on-prepare-error".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre | HookUsage::CompileEnd
+            HookUsage::Prepare | HookUsage::CompileEnd
         }
 
-        fn pre<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            _args: &'a telarel_plugin::PreArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PreReturn> + Send {
+            _args: &'a telarel_plugin::PrepareArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::PrepareReturn> + Send
+        {
             async { Err(anyhow::anyhow!("stage boom")) }
         }
 
@@ -1615,7 +1623,7 @@ mod tests {
         assert!(recorded[0].has_map);
         assert_eq!(recorded[0].code, out.code);
 
-        // Error: a failing `pre` hook must still run `compile_end` with
+        // Error: a failing `prepare` hook must still run `compile_end` with
         // `err` set and the last-good code/map (the untouched source, no
         // map yet).
         let error_seen: std::sync::Arc<std::sync::Mutex<Vec<CompileEndShape>>> =
@@ -1628,7 +1636,7 @@ mod tests {
         };
 
         let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(CompileEndOnPreErrorPlugin {
+            vec![Plugin::new_shared(CompileEndOnPrepareErrorPlugin {
                 seen: std::sync::Arc::clone(&error_seen),
             })];
 
@@ -1636,7 +1644,7 @@ mod tests {
 
         let message: String = error.to_string();
 
-        assert!(message.contains("pre hook"), "{}", message);
+        assert!(message.contains("prepare hook"), "{}", message);
         assert!(message.contains("stage boom"), "{}", message);
 
         let recorded: Vec<CompileEndShape> = error_seen.lock().unwrap().clone();
@@ -1645,7 +1653,9 @@ mod tests {
 
         assert_eq!(
             recorded[0].err.as_deref(),
-            Some("pre hook: `compile-end-on-pre-error` pre: stage boom"),
+            Some(
+                "prepare hook: `compile-end-on-prepare-error` prepare: stage boom"
+            ),
         );
         assert_eq!(recorded[0].code, "const a = 1;");
         assert!(!recorded[0].has_map);
@@ -1850,7 +1860,7 @@ mod tests {
         // A failing stage AND a failing compile_end: the original error
         // wins, with the compile_end failure appended (nothing swallowed).
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(FailingPrePlugin),
+            Plugin::new_shared(FailingPreparePlugin),
             Plugin::new_shared(FailingEndPlugin),
         ];
 
@@ -1861,7 +1871,9 @@ mod tests {
 
         // The ORIGINAL error shape comes first, unchanged.
         assert!(
-            message.starts_with("pre hook: `failing-pre` pre: stage boom"),
+            message.starts_with(
+                "prepare hook: `failing-prepare` prepare: stage boom"
+            ),
             "{}",
             message
         );
@@ -1873,30 +1885,31 @@ mod tests {
         assert!(message.contains("`failing-end` compile_end"), "{}", message);
     }
 
-    // A pre hook that replaces the source and returns an incremental map
+    // A prepare hook that replaces the source and returns an incremental map
     // over its own edit.
     #[derive(Debug)]
-    struct PreWithMapPlugin {
+    struct PrepareWithMapPlugin {
         code: String,
         map: SourceMap,
     }
 
-    impl Plugin for PreWithMapPlugin {
+    impl Plugin for PrepareWithMapPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "pre-with-map".into()
+            "prepare-with-map".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
 
-        fn pre<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            _args: &'a telarel_plugin::PreArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PreReturn> + Send {
+            _args: &'a telarel_plugin::PrepareArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::PrepareReturn> + Send
+        {
             async move {
-                Ok(Some(telarel_plugin::PreOutput {
+                Ok(Some(telarel_plugin::PrepareOutput {
                     code: self.code.clone(),
                     map: Some(self.map.clone()),
                 }))
@@ -1904,28 +1917,29 @@ mod tests {
         }
     }
 
-    // A pre hook that replaces the source and omits the map.
+    // A prepare hook that replaces the source and omits the map.
     #[derive(Debug)]
-    struct PreNoMapPlugin {
+    struct PrepareNoMapPlugin {
         code: String,
     }
 
-    impl Plugin for PreNoMapPlugin {
+    impl Plugin for PrepareNoMapPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "pre-no-map".into()
+            "prepare-no-map".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
 
-        fn pre<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            _args: &'a telarel_plugin::PreArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PreReturn> + Send {
+            _args: &'a telarel_plugin::PrepareArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::PrepareReturn> + Send
+        {
             async move {
-                Ok(Some(telarel_plugin::PreOutput {
+                Ok(Some(telarel_plugin::PrepareOutput {
                     code: self.code.clone(),
                     map: None,
                 }))
@@ -1933,30 +1947,31 @@ mod tests {
         }
     }
 
-    // A post hook that replaces the generated code and returns an
+    // A finalize hook that replaces the generated code and returns an
     // incremental map over its own edit.
     #[derive(Debug)]
-    struct PostWithMapPlugin {
+    struct FinalizeWithMapPlugin {
         code: String,
         map: SourceMap,
     }
 
-    impl Plugin for PostWithMapPlugin {
+    impl Plugin for FinalizeWithMapPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "post-with-map".into()
+            "finalize-with-map".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Post
+            HookUsage::Finalize
         }
 
-        fn post<'a>(
+        fn finalize<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            _args: &'a telarel_plugin::PostArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PostReturn> + Send {
+            _args: &'a telarel_plugin::FinalizeArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::FinalizeReturn> + Send
+        {
             async move {
-                Ok(Some(telarel_plugin::PostOutput {
+                Ok(Some(telarel_plugin::FinalizeOutput {
                     code: self.code.clone(),
                     map: Some(self.map.clone()),
                 }))
@@ -1964,28 +1979,29 @@ mod tests {
         }
     }
 
-    // A post hook that replaces the generated code and omits the map.
+    // A finalize hook that replaces the generated code and omits the map.
     #[derive(Debug)]
-    struct PostNoMapPlugin {
+    struct FinalizeNoMapPlugin {
         code: String,
     }
 
-    impl Plugin for PostNoMapPlugin {
+    impl Plugin for FinalizeNoMapPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "post-no-map".into()
+            "finalize-no-map".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Post
+            HookUsage::Finalize
         }
 
-        fn post<'a>(
+        fn finalize<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            _args: &'a telarel_plugin::PostArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PostReturn> + Send {
+            _args: &'a telarel_plugin::FinalizeArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::FinalizeReturn> + Send
+        {
             async move {
-                Ok(Some(telarel_plugin::PostOutput {
+                Ok(Some(telarel_plugin::FinalizeOutput {
                     code: self.code.clone(),
                     map: None,
                 }))
@@ -1993,41 +2009,42 @@ mod tests {
         }
     }
 
-    // A pre hook that ERRORS unless it receives exactly `expected_input`,
+    // A prepare hook that ERRORS unless it receives exactly `expected_input`,
     // proving the fold carried the previous hook's rewrite; on match it
     // returns the configured code and optional incremental map. Built
     // relative to the received code, so a fixed-input fold cannot satisfy it.
     #[derive(Debug)]
-    struct CarryingPrePlugin {
+    struct CarryingPreparePlugin {
         expected_input: String,
         output: String,
         map: Option<SourceMap>,
     }
 
-    impl Plugin for CarryingPrePlugin {
+    impl Plugin for CarryingPreparePlugin {
         fn name(&self) -> Cow<'static, str> {
-            "carrying-pre".into()
+            "carrying-prepare".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
 
-        fn pre<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            args: &'a telarel_plugin::PreArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PreReturn> + Send {
+            args: &'a telarel_plugin::PrepareArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::PrepareReturn> + Send
+        {
             async move {
                 if args.code != self.expected_input {
                     anyhow::bail!(
-                        "pre hook received {:?}, expected the carried {:?}",
+                        "prepare hook received {:?}, expected the carried {:?}",
                         args.code,
                         self.expected_input,
                     );
                 }
 
-                Ok(Some(telarel_plugin::PreOutput {
+                Ok(Some(telarel_plugin::PrepareOutput {
                     code: self.output.clone(),
                     map: self.map.clone(),
                 }))
@@ -2035,27 +2052,28 @@ mod tests {
         }
     }
 
-    // A pre hook that records the code it received and returns `None`, so
+    // A prepare hook that records the code it received and returns `None`, so
     // the caller can assert the fold handed it the previous hook's output.
     #[derive(Debug)]
-    struct PreProbePlugin {
+    struct PrepareProbePlugin {
         seen: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     }
 
-    impl Plugin for PreProbePlugin {
+    impl Plugin for PrepareProbePlugin {
         fn name(&self) -> Cow<'static, str> {
-            "pre-probe".into()
+            "prepare-probe".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
 
-        fn pre<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            args: &'a telarel_plugin::PreArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PreReturn> + Send {
+            args: &'a telarel_plugin::PrepareArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::PrepareReturn> + Send
+        {
             async move {
                 self.seen.lock().unwrap().push(args.code.to_string());
 
@@ -2064,40 +2082,41 @@ mod tests {
         }
     }
 
-    // A post hook that ERRORS unless it receives exactly `expected_input`,
+    // A finalize hook that ERRORS unless it receives exactly `expected_input`,
     // proving the fold carried the previous hook's rewrite; on match it
     // returns the configured code and optional incremental map.
     #[derive(Debug)]
-    struct CarryingPostPlugin {
+    struct CarryingFinalizePlugin {
         expected_input: String,
         output: String,
         map: Option<SourceMap>,
     }
 
-    impl Plugin for CarryingPostPlugin {
+    impl Plugin for CarryingFinalizePlugin {
         fn name(&self) -> Cow<'static, str> {
-            "carrying-post".into()
+            "carrying-finalize".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Post
+            HookUsage::Finalize
         }
 
-        fn post<'a>(
+        fn finalize<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            args: &'a telarel_plugin::PostArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PostReturn> + Send {
+            args: &'a telarel_plugin::FinalizeArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::FinalizeReturn> + Send
+        {
             async move {
                 if args.code != self.expected_input {
                     anyhow::bail!(
-                        "post hook received {:?}, expected the carried {:?}",
+                        "finalize hook received {:?}, expected the carried {:?}",
                         args.code,
                         self.expected_input,
                     );
                 }
 
-                Ok(Some(telarel_plugin::PostOutput {
+                Ok(Some(telarel_plugin::FinalizeOutput {
                     code: self.output.clone(),
                     map: self.map.clone(),
                 }))
@@ -2105,27 +2124,28 @@ mod tests {
         }
     }
 
-    // A post hook that records the code it received and returns `None`, so
+    // A finalize hook that records the code it received and returns `None`, so
     // the caller can assert the fold handed it the previous hook's output.
     #[derive(Debug)]
-    struct PostProbePlugin {
+    struct FinalizeProbePlugin {
         seen: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     }
 
-    impl Plugin for PostProbePlugin {
+    impl Plugin for FinalizeProbePlugin {
         fn name(&self) -> Cow<'static, str> {
-            "post-probe".into()
+            "finalize-probe".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Post
+            HookUsage::Finalize
         }
 
-        fn post<'a>(
+        fn finalize<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            args: &'a telarel_plugin::PostArgs<'_>,
-        ) -> impl Future<Output = telarel_plugin::PostReturn> + Send {
+            args: &'a telarel_plugin::FinalizeArgs<'_>,
+        ) -> impl Future<Output = telarel_plugin::FinalizeReturn> + Send
+        {
             async move {
                 self.seen.lock().unwrap().push(args.code.to_string());
 
@@ -2135,8 +2155,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_pre_none_is_noop() {
-        // A pre hook returning `None` never touches the source: the code
+    async fn test_compile_prepare_none_is_noop() {
+        // A prepare hook returning `None` never touches the source: the code
         // and map match the plugin-free compile.
         let plugins: Vec<SharedPluginable> =
             vec![Plugin::new_shared(NoopPlugin)];
@@ -2148,8 +2168,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_post_none_is_noop() {
-        // A post hook returning `None` keeps the codegen code and map.
+    async fn test_compile_finalize_none_is_noop() {
+        // A finalize hook returning `None` keeps the codegen code and map.
         let opts: CompileOptions = CompileOptions {
             file: "index.ts".to_string(),
             code: "console.log(1);".to_string(),
@@ -2166,17 +2186,17 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_pre_map_only_replaces_code_and_map() {
-        // A pre hook returning `{ code, map }` (no transform plugins, so
+    async fn test_compile_prepare_map_only_replaces_code_and_map() {
+        // A prepare hook returning `{ code, map }` (no transform plugins, so
         // the skip path runs): the returned code becomes the output and
         // the OUTPUT map composes the hook map against the identity map
-        // over the parse input (R6 pre composition). The hook deletes the
+        // over the parse input (R6 prepare composition). The hook deletes the
         // original's first line: its map dst(0,0) -> src(1,0) says
         // "output line 0 came from original line 1".
         let map: SourceMap = hook_map(&[(0, 0, 1, 0)]);
 
         let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(PreWithMapPlugin {
+            vec![Plugin::new_shared(PrepareWithMapPlugin {
                 code: String::from("let b = 7;"),
                 map,
             })];
@@ -2207,11 +2227,11 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_pre_map_composes_through_codegen_map() {
-        // A pre hook replaces the source AND provides its map; a transform
+    async fn test_compile_prepare_map_composes_through_codegen_map() {
+        // A prepare hook replaces the source AND provides its map; a transform
         // plugin runs, so the codegen map's src half refers to the
-        // post-pre source. The output map must resolve generated
-        // positions back to the ORIGINAL code through the pre map (R6:
+        // prepare source. The output map must resolve generated
+        // positions back to the ORIGINAL code through the prepare map (R6:
         // the parse input maps back to the original source).
         let opts: CompileOptions = CompileOptions {
             file: "index.ts".to_string(),
@@ -2219,7 +2239,7 @@ mod tests {
             ..Default::default()
         };
 
-        // The pre rewrite shifts the callee name by one column ("log" ->
+        // The prepare rewrite shifts the callee name by one column ("log" ->
         // "xog" is not valid; instead pad a comment line: dst line 1 =
         // src line 0). The hook map: dst(1, c) -> src(0, c).
         let map: SourceMap = hook_map(&[
@@ -2231,7 +2251,7 @@ mod tests {
         ]);
 
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(PreWithMapPlugin {
+            Plugin::new_shared(PrepareWithMapPlugin {
                 code: String::from("// padded\nconsole.log(1);"),
                 map,
             }),
@@ -2242,7 +2262,7 @@ mod tests {
 
         assert!(out.code.contains("consolex"), "{}", out.code);
 
-        // The codegen map resolves into the post-pre source (line 1);
+        // The codegen map resolves into the prepare source (line 1);
         // composed through the hook map, generated positions must point
         // back at the ORIGINAL source line 0. Pick any token and check
         // its src line resolved to 0.
@@ -2264,13 +2284,13 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_pre_map_omitted_referenced_parse_input() {
-        // A pre hook replaces the source but omits the map: the output map
-        // references the post-pre rewritten source (the actual parse
+    async fn test_compile_prepare_map_omitted_referenced_parse_input() {
+        // A prepare hook replaces the source but omits the map: the output map
+        // references the prepare rewritten source (the actual parse
         // input) — no composition ran. The identity map's source entry is
         // the file and every generated line maps 1:1 into the parse input.
         let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(PreNoMapPlugin {
+            vec![Plugin::new_shared(PrepareNoMapPlugin {
                 code: String::from("let b = 2;\nlet c = 3;"),
             })];
 
@@ -2285,7 +2305,7 @@ mod tests {
         assert_eq!(out.code, "let b = 2;\nlet c = 3;");
 
         // No transform plugin ran, so this is the identity map over the
-        // post-pre source: line 1 maps to line 1.
+        // prepare source: line 1 maps to line 1.
         let token: oxc_sourcemap::Token =
             out.map.get_token(1).expect("identity line token");
 
@@ -2297,10 +2317,10 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_multi_pre_chain_maps_compose_to_original() {
-        // TWO pre hooks, EACH returning `{ code, map }`: the whole chain
+    async fn test_compile_multi_prepare_chain_maps_compose_to_original() {
+        // TWO prepare hooks, EACH returning `{ code, map }`: the whole chain
         // composes so the FINAL output's positions resolve back to the
-        // ORIGINAL `options.code` (R6: compose the chain of pre maps).
+        // ORIGINAL `options.code` (R6: compose the chain of prepare maps).
         //
         //   code_0 = "console.log(1);"          (line 0)
         //   hook 1  -> code_1 = "// one\nconsole.log(1);"
@@ -2321,12 +2341,12 @@ mod tests {
         let map_2: SourceMap = hook_map(&[(2, 0, 1, 0), (2, 12, 1, 12)]);
 
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(CarryingPrePlugin {
+            Plugin::new_shared(CarryingPreparePlugin {
                 expected_input: String::from("console.log(1);"),
                 output: String::from("// one\nconsole.log(1);"),
                 map: Some(map_1),
             }),
-            Plugin::new_shared(CarryingPrePlugin {
+            Plugin::new_shared(CarryingPreparePlugin {
                 expected_input: String::from("// one\nconsole.log(1);"),
                 output: String::from("// one\n// two\nconsole.log(1);"),
                 map: Some(map_2),
@@ -2361,18 +2381,18 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_pre_fold_carries_between_hooks() {
-        // Two pre plugins: the first returns map-less code; the second records
+    async fn test_compile_prepare_fold_carries_between_hooks() {
+        // Two prepare plugins: the first returns map-less code; the second records
         // what it received. The carried fold must hand it the first hook's
         // rewrite, not the original source.
         let seen: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
             std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(PreNoMapPlugin {
+            Plugin::new_shared(PrepareNoMapPlugin {
                 code: String::from("let a = 1;"),
             }),
-            Plugin::new_shared(PreProbePlugin {
+            Plugin::new_shared(PrepareProbePlugin {
                 seen: std::sync::Arc::clone(&seen),
             }),
         ];
@@ -2388,15 +2408,15 @@ mod tests {
         assert_eq!(
             seen.lock().unwrap().clone(),
             vec![String::from("let a = 1;")],
-            "the second pre hook must see the first hook's rewrite",
+            "the second prepare hook must see the first hook's rewrite",
         );
 
         assert_eq!(out.code, "let a = 1;");
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_post_fold_carries_between_hooks() {
-        // Two post plugins: the first rewrites the generated code; the second
+    async fn test_compile_finalize_fold_carries_between_hooks() {
+        // Two finalize plugins: the first rewrites the generated code; the second
         // records what it received. The carried fold must hand it the first
         // hook's rewrite, not the generated code.
         let seen: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
@@ -2404,10 +2424,10 @@ mod tests {
 
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(NoopTransformPlugin),
-            Plugin::new_shared(PostNoMapPlugin {
+            Plugin::new_shared(FinalizeNoMapPlugin {
                 code: String::from("const rewritten = 2;"),
             }),
-            Plugin::new_shared(PostProbePlugin {
+            Plugin::new_shared(FinalizeProbePlugin {
                 seen: std::sync::Arc::clone(&seen),
             }),
         ];
@@ -2423,26 +2443,26 @@ mod tests {
         assert_eq!(
             seen.lock().unwrap().clone(),
             vec![String::from("const rewritten = 2;")],
-            "the second post hook must see the first hook's rewrite",
+            "the second finalize hook must see the first hook's rewrite",
         );
 
         assert_eq!(out.code, "const rewritten = 2;");
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_multi_post_chain_maps_compose() {
-        // TWO post hooks, EACH returning `{ code, map }` over its own edit:
+    async fn test_compile_multi_finalize_chain_maps_compose() {
+        // TWO finalize hooks, EACH returning `{ code, map }` over its own edit:
         // the whole chain composes so the FINAL output's positions resolve
-        // through BOTH post stages and then the pipeline map back to the
+        // through BOTH finalize stages and then the pipeline map back to the
         // ORIGINAL source (final -> code_1 -> generated -> original).
         //
         //   generated = "console.log(1);"        (codegen line 0)
-        //   post 1 -> out_1 = "// one\nconsole.log(1);"
+        //   finalize 1 -> out_1 = "// one\nconsole.log(1);"
         //             map_1: dst(1, c) -> src(0, c)  (src = generated line 0)
-        //   post 2 -> out_2 = "// one\n// two\nconsole.log(1);"
+        //   finalize 2 -> out_2 = "// one\n// two\nconsole.log(1);"
         //             map_2: dst(2, c) -> src(1, c)  (src = code_1 line 1)
         //
-        // The pipeline map's dst space is the generated line 0; post 1's
+        // The pipeline map's dst space is the generated line 0; finalize 1's
         // map src space is also generated line 0. Composing the LAST-served
         // map (map_2) as upstream and (map_1, pipeline) as incrementals
         // resolves the final line 2 back to ORIGINAL line 0. An inverted
@@ -2464,12 +2484,12 @@ mod tests {
 
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(NoopTransformPlugin),
-            Plugin::new_shared(CarryingPostPlugin {
+            Plugin::new_shared(CarryingFinalizePlugin {
                 expected_input: String::from("console.log(1);"),
                 output: String::from("// one\nconsole.log(1);"),
                 map: Some(map_1),
             }),
-            Plugin::new_shared(CarryingPostPlugin {
+            Plugin::new_shared(CarryingFinalizePlugin {
                 expected_input: String::from("// one\nconsole.log(1);"),
                 output: String::from("// one\n// two\nconsole.log(1);"),
                 map: Some(map_2),
@@ -2500,7 +2520,7 @@ mod tests {
         );
 
         // The final line 2 statement came from original line 0 through
-        // BOTH post maps and the codegen map; every line-2 token must
+        // BOTH finalize maps and the codegen map; every line-2 token must
         // resolve to original line 0.
         for token in tokens
             .iter()
@@ -2517,21 +2537,21 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_pre_omission_mid_chain_references_parse_input() {
+    async fn test_compile_prepare_omission_mid_chain_references_parse_input() {
         // Hook 1 returns `{ code, map }`, hook 2 returns `{ code }` with
         // the map OMITTED: the composition chain breaks at the omission
         // (per R6, no composition across the gap), so the final map
-        // references the post-pre rewritten source (the actual parse
+        // references the prepare rewritten source (the actual parse
         // input). The identity map's line 1 must map to itself, NOT to
         // an original position resolved through hook 1's map.
         let map_1: SourceMap = hook_map(&[(1, 0, 0, 0)]);
 
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(PreWithMapPlugin {
+            Plugin::new_shared(PrepareWithMapPlugin {
                 code: String::from("// one\nconsole.log(1);"),
                 map: map_1,
             }),
-            Plugin::new_shared(PreNoMapPlugin {
+            Plugin::new_shared(PrepareNoMapPlugin {
                 code: String::from("// rewritten\nlet b = 2;"),
             }),
         ];
@@ -2561,16 +2581,16 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_post_map_composes_with_codegen_map() {
-        // A post hook returns `{ code, map }`: the map is incremental
+    async fn test_compile_finalize_map_composes_with_codegen_map() {
+        // A finalize hook returns `{ code, map }`: the map is incremental
         // relative to the GENERATED code (dst positions in the final
         // output, src positions in the generated code); the output map
         // must be the POST map's dst tokens composing to the ORIGINAL
-        // source through the codegen map (R6: post's map composes with
+        // source through the codegen map (R6: finalize's map composes with
         // the codegen map as final -> generated -> original).
         //
         // The probe scenario: original line 0 holds `console.log(1)` and
-        // the codegen rename makes it `consolex.log(1)`; the post edit
+        // the codegen rename makes it `consolex.log(1)`; the finalize edit
         // renames it back to `console` but rewrites the `1` to a `2`,
         // leaving TWO identical `console.log(2);` lines in the final
         // code. ORIGINAL line 0's content therefore survives only at
@@ -2582,10 +2602,10 @@ mod tests {
             ..Default::default()
         };
 
-        // The post map over the post hook's own edit: line 0 is the
+        // The finalize map over the finalize hook's own edit: line 0 is the
         // fresh banner (dst(0, 0) -> src(0, 0) — the generated first
         // line), line 1 holds the rewritten statement (dst(1, 9/13/14)
-        // -> src(0, 9/13/14) — the pre-post generated columns).
+        // -> src(0, 9/13/14) — the generate generated columns).
         let map: SourceMap = hook_map(&[
             (0, 0, 0, 0),
             (1, 0, 0, 0),
@@ -2596,7 +2616,7 @@ mod tests {
 
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(RenameCalleePlugin),
-            Plugin::new_shared(PostWithMapPlugin {
+            Plugin::new_shared(FinalizeWithMapPlugin {
                 code: String::from("// banner\nconsole.log(2);"),
                 map,
             }),
@@ -2609,16 +2629,16 @@ mod tests {
         assert_eq!(out.code, "// banner\nconsole.log(2);");
 
         // The composed map carries the CODEGEN map's source (the
-        // original `index.ts` contents), not the post hook's.
+        // original `index.ts` contents), not the finalize hook's.
         assert_eq!(out.map.get_source(0), Some("index.ts"));
 
         let tokens: Vec<oxc_sourcemap::Token> = out.map.get_tokens().collect();
 
         // The POST map's dst positions are the only output positions:
-        // 5 composed tokens, one per post-map token.
-        assert_eq!(tokens.len(), 5, "post dst tokens are kept");
+        // 5 composed tokens, one per finalize-map token.
+        assert_eq!(tokens.len(), 5, "finalize dst tokens are kept");
 
-        // Line 0 of the post edit is a fully fresh banner line; its
+        // Line 0 of the finalize edit is a fully fresh banner line; its
         // head token resolves through the pipeline map's head rule to
         // nothing (src stays 0/0), never to the original's line 0
         // columns — the banner does not come from the original.
@@ -2632,11 +2652,11 @@ mod tests {
             "the banner is fresh text, not original content",
         );
 
-        // Final line 1 carries the L content. Each post token's dst
+        // Final line 1 carries the L content. Each finalize token's dst
         // (1, c) maps to the generated column c, and the codegen map
         // resolves generated col 9 -> original col 8, col 13 -> 12,
         // col 14 -> 13 (the rename shrinks by one). These assertions
-        // traverse BOTH maps (post's dst -> dst-of-codegen, then the
+        // traverse BOTH maps (finalize's dst -> dst-of-codegen, then the
         // codegen's src); the un-composed map resolves them to the
         // GENERATED positions instead and fails.
         let expected: &[(u32, u32, u32, u32)] =
@@ -2652,7 +2672,7 @@ mod tests {
             assert_eq!(
                 (token.get_dst_line(), token.get_dst_col()),
                 (dst_line, dst_col),
-                "post dst position must be preserved verbatim",
+                "finalize dst position must be preserved verbatim",
             );
 
             assert_eq!(
@@ -2668,8 +2688,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_post_map_omitted_keeps_codegen_map() {
-        // A post hook replaces the code but omits the map: NO composition,
+    async fn test_compile_finalize_map_omitted_keeps_codegen_map() {
+        // A finalize hook replaces the code but omits the map: NO composition,
         // the codegen map stays the output map unchanged.
         let opts: CompileOptions = CompileOptions {
             file: "index.ts".to_string(),
@@ -2679,7 +2699,7 @@ mod tests {
 
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(NoopTransformPlugin),
-            Plugin::new_shared(PostNoMapPlugin {
+            Plugin::new_shared(FinalizeNoMapPlugin {
                 code: String::from("console.log(2);"),
             }),
         ];
@@ -2795,20 +2815,21 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_end_runs_on_transform_error_with_pre_map_last_good() {
-        // A pre hook returned a map, then the transform hook errors:
+    async fn test_compile_end_runs_on_transform_error_with_prepare_map_last_good()
+     {
+        // A prepare hook returned a map, then the transform hook errors:
         // the error-path compile_end carries the last good state = the
-        // post-pre code with the pre map (un-composed — composition
+        // prepare code with the prepare map (un-composed — composition
         // applies to the OUTPUT map only).
         let seen: std::sync::Arc<std::sync::Mutex<Vec<CompileEndShape>>> =
             std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
 
-        let pre_map: SourceMap = hook_map(&[(0, 0, 0, 0), (0, 7, 0, 5)]);
+        let prepare_map: SourceMap = hook_map(&[(0, 0, 0, 0), (0, 7, 0, 5)]);
 
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(PreWithMapPlugin {
+            Plugin::new_shared(PrepareWithMapPlugin {
                 code: String::from("const boom = 1;"),
-                map: pre_map,
+                map: prepare_map,
             }),
             Plugin::new_shared(ObserveCompileEndPlugin {
                 seen: std::sync::Arc::clone(&seen),
@@ -2829,12 +2850,12 @@ mod tests {
 
         assert_eq!(
             recorded[0].code, "const boom = 1;",
-            "last good code is the post-pre parse input",
+            "last good code is the prepare parse input",
         );
 
         assert!(
             recorded[0].has_map,
-            "the pre map is part of the last good state",
+            "the prepare map is part of the last good state",
         );
 
         assert!(
@@ -2846,8 +2867,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_end_post_error_last_good_map_is_codegen_map() {
-        // A post hook errors after codegen: the last good state carries
+    async fn test_compile_end_finalize_error_last_good_map_is_codegen_map() {
+        // A finalize hook errors after codegen: the last good state carries
         // the GENERATED code and the codegen map.
         let seen: std::sync::Arc<std::sync::Mutex<Vec<CompileEndShape>>> =
             std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -2863,21 +2884,21 @@ mod tests {
             Plugin::new_shared(ObserveCompileEndPlugin {
                 seen: std::sync::Arc::clone(&seen),
             }),
-            Plugin::new_shared(FailingPostPlugin),
+            Plugin::new_shared(FailingFinalizePlugin),
         ];
 
         let error: CompileError = compile(opts, plugins).await.unwrap_err();
 
         let message: String = error.to_string();
 
-        assert!(message.contains("post hook"), "{}", message);
+        assert!(message.contains("finalize hook"), "{}", message);
 
         let recorded: Vec<CompileEndShape> = seen.lock().unwrap().clone();
 
-        assert_eq!(recorded.len(), 1, "compile_end ran on the post error");
+        assert_eq!(recorded.len(), 1, "compile_end ran on the finalize error");
 
         // The last good code is the GENERATED code (trailing newline
-        // stripped exactly as the post hook would have received it).
+        // stripped exactly as the finalize hook would have received it).
         assert!(
             recorded[0].code.contains("console.log(1);"),
             "{}",
@@ -2893,24 +2914,24 @@ mod tests {
             recorded[0]
                 .err
                 .as_deref()
-                .is_some_and(|err| err.contains("post hook")),
+                .is_some_and(|err| err.contains("finalize hook")),
         );
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_end_parse_error_last_good_carries_pre_map() {
-        // A pre hook returned a map, then the parse fails: the
-        // error-path compile_end carries the post-pre code and the pre
+    async fn test_compile_end_parse_error_last_good_carries_prepare_map() {
+        // A prepare hook returned a map, then the parse fails: the
+        // error-path compile_end carries the prepare code and the pre
         // map (the parse-error last-good carry).
         let seen: std::sync::Arc<std::sync::Mutex<Vec<CompileEndShape>>> =
             std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
 
-        let pre_map: SourceMap = hook_map(&[(0, 0, 0, 0), (0, 5, 0, 3)]);
+        let prepare_map: SourceMap = hook_map(&[(0, 0, 0, 0), (0, 5, 0, 3)]);
 
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(PreWithMapPlugin {
+            Plugin::new_shared(PrepareWithMapPlugin {
                 code: String::from("const = ;"),
-                map: pre_map,
+                map: prepare_map,
             }),
             Plugin::new_shared(ObserveCompileEndPlugin {
                 seen: std::sync::Arc::clone(&seen),
@@ -2931,7 +2952,10 @@ mod tests {
 
         assert_eq!(recorded[0].code, "const = ;");
 
-        assert!(recorded[0].has_map, "pre map carried as the last good map");
+        assert!(
+            recorded[0].has_map,
+            "prepare map carried as the last good map"
+        );
 
         assert!(recorded[0].err.is_some());
     }

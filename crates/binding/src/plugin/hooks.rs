@@ -74,9 +74,9 @@ macro_rules! for_each_hook_slot {
             {
                 (options, Options, crate::_types::options::JsOptions, Option<crate::_types::plugin::hooks::JsOptionsOutput>, 0),
                 (compile_start, CompileStart, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsCompileStartArgs>, napi::bindgen_prelude::Undefined, 1),
-                (pre, Pre, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsStageArgs>, Option<crate::_types::plugin::hooks::JsStageOutput>, 2),
+                (prepare, Prepare, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsStageArgs>, Option<crate::_types::plugin::hooks::JsStageOutput>, 2),
                 (transform, Transform, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsTransformArgs>, Option<crate::_types::plugin::hooks::JsTransformOutput>, 3),
-                (post, Post, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsStageArgs>, Option<crate::_types::plugin::hooks::JsStageOutput>, 4),
+                (finalize, Finalize, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsStageArgs>, Option<crate::_types::plugin::hooks::JsStageOutput>, 4),
                 (compile_end, CompileEnd, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsCompileEndArgs>, napi::bindgen_prelude::Undefined, 5),
             }
         }
@@ -476,7 +476,7 @@ pub type CompileStartTsfn = Tsfn<
     Either<Promise<compile_start::Return>, compile_start::Return>,
 >;
 
-/// Worker-side call data for the `pre` / `post` hooks.
+/// Worker-side call data for the `prepare` / `finalize` hooks.
 pub struct StageCall {
     /// Current working directory.
     pub cwd: SharedStr,
@@ -509,13 +509,19 @@ impl HookCall for StageCall {
     }
 }
 
-/// TSFN bridging the `pre` hook.
-pub type PreTsfn =
-    Tsfn<StageCall, pre::Args, Either<Promise<pre::Return>, pre::Return>>;
+/// TSFN bridging the `prepare` hook.
+pub type PrepareTsfn = Tsfn<
+    StageCall,
+    prepare::Args,
+    Either<Promise<prepare::Return>, prepare::Return>,
+>;
 
-/// TSFN bridging the `post` hook.
-pub type PostTsfn =
-    Tsfn<StageCall, post::Args, Either<Promise<post::Return>, post::Return>>;
+/// TSFN bridging the `finalize` hook.
+pub type FinalizeTsfn = Tsfn<
+    StageCall,
+    finalize::Args,
+    Either<Promise<finalize::Return>, finalize::Return>,
+>;
 
 /// Worker-side call data for the `transform` hook.
 pub struct TransformCall {
@@ -674,7 +680,7 @@ pub fn scan_options(object: &Object<'static>) -> Result<Option<OptionsTsfn>> {
 /// Scan every hook slot of a JS plugin object, bridging present hook
 /// functions into TSFNs.
 ///
-/// Returns `(options, compile_start, pre, transform, post, compile_end)`,
+/// Returns `(options, compile_start, prepare, transform, finalize, compile_end)`,
 /// in pipeline execution order.
 macro_rules! hook_scan {
     ($object:expr) => {{
@@ -686,9 +692,9 @@ macro_rules! hook_scan {
                 crate::plugin::hooks::CompileStartCall,
             >($object, "compileStart")?;
 
-        let pre: Option<crate::plugin::hooks::PreTsfn> =
+        let prepare: Option<crate::plugin::hooks::PrepareTsfn> =
             crate::plugin::hooks::scan_hook::<crate::plugin::hooks::StageCall>(
-                $object, "pre",
+                $object, "prepare",
             )?;
 
         let transform: Option<crate::plugin::hooks::TransformTsfn> =
@@ -696,9 +702,9 @@ macro_rules! hook_scan {
                 crate::plugin::hooks::TransformCall,
             >($object, "transform")?;
 
-        let post: Option<crate::plugin::hooks::PostTsfn> =
+        let finalize: Option<crate::plugin::hooks::FinalizeTsfn> =
             crate::plugin::hooks::scan_hook::<crate::plugin::hooks::StageCall>(
-                $object, "post",
+                $object, "finalize",
             )?;
 
         let compile_end: Option<crate::plugin::hooks::CompileEndTsfn> =
@@ -706,7 +712,7 @@ macro_rules! hook_scan {
                 crate::plugin::hooks::CompileEndCall,
             >($object, "compileEnd")?;
 
-        (options, compile_start, pre, transform, post, compile_end)
+        (options, compile_start, prepare, transform, finalize, compile_end)
     }};
 }
 
@@ -721,9 +727,9 @@ mod tests {
     fn test_hook_slots_are_sequential() {
         assert_eq!(options::SLOT, 0);
         assert_eq!(compile_start::SLOT, 1);
-        assert_eq!(pre::SLOT, 2);
+        assert_eq!(prepare::SLOT, 2);
         assert_eq!(transform::SLOT, 3);
-        assert_eq!(post::SLOT, 4);
+        assert_eq!(finalize::SLOT, 4);
         assert_eq!(compile_end::SLOT, 5);
     }
 

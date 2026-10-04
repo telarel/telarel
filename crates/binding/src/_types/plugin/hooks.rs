@@ -3,7 +3,7 @@ use napi::sys;
 
 use crate::plugin::hooks::SharedStr;
 
-/// Args for the `pre` / `post` hooks.
+/// Args for the `prepare` / `finalize` hooks.
 pub struct JsStageArgs {
     /// The code being compiled.
     pub code: SharedStr,
@@ -79,7 +79,7 @@ pub struct JsOptionsOutput {
     pub plugins: Option<Vec<napi::bindgen_prelude::ObjectRef<false>>>,
 }
 
-/// Output of the `pre` or `post` hook: the replacement code with an optional
+/// Output of the `prepare` or `finalize` hook: the replacement code with an optional
 /// incremental source-map JSON. `map` serialized to the standard v3 JSON
 /// shape so a JS hook can parse and forward it; `None` = no map returned.
 #[napi_derive::napi(object)]

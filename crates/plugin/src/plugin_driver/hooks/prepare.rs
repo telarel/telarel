@@ -1,20 +1,17 @@
 use anyhow::Context;
 
 use crate::_types::context::PluginContext;
-use crate::_types::hooks::post::{PostArgs, PostOutput};
+use crate::_types::hooks::prepare::{PrepareArgs, PrepareOutput};
 use crate::plugin::pluginable::SharedPluginable;
 
-/// Result of the `post` fold: the final carried output (the code the
-/// pipeline returns) and every returned map collected in fold order.
-///
-/// Mirrors [`crate::plugin_driver::hooks::pre::PreFold`], with the same
-/// reset rule; the maps reference the GENERATED code the hooks received.
+/// Result of the `prepare` fold: the final carried output (the code the next
+/// stage parses) and every returned map collected in fold order.
 #[derive(Debug)]
-pub struct PostFold {
+pub struct PrepareFold {
     /// The last `Some` output, replaced by each returning hook. Its `code`
-    /// equals the final carried code, so callers can read the output code
+    /// equals the final carried code, so callers can read the parse input
     /// from here.
-    pub output: Option<PostOutput>,
+    pub output: Option<PrepareOutput>,
     /// Every map returned since the last omitted one, in fold order
     /// (serving order); each entry is the output of a hook whose map is
     /// incremental relative to the code that hook received.
@@ -24,44 +21,44 @@ pub struct PostFold {
     /// NEXT hook would have received) never materializes as a composable
     /// dst space, and maps collected before the gap cannot resolve across
     /// it — so the collection resets there and the surviving segment
-    /// references the actual generated code.
-    pub maps: Vec<PostOutput>,
+    /// references the actual parse input.
+    pub maps: Vec<PrepareOutput>,
 }
 
-/// Run the `post` hook on every plugin in registration order; the first error
+/// Run the `prepare` hook on every plugin in registration order; the first error
 /// aborts.
 ///
 /// This is a CARRIED fold: the accumulator (initially `initial.code`) is fed
 /// to each subsequent hook, so every plugin sees the previous plugin's
 /// rewrite. `Some(output)` replaces the carried code (and the returned
-/// [`PostFold::output`]); `None` keeps it.
+/// [`PrepareFold::output`]); `None` keeps it.
 ///
-/// Every returned map is collected into [`PostFold::maps`] so the caller can
+/// Every returned map is collected into [`PrepareFold::maps`] so the caller can
 /// compose the WHOLE chain (not just the last one); a returning hook without
-/// a map resets the collection (see [`PostFold::maps`]). Because the code
+/// a map resets the collection (see [`PrepareFold::maps`]). Because the code
 /// carries, each collected map is incremental relative to the code its hook
 /// LITERALLY received.
-pub async fn post(
+pub async fn prepare(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,
-    initial: &PostArgs<'_>,
-) -> anyhow::Result<PostFold> {
+    initial: &PrepareArgs<'_>,
+) -> anyhow::Result<PrepareFold> {
     let mut carried: String = initial.code.to_string();
 
-    let mut output: Option<PostOutput> = None;
+    let mut output: Option<PrepareOutput> = None;
 
-    let mut maps: Vec<PostOutput> = Vec::new();
+    let mut maps: Vec<PrepareOutput> = Vec::new();
 
     for plugin in plugins {
-        let hook_args: PostArgs<'_> = PostArgs { code: &carried };
+        let hook_args: PrepareArgs<'_> = PrepareArgs { code: &carried };
 
-        let next: Option<PostOutput> = plugin
-            .call_post(ctx, &hook_args)
+        let next: Option<PrepareOutput> = plugin
+            .call_prepare(ctx, &hook_args)
             .await
-            .with_context(|| format!("`{}` post", plugin.call_name()))?;
+            .with_context(|| format!("`{}` prepare", plugin.call_name()))?;
 
         match next {
-            | Some(out @ PostOutput { map: Some(_), .. }) => {
+            | Some(out @ PrepareOutput { map: Some(_), .. }) => {
                 carried = out.code.clone();
 
                 maps.push(out.clone());
@@ -79,7 +76,7 @@ pub async fn post(
         }
     }
 
-    Ok(PostFold { output, maps })
+    Ok(PrepareFold { output, maps })
 }
 
 #[cfg(test)]
@@ -96,7 +93,9 @@ mod tests {
     use telarel_common::{HookUsage, Language, SourceType};
 
     use crate::_types::context::{CommonPluginContext, PluginContext};
-    use crate::_types::hooks::post::{PostArgs, PostOutput, PostReturn};
+    use crate::_types::hooks::prepare::{
+        PrepareArgs, PrepareOutput, PrepareReturn,
+    };
     use crate::plugin::Plugin;
     use crate::plugin::pluginable::SharedPluginable;
 
@@ -104,8 +103,9 @@ mod tests {
 
     // The step receives the per-call args, so a probe plugin can observe the
     // carried code the fold handed it.
-    type Step =
-        Arc<dyn for<'a, 'b> Fn(&'a PostArgs<'b>) -> PostReturn + Send + Sync>;
+    type Step = Arc<
+        dyn for<'a, 'b> Fn(&'a PrepareArgs<'b>) -> PrepareReturn + Send + Sync,
+    >;
 
     struct StepPlugin {
         name: &'static str,
@@ -123,7 +123,7 @@ mod tests {
 
     fn step_plugin(
         name: &'static str,
-        step: impl for<'a, 'b> Fn(&'a PostArgs<'b>) -> PostReturn
+        step: impl for<'a, 'b> Fn(&'a PrepareArgs<'b>) -> PrepareReturn
         + Send
         + Sync
         + 'static,
@@ -137,19 +137,19 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Post
+            HookUsage::Prepare
         }
 
-        fn post<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            args: &'a PostArgs<'_>,
-        ) -> impl Future<Output = PostReturn> + Send {
+            args: &'a PrepareArgs<'_>,
+        ) -> impl Future<Output = PrepareReturn> + Send {
             async move { (self.step)(args) }
         }
     }
 
-    fn hook_map(tokens: &[(u32, u32, u32, u32)]) -> PostOutput {
+    fn hook_map(tokens: &[(u32, u32, u32, u32)]) -> PrepareOutput {
         let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
 
         builder.set_file("a.ts");
@@ -167,17 +167,17 @@ mod tests {
             );
         }
 
-        PostOutput {
+        PrepareOutput {
             code: String::from("code"),
             map: Some(builder.into_owned_sourcemap().into_inner()),
         }
     }
 
-    fn no_map(code: &str) -> PostOutput {
-        PostOutput { code: code.to_string(), map: None }
+    fn no_map(code: &str) -> PrepareOutput {
+        PrepareOutput { code: code.to_string(), map: None }
     }
 
-    async fn run(plugins: Vec<SharedPluginable>) -> PostFold {
+    async fn run(plugins: Vec<SharedPluginable>) -> PrepareFold {
         let common: &'static CommonPluginContext =
             Box::leak(Box::new(CommonPluginContext::default()));
 
@@ -191,23 +191,23 @@ mod tests {
         let ctx: PluginContext<'static> =
             PluginContext::new(&common.state, "/repo", module);
 
-        let args: PostArgs<'_> = PostArgs { code: "console.log(1);" };
+        let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 
-        post(&plugins, &ctx, &args).await.unwrap()
+        prepare(&plugins, &ctx, &args).await.unwrap()
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_post_collects_maps_in_fold_order() {
-        let first: PostOutput = hook_map(&[(1, 0, 0, 0)]);
+    async fn test_prepare_collects_maps_in_fold_order() {
+        let first: PrepareOutput = hook_map(&[(1, 0, 0, 0)]);
 
-        let second: PostOutput = hook_map(&[(2, 0, 0, 0)]);
+        let second: PrepareOutput = hook_map(&[(2, 0, 0, 0)]);
 
         let plugins: Vec<SharedPluginable> = vec![
             step_plugin("one", move |_args| Ok(Some(first.clone()))),
             step_plugin("two", move |_args| Ok(Some(second.clone()))),
         ];
 
-        let fold: PostFold = run(plugins).await;
+        let fold: PrepareFold = run(plugins).await;
 
         assert_eq!(fold.maps.len(), 2, "both maps collected");
 
@@ -223,8 +223,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_post_omission_resets_collected_chain() {
-        let first: PostOutput = hook_map(&[(1, 0, 0, 0)]);
+    async fn test_prepare_omission_resets_collected_chain() {
+        let first: PrepareOutput = hook_map(&[(1, 0, 0, 0)]);
 
         let plugins: Vec<SharedPluginable> = vec![
             step_plugin("mapped", move |_args| Ok(Some(first.clone()))),
@@ -232,69 +232,67 @@ mod tests {
             step_plugin("later", |_args| Ok(None)),
         ];
 
-        let fold: PostFold = run(plugins).await;
+        let fold: PrepareFold = run(plugins).await;
 
         assert!(fold.maps.is_empty(), "omission clears the chain");
 
         assert_eq!(
-            fold.output.as_ref().map(|out: &PostOutput| out.code.as_str()),
+            fold.output.as_ref().map(|out: &PrepareOutput| out.code.as_str()),
             Some("unmapped-code"),
         );
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_post_none_keeps_output_and_chain() {
-        let first: PostOutput = hook_map(&[(1, 0, 0, 0)]);
+    async fn test_prepare_none_keeps_output_and_chain() {
+        let first: PrepareOutput = hook_map(&[(1, 0, 0, 0)]);
 
         let plugins: Vec<SharedPluginable> = vec![
             step_plugin("noop", |_args| Ok(None)),
             step_plugin("mapped", move |_args| Ok(Some(first.clone()))),
         ];
 
-        let fold: PostFold = run(plugins).await;
+        let fold: PrepareFold = run(plugins).await;
 
         assert_eq!(fold.maps.len(), 1);
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_post_carries_output_between_hooks() {
+    async fn test_prepare_carries_output_between_hooks() {
         // The fold is CARRIED: the second hook must receive the first
-        // hook's returned code, not the generated code. The probe records
+        // hook's returned code, not the original source. The probe records
         // what it saw; on the fixed-input behavior it would record the
-        // generated code.
+        // original.
         let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let probe_seen: Arc<Mutex<Vec<String>>> = Arc::clone(&seen);
 
         let plugins: Vec<SharedPluginable> = vec![
-            step_plugin("first", |_args| {
-                Ok(Some(no_map("const injected = 1;")))
-            }),
-            step_plugin("probe", move |args: &PostArgs<'_>| {
+            step_plugin("first", |_args| Ok(Some(no_map("let a = 1;")))),
+            step_plugin("probe", move |args: &PrepareArgs<'_>| {
                 probe_seen.lock().unwrap().push(args.code.to_string());
 
                 Ok(None)
             }),
         ];
 
-        let fold: PostFold = run(plugins).await;
+        let fold: PrepareFold = run(plugins).await;
 
         assert_eq!(
             seen.lock().unwrap().clone(),
-            vec![String::from("const injected = 1;")],
+            vec![String::from("let a = 1;")],
             "the second hook must see the first hook's rewrite",
         );
 
         assert_eq!(
-            fold.output.as_ref().map(|out: &PostOutput| out.code.as_str()),
-            Some("const injected = 1;"),
+            fold.output.as_ref().map(|out: &PrepareOutput| out.code.as_str()),
+            Some("let a = 1;"),
         );
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_post_error_names_plugin() {
+    async fn test_prepare_error_names_plugin() {
         let plugins: Vec<SharedPluginable> =
-            vec![step_plugin("fail-post", |_args| {
+            vec![step_plugin("fail-prepare", |_args| {
                 Err(anyhow::anyhow!("boom"))
             })];
 
@@ -311,10 +309,14 @@ mod tests {
         let ctx: PluginContext<'static> =
             PluginContext::new(&common.state, "/repo", module);
 
-        let args: PostArgs<'_> = PostArgs { code: "console.log(1);" };
+        let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 
-        let err: anyhow::Error = post(&plugins, &ctx, &args).await.unwrap_err();
+        let err: anyhow::Error =
+            prepare(&plugins, &ctx, &args).await.unwrap_err();
 
-        assert!(format!("{err:#}").contains("`fail-post` post"), "{err:#}");
+        assert!(
+            format!("{err:#}").contains("`fail-prepare` prepare"),
+            "{err:#}"
+        );
     }
 }

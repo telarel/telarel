@@ -11,10 +11,10 @@ use telarel_common::HookUsage;
 use crate::_types::context::{CommonPluginContext, PluginContext};
 use crate::_types::hooks::compile_end::CompileEndArgs;
 use crate::_types::hooks::compile_start::CompileStartArgs;
+use crate::_types::hooks::finalize::{FinalizeArgs, FinalizeReturn};
 use crate::_types::hooks::notify::NotifyReturn;
 use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
-use crate::_types::hooks::post::{PostArgs, PostReturn};
-use crate::_types::hooks::pre::{PreArgs, PreReturn};
+use crate::_types::hooks::prepare::{PrepareArgs, PrepareReturn};
 use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
 use crate::plugin::pluginable::SharedPluginable;
 
@@ -55,14 +55,14 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(()) }
     }
 
-    /// Run the `pre` hook, before the transform chain. Returning `Some`
+    /// Run the `prepare` hook, before the transform chain. Returning `Some`
     /// replaces the source code; the carried map is incremental relative
     /// to the code this hook received.
-    fn pre<'a>(
+    fn prepare<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        _args: &'a PreArgs<'_>,
-    ) -> impl Future<Output = PreReturn> + Send {
+        _args: &'a PrepareArgs<'_>,
+    ) -> impl Future<Output = PrepareReturn> + Send {
         async { Ok(None) }
     }
 
@@ -77,14 +77,14 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(None) }
     }
 
-    /// Run the `post` hook, after the transform chain. Returning `Some`
+    /// Run the `finalize` hook, after the transform chain. Returning `Some`
     /// replaces the generated code; the carried map is incremental
     /// relative to the generated code this hook received.
-    fn post<'a>(
+    fn finalize<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        _args: &'a PostArgs<'_>,
-    ) -> impl Future<Output = PostReturn> + Send {
+        _args: &'a FinalizeArgs<'_>,
+    ) -> impl Future<Output = FinalizeReturn> + Send {
         async { Ok(None) }
     }
 
@@ -122,8 +122,8 @@ mod tests {
     };
     use crate::_types::hooks::compile_end::CompileEndArgs;
     use crate::_types::hooks::compile_start::CompileStartArgs;
-    use crate::_types::hooks::post::PostOutput;
-    use crate::_types::hooks::pre::{PreArgs, PreOutput};
+    use crate::_types::hooks::finalize::FinalizeOutput;
+    use crate::_types::hooks::prepare::{PrepareArgs, PrepareOutput};
     use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
     use crate::plugin::pluginable::SharedPluginable;
 
@@ -138,7 +138,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
     }
 
@@ -172,47 +172,53 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct PreReplacePlugin;
+    struct PrepareReplacePlugin;
 
-    impl Plugin for PreReplacePlugin {
+    impl Plugin for PrepareReplacePlugin {
         fn name(&self) -> Cow<'static, str> {
-            "pre-replace".into()
+            "prepare-replace".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
 
-        fn pre<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: &'a PreArgs<'_>,
-        ) -> impl Future<Output = PreReturn> + Send {
+            _args: &'a PrepareArgs<'_>,
+        ) -> impl Future<Output = PrepareReturn> + Send {
             async {
-                Ok(Some(PreOutput { code: String::from("let b;"), map: None }))
+                Ok(Some(PrepareOutput {
+                    code: String::from("let b;"),
+                    map: None,
+                }))
             }
         }
     }
 
     #[derive(Debug)]
-    struct PostReplacePlugin;
+    struct FinalizeReplacePlugin;
 
-    impl Plugin for PostReplacePlugin {
+    impl Plugin for FinalizeReplacePlugin {
         fn name(&self) -> Cow<'static, str> {
-            "post-replace".into()
+            "finalize-replace".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Post
+            HookUsage::Finalize
         }
 
-        fn post<'a>(
+        fn finalize<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: &'a PostArgs<'_>,
-        ) -> impl Future<Output = PostReturn> + Send {
+            _args: &'a FinalizeArgs<'_>,
+        ) -> impl Future<Output = FinalizeReturn> + Send {
             async {
-                Ok(Some(PostOutput { code: String::from("let c;"), map: None }))
+                Ok(Some(FinalizeOutput {
+                    code: String::from("let c;"),
+                    map: None,
+                }))
             }
         }
     }
@@ -394,7 +400,7 @@ mod tests {
         let shared: SharedPluginable = Plugin::new_shared(ProbePlugin);
 
         assert_eq!(shared.call_name(), "probe");
-        assert!(shared.call_register_hook_usage().contains(HookUsage::Pre));
+        assert!(shared.call_register_hook_usage().contains(HookUsage::Prepare));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -410,16 +416,18 @@ mod tests {
         assert!(shared.call_options(&common, &args).await.unwrap().is_none());
         assert!(
             shared
-                .call_pre(&ctx, &PreArgs { code: "let a;" })
+                .call_prepare(&ctx, &PrepareArgs { code: "let a;" })
                 .await
                 .unwrap()
                 .is_none()
         );
         assert!(
             shared
-                .call_post(
+                .call_finalize(
                     &ctx,
-                    &crate::_types::hooks::post::PostArgs { code: "let a;" }
+                    &crate::_types::hooks::finalize::FinalizeArgs {
+                        code: "let a;"
+                    }
                 )
                 .await
                 .unwrap()
@@ -500,35 +508,39 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_pre_and_post_return_outputs() {
+    async fn test_prepare_and_finalize_return_outputs() {
         let common: CommonPluginContext = CommonPluginContext::default();
 
         let ctx: PluginContext<'_> = make_context(&common, "console.log(1);");
 
-        let pre: SharedPluginable = Plugin::new_shared(PreReplacePlugin);
+        let prepare: SharedPluginable =
+            Plugin::new_shared(PrepareReplacePlugin);
 
-        let pre_output: PreOutput = pre
-            .call_pre(&ctx, &PreArgs { code: "console.log(1);" })
+        let prepare_output: PrepareOutput = prepare
+            .call_prepare(&ctx, &PrepareArgs { code: "console.log(1);" })
             .await
             .unwrap()
             .unwrap();
 
-        assert_eq!(pre_output.code, "let b;");
-        assert!(pre_output.map.is_none());
+        assert_eq!(prepare_output.code, "let b;");
+        assert!(prepare_output.map.is_none());
 
-        let post: SharedPluginable = Plugin::new_shared(PostReplacePlugin);
+        let finalize: SharedPluginable =
+            Plugin::new_shared(FinalizeReplacePlugin);
 
-        let post_output: PostOutput = post
-            .call_post(
+        let finalize_output: FinalizeOutput = finalize
+            .call_finalize(
                 &ctx,
-                &crate::_types::hooks::post::PostArgs { code: "let b;" },
+                &crate::_types::hooks::finalize::FinalizeArgs {
+                    code: "let b;",
+                },
             )
             .await
             .unwrap()
             .unwrap();
 
-        assert_eq!(post_output.code, "let c;");
-        assert!(post_output.map.is_none());
+        assert_eq!(finalize_output.code, "let c;");
+        assert!(finalize_output.map.is_none());
     }
 
     #[tokio::test(flavor = "current_thread")]

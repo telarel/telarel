@@ -1,17 +1,20 @@
 use anyhow::Context;
 
 use crate::_types::context::PluginContext;
-use crate::_types::hooks::pre::{PreArgs, PreOutput};
+use crate::_types::hooks::finalize::{FinalizeArgs, FinalizeOutput};
 use crate::plugin::pluginable::SharedPluginable;
 
-/// Result of the `pre` fold: the final carried output (the code the next
-/// stage parses) and every returned map collected in fold order.
+/// Result of the `finalize` fold: the final carried output (the code the
+/// pipeline returns) and every returned map collected in fold order.
+///
+/// Mirrors [`crate::plugin_driver::hooks::prepare::PrepareFold`], with the same
+/// reset rule; the maps reference the GENERATED code the hooks received.
 #[derive(Debug)]
-pub struct PreFold {
+pub struct FinalizeFold {
     /// The last `Some` output, replaced by each returning hook. Its `code`
-    /// equals the final carried code, so callers can read the parse input
+    /// equals the final carried code, so callers can read the output code
     /// from here.
-    pub output: Option<PreOutput>,
+    pub output: Option<FinalizeOutput>,
     /// Every map returned since the last omitted one, in fold order
     /// (serving order); each entry is the output of a hook whose map is
     /// incremental relative to the code that hook received.
@@ -21,44 +24,44 @@ pub struct PreFold {
     /// NEXT hook would have received) never materializes as a composable
     /// dst space, and maps collected before the gap cannot resolve across
     /// it — so the collection resets there and the surviving segment
-    /// references the actual parse input.
-    pub maps: Vec<PreOutput>,
+    /// references the actual generated code.
+    pub maps: Vec<FinalizeOutput>,
 }
 
-/// Run the `pre` hook on every plugin in registration order; the first error
+/// Run the `finalize` hook on every plugin in registration order; the first error
 /// aborts.
 ///
 /// This is a CARRIED fold: the accumulator (initially `initial.code`) is fed
 /// to each subsequent hook, so every plugin sees the previous plugin's
 /// rewrite. `Some(output)` replaces the carried code (and the returned
-/// [`PreFold::output`]); `None` keeps it.
+/// [`FinalizeFold::output`]); `None` keeps it.
 ///
-/// Every returned map is collected into [`PreFold::maps`] so the caller can
+/// Every returned map is collected into [`FinalizeFold::maps`] so the caller can
 /// compose the WHOLE chain (not just the last one); a returning hook without
-/// a map resets the collection (see [`PreFold::maps`]). Because the code
+/// a map resets the collection (see [`FinalizeFold::maps`]). Because the code
 /// carries, each collected map is incremental relative to the code its hook
 /// LITERALLY received.
-pub async fn pre(
+pub async fn finalize(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,
-    initial: &PreArgs<'_>,
-) -> anyhow::Result<PreFold> {
+    initial: &FinalizeArgs<'_>,
+) -> anyhow::Result<FinalizeFold> {
     let mut carried: String = initial.code.to_string();
 
-    let mut output: Option<PreOutput> = None;
+    let mut output: Option<FinalizeOutput> = None;
 
-    let mut maps: Vec<PreOutput> = Vec::new();
+    let mut maps: Vec<FinalizeOutput> = Vec::new();
 
     for plugin in plugins {
-        let hook_args: PreArgs<'_> = PreArgs { code: &carried };
+        let hook_args: FinalizeArgs<'_> = FinalizeArgs { code: &carried };
 
-        let next: Option<PreOutput> = plugin
-            .call_pre(ctx, &hook_args)
+        let next: Option<FinalizeOutput> = plugin
+            .call_finalize(ctx, &hook_args)
             .await
-            .with_context(|| format!("`{}` pre", plugin.call_name()))?;
+            .with_context(|| format!("`{}` finalize", plugin.call_name()))?;
 
         match next {
-            | Some(out @ PreOutput { map: Some(_), .. }) => {
+            | Some(out @ FinalizeOutput { map: Some(_), .. }) => {
                 carried = out.code.clone();
 
                 maps.push(out.clone());
@@ -76,7 +79,7 @@ pub async fn pre(
         }
     }
 
-    Ok(PreFold { output, maps })
+    Ok(FinalizeFold { output, maps })
 }
 
 #[cfg(test)]
@@ -93,7 +96,9 @@ mod tests {
     use telarel_common::{HookUsage, Language, SourceType};
 
     use crate::_types::context::{CommonPluginContext, PluginContext};
-    use crate::_types::hooks::pre::{PreArgs, PreOutput, PreReturn};
+    use crate::_types::hooks::finalize::{
+        FinalizeArgs, FinalizeOutput, FinalizeReturn,
+    };
     use crate::plugin::Plugin;
     use crate::plugin::pluginable::SharedPluginable;
 
@@ -101,8 +106,11 @@ mod tests {
 
     // The step receives the per-call args, so a probe plugin can observe the
     // carried code the fold handed it.
-    type Step =
-        Arc<dyn for<'a, 'b> Fn(&'a PreArgs<'b>) -> PreReturn + Send + Sync>;
+    type Step = Arc<
+        dyn for<'a, 'b> Fn(&'a FinalizeArgs<'b>) -> FinalizeReturn
+            + Send
+            + Sync,
+    >;
 
     struct StepPlugin {
         name: &'static str,
@@ -120,7 +128,7 @@ mod tests {
 
     fn step_plugin(
         name: &'static str,
-        step: impl for<'a, 'b> Fn(&'a PreArgs<'b>) -> PreReturn
+        step: impl for<'a, 'b> Fn(&'a FinalizeArgs<'b>) -> FinalizeReturn
         + Send
         + Sync
         + 'static,
@@ -134,19 +142,19 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Finalize
         }
 
-        fn pre<'a>(
+        fn finalize<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            args: &'a PreArgs<'_>,
-        ) -> impl Future<Output = PreReturn> + Send {
+            args: &'a FinalizeArgs<'_>,
+        ) -> impl Future<Output = FinalizeReturn> + Send {
             async move { (self.step)(args) }
         }
     }
 
-    fn hook_map(tokens: &[(u32, u32, u32, u32)]) -> PreOutput {
+    fn hook_map(tokens: &[(u32, u32, u32, u32)]) -> FinalizeOutput {
         let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
 
         builder.set_file("a.ts");
@@ -164,17 +172,17 @@ mod tests {
             );
         }
 
-        PreOutput {
+        FinalizeOutput {
             code: String::from("code"),
             map: Some(builder.into_owned_sourcemap().into_inner()),
         }
     }
 
-    fn no_map(code: &str) -> PreOutput {
-        PreOutput { code: code.to_string(), map: None }
+    fn no_map(code: &str) -> FinalizeOutput {
+        FinalizeOutput { code: code.to_string(), map: None }
     }
 
-    async fn run(plugins: Vec<SharedPluginable>) -> PreFold {
+    async fn run(plugins: Vec<SharedPluginable>) -> FinalizeFold {
         let common: &'static CommonPluginContext =
             Box::leak(Box::new(CommonPluginContext::default()));
 
@@ -188,23 +196,23 @@ mod tests {
         let ctx: PluginContext<'static> =
             PluginContext::new(&common.state, "/repo", module);
 
-        let args: PreArgs<'_> = PreArgs { code: "console.log(1);" };
+        let args: FinalizeArgs<'_> = FinalizeArgs { code: "console.log(1);" };
 
-        pre(&plugins, &ctx, &args).await.unwrap()
+        finalize(&plugins, &ctx, &args).await.unwrap()
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_pre_collects_maps_in_fold_order() {
-        let first: PreOutput = hook_map(&[(1, 0, 0, 0)]);
+    async fn test_finalize_collects_maps_in_fold_order() {
+        let first: FinalizeOutput = hook_map(&[(1, 0, 0, 0)]);
 
-        let second: PreOutput = hook_map(&[(2, 0, 0, 0)]);
+        let second: FinalizeOutput = hook_map(&[(2, 0, 0, 0)]);
 
         let plugins: Vec<SharedPluginable> = vec![
             step_plugin("one", move |_args| Ok(Some(first.clone()))),
             step_plugin("two", move |_args| Ok(Some(second.clone()))),
         ];
 
-        let fold: PreFold = run(plugins).await;
+        let fold: FinalizeFold = run(plugins).await;
 
         assert_eq!(fold.maps.len(), 2, "both maps collected");
 
@@ -220,8 +228,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_pre_omission_resets_collected_chain() {
-        let first: PreOutput = hook_map(&[(1, 0, 0, 0)]);
+    async fn test_finalize_omission_resets_collected_chain() {
+        let first: FinalizeOutput = hook_map(&[(1, 0, 0, 0)]);
 
         let plugins: Vec<SharedPluginable> = vec![
             step_plugin("mapped", move |_args| Ok(Some(first.clone()))),
@@ -229,67 +237,71 @@ mod tests {
             step_plugin("later", |_args| Ok(None)),
         ];
 
-        let fold: PreFold = run(plugins).await;
+        let fold: FinalizeFold = run(plugins).await;
 
         assert!(fold.maps.is_empty(), "omission clears the chain");
 
         assert_eq!(
-            fold.output.as_ref().map(|out: &PreOutput| out.code.as_str()),
+            fold.output.as_ref().map(|out: &FinalizeOutput| out.code.as_str()),
             Some("unmapped-code"),
         );
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_pre_none_keeps_output_and_chain() {
-        let first: PreOutput = hook_map(&[(1, 0, 0, 0)]);
+    async fn test_finalize_none_keeps_output_and_chain() {
+        let first: FinalizeOutput = hook_map(&[(1, 0, 0, 0)]);
 
         let plugins: Vec<SharedPluginable> = vec![
             step_plugin("noop", |_args| Ok(None)),
             step_plugin("mapped", move |_args| Ok(Some(first.clone()))),
         ];
 
-        let fold: PreFold = run(plugins).await;
+        let fold: FinalizeFold = run(plugins).await;
 
         assert_eq!(fold.maps.len(), 1);
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_pre_carries_output_between_hooks() {
+    async fn test_finalize_carries_output_between_hooks() {
         // The fold is CARRIED: the second hook must receive the first
-        // hook's returned code, not the original source. The probe records
+        // hook's returned code, not the generated code. The probe records
         // what it saw; on the fixed-input behavior it would record the
-        // original.
+        // generated code.
         let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let probe_seen: Arc<Mutex<Vec<String>>> = Arc::clone(&seen);
 
         let plugins: Vec<SharedPluginable> = vec![
-            step_plugin("first", |_args| Ok(Some(no_map("let a = 1;")))),
-            step_plugin("probe", move |args: &PreArgs<'_>| {
+            step_plugin("first", |_args| {
+                Ok(Some(no_map("const injected = 1;")))
+            }),
+            step_plugin("probe", move |args: &FinalizeArgs<'_>| {
                 probe_seen.lock().unwrap().push(args.code.to_string());
 
                 Ok(None)
             }),
         ];
 
-        let fold: PreFold = run(plugins).await;
+        let fold: FinalizeFold = run(plugins).await;
 
         assert_eq!(
             seen.lock().unwrap().clone(),
-            vec![String::from("let a = 1;")],
+            vec![String::from("const injected = 1;")],
             "the second hook must see the first hook's rewrite",
         );
 
         assert_eq!(
-            fold.output.as_ref().map(|out: &PreOutput| out.code.as_str()),
-            Some("let a = 1;"),
+            fold.output.as_ref().map(|out: &FinalizeOutput| out.code.as_str()),
+            Some("const injected = 1;"),
         );
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_pre_error_names_plugin() {
+    async fn test_finalize_error_names_plugin() {
         let plugins: Vec<SharedPluginable> =
-            vec![step_plugin("fail-pre", |_args| Err(anyhow::anyhow!("boom")))];
+            vec![step_plugin("fail-finalize", |_args| {
+                Err(anyhow::anyhow!("boom"))
+            })];
 
         let common: &'static CommonPluginContext =
             Box::leak(Box::new(CommonPluginContext::default()));
@@ -304,10 +316,14 @@ mod tests {
         let ctx: PluginContext<'static> =
             PluginContext::new(&common.state, "/repo", module);
 
-        let args: PreArgs<'_> = PreArgs { code: "console.log(1);" };
+        let args: FinalizeArgs<'_> = FinalizeArgs { code: "console.log(1);" };
 
-        let err: anyhow::Error = pre(&plugins, &ctx, &args).await.unwrap_err();
+        let err: anyhow::Error =
+            finalize(&plugins, &ctx, &args).await.unwrap_err();
 
-        assert!(format!("{err:#}").contains("`fail-pre` pre"), "{err:#}");
+        assert!(
+            format!("{err:#}").contains("`fail-finalize` finalize"),
+            "{err:#}"
+        );
     }
 }

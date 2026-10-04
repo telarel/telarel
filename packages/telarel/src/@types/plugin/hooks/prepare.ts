@@ -1,12 +1,12 @@
 import type { SourceMap } from "#/@types/sourcemap";
 
-type PreArgs = {
+type PrepareArgs = {
     code: string;
 };
 
-type PreResult = {
+type PrepareResult = {
     code: string;
     map?: SourceMap | null;
 };
 
-export type { PreArgs, PreResult };
+export type { PrepareArgs, PrepareResult };

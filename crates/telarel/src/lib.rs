@@ -44,11 +44,11 @@ pub use telarel_common::{
 };
 
 pub use telarel_plugin::{
-    CommonPluginContext, CompileEndArgs, CompileStartArgs, ModuleInfo,
-    NotifyReturn, OptionsArgs, OptionsReturn, Plugin, PluginContext,
-    Pluginable, PostArgs, PostOutput, PostReturn, PreArgs, PreOutput,
-    PreReturn, SharedPluginable, TransformArgs, TransformOutput,
-    TransformReturn,
+    CommonPluginContext, CompileEndArgs, CompileStartArgs, FinalizeArgs,
+    FinalizeOutput, FinalizeReturn, ModuleInfo, NotifyReturn, OptionsArgs,
+    OptionsReturn, Plugin, PluginContext, Pluginable, PrepareArgs,
+    PrepareOutput, PrepareReturn, SharedPluginable, TransformArgs,
+    TransformOutput, TransformReturn,
 };
 
 pub use telarel_core::{CompileOutput, compile};

@@ -10,8 +10,8 @@ import type {
 } from "#/@types/plugin/context";
 import type { CompileEndArgs } from "#/@types/plugin/hooks/compile-end";
 import type { CompileStartArgs } from "#/@types/plugin/hooks/compile-start";
-import type { PostResult } from "#/@types/plugin/hooks/post";
-import type { PreResult } from "#/@types/plugin/hooks/pre";
+import type { FinalizeResult } from "#/@types/plugin/hooks/finalize";
+import type { PrepareResult } from "#/@types/plugin/hooks/prepare";
 import type { TransformResult } from "#/@types/plugin/hooks/transform";
 import type { Options, OptionsArgs } from "#/@types/plugin/options";
 import type { SourceMap } from "#/@types/sourcemap";
@@ -77,7 +77,7 @@ type RawHookPlugin = {
         ctx: RawPluginContext,
         args: RawCompileStartArgs,
     ) => Promise<void>;
-    pre?: (
+    prepare?: (
         ctx: RawPluginContext,
         args: RawStageArgs,
     ) => Promise<RawStageOutput | null>;
@@ -85,7 +85,7 @@ type RawHookPlugin = {
         ctx: RawPluginContext,
         args: RawTransformArgs,
     ) => Promise<RawTransformOutput | null>;
-    post?: (
+    finalize?: (
         ctx: RawPluginContext,
         args: RawStageArgs,
     ) => Promise<RawStageOutput | null>;
@@ -284,19 +284,19 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
         };
     }
 
-    const pre: Plugin["pre"] = plugin.pre;
+    const prepare: Plugin["prepare"] = plugin.prepare;
 
-    if (typeof pre === "function") {
-        raw.pre = async (
+    if (typeof prepare === "function") {
+        raw.prepare = async (
             rawCtx: RawPluginContext,
             rawArgs: RawStageArgs,
         ): Promise<RawStageOutput | null> => {
-            const result: PreResult | null | void = await pre(
+            const result: PrepareResult | null | void = await prepare(
                 toContext(rawCtx),
                 { code: rawArgs.code },
             );
 
-            return toRawStageOutput(result as PreResult | null | void);
+            return toRawStageOutput(result as PrepareResult | null | void);
         };
     }
 
@@ -322,19 +322,19 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
         };
     }
 
-    const post: Plugin["post"] = plugin.post;
+    const finalize: Plugin["finalize"] = plugin.finalize;
 
-    if (typeof post === "function") {
-        raw.post = async (
+    if (typeof finalize === "function") {
+        raw.finalize = async (
             rawCtx: RawPluginContext,
             rawArgs: RawStageArgs,
         ): Promise<RawStageOutput | null> => {
-            const result: PostResult | null | void = await post(
+            const result: FinalizeResult | null | void = await finalize(
                 toContext(rawCtx),
                 { code: rawArgs.code },
             );
 
-            return toRawStageOutput(result as PostResult | null | void);
+            return toRawStageOutput(result as FinalizeResult | null | void);
         };
     }
 

@@ -302,7 +302,7 @@ describe("transform", (): void => {
 
         const writer: Plugin = {
             name: "writer",
-            pre: (ctx: PluginContext): void => {
+            prepare: (ctx: PluginContext): void => {
                 ctx.state.set("marker", "from-writer");
             },
         };
@@ -330,7 +330,7 @@ describe("transform", (): void => {
 
                 ctx.state.set("firstNode", body[0]?.type ?? "missing");
             },
-            post: (ctx: PluginContext): void => {
+            finalize: (ctx: PluginContext): void => {
                 seen.push(ctx.state.get("firstNode"));
             },
         };
@@ -389,7 +389,7 @@ describe("transform", (): void => {
 
         const plugin: Plugin = {
             name: "builtin:custom",
-            pre: (ctx: PluginContext): void => {
+            prepare: (ctx: PluginContext): void => {
                 ctx.state.set("marker", "from-builtin-custom");
             },
             transform: (ctx: PluginContext): void => {

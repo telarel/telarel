@@ -1,12 +1,12 @@
 import type { SourceMap } from "#/@types/sourcemap";
 
-type PostArgs = {
+type FinalizeArgs = {
     code: string;
 };
 
-type PostResult = {
+type FinalizeResult = {
     code: string;
     map?: SourceMap | null;
 };
 
-export type { PostArgs, PostResult };
+export type { FinalizeArgs, FinalizeResult };

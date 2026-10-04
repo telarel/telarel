@@ -11,18 +11,18 @@ use oxc::span::SourceType;
 use telarel_common::{CompileOptions, HookUsage};
 use telarel_plugin::__internal::{HookFuture, LocalHookFuture};
 use telarel_plugin::{
-    CommonPluginContext, CompileEndArgs, CompileStartArgs, NotifyReturn,
-    OptionsArgs, PluginContext, Pluginable, PostArgs, PostOutput, PostReturn,
-    PreArgs, PreOutput, PreReturn, TransformArgs, TransformOutput,
-    TransformReturn,
+    CommonPluginContext, CompileEndArgs, CompileStartArgs, FinalizeArgs,
+    FinalizeOutput, FinalizeReturn, NotifyReturn, OptionsArgs, PluginContext,
+    Pluginable, PrepareArgs, PrepareOutput, PrepareReturn, TransformArgs,
+    TransformOutput, TransformReturn,
 };
 
 use crate::plugin::build::NAME_REQUIRED;
 use crate::plugin::build::bridge_plugin;
 use crate::plugin::hooks::{
     CompileEndCall, CompileEndTsfn, CompileStartCall, CompileStartTsfn,
-    OptionsCall, OptionsTsfn, PostTsfn, PreTsfn, RefList, SharedStr, StageCall,
-    TransformCall, TransformTsfn, hook_scan,
+    FinalizeTsfn, OptionsCall, OptionsTsfn, PrepareTsfn, RefList, SharedStr,
+    StageCall, TransformCall, TransformTsfn, hook_scan,
 };
 use crate::plugin::options::{
     language_label, parse_language, parse_source_type, source_type_label,
@@ -43,9 +43,9 @@ pub struct JsPlugin {
     name: String,
     tsfn_options: Option<OptionsTsfn>,
     tsfn_compile_start: Option<CompileStartTsfn>,
-    tsfn_pre: Option<PreTsfn>,
+    tsfn_prepare: Option<PrepareTsfn>,
     tsfn_transform: Option<TransformTsfn>,
-    tsfn_post: Option<PostTsfn>,
+    tsfn_finalize: Option<FinalizeTsfn>,
     tsfn_compile_end: Option<CompileEndTsfn>,
     /// The compile's dynamic release list, shared with every JS plugin and
     /// with the compile task's `finally`.
@@ -66,9 +66,9 @@ impl JsPlugin {
         let (
             tsfn_options,
             tsfn_compile_start,
-            tsfn_pre,
+            tsfn_prepare,
             tsfn_transform,
-            tsfn_post,
+            tsfn_finalize,
             tsfn_compile_end,
         ) = hook_scan!(object);
 
@@ -76,9 +76,9 @@ impl JsPlugin {
             name,
             tsfn_options,
             tsfn_compile_start,
-            tsfn_pre,
+            tsfn_prepare,
             tsfn_transform,
-            tsfn_post,
+            tsfn_finalize,
             tsfn_compile_end,
             refs: Arc::clone(refs),
         })
@@ -354,16 +354,16 @@ impl Pluginable for JsPlugin {
             usage.insert(HookUsage::CompileStart);
         }
 
-        if self.tsfn_pre.is_some() {
-            usage.insert(HookUsage::Pre);
+        if self.tsfn_prepare.is_some() {
+            usage.insert(HookUsage::Prepare);
         }
 
         if self.tsfn_transform.is_some() {
             usage.insert(HookUsage::Transform);
         }
 
-        if self.tsfn_post.is_some() {
-            usage.insert(HookUsage::Post);
+        if self.tsfn_finalize.is_some() {
+            usage.insert(HookUsage::Finalize);
         }
 
         if self.tsfn_compile_end.is_some() {
@@ -432,13 +432,13 @@ impl Pluginable for JsPlugin {
         })
     }
 
-    fn call_pre<'a>(
+    fn call_prepare<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a PreArgs<'_>,
-    ) -> HookFuture<'a, PreReturn> {
+        args: &'a PrepareArgs<'_>,
+    ) -> HookFuture<'a, PrepareReturn> {
         Box::pin(async move {
-            let Some(tsfn) = self.tsfn_pre.as_ref() else {
+            let Some(tsfn) = self.tsfn_prepare.as_ref() else {
                 return Ok(None);
             };
 
@@ -480,7 +480,7 @@ impl Pluginable for JsPlugin {
                 | None => None,
             };
 
-            Ok(Some(PreOutput { code: output.code, map }))
+            Ok(Some(PrepareOutput { code: output.code, map }))
         })
     }
 
@@ -568,13 +568,13 @@ impl Pluginable for JsPlugin {
         })
     }
 
-    fn call_post<'a>(
+    fn call_finalize<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a PostArgs<'_>,
-    ) -> HookFuture<'a, PostReturn> {
+        args: &'a FinalizeArgs<'_>,
+    ) -> HookFuture<'a, FinalizeReturn> {
         Box::pin(async move {
-            let Some(tsfn) = self.tsfn_post.as_ref() else {
+            let Some(tsfn) = self.tsfn_finalize.as_ref() else {
                 return Ok(None);
             };
 
@@ -616,7 +616,7 @@ impl Pluginable for JsPlugin {
                 | None => None,
             };
 
-            Ok(Some(PostOutput { code: output.code, map }))
+            Ok(Some(FinalizeOutput { code: output.code, map }))
         })
     }
 

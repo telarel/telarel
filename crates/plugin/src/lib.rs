@@ -17,12 +17,12 @@ pub use crate::_types::context::{
 };
 pub use crate::_types::hooks::compile_end::CompileEndArgs;
 pub use crate::_types::hooks::compile_start::CompileStartArgs;
+pub use crate::_types::hooks::finalize::FinalizeReturn;
+pub use crate::_types::hooks::finalize::{FinalizeArgs, FinalizeOutput};
 pub use crate::_types::hooks::notify::NotifyReturn;
 pub use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
-pub use crate::_types::hooks::post::PostReturn;
-pub use crate::_types::hooks::post::{PostArgs, PostOutput};
-pub use crate::_types::hooks::pre::PreReturn;
-pub use crate::_types::hooks::pre::{PreArgs, PreOutput};
+pub use crate::_types::hooks::prepare::PrepareReturn;
+pub use crate::_types::hooks::prepare::{PrepareArgs, PrepareOutput};
 pub use crate::_types::hooks::transform::TransformReturn;
 pub use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
 pub use crate::_types::sourcemap::SourceMap;
@@ -34,6 +34,6 @@ pub use crate::plugin::pluginable::{Pluginable, SharedPluginable};
 pub mod __internal {
     pub use crate::plugin::pluginable::{HookFuture, LocalHookFuture};
     pub use crate::plugin_driver::PluginDriver;
-    pub use crate::plugin_driver::hooks::post::PostFold;
-    pub use crate::plugin_driver::hooks::pre::PreFold;
+    pub use crate::plugin_driver::hooks::finalize::FinalizeFold;
+    pub use crate::plugin_driver::hooks::prepare::PrepareFold;
 }

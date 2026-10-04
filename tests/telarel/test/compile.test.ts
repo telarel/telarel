@@ -7,10 +7,10 @@ import type {
     OptionsArgs,
     Plugin,
     PluginContext,
-    PostArgs,
-    PostResult,
-    PreArgs,
-    PreResult,
+    FinalizeArgs,
+    FinalizeResult,
+    PrepareArgs,
+    PrepareResult,
     ResolvedOptions,
     SourceMap,
     TransformArgs,
@@ -123,13 +123,13 @@ describe("compile", (): void => {
                 },
                 {
                     name: "reader",
-                    pre: (ctx: PluginContext): void => {
+                    prepare: (ctx: PluginContext): void => {
                         seen.push(ctx.state.get("marker"));
                     },
                 },
                 {
                     name: "verifier",
-                    post: (ctx: PluginContext): void => {
+                    finalize: (ctx: PluginContext): void => {
                         seen.push(ctx.state.get("marker"));
                     },
                 },
@@ -156,13 +156,13 @@ describe("compile", (): void => {
                 },
                 {
                     name: "collect-rest",
-                    pre: (ctx: PluginContext): void => {
+                    prepare: (ctx: PluginContext): void => {
                         maps.push(ctx.state);
                     },
                     transform: (ctx: PluginContext): void => {
                         maps.push(ctx.state);
                     },
-                    post: (ctx: PluginContext): void => {
+                    finalize: (ctx: PluginContext): void => {
                         maps.push(ctx.state);
                     },
                 },
@@ -287,7 +287,7 @@ describe("compile", (): void => {
                 },
                 {
                     name: "observe",
-                    pre: (ctx: PluginContext): void => {
+                    prepare: (ctx: PluginContext): void => {
                         seen.push(ctx.module.file);
                         seen.push(ctx.module.code);
                     },
@@ -326,7 +326,7 @@ describe("compile", (): void => {
 
                         return { code: "const replaced = 1;" };
                     },
-                    pre: (ctx: PluginContext): void => {
+                    prepare: (ctx: PluginContext): void => {
                         seen.push(ctx.module.file);
                     },
                 },
@@ -464,8 +464,8 @@ describe("compile", (): void => {
                                 ...(args.options.plugins ?? []),
                                 {
                                     name: "injected",
-                                    pre: (): PreResult | null => {
-                                        seen.push("injected.pre");
+                                    prepare: (): PrepareResult | null => {
+                                        seen.push("injected.prepare");
 
                                         return { code: "const injected = 3;" };
                                     },
@@ -477,7 +477,7 @@ describe("compile", (): void => {
             ],
         });
 
-        expect(seen).toEqual(["injected.pre"]);
+        expect(seen).toEqual(["injected.prepare"]);
         expect(result.code).toBe("const injected = 3;");
     });
 
@@ -557,7 +557,7 @@ describe("compile", (): void => {
 
     it("rejects a plugin with a missing name", async (): Promise<void> => {
         const nameless: unknown = {
-            pre: (): void => {},
+            prepare: (): void => {},
         };
 
         const build = async (): Promise<CompileResult> =>
@@ -577,7 +577,7 @@ describe("compile", (): void => {
     it("rejects a plugin with an empty name", async (): Promise<void> => {
         const empty: unknown = {
             name: "",
-            pre: (): void => {},
+            prepare: (): void => {},
         };
 
         const build = async (): Promise<CompileResult> =>
@@ -612,7 +612,7 @@ describe("compile", (): void => {
         ).rejects.toThrow("async-kaboom");
     });
 
-    it("rejects on an error thrown from pre", async (): Promise<void> => {
+    it("rejects on an error thrown from prepare", async (): Promise<void> => {
         await expect(
             compile({
                 cwd: "/repo",
@@ -620,17 +620,17 @@ describe("compile", (): void => {
                 code: "const a = 1;",
                 plugins: [
                     {
-                        name: "boom-pre",
-                        pre: (): never => {
-                            throw new Error("pre-kaboom");
+                        name: "boom-prepare",
+                        prepare: (): never => {
+                            throw new Error("prepare-kaboom");
                         },
                     },
                 ],
             }),
-        ).rejects.toThrow("pre-kaboom");
+        ).rejects.toThrow("prepare-kaboom");
     });
 
-    it("rejects on an error thrown from post", async (): Promise<void> => {
+    it("rejects on an error thrown from finalize", async (): Promise<void> => {
         await expect(
             compile({
                 cwd: "/repo",
@@ -638,14 +638,14 @@ describe("compile", (): void => {
                 code: "const a = 1;",
                 plugins: [
                     {
-                        name: "boom-post",
-                        post: (): never => {
-                            throw new Error("post-kaboom");
+                        name: "boom-finalize",
+                        finalize: (): never => {
+                            throw new Error("finalize-kaboom");
                         },
                     },
                 ],
             }),
-        ).rejects.toThrow("post-kaboom");
+        ).rejects.toThrow("finalize-kaboom");
     });
 
     it("rejects on an error thrown from options", async (): Promise<void> => {
@@ -683,7 +683,7 @@ describe("compile", (): void => {
         expect(result.map.mappings.length).toBeGreaterThan(0);
     });
 
-    it("runs async pre, transform, and post hooks", async (): Promise<void> => {
+    it("runs async prepare, transform, and finalize hooks", async (): Promise<void> => {
         const seen: Array<string> = [];
 
         const result: CompileResult = await compile({
@@ -704,16 +704,16 @@ describe("compile", (): void => {
                             code: "const b = 2;",
                         };
                     },
-                    pre: async (ctx: PluginContext): Promise<void> => {
-                        seen.push("pre");
-                        ctx.state.set("marker", "from-async-pre");
+                    prepare: async (ctx: PluginContext): Promise<void> => {
+                        seen.push("prepare");
+                        ctx.state.set("marker", "from-async-prepare");
                     },
                     transform: async (ctx: PluginContext): Promise<void> => {
                         seen.push("transform");
                         seen.push(String(ctx.state.get("marker")));
                     },
-                    post: async (ctx: PluginContext): Promise<void> => {
-                        seen.push("post");
+                    finalize: async (ctx: PluginContext): Promise<void> => {
+                        seen.push("finalize");
                         seen.push(String(ctx.state.get("marker")));
                     },
                 },
@@ -723,15 +723,15 @@ describe("compile", (): void => {
         expect(result.code).toBe("const b = 2;");
         expect(seen).toEqual([
             "options",
-            "pre",
+            "prepare",
             "transform",
-            "from-async-pre",
-            "post",
-            "from-async-pre",
+            "from-async-prepare",
+            "finalize",
+            "from-async-prepare",
         ]);
     });
 
-    it("orders pre, transform, post across plugins", async (): Promise<void> => {
+    it("orders prepare, transform, and finalize across plugins", async (): Promise<void> => {
         const seen: Array<string> = [];
 
         const result: CompileResult = await compile({
@@ -741,26 +741,26 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "first",
-                    pre: (): void => {
-                        seen.push("first.pre");
+                    prepare: (): void => {
+                        seen.push("first.prepare");
                     },
                     transform: (_ctx: PluginContext): void => {
                         seen.push("first.transform");
                     },
-                    post: (): void => {
-                        seen.push("first.post");
+                    finalize: (): void => {
+                        seen.push("first.finalize");
                     },
                 },
                 {
                     name: "second",
-                    pre: (): void => {
-                        seen.push("second.pre");
+                    prepare: (): void => {
+                        seen.push("second.prepare");
                     },
                     transform: (_ctx: PluginContext): void => {
                         seen.push("second.transform");
                     },
-                    post: (): void => {
-                        seen.push("second.post");
+                    finalize: (): void => {
+                        seen.push("second.finalize");
                     },
                 },
             ],
@@ -768,12 +768,12 @@ describe("compile", (): void => {
 
         expect(result.code).toBe("const a = 1;");
         expect(seen).toEqual([
-            "first.pre",
-            "second.pre",
+            "first.prepare",
+            "second.prepare",
             "first.transform",
             "second.transform",
-            "first.post",
-            "second.post",
+            "first.finalize",
+            "second.finalize",
         ]);
     });
 
@@ -813,7 +813,7 @@ describe("compile", (): void => {
         expect(result.code).toBe("const second = 1;");
     });
 
-    it("propagates state writes from transform to post", async (): Promise<void> => {
+    it("propagates state writes from transform to finalize", async (): Promise<void> => {
         const seen: Array<unknown> = [];
 
         const result: CompileResult = await compile({
@@ -828,8 +828,8 @@ describe("compile", (): void => {
                     },
                 },
                 {
-                    name: "post-reader",
-                    post: (ctx: PluginContext): void => {
+                    name: "finalize-reader",
+                    finalize: (ctx: PluginContext): void => {
                         seen.push(ctx.state.get("marker"));
                     },
                 },
@@ -851,7 +851,7 @@ describe("compile", (): void => {
                 plugins: [
                     {
                         name: "writer",
-                        pre: (ctx: PluginContext): void => {
+                        prepare: (ctx: PluginContext): void => {
                             ctx.state.set("marker", name);
                         },
                     },
@@ -861,7 +861,7 @@ describe("compile", (): void => {
                     },
                     {
                         name: "verifier",
-                        post: (ctx: PluginContext): void => {
+                        finalize: (ctx: PluginContext): void => {
                             seen.push(ctx.state.get("marker"));
                         },
                     },
@@ -895,13 +895,16 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "fidelity",
-                    pre: (ctx: PluginContext, args: PreArgs): void => {
+                    prepare: (ctx: PluginContext, args: PrepareArgs): void => {
                         record(ctx, args.code);
                     },
                     transform: (ctx: PluginContext): void => {
                         record(ctx, ctx.module.code);
                     },
-                    post: (ctx: PluginContext, args: PostArgs): void => {
+                    finalize: (
+                        ctx: PluginContext,
+                        args: FinalizeArgs,
+                    ): void => {
                         record(ctx, args.code);
                     },
                 },
@@ -932,13 +935,16 @@ describe("compile", (): void => {
                 },
                 {
                     name: "fidelity",
-                    pre: (ctx: PluginContext, args: PreArgs): void => {
+                    prepare: (ctx: PluginContext, args: PrepareArgs): void => {
                         record(ctx, args.code);
                     },
                     transform: (ctx: PluginContext): void => {
                         record(ctx, ctx.module.code);
                     },
-                    post: (ctx: PluginContext, args: PostArgs): void => {
+                    finalize: (
+                        ctx: PluginContext,
+                        args: FinalizeArgs,
+                    ): void => {
                         record(ctx, args.code);
                     },
                 },
@@ -1217,7 +1223,7 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "writer",
-                    pre: (ctx: PluginContext): void => {
+                    prepare: (ctx: PluginContext): void => {
                         ctx.state.set("count", 42);
                         ctx.state.set("obj", { nested: true });
                     },
@@ -1248,7 +1254,7 @@ describe("compile", (): void => {
             plugins: [
                 {
                     name: "first",
-                    pre: (): void => void 0,
+                    prepare: (): void => void 0,
                 },
                 {
                     name: "observe",
@@ -1444,16 +1450,16 @@ describe("compile", (): void => {
         expect(seen[0]?.map).toBeNull();
     });
 
-    it("replaces the source through a returned pre result", async (): Promise<void> => {
+    it("replaces the source through a returned prepare result", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
             plugins: [
                 {
-                    name: "pre-rewrite",
-                    pre: (ctx: PluginContext): PreResult => {
-                        ctx.state.set("stage", "pre");
+                    name: "prepare-rewrite",
+                    prepare: (ctx: PluginContext): PrepareResult => {
+                        ctx.state.set("stage", "prepare");
 
                         return { code: "const b = 2;" };
                     },
@@ -1463,7 +1469,7 @@ describe("compile", (): void => {
                     ): TransformResult => {
                         // Return the received tree (no mutation): a
                         // declared `transform` forces the parse path so the
-                        // pre-returned code is the parse input.
+                        // prepare-returned code is the parse input.
                         return { ast: args.ast };
                     },
                 },
@@ -1473,15 +1479,15 @@ describe("compile", (): void => {
         expect(result.code).toBe("const b = 2;");
     });
 
-    it("keeps the source when a pre hook returns null", async (): Promise<void> => {
+    it("keeps the source when a prepare hook returns null", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
             plugins: [
                 {
-                    name: "pre-null",
-                    pre: (): null => null,
+                    name: "prepare-null",
+                    prepare: (): null => null,
                     transform: (): void => void 0,
                 },
             ],
@@ -1490,15 +1496,15 @@ describe("compile", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
-    it("keeps the source when a pre hook returns undefined", async (): Promise<void> => {
+    it("keeps the source when a prepare hook returns undefined", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "const a = 1;",
             plugins: [
                 {
-                    name: "pre-void",
-                    pre: (): void => void 0,
+                    name: "prepare-void",
+                    prepare: (): void => void 0,
                     transform: (): void => void 0,
                 },
             ],
@@ -1507,8 +1513,8 @@ describe("compile", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
-    it("applies a returned pre map to the final output map", async (): Promise<void> => {
-        // The pre hook deletes the original's first line and returns its
+    it("applies a returned prepare map to the final output map", async (): Promise<void> => {
+        // The prepare hook deletes the original's first line and returns its
         // incremental map (dst(0,0) -> src(1,0), encoded `AAAC`): the
         // composed output map resolves the parse input back to the
         // ORIGINAL source line 1, so the mappings must be `AAAC`, not the
@@ -1521,8 +1527,8 @@ describe("compile", (): void => {
             code: original,
             plugins: [
                 {
-                    name: "pre-with-map",
-                    pre: (): PreResult => ({
+                    name: "prepare-with-map",
+                    prepare: (): PrepareResult => ({
                         code: "let b = 2;",
                         map: {
                             version: 3,
@@ -1539,19 +1545,19 @@ describe("compile", (): void => {
         expect(result.code).toBe("let b = 2;");
         expect(result.map.mappings).toBe("AAAC");
         // The composed map carries the ORIGINAL source list, not the
-        // pre-returned one.
+        // prepare-returned one.
         expect(result.map.sources).toEqual(["index.ts"]);
     });
 
-    it("keeps the identity map when a pre hook omits its map", async (): Promise<void> => {
+    it("keeps the identity map when a prepare hook omits its map", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
             code: "let b = 2;",
             plugins: [
                 {
-                    name: "pre-no-map",
-                    pre: (): PreResult => ({ code: "let c = 3;" }),
+                    name: "prepare-no-map",
+                    prepare: (): PrepareResult => ({ code: "let c = 3;" }),
                 },
             ],
         });
@@ -1562,8 +1568,8 @@ describe("compile", (): void => {
         expect(result.map.mappings).toBe("AAAA");
     });
 
-    it("carries a pre rewrite into the next pre hook", async (): Promise<void> => {
-        // The `pre` fold is carried: the second hook must receive the
+    it("carries a prepare rewrite into the next prepare hook", async (): Promise<void> => {
+        // The `prepare` fold is carried: the second hook must receive the
         // first's returned code, not the original source. A fixed-input
         // bridge would record `"const original = 1;"` here.
         const seen: Array<string> = [];
@@ -1574,12 +1580,14 @@ describe("compile", (): void => {
             code: "const original = 1;",
             plugins: [
                 {
-                    name: "pre-first",
-                    pre: (): PreResult => ({ code: "const injected = 1;" }),
+                    name: "prepare-first",
+                    prepare: (): PrepareResult => ({
+                        code: "const injected = 1;",
+                    }),
                 },
                 {
-                    name: "pre-probe",
-                    pre: (_ctx: PluginContext, args: PreArgs): void => {
+                    name: "prepare-probe",
+                    prepare: (_ctx: PluginContext, args: PrepareArgs): void => {
                         seen.push(args.code);
                     },
                 },
@@ -1590,7 +1598,7 @@ describe("compile", (): void => {
         expect(result.code).toBe("const injected = 1;");
     });
 
-    it("replaces the output through a returned post result", async (): Promise<void> => {
+    it("replaces the output through a returned finalize result", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
@@ -1601,9 +1609,9 @@ describe("compile", (): void => {
                     transform: (): void => void 0,
                 },
                 {
-                    name: "post-rewrite",
-                    post: (ctx: PluginContext): PostResult => {
-                        ctx.state.set("stage", "post");
+                    name: "finalize-rewrite",
+                    finalize: (ctx: PluginContext): FinalizeResult => {
+                        ctx.state.set("stage", "finalize");
 
                         return { code: "const replaced = 1;" };
                     },
@@ -1614,11 +1622,11 @@ describe("compile", (): void => {
         expect(result.code).toBe("const replaced = 1;");
     });
 
-    it("applies a returned post map to the final output map", async (): Promise<void> => {
-        // The post hook rewrites the generated code and returns a
-        // single-token incremental map: the post map owns the OUTPUT dst
+    it("applies a returned finalize map to the final output map", async (): Promise<void> => {
+        // The finalize hook rewrites the generated code and returns a
+        // single-token incremental map: the finalize map owns the OUTPUT dst
         // positions (composed with the codegen map), so the final mappings
-        // carry the post map's single dst token instead of the multi-token
+        // carry the finalize map's single dst token instead of the multi-token
         // codegen map.
         const baseline: CompileResult = await compile({
             cwd: "/repo",
@@ -1636,8 +1644,8 @@ describe("compile", (): void => {
             plugins: [
                 { name: "force-parse", transform: (): void => void 0 },
                 {
-                    name: "post-with-map",
-                    post: (): PostResult => ({
+                    name: "finalize-with-map",
+                    finalize: (): FinalizeResult => ({
                         code: "// banner\nconsole.log(1);",
                         map: {
                             version: 3,
@@ -1652,13 +1660,13 @@ describe("compile", (): void => {
         });
 
         expect(result.code).toBe("// banner\nconsole.log(1);");
-        // The single post token dst(0,0)->src(1,0): the banner line maps
+        // The single finalize token dst(0,0)->src(1,0): the banner line maps
         // through the codegen map back to the generated line 1.
         expect(result.map.mappings).not.toBe(baseline.map.mappings);
         expect(result.map.mappings.length).toBeGreaterThan(0);
     });
 
-    it("keeps the codegen map when a post hook omits its map", async (): Promise<void> => {
+    it("keeps the codegen map when a finalize hook omits its map", async (): Promise<void> => {
         const baseline: CompileResult = await compile({
             cwd: "/repo",
             file: "index.ts",
@@ -1673,20 +1681,22 @@ describe("compile", (): void => {
             plugins: [
                 { name: "force-parse", transform: (): void => void 0 },
                 {
-                    name: "post-no-map",
-                    post: (): PostResult => ({ code: "console.log(2);" }),
+                    name: "finalize-no-map",
+                    finalize: (): FinalizeResult => ({
+                        code: "console.log(2);",
+                    }),
                 },
             ],
         });
 
         expect(result.code).toContain("console.log(2);");
-        // No post map returned: the codegen map over the original parse
+        // No finalize map returned: the codegen map over the original parse
         // input carries through UNCHANGED.
         expect(result.map.mappings).toBe(baseline.map.mappings);
     });
 
-    it("carries a post rewrite into the next post hook", async (): Promise<void> => {
-        // The `post` fold is carried: the second hook must receive the
+    it("carries a finalize rewrite into the next finalize hook", async (): Promise<void> => {
+        // The `finalize` fold is carried: the second hook must receive the
         // first's returned code, not the generated code. A fixed-input
         // bridge would record `"const a = 1;"` here.
         const seen: Array<string> = [];
@@ -1698,12 +1708,17 @@ describe("compile", (): void => {
             plugins: [
                 { name: "force-parse", transform: (): void => void 0 },
                 {
-                    name: "post-first",
-                    post: (): PostResult => ({ code: "const injected = 1;" }),
+                    name: "finalize-first",
+                    finalize: (): FinalizeResult => ({
+                        code: "const injected = 1;",
+                    }),
                 },
                 {
-                    name: "post-probe",
-                    post: (_ctx: PluginContext, args: PostArgs): void => {
+                    name: "finalize-probe",
+                    finalize: (
+                        _ctx: PluginContext,
+                        args: FinalizeArgs,
+                    ): void => {
                         seen.push(args.code);
                     },
                 },
@@ -1723,7 +1738,7 @@ describe("compile", (): void => {
 
         const writer: Plugin = {
             name: "loop-writer",
-            pre: (ctx: PluginContext): void => {
+            prepare: (ctx: PluginContext): void => {
                 if (shouldWrite) {
                     ctx.state.set("marker", "loop");
                 }
@@ -1779,7 +1794,7 @@ describe("compile", (): void => {
                     plugins: [
                         {
                             name: `mixed-${marker}`,
-                            pre: isOdd
+                            prepare: isOdd
                                 ? async (ctx: PluginContext): Promise<void> => {
                                       ctx.state.set("id", marker);
                                   }

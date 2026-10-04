@@ -4,8 +4,11 @@ import type {
 } from "#/@types/plugin/context";
 import type { CompileEndArgs } from "#/@types/plugin/hooks/compile-end";
 import type { CompileStartArgs } from "#/@types/plugin/hooks/compile-start";
-import type { PostArgs, PostResult } from "#/@types/plugin/hooks/post";
-import type { PreArgs, PreResult } from "#/@types/plugin/hooks/pre";
+import type {
+    FinalizeArgs,
+    FinalizeResult,
+} from "#/@types/plugin/hooks/finalize";
+import type { PrepareArgs, PrepareResult } from "#/@types/plugin/hooks/prepare";
 import type {
     TransformArgs,
     TransformResult,
@@ -38,13 +41,13 @@ type Plugin = {
         args: CompileStartArgs,
     ) => void | Promise<void>;
     /**
-     * The pre hook: run before parsing; return `{ code }` to replace the
-     * source, or `null`/`void` for no change.
+     * The prepare hook: run before parsing; return `{ code, map? }` to replace
+     * the source, or `null`/`void` for no change.
      */
-    pre?: (
+    prepare?: (
         ctx: PluginContext,
-        args: PreArgs,
-    ) => PreResult | null | void | Promise<PreResult | null | void>;
+        args: PrepareArgs,
+    ) => PrepareResult | null | void | Promise<PrepareResult | null | void>;
     /**
      * The transform hook: chained AST transformation; return `{ ast }` to
      * replace the AST, or `null`/`void` for no change.
@@ -54,13 +57,13 @@ type Plugin = {
         args: TransformArgs,
     ) => TransformResult | null | void | Promise<TransformResult | null | void>;
     /**
-     * The post hook: run after codegen; return `{ code, map? }` to replace the
-     * output, or `null`/`void` for no change.
+     * The finalize hook: run after codegen; return `{ code, map? }` to replace
+     * the output, or `null`/`void` for no change.
      */
-    post?: (
+    finalize?: (
         ctx: PluginContext,
-        args: PostArgs,
-    ) => PostResult | null | void | Promise<PostResult | null | void>;
+        args: FinalizeArgs,
+    ) => FinalizeResult | null | void | Promise<FinalizeResult | null | void>;
     /**
      * The compileEnd hook: notify on the end of compilation.
      *

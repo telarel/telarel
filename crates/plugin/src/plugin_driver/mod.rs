@@ -7,8 +7,8 @@ use telarel_common::HookUsage;
 use crate::_types::context::PluginContext;
 use crate::_types::hooks::compile_end::CompileEndArgs;
 use crate::_types::hooks::compile_start::CompileStartArgs;
-use crate::_types::hooks::post::PostArgs;
-use crate::_types::hooks::pre::PreArgs;
+use crate::_types::hooks::finalize::FinalizeArgs;
+use crate::_types::hooks::prepare::PrepareArgs;
 use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
 use crate::plugin::pluginable::SharedPluginable;
 
@@ -17,9 +17,9 @@ pub struct PluginDriver {
     /// The full settled plugin list; `compile_start`/`compile_end` iterate it.
     all_plugins: Vec<SharedPluginable>,
     usage: HookUsage,
-    pre_plugins: Vec<SharedPluginable>,
+    prepare_plugins: Vec<SharedPluginable>,
     transform_plugins: Vec<SharedPluginable>,
-    post_plugins: Vec<SharedPluginable>,
+    finalize_plugins: Vec<SharedPluginable>,
 }
 
 impl PluginDriver {
@@ -32,34 +32,34 @@ impl PluginDriver {
     pub fn new(plugins: Vec<SharedPluginable>) -> Self {
         let mut usage: HookUsage = HookUsage::default();
 
-        let mut pre_plugins: Vec<SharedPluginable> = Vec::new();
+        let mut prepare_plugins: Vec<SharedPluginable> = Vec::new();
         let mut transform_plugins: Vec<SharedPluginable> = Vec::new();
-        let mut post_plugins: Vec<SharedPluginable> = Vec::new();
+        let mut finalize_plugins: Vec<SharedPluginable> = Vec::new();
 
         for plugin in &plugins {
             let declared: HookUsage = plugin.call_register_hook_usage();
 
             usage |= declared;
 
-            if declared.contains(HookUsage::Pre) {
-                pre_plugins.push(Arc::clone(plugin));
+            if declared.contains(HookUsage::Prepare) {
+                prepare_plugins.push(Arc::clone(plugin));
             }
 
             if declared.contains(HookUsage::Transform) {
                 transform_plugins.push(Arc::clone(plugin));
             }
 
-            if declared.contains(HookUsage::Post) {
-                post_plugins.push(Arc::clone(plugin));
+            if declared.contains(HookUsage::Finalize) {
+                finalize_plugins.push(Arc::clone(plugin));
             }
         }
 
         Self {
             all_plugins: plugins,
             usage,
-            pre_plugins,
+            prepare_plugins,
             transform_plugins,
-            post_plugins,
+            finalize_plugins,
         }
     }
 
@@ -86,16 +86,16 @@ impl PluginDriver {
         hooks::compile_start::compile_start(&self.all_plugins, ctx, args).await
     }
 
-    /// Run the `pre` hook on every plugin in registration order;
+    /// Run the `prepare` hook on every plugin in registration order;
     /// `Some` replaces the carried code, `None` keeps it. The fold result
     /// carries every returned map in fold order so the caller composes the
-    /// full chain (see [`hooks::pre::PreFold`]).
-    pub async fn pre(
+    /// full chain (see [`hooks::prepare::PrepareFold`]).
+    pub async fn prepare(
         &self,
         ctx: &PluginContext<'_>,
-        args: &PreArgs<'_>,
-    ) -> anyhow::Result<hooks::pre::PreFold> {
-        hooks::pre::pre(&self.pre_plugins, ctx, args).await
+        args: &PrepareArgs<'_>,
+    ) -> anyhow::Result<hooks::prepare::PrepareFold> {
+        hooks::prepare::prepare(&self.prepare_plugins, ctx, args).await
     }
 
     /// Run the `transform` hook chain;
@@ -108,16 +108,16 @@ impl PluginDriver {
         hooks::transform::transform(&self.transform_plugins, ctx, args).await
     }
 
-    /// Run the `post` hook on every plugin in registration order;
+    /// Run the `finalize` hook on every plugin in registration order;
     /// `Some` replaces the carried code, `None` keeps it. The fold result
     /// carries every returned map in fold order so the caller composes the
-    /// full chain (see [`hooks::post::PostFold`]).
-    pub async fn post(
+    /// full chain (see [`hooks::finalize::FinalizeFold`]).
+    pub async fn finalize(
         &self,
         ctx: &PluginContext<'_>,
-        args: &PostArgs<'_>,
-    ) -> anyhow::Result<hooks::post::PostFold> {
-        hooks::post::post(&self.post_plugins, ctx, args).await
+        args: &FinalizeArgs<'_>,
+    ) -> anyhow::Result<hooks::finalize::FinalizeFold> {
+        hooks::finalize::finalize(&self.finalize_plugins, ctx, args).await
     }
 
     /// Run the `compile_end` hook on EVERY settled plugin (not partitioned by
@@ -154,9 +154,9 @@ mod tests {
     };
 
     use crate::_types::context::{CommonPluginContext, ModuleInfo};
+    use crate::_types::hooks::finalize::FinalizeReturn;
     use crate::_types::hooks::notify::NotifyReturn;
-    use crate::_types::hooks::post::PostReturn;
-    use crate::_types::hooks::pre::PreReturn;
+    use crate::_types::hooks::prepare::PrepareReturn;
     use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
     use crate::SharedPluginable;
     use crate::plugin::Plugin;
@@ -222,14 +222,14 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre | HookUsage::Post
+            HookUsage::Prepare | HookUsage::Finalize
         }
 
-        fn pre<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: &'a PreArgs<'_>,
-        ) -> impl Future<Output = PreReturn> + Send {
+            _args: &'a PrepareArgs<'_>,
+        ) -> impl Future<Output = PrepareReturn> + Send {
             async move {
                 self.record();
 
@@ -237,11 +237,11 @@ mod tests {
             }
         }
 
-        fn post<'a>(
+        fn finalize<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: &'a PostArgs<'_>,
-        ) -> impl Future<Output = PostReturn> + Send {
+            _args: &'a FinalizeArgs<'_>,
+        ) -> impl Future<Output = FinalizeReturn> + Send {
             async move {
                 self.record();
 
@@ -251,22 +251,22 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct FailingPrePlugin;
+    struct FailingPreparePlugin;
 
-    impl Plugin for FailingPrePlugin {
+    impl Plugin for FailingPreparePlugin {
         fn name(&self) -> Cow<'static, str> {
-            "fail-pre".into()
+            "fail-prepare".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
 
-        fn pre<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: &'a PreArgs<'_>,
-        ) -> impl Future<Output = PreReturn> + Send {
+            _args: &'a PrepareArgs<'_>,
+        ) -> impl Future<Output = PrepareReturn> + Send {
             async move { Err(anyhow::anyhow!("boom")) }
         }
     }
@@ -467,35 +467,35 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct FailingPostPlugin;
+    struct FailingFinalizePlugin;
 
-    impl Plugin for FailingPostPlugin {
+    impl Plugin for FailingFinalizePlugin {
         fn name(&self) -> Cow<'static, str> {
-            "fail-post".into()
+            "fail-finalize".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Post
+            HookUsage::Finalize
         }
 
-        fn post(
+        fn finalize(
             &self,
             _ctx: &PluginContext<'_>,
-            _args: &PostArgs<'_>,
-        ) -> impl Future<Output = PostReturn> + Send {
+            _args: &FinalizeArgs<'_>,
+        ) -> impl Future<Output = FinalizeReturn> + Send {
             async move { Err(anyhow::anyhow!("boom")) }
         }
     }
 
     #[derive(Debug)]
-    struct PreOnlyPlugin {
+    struct PrepareOnlyPlugin {
         name: &'static str,
         log: Arc<Mutex<Vec<String>>>,
     }
 
-    impl PreOnlyPlugin {
+    impl PrepareOnlyPlugin {
         fn new(log: Arc<Mutex<Vec<String>>>) -> Self {
-            Self { name: "pre-only", log }
+            Self { name: "prepare-only", log }
         }
 
         fn record(&self) {
@@ -504,20 +504,20 @@ mod tests {
         }
     }
 
-    impl Plugin for PreOnlyPlugin {
+    impl Plugin for PrepareOnlyPlugin {
         fn name(&self) -> Cow<'static, str> {
             self.name.into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
 
-        fn pre<'a>(
+        fn prepare<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: &'a PreArgs<'_>,
-        ) -> impl Future<Output = PreReturn> + Send {
+            _args: &'a PrepareArgs<'_>,
+        ) -> impl Future<Output = PrepareReturn> + Send {
             async move {
                 self.record();
 
@@ -537,7 +537,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_pre_runs_all_plugins_in_order() {
+    async fn test_prepare_runs_all_plugins_in_order() {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
@@ -551,9 +551,10 @@ mod tests {
 
         let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        let args: PreArgs<'_> = PreArgs { code: "console.log(1);" };
+        let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 
-        let fold: hooks::pre::PreFold = driver.pre(&ctx, &args).await.unwrap();
+        let fold: hooks::prepare::PrepareFold =
+            driver.prepare(&ctx, &args).await.unwrap();
 
         assert!(fold.output.is_none());
 
@@ -565,13 +566,13 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_pre_error_aborts_and_names_plugin() {
+    async fn test_prepare_error_aborts_and_names_plugin() {
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(OrderPlugin::new(
                 "first",
                 Arc::new(Mutex::new(Vec::new())),
             )),
-            Plugin::new_shared(FailingPrePlugin),
+            Plugin::new_shared(FailingPreparePlugin),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
@@ -580,11 +581,14 @@ mod tests {
 
         let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        let args: PreArgs<'_> = PreArgs { code: "console.log(1);" };
+        let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
 
-        let err: anyhow::Error = driver.pre(&ctx, &args).await.unwrap_err();
+        let err: anyhow::Error = driver.prepare(&ctx, &args).await.unwrap_err();
 
-        assert!(format!("{err:#}").contains("`fail-pre` pre"), "{err:#}");
+        assert!(
+            format!("{err:#}").contains("`fail-prepare` prepare"),
+            "{err:#}"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -852,7 +856,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_post_runs_all_plugins_in_order() {
+    async fn test_finalize_runs_all_plugins_in_order() {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
@@ -866,10 +870,10 @@ mod tests {
 
         let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        let args: PostArgs<'_> = PostArgs { code: "console.log(1);" };
+        let args: FinalizeArgs<'_> = FinalizeArgs { code: "console.log(1);" };
 
-        let fold: hooks::post::PostFold =
-            driver.post(&ctx, &args).await.unwrap();
+        let fold: hooks::finalize::FinalizeFold =
+            driver.finalize(&ctx, &args).await.unwrap();
 
         assert!(fold.output.is_none());
 
@@ -881,13 +885,13 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_post_error_names_plugin() {
+    async fn test_finalize_error_names_plugin() {
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(OrderPlugin::new(
                 "first",
                 Arc::new(Mutex::new(Vec::new())),
             )),
-            Plugin::new_shared(FailingPostPlugin),
+            Plugin::new_shared(FailingFinalizePlugin),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
@@ -896,11 +900,15 @@ mod tests {
 
         let ctx: PluginContext<'_> = make_plugin_ctx(&common);
 
-        let args: PostArgs<'_> = PostArgs { code: "console.log(1);" };
+        let args: FinalizeArgs<'_> = FinalizeArgs { code: "console.log(1);" };
 
-        let err: anyhow::Error = driver.post(&ctx, &args).await.unwrap_err();
+        let err: anyhow::Error =
+            driver.finalize(&ctx, &args).await.unwrap_err();
 
-        assert!(format!("{err:#}").contains("`fail-post` post"), "{err:#}");
+        assert!(
+            format!("{err:#}").contains("`fail-finalize` finalize"),
+            "{err:#}"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -932,7 +940,7 @@ mod tests {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(PreOnlyPlugin::new(Arc::clone(&log)))];
+            vec![Plugin::new_shared(PrepareOnlyPlugin::new(Arc::clone(&log)))];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
@@ -940,7 +948,7 @@ mod tests {
 
         let recorded: Vec<String> = log.lock().unwrap().clone();
 
-        assert_eq!(driver.usage(), HookUsage::Pre);
+        assert_eq!(driver.usage(), HookUsage::Prepare);
         assert!(recorded.is_empty());
     }
 
@@ -950,19 +958,19 @@ mod tests {
         // aggregate (no options partition exists — the fixpoint runner owns
         // the options stage).
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(PreOnlyPlugin::new(Arc::new(Mutex::new(
+            Plugin::new_shared(PrepareOnlyPlugin::new(Arc::new(Mutex::new(
                 Vec::new(),
             )))),
-            Plugin::new_shared(FailingPrePlugin),
+            Plugin::new_shared(FailingPreparePlugin),
             Plugin::new_shared(MarkPlugin),
-            Plugin::new_shared(FailingPostPlugin),
+            Plugin::new_shared(FailingFinalizePlugin),
         ];
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
         assert_eq!(
             driver.usage(),
-            HookUsage::Pre | HookUsage::Transform | HookUsage::Post
+            HookUsage::Prepare | HookUsage::Transform | HookUsage::Finalize
         );
     }
 
@@ -986,7 +994,7 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::Pre
+            HookUsage::Prepare
         }
 
         fn compile_start<'a>(
@@ -1199,7 +1207,7 @@ mod tests {
     async fn test_compile_start_runs_all_plugins_not_partitioned() {
         // compile_start reaches plugins that did NOT declare it via usage
         // partitioning... actually it reaches ALL settled plugins: the
-        // OrderPlugin declares Pre|Post only, yet its compile_start must
+        // OrderPlugin declares Prepare|Finalize only, yet its compile_start must
         // still run (R5: invoke on all plugins).
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 

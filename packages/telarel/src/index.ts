@@ -15,8 +15,11 @@ export type {
 } from "#/@types/plugin/context";
 export type { CompileEndArgs } from "#/@types/plugin/hooks/compile-end";
 export type { CompileStartArgs } from "#/@types/plugin/hooks/compile-start";
-export type { PostArgs, PostResult } from "#/@types/plugin/hooks/post";
-export type { PreArgs, PreResult } from "#/@types/plugin/hooks/pre";
+export type {
+    FinalizeArgs,
+    FinalizeResult,
+} from "#/@types/plugin/hooks/finalize";
+export type { PrepareArgs, PrepareResult } from "#/@types/plugin/hooks/prepare";
 export type {
     TransformArgs,
     TransformResult,

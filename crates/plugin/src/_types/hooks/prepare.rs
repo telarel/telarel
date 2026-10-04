@@ -1,23 +1,23 @@
 use crate::_types::sourcemap::SourceMap;
 
-/// Arguments for the `pre` hook.
+/// Arguments for the `prepare` hook.
 #[derive(Debug, Clone, Copy)]
-pub struct PreArgs<'a> {
+pub struct PrepareArgs<'a> {
     /// The code to be compiled.
     pub code: &'a str,
 }
 
-/// Result of the `pre` hook: the updated code and an optional incremental map.
+/// Result of the `prepare` hook: the updated code and an optional incremental map.
 #[derive(Debug, Clone)]
-pub struct PreOutput {
+pub struct PrepareOutput {
     /// The updated code.
     pub code: String,
     /// The updated source map, relative to the code this hook received.
     pub map: Option<SourceMap>,
 }
 
-/// The `pre` hook return: replacement code with an optional map, `None`, or an error.
-pub type PreReturn = anyhow::Result<Option<PreOutput>>;
+/// The `prepare` hook return: replacement code with an optional map, `None`, or an error.
+pub type PrepareReturn = anyhow::Result<Option<PrepareOutput>>;
 
 #[cfg(test)]
 mod tests {
@@ -26,16 +26,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_pre_output_without_map() {
-        let output: PreOutput =
-            PreOutput { code: String::from("let a;"), map: None };
+    fn test_prepare_output_without_map() {
+        let output: PrepareOutput =
+            PrepareOutput { code: String::from("let a;"), map: None };
 
         assert_eq!(output.code, "let a;");
         assert!(output.map.is_none());
     }
 
     #[test]
-    fn test_pre_output_with_map() {
+    fn test_prepare_output_with_map() {
         let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
 
         builder.set_file("a.ts");
@@ -46,8 +46,8 @@ mod tests {
 
         let map: SourceMap = builder.into_owned_sourcemap().into_inner();
 
-        let output: PreOutput =
-            PreOutput { code: String::from("let a;"), map: Some(map) };
+        let output: PrepareOutput =
+            PrepareOutput { code: String::from("let a;"), map: Some(map) };
 
         assert_eq!(output.code, "let a;");
         assert_eq!(

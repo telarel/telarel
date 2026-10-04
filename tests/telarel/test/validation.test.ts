@@ -176,14 +176,14 @@ describe("validation", (): void => {
             plugins: [
                 {
                     name: "dup",
-                    pre: (ctx: PluginContext): void => {
+                    prepare: (ctx: PluginContext): void => {
                         seen.push("dup.first");
                         ctx.state.set("marker", "first");
                     },
                 },
                 {
                     name: "dup",
-                    pre: (ctx: PluginContext): void => {
+                    prepare: (ctx: PluginContext): void => {
                         seen.push("dup.second");
                         seen.push(String(ctx.state.get("marker")));
                     },

@@ -10,10 +10,10 @@ use telarel_common::HookUsage;
 use crate::_types::context::{CommonPluginContext, PluginContext};
 use crate::_types::hooks::compile_end::CompileEndArgs;
 use crate::_types::hooks::compile_start::CompileStartArgs;
+use crate::_types::hooks::finalize::{FinalizeArgs, FinalizeReturn};
 use crate::_types::hooks::notify::NotifyReturn;
 use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
-use crate::_types::hooks::post::{PostArgs, PostReturn};
-use crate::_types::hooks::pre::{PreArgs, PreReturn};
+use crate::_types::hooks::prepare::{PrepareArgs, PrepareReturn};
 use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
 use crate::plugin::Plugin;
 
@@ -51,12 +51,12 @@ pub trait Pluginable: Any + Send + Sync + 'static {
         args: &'a CompileStartArgs,
     ) -> HookFuture<'a, NotifyReturn>;
 
-    /// Call the `pre` hook.
-    fn call_pre<'a>(
+    /// Call the `prepare` hook.
+    fn call_prepare<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a PreArgs<'_>,
-    ) -> HookFuture<'a, PreReturn>;
+        args: &'a PrepareArgs<'_>,
+    ) -> HookFuture<'a, PrepareReturn>;
 
     /// Call the `transform` hook.
     fn call_transform<'a, 'ast: 'a>(
@@ -65,12 +65,12 @@ pub trait Pluginable: Any + Send + Sync + 'static {
         args: TransformArgs<'ast>,
     ) -> LocalHookFuture<'a, TransformReturn<'ast>>;
 
-    /// Call the `post` hook.
-    fn call_post<'a>(
+    /// Call the `finalize` hook.
+    fn call_finalize<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a PostArgs<'_>,
-    ) -> HookFuture<'a, PostReturn>;
+        args: &'a FinalizeArgs<'_>,
+    ) -> HookFuture<'a, FinalizeReturn>;
 
     /// Call the `compile_end` hook; notify-only.
     fn call_compile_end<'a>(
@@ -105,12 +105,12 @@ impl<T: Plugin> Pluginable for T {
         Box::pin(Plugin::compile_start(self, ctx, args))
     }
 
-    fn call_pre<'a>(
+    fn call_prepare<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a PreArgs<'_>,
-    ) -> HookFuture<'a, PreReturn> {
-        Box::pin(Plugin::pre(self, ctx, args))
+        args: &'a PrepareArgs<'_>,
+    ) -> HookFuture<'a, PrepareReturn> {
+        Box::pin(Plugin::prepare(self, ctx, args))
     }
 
     fn call_transform<'a, 'ast: 'a>(
@@ -121,12 +121,12 @@ impl<T: Plugin> Pluginable for T {
         Box::pin(Plugin::transform(self, ctx, args))
     }
 
-    fn call_post<'a>(
+    fn call_finalize<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a PostArgs<'_>,
-    ) -> HookFuture<'a, PostReturn> {
-        Box::pin(Plugin::post(self, ctx, args))
+        args: &'a FinalizeArgs<'_>,
+    ) -> HookFuture<'a, FinalizeReturn> {
+        Box::pin(Plugin::finalize(self, ctx, args))
     }
 
     fn call_compile_end<'a>(
