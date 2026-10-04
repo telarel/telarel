@@ -10,11 +10,20 @@ import type {
 } from "#/@types/plugin/context";
 import type { CompileEndArgs } from "#/@types/plugin/hooks/compile-end";
 import type { CompileStartArgs } from "#/@types/plugin/hooks/compile-start";
-import type { FinalizeResult } from "#/@types/plugin/hooks/finalize";
-import type { PrepareResult } from "#/@types/plugin/hooks/prepare";
-import type { TransformResult } from "#/@types/plugin/hooks/transform";
+import type {
+    FinalizeArgs,
+    FinalizeResult,
+} from "#/@types/plugin/hooks/finalize";
+import type { PrepareArgs, PrepareResult } from "#/@types/plugin/hooks/prepare";
+import type {
+    TransformArgs,
+    TransformResult,
+} from "#/@types/plugin/hooks/transform";
 import type { Options, OptionsArgs } from "#/@types/plugin/options";
 import type { SourceMap } from "#/@types/sourcemap";
+import type { NormalizedHook } from "#/bridges/normalize-hook";
+
+import { normalizeHook } from "#/bridges/normalize-hook";
 
 /**
  * Raw plugin context, as carried by every ctx-bearing hook payload: scalar
@@ -70,29 +79,37 @@ type RawOptionsOutput = {
 
 type RawTransformOutput = { astJson: string } | null;
 
+type RawHookMeta = { order?: "pre" | "post" };
+
 type RawHookPlugin = {
     name: string;
     options?: (args: RawOptionsArgs) => Promise<RawOptionsOutput | null>;
+    optionsMeta?: RawHookMeta;
     compileStart?: (
         ctx: RawPluginContext,
         args: RawCompileStartArgs,
     ) => Promise<void>;
+    compileStartMeta?: RawHookMeta;
     prepare?: (
         ctx: RawPluginContext,
         args: RawStageArgs,
     ) => Promise<RawStageOutput | null>;
+    prepareMeta?: RawHookMeta;
     transform?: (
         ctx: RawPluginContext,
         args: RawTransformArgs,
     ) => Promise<RawTransformOutput | null>;
+    transformMeta?: RawHookMeta;
     finalize?: (
         ctx: RawPluginContext,
         args: RawStageArgs,
     ) => Promise<RawStageOutput | null>;
+    finalizeMeta?: RawHookMeta;
     compileEnd?: (
         ctx: RawPluginContext,
         args: RawCompileEndArgs,
     ) => Promise<void>;
+    compileEndMeta?: RawHookMeta;
 };
 
 type RawBuiltinPlugin = {
@@ -155,7 +172,43 @@ type ToRawPluginOptions = {
     state: PluginState;
 };
 
+type OptionsHook = (
+    ctx: CommonPluginContext,
+    args: OptionsArgs,
+) => Options | null | void | Promise<Options | null | void>;
+
+type CompileStartHook = (
+    ctx: PluginContext,
+    args: CompileStartArgs,
+) => void | Promise<void>;
+
+type PrepareHook = (
+    ctx: PluginContext,
+    args: PrepareArgs,
+) => PrepareResult | null | void | Promise<PrepareResult | null | void>;
+
+type TransformHook = (
+    ctx: PluginContext,
+    args: TransformArgs,
+) => TransformResult | null | void | Promise<TransformResult | null | void>;
+
+type FinalizeHook = (
+    ctx: PluginContext,
+    args: FinalizeArgs,
+) => FinalizeResult | null | void | Promise<FinalizeResult | null | void>;
+
+type CompileEndHook = (
+    ctx: PluginContext,
+    args: CompileEndArgs,
+) => void | Promise<void>;
+
 const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
+    if (typeof plugin === "function" || Array.isArray(plugin)) {
+        throw new TypeError(
+            "plugin must be an object with a `name`; compose with a spread instead of nesting arrays or passing factories",
+        );
+    }
+
     if (isWrappedPlugin(plugin)) {
         return plugin as unknown as RawPlugin;
     }
@@ -196,9 +249,13 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
         state,
     });
 
-    const options: Plugin["options"] = plugin.options;
+    const options: NormalizedHook<OptionsHook> = normalizeHook<OptionsHook>(
+        plugin.options,
+    );
 
-    if (typeof options === "function") {
+    if (typeof options.handler === "function") {
+        const optionsHandler: OptionsHook = options.handler;
+
         raw.options = async (
             rawArgs: RawOptionsArgs,
         ): Promise<RawOptionsOutput | null> => {
@@ -226,7 +283,10 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
 
             const args: OptionsArgs = { options: bag };
 
-            const result: Options | null | void = await options(ctx, args);
+            const result: Options | null | void = await optionsHandler(
+                ctx,
+                args,
+            );
 
             if (result === null || result === void 0) {
                 return null;
@@ -260,11 +320,18 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
 
             return output;
         };
+
+        if (options.meta.order !== void 0) {
+            raw.optionsMeta = { order: options.meta.order };
+        }
     }
 
-    const compileStart: Plugin["compileStart"] = plugin.compileStart;
+    const compileStart: NormalizedHook<CompileStartHook> =
+        normalizeHook<CompileStartHook>(plugin.compileStart);
 
-    if (typeof compileStart === "function") {
+    if (typeof compileStart.handler === "function") {
+        const compileStartHandler: CompileStartHook = compileStart.handler;
+
         raw.compileStart = async (
             rawCtx: RawPluginContext,
             rawArgs: RawCompileStartArgs,
@@ -280,39 +347,52 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
                 },
             };
 
-            await compileStart(toContext(rawCtx), args);
+            await compileStartHandler(toContext(rawCtx), args);
         };
+
+        if (compileStart.meta.order !== void 0) {
+            raw.compileStartMeta = { order: compileStart.meta.order };
+        }
     }
 
-    const prepare: Plugin["prepare"] = plugin.prepare;
+    const prepare: NormalizedHook<PrepareHook> = normalizeHook<PrepareHook>(
+        plugin.prepare,
+    );
 
-    if (typeof prepare === "function") {
+    if (typeof prepare.handler === "function") {
+        const prepareHandler: PrepareHook = prepare.handler;
+
         raw.prepare = async (
             rawCtx: RawPluginContext,
             rawArgs: RawStageArgs,
         ): Promise<RawStageOutput | null> => {
-            const result: PrepareResult | null | void = await prepare(
+            const result: PrepareResult | null | void = await prepareHandler(
                 toContext(rawCtx),
                 { code: rawArgs.code },
             );
 
             return toRawStageOutput(result as PrepareResult | null | void);
         };
+
+        if (prepare.meta.order !== void 0) {
+            raw.prepareMeta = { order: prepare.meta.order };
+        }
     }
 
-    const transform: Plugin["transform"] = plugin.transform;
+    const transform: NormalizedHook<TransformHook> =
+        normalizeHook<TransformHook>(plugin.transform);
 
-    if (typeof transform === "function") {
+    if (typeof transform.handler === "function") {
+        const transformHandler: TransformHook = transform.handler;
+
         raw.transform = async (
             rawCtx: RawPluginContext,
             rawArgs: RawTransformArgs,
         ): Promise<RawTransformOutput | null> => {
             const ast: Program = JSON.parse(rawArgs.astJson) as Program;
 
-            const result: TransformResult | null | void = await transform(
-                toContext(rawCtx),
-                { ast },
-            );
+            const result: TransformResult | null | void =
+                await transformHandler(toContext(rawCtx), { ast });
 
             if (result === null || result === void 0) {
                 return null;
@@ -320,27 +400,42 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
 
             return { astJson: JSON.stringify(result.ast) };
         };
+
+        if (transform.meta.order !== void 0) {
+            raw.transformMeta = { order: transform.meta.order };
+        }
     }
 
-    const finalize: Plugin["finalize"] = plugin.finalize;
+    const finalize: NormalizedHook<FinalizeHook> = normalizeHook<FinalizeHook>(
+        plugin.finalize,
+    );
 
-    if (typeof finalize === "function") {
+    if (typeof finalize.handler === "function") {
+        const finalizeHandler: FinalizeHook = finalize.handler;
+
         raw.finalize = async (
             rawCtx: RawPluginContext,
             rawArgs: RawStageArgs,
         ): Promise<RawStageOutput | null> => {
-            const result: FinalizeResult | null | void = await finalize(
+            const result: FinalizeResult | null | void = await finalizeHandler(
                 toContext(rawCtx),
                 { code: rawArgs.code },
             );
 
             return toRawStageOutput(result as FinalizeResult | null | void);
         };
+
+        if (finalize.meta.order !== void 0) {
+            raw.finalizeMeta = { order: finalize.meta.order };
+        }
     }
 
-    const compileEnd: Plugin["compileEnd"] = plugin.compileEnd;
+    const compileEnd: NormalizedHook<CompileEndHook> =
+        normalizeHook<CompileEndHook>(plugin.compileEnd);
 
-    if (typeof compileEnd === "function") {
+    if (typeof compileEnd.handler === "function") {
+        const compileEndHandler: CompileEndHook = compileEnd.handler;
+
         raw.compileEnd = async (
             rawCtx: RawPluginContext,
             rawArgs: RawCompileEndArgs,
@@ -355,8 +450,12 @@ const toRawPlugin = ({ plugin, state }: ToRawPluginOptions): RawPlugin => {
                 args.err = new Error(rawArgs.err);
             }
 
-            await compileEnd(toContext(rawCtx), args);
+            await compileEndHandler(toContext(rawCtx), args);
         };
+
+        if (compileEnd.meta.order !== void 0) {
+            raw.compileEndMeta = { order: compileEnd.meta.order };
+        }
     }
 
     return raw;

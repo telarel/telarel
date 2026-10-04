@@ -32,7 +32,7 @@ type CompleteOptions = {
      */
     sourceType: SourceType;
     /**
-     * Plugins to run, in order.
+     * Plugins to run.
      *
      * By default, it is `[]`. Duplicates are allowed.
      */

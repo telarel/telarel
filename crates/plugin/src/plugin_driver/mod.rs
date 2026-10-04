@@ -10,16 +10,42 @@ use crate::_types::hooks::compile_start::CompileStartArgs;
 use crate::_types::hooks::finalize::FinalizeArgs;
 use crate::_types::hooks::prepare::PrepareArgs;
 use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
+use crate::_types::order::{PluginHookMeta, PluginOrder};
 use crate::plugin::pluginable::SharedPluginable;
 
-/// Drives plugins through the hooks in registration order.
+/// Order plugins by their per-hook meta: `[pre, normal, post]`, stable within a
+/// bucket. A plugin whose hook meta is `None`, or whose meta carries
+/// `order: None`, lands in the normal bucket.
+pub fn sort_plugins_by_hook_meta(
+    plugins: &[SharedPluginable],
+    get_hook_meta: fn(&SharedPluginable) -> Option<PluginHookMeta>,
+) -> Vec<SharedPluginable> {
+    let mut pre: Vec<SharedPluginable> = Vec::new();
+    let mut normal: Vec<SharedPluginable> = Vec::new();
+    let mut post: Vec<SharedPluginable> = Vec::new();
+
+    for plugin in plugins {
+        match get_hook_meta(plugin).and_then(|meta| meta.order) {
+            | Some(PluginOrder::Pre) => pre.push(Arc::clone(plugin)),
+            | Some(PluginOrder::Post) => post.push(Arc::clone(plugin)),
+            | None => normal.push(Arc::clone(plugin)),
+        }
+    }
+
+    [pre, normal, post].concat()
+}
+
+/// Drives plugins through the hooks, each ordered by its per-hook meta
+/// (`[pre, normal, post]`, stable within a bucket).
 pub struct PluginDriver {
     /// The full settled plugin list; `compile_start`/`compile_end` iterate it.
     all_plugins: Vec<SharedPluginable>,
     usage: HookUsage,
+    compile_start_plugins: Vec<SharedPluginable>,
     prepare_plugins: Vec<SharedPluginable>,
     transform_plugins: Vec<SharedPluginable>,
     finalize_plugins: Vec<SharedPluginable>,
+    compile_end_plugins: Vec<SharedPluginable>,
 }
 
 impl PluginDriver {
@@ -54,12 +80,39 @@ impl PluginDriver {
             }
         }
 
+        let compile_start_plugins: Vec<SharedPluginable> =
+            sort_plugins_by_hook_meta(&plugins, |plugin| {
+                plugin.call_compile_start_meta()
+            });
+
+        let prepare_plugins: Vec<SharedPluginable> =
+            sort_plugins_by_hook_meta(&prepare_plugins, |plugin| {
+                plugin.call_prepare_meta()
+            });
+
+        let transform_plugins: Vec<SharedPluginable> =
+            sort_plugins_by_hook_meta(&transform_plugins, |plugin| {
+                plugin.call_transform_meta()
+            });
+
+        let finalize_plugins: Vec<SharedPluginable> =
+            sort_plugins_by_hook_meta(&finalize_plugins, |plugin| {
+                plugin.call_finalize_meta()
+            });
+
+        let compile_end_plugins: Vec<SharedPluginable> =
+            sort_plugins_by_hook_meta(&plugins, |plugin| {
+                plugin.call_compile_end_meta()
+            });
+
         Self {
             all_plugins: plugins,
             usage,
+            compile_start_plugins,
             prepare_plugins,
             transform_plugins,
             finalize_plugins,
+            compile_end_plugins,
         }
     }
 
@@ -83,10 +136,15 @@ impl PluginDriver {
         ctx: &PluginContext<'_>,
         args: &CompileStartArgs,
     ) -> anyhow::Result<()> {
-        hooks::compile_start::compile_start(&self.all_plugins, ctx, args).await
+        hooks::compile_start::compile_start(
+            &self.compile_start_plugins,
+            ctx,
+            args,
+        )
+        .await
     }
 
-    /// Run the `prepare` hook on every plugin in registration order;
+    /// Run the `prepare` hook on every plugin in meta-ranked order;
     /// `Some` replaces the carried code, `None` keeps it. The fold result
     /// carries every returned map in fold order so the caller composes the
     /// full chain (see [`hooks::prepare::PrepareFold`]).
@@ -108,7 +166,7 @@ impl PluginDriver {
         hooks::transform::transform(&self.transform_plugins, ctx, args).await
     }
 
-    /// Run the `finalize` hook on every plugin in registration order;
+    /// Run the `finalize` hook on every plugin in meta-ranked order;
     /// `Some` replaces the carried code, `None` keeps it. The fold result
     /// carries every returned map in fold order so the caller composes the
     /// full chain (see [`hooks::finalize::FinalizeFold`]).
@@ -128,7 +186,8 @@ impl PluginDriver {
         ctx: &PluginContext<'_>,
         args: &CompileEndArgs,
     ) -> anyhow::Result<()> {
-        hooks::compile_end::compile_end(&self.all_plugins, ctx, args).await
+        hooks::compile_end::compile_end(&self.compile_end_plugins, ctx, args)
+            .await
     }
 }
 
@@ -158,6 +217,7 @@ mod tests {
     use crate::_types::hooks::notify::NotifyReturn;
     use crate::_types::hooks::prepare::PrepareReturn;
     use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
+    use crate::_types::order::{PluginHookMeta, PluginOrder};
     use crate::SharedPluginable;
     use crate::plugin::Plugin;
     use crate::plugin::pluginable::Pluginable;
@@ -1355,6 +1415,634 @@ mod tests {
         assert_eq!(
             driver.settled_names(),
             vec![String::from("mark"), String::from("mark")],
+        );
+    }
+
+    #[derive(Debug)]
+    struct MetaOrderPlugin {
+        name: &'static str,
+        log: Arc<Mutex<Vec<String>>>,
+        prepare_meta: Option<PluginHookMeta>,
+        transform_meta: Option<PluginHookMeta>,
+        finalize_meta: Option<PluginHookMeta>,
+        compile_start_meta: Option<PluginHookMeta>,
+        compile_end_meta: Option<PluginHookMeta>,
+    }
+
+    impl MetaOrderPlugin {
+        fn new(
+            name: &'static str,
+            log: &Arc<Mutex<Vec<String>>>,
+        ) -> Self {
+            Self {
+                name,
+                log: Arc::clone(log),
+                prepare_meta: None,
+                transform_meta: None,
+                finalize_meta: None,
+                compile_start_meta: None,
+                compile_end_meta: None,
+            }
+        }
+
+        fn with_prepare_meta(
+            mut self,
+            order: PluginOrder,
+        ) -> Self {
+            self.prepare_meta = Some(PluginHookMeta { order: Some(order) });
+
+            self
+        }
+
+        fn with_prepare_meta_none(mut self) -> Self {
+            self.prepare_meta = Some(PluginHookMeta { order: None });
+
+            self
+        }
+
+        fn with_transform_meta(
+            mut self,
+            order: PluginOrder,
+        ) -> Self {
+            self.transform_meta = Some(PluginHookMeta { order: Some(order) });
+
+            self
+        }
+
+        fn with_finalize_meta(
+            mut self,
+            order: PluginOrder,
+        ) -> Self {
+            self.finalize_meta = Some(PluginHookMeta { order: Some(order) });
+
+            self
+        }
+
+        fn with_compile_start_meta(
+            mut self,
+            order: PluginOrder,
+        ) -> Self {
+            self.compile_start_meta =
+                Some(PluginHookMeta { order: Some(order) });
+
+            self
+        }
+
+        fn with_compile_end_meta(
+            mut self,
+            order: PluginOrder,
+        ) -> Self {
+            self.compile_end_meta = Some(PluginHookMeta { order: Some(order) });
+
+            self
+        }
+
+        fn record(
+            &self,
+            stage: &str,
+        ) {
+            let mut log: MutexGuard<'_, Vec<String>> = self.log.lock().unwrap();
+
+            log.push([self.name.to_string(), stage.to_string()].join(":"));
+        }
+    }
+
+    impl Plugin for MetaOrderPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            self.name.into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Prepare | HookUsage::Transform | HookUsage::Finalize
+        }
+
+        fn prepare_meta(&self) -> Option<PluginHookMeta> {
+            self.prepare_meta
+        }
+
+        fn transform_meta(&self) -> Option<PluginHookMeta> {
+            self.transform_meta
+        }
+
+        fn finalize_meta(&self) -> Option<PluginHookMeta> {
+            self.finalize_meta
+        }
+
+        fn compile_start_meta(&self) -> Option<PluginHookMeta> {
+            self.compile_start_meta
+        }
+
+        fn compile_end_meta(&self) -> Option<PluginHookMeta> {
+            self.compile_end_meta
+        }
+
+        fn prepare<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a PrepareArgs<'_>,
+        ) -> impl Future<Output = PrepareReturn> + Send {
+            async move {
+                self.record("prepare");
+
+                Ok(None)
+            }
+        }
+
+        fn finalize<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a FinalizeArgs<'_>,
+        ) -> impl Future<Output = FinalizeReturn> + Send {
+            async move {
+                self.record("finalize");
+
+                Ok(None)
+            }
+        }
+
+        fn transform<'a, 'ast: 'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'a>,
+            _args: TransformArgs<'ast>,
+        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+            async move {
+                self.record("transform");
+
+                Ok(None)
+            }
+        }
+
+        fn compile_start<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a crate::CompileStartArgs,
+        ) -> impl Future<Output = NotifyReturn> + Send {
+            async move {
+                self.record("compile_start");
+
+                Ok(())
+            }
+        }
+
+        fn compile_end<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a crate::CompileEndArgs,
+        ) -> impl Future<Output = NotifyReturn> + Send {
+            async move {
+                self.record("compile_end");
+
+                Ok(())
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_prepare_pre_normal_post_interleaving() {
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(MetaOrderPlugin::new("a", &log)),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("b", &log)
+                    .with_prepare_meta(PluginOrder::Pre),
+            ),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("c", &log)
+                    .with_prepare_meta(PluginOrder::Post),
+            ),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
+
+        driver.prepare(&ctx, &args).await.unwrap();
+
+        let recorded: Vec<String> = log.lock().unwrap().clone();
+
+        assert_eq!(
+            recorded,
+            vec![
+                "b:prepare".to_string(),
+                "a:prepare".to_string(),
+                "c:prepare".to_string(),
+            ],
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_prepare_stable_within_bucket() {
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(MetaOrderPlugin::new("normal", &log)),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("pre-1", &log)
+                    .with_prepare_meta(PluginOrder::Pre),
+            ),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("pre-2", &log)
+                    .with_prepare_meta(PluginOrder::Pre),
+            ),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("post-1", &log)
+                    .with_prepare_meta(PluginOrder::Post),
+            ),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("post-2", &log)
+                    .with_prepare_meta(PluginOrder::Post),
+            ),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
+
+        driver.prepare(&ctx, &args).await.unwrap();
+
+        let recorded: Vec<String> = log.lock().unwrap().clone();
+
+        assert_eq!(
+            recorded,
+            vec![
+                "pre-1:prepare".to_string(),
+                "pre-2:prepare".to_string(),
+                "normal:prepare".to_string(),
+                "post-1:prepare".to_string(),
+                "post-2:prepare".to_string(),
+            ],
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_meta_is_per_hook() {
+        // `meta` is `Pre` on prepare but normal on finalize: it leads the
+        // prepare fold yet trails `plain` for finalize.
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(MetaOrderPlugin::new("plain", &log)),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("meta", &log)
+                    .with_prepare_meta(PluginOrder::Pre),
+            ),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let args: PrepareArgs<'_> = PrepareArgs { code: "console.log(1);" };
+
+        driver.prepare(&ctx, &args).await.unwrap();
+
+        assert_eq!(
+            log.lock().unwrap().clone(),
+            vec!["meta:prepare".to_string(), "plain:prepare".to_string()],
+        );
+
+        log.lock().unwrap().clear();
+
+        let finalize_args: FinalizeArgs<'_> =
+            FinalizeArgs { code: "console.log(1);" };
+
+        driver.finalize(&ctx, &finalize_args).await.unwrap();
+
+        assert_eq!(
+            log.lock().unwrap().clone(),
+            vec!["plain:finalize".to_string(), "meta:finalize".to_string()],
+        );
+    }
+
+    #[test]
+    fn test_sort_plugins_by_hook_meta_buckets_and_stability() {
+        // Scrambled registration: normal, pre, post, pre, normal, post.
+        // Ranking must yield [pre, pre, normal, normal, post, post], stable.
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(MetaOrderPlugin::new("n1", &log)),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("pre1", &log)
+                    .with_prepare_meta(PluginOrder::Pre),
+            ),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("post1", &log)
+                    .with_prepare_meta(PluginOrder::Post),
+            ),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("pre2", &log)
+                    .with_prepare_meta(PluginOrder::Pre),
+            ),
+            Plugin::new_shared(MetaOrderPlugin::new("n2", &log)),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("post2", &log)
+                    .with_prepare_meta(PluginOrder::Post),
+            ),
+        ];
+
+        let ranked: Vec<SharedPluginable> =
+            sort_plugins_by_hook_meta(&plugins, |plugin| {
+                plugin.call_prepare_meta()
+            });
+
+        let names: Vec<String> = ranked
+            .iter()
+            .map(|plugin| plugin.call_name().into_owned())
+            .collect();
+
+        assert_eq!(
+            names,
+            vec![
+                "pre1".to_string(),
+                "pre2".to_string(),
+                "n1".to_string(),
+                "n2".to_string(),
+                "post1".to_string(),
+                "post2".to_string(),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_sort_plugins_by_hook_meta_empty_and_all_normal() {
+        let empty: Vec<SharedPluginable> =
+            sort_plugins_by_hook_meta(&[], |plugin| plugin.call_prepare_meta());
+
+        assert!(empty.is_empty());
+
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(MetaOrderPlugin::new("a", &log)),
+            Plugin::new_shared(MetaOrderPlugin::new("b", &log)),
+        ];
+
+        let ranked: Vec<SharedPluginable> =
+            sort_plugins_by_hook_meta(&plugins, |plugin| {
+                plugin.call_prepare_meta()
+            });
+
+        let names: Vec<String> = ranked
+            .iter()
+            .map(|plugin| plugin.call_name().into_owned())
+            .collect();
+
+        assert_eq!(names, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn test_sort_plugins_by_hook_meta_meta_without_order_is_normal() {
+        // `Some(PluginHookMeta { order: None })` must land in the normal
+        // bucket: a present meta without an order is not a promotion.
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(
+                MetaOrderPlugin::new("pre", &log)
+                    .with_prepare_meta(PluginOrder::Pre),
+            ),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("meta-none", &log)
+                    .with_prepare_meta_none(),
+            ),
+            Plugin::new_shared(MetaOrderPlugin::new("plain", &log)),
+        ];
+
+        let ranked: Vec<SharedPluginable> =
+            sort_plugins_by_hook_meta(&plugins, |plugin| {
+                plugin.call_prepare_meta()
+            });
+
+        let names: Vec<String> = ranked
+            .iter()
+            .map(|plugin| plugin.call_name().into_owned())
+            .collect();
+
+        assert_eq!(
+            names,
+            vec![
+                "pre".to_string(),
+                "meta-none".to_string(),
+                "plain".to_string(),
+            ],
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_pre_normal_post_interleaving() {
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(MetaOrderPlugin::new("a", &log)),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("b", &log)
+                    .with_transform_meta(PluginOrder::Pre),
+            ),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("c", &log)
+                    .with_transform_meta(PluginOrder::Post),
+            ),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let allocator: Allocator = Allocator::default();
+
+        let parsed: ParseResult<'_> = test_parse_program(&allocator);
+
+        let args: TransformArgs<'_> =
+            TransformArgs { allocator: &allocator, ast: &parsed.program };
+
+        driver.transform(&ctx, &args).await.unwrap();
+
+        assert_eq!(
+            log.lock().unwrap().clone(),
+            vec![
+                "b:transform".to_string(),
+                "a:transform".to_string(),
+                "c:transform".to_string(),
+            ],
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_finalize_pre_normal_post_interleaving() {
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(MetaOrderPlugin::new("a", &log)),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("b", &log)
+                    .with_finalize_meta(PluginOrder::Pre),
+            ),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("c", &log)
+                    .with_finalize_meta(PluginOrder::Post),
+            ),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        let args: FinalizeArgs<'_> = FinalizeArgs { code: "console.log(1);" };
+
+        driver.finalize(&ctx, &args).await.unwrap();
+
+        assert_eq!(
+            log.lock().unwrap().clone(),
+            vec![
+                "b:finalize".to_string(),
+                "a:finalize".to_string(),
+                "c:finalize".to_string(),
+            ],
+        );
+    }
+
+    #[derive(Debug)]
+    struct OptionsMetaNotifyPlugin {
+        name: &'static str,
+        options_meta: Option<PluginHookMeta>,
+        log: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Plugin for OptionsMetaNotifyPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            self.name.into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::CompileStart
+        }
+
+        fn options_meta(&self) -> Option<PluginHookMeta> {
+            self.options_meta
+        }
+
+        fn compile_start<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a crate::CompileStartArgs,
+        ) -> impl Future<Output = NotifyReturn> + Send {
+            async move {
+                self.log.lock().unwrap().push(self.name.to_string());
+
+                Ok(())
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_meta_does_not_leak_into_compile_start_order() {
+        // A plugin with `options: Pre` must NOT be promoted in the
+        // compile_start bucket: options meta is per-hook and the driver only
+        // reads compile_start meta. `pre-options` still trails the normal
+        // plugin in registration order.
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(OptionsMetaNotifyPlugin {
+                name: "normal",
+                options_meta: None,
+                log: Arc::clone(&log),
+            }),
+            Plugin::new_shared(OptionsMetaNotifyPlugin {
+                name: "pre-options",
+                options_meta: Some(PluginHookMeta {
+                    order: Some(PluginOrder::Pre),
+                }),
+                log: Arc::clone(&log),
+            }),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        driver.compile_start(&ctx, &make_start_args()).await.unwrap();
+
+        assert_eq!(
+            log.lock().unwrap().clone(),
+            vec!["normal".to_string(), "pre-options".to_string()],
+        );
+
+        assert_eq!(
+            driver.settled_names(),
+            vec!["normal".to_string(), "pre-options".to_string()],
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_notify_hooks_ordered_while_settled_names_stay_registration() {
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(MetaOrderPlugin::new("a", &log)),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("b", &log)
+                    .with_compile_start_meta(PluginOrder::Pre)
+                    .with_compile_end_meta(PluginOrder::Pre),
+            ),
+            Plugin::new_shared(
+                MetaOrderPlugin::new("c", &log)
+                    .with_compile_start_meta(PluginOrder::Post)
+                    .with_compile_end_meta(PluginOrder::Post),
+            ),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let common: CommonPluginContext = common_ctx();
+
+        let ctx: PluginContext<'_> = make_plugin_ctx(&common);
+
+        driver.compile_start(&ctx, &make_start_args()).await.unwrap();
+
+        assert_eq!(
+            log.lock().unwrap().clone(),
+            vec![
+                "b:compile_start".to_string(),
+                "a:compile_start".to_string(),
+                "c:compile_start".to_string(),
+            ],
+        );
+
+        log.lock().unwrap().clear();
+
+        driver.compile_end(&ctx, &make_end_args()).await.unwrap();
+
+        assert_eq!(
+            log.lock().unwrap().clone(),
+            vec![
+                "b:compile_end".to_string(),
+                "a:compile_end".to_string(),
+                "c:compile_end".to_string(),
+            ],
+        );
+
+        assert_eq!(
+            driver.settled_names(),
+            vec!["a".to_string(), "b".to_string(), "c".to_string()],
         );
     }
 }

@@ -1,7 +1,7 @@
 export type { BuiltinPlugin } from "#/@types/builtin";
 export type { CompileOptions, CompileResult } from "#/@types/compile";
 export type { Language, SourceType } from "#/@types/grammar";
-export type { Plugin } from "#/@types/plugin";
+export type { ObjectHook, Plugin, PluginOrder } from "#/@types/plugin";
 export type {
     Options,
     OptionsArgs,

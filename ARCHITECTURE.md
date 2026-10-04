@@ -70,9 +70,11 @@ Semantics:
 - **Notify** — `compile_start` and `compile_end` ignore the return value
 - **Carried fold** — `prepare`, `transform`, and `finalize` carry a value from plugin to plugin
 
+Ordering is per-hook: a plugin may be `pre` for one hook and `post` for another.
+
 **Fixpoint replace** is struct-level replacement, not a patch: fields the returned `OptionsArgs` omits are dropped, and `None` keeps the current args. Returned `plugins` may inject new plugins, whose own `options` hooks then run — a fixpoint over the list (see [`crates/plugin/src/options/fixpoint.rs`](./crates/plugin/src/options/fixpoint.rs#L26)).
 
-**Notify** hooks run in registration order; `compile_end` runs on every path after the `options` fixpoint settles, including errors, but is not run when the `options` stage itself fails.
+**Notify** hooks run in meta-ranked order (registration order within a bucket); `compile_end` runs on every path after the `options` fixpoint settles, including errors, but is not run when the `options` stage itself fails.
 
 **Carried fold** replaces the carried value on `Some(output)` and keeps it on `None`; for `transform` the driver carries a program reference and reports the **last** `Some` (a later `None` cannot change it — see [`crates/plugin/src/plugin_driver/hooks/transform.rs`](./crates/plugin/src/plugin_driver/hooks/transform.rs#L17)).
 
@@ -81,6 +83,55 @@ Semantics:
 [`register_hook_usage`](./crates/plugin/src/plugin/mod.rs#L35) is required and affects how the driver runs plugins. It only gates `prepare`, `transform`, and `finalize`: if one of these isn't declared, it won't be called. `options`, `compile_start`, and `compile_end` run on every settled plugin regardless of declared usage.
 
 On the JS side, usage is inferred from the hook properties on the plugin object. Therefore, even if `transform` never mutates the program, it still triggers parse + codegen.
+
+### Per-hook ordering
+
+Every hook carries its own optional `order` ([`PluginOrder`](./crates/plugin/src/_types/order.rs#L4) = `Pre | Post`). It is per hook, so one plugin can be `pre` for `prepare` and `post` for `transform`; each Rust hook exposes a `<hook>_meta()` returning `Option<PluginHookMeta>`, all defaulting to `None`.
+
+```mermaid
+flowchart LR
+    REG["registration order<br/>P1 → P2 → P3 → P4"] --> ORDER{"per-hook order"}
+    ORDER -- pre --> PRE["pre (stable)"]
+    ORDER -- none --> NORMAL["normal (stable)"]
+    ORDER -- post --> POST["post (stable)"]
+    PRE --> RUN(["execution order"])
+    NORMAL --> RUN
+    POST --> RUN
+```
+
+| Order | Runs                              |
+| ----- | --------------------------------- |
+| Pre   | before every normal plugin        |
+| None  | normal bucket, registration order |
+| Post  | after every normal plugin         |
+
+Buckets are stable, ranked by [`sort_plugins_by_hook_meta`](./crates/plugin/src/plugin_driver/mod.rs#L19). `compile_start` / `compile_end` also use their meta but run on every plugin; the [`options` fixpoint](./crates/plugin/src/options/fixpoint.rs#L29) re-ranks a fresh copy each pass, so a late-added plugin is ranked once it joins.
+
+A Rust plugin overrides the hook's meta:
+
+```rust
+impl Plugin for MyPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        "my-plugin".into()
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Transform
+    }
+
+    fn transform<'a, 'ast: 'a>(
+        &'a self,
+        ctx: &'a PluginContext<'a>,
+        args: TransformArgs<'ast>,
+    ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+        async move { Ok(None) }
+    }
+
+    fn transform_meta(&self) -> Option<PluginHookMeta> {
+        Some(PluginHookMeta { order: Some(PluginOrder::Pre) })
+    }
+}
+```
 
 ### Parse Skip
 
@@ -101,6 +152,27 @@ flowchart LR
 The JS `options` hook receives the bag and the wrapper maps each user hook's return value to the raw output shape the binding expects; the binding unmarshals it back into the pipeline types.
 
 The JS `transform` hook send the returned AST as `astJson`. The binding keeps an equality short-circuit (`ast_json` unchanged -> `None`) as defense in depth for raw/unwrapped plugins.
+
+Every `Plugin` hook is an [`ObjectHook<T>`](./packages/telarel/src/@types/plugin/index.ts#L26), i.e. `T | { order?: "pre" | "post"; handler: T }`. The [wrapper](./packages/telarel/src/bridges/normalize-hook.ts#L23) splits it into a handler plus a `<hook>Meta` sibling read by the binding.
+
+```mermaid
+flowchart LR
+    F["hook: fn"] --> N["normalizeHook"]
+    H["hook: { order, handler }"] --> N
+    N --> R["raw.hook = handler<br/>raw.hookMeta = { order }"]
+```
+
+A JavaScript plugin overrides the hook's meta:
+
+```ts
+const plugin: Plugin = {
+    name: "my-plugin",
+    transform: {
+        order: "pre",
+        handler: () => {},
+    },
+};
+```
 
 ## Builtin Plugin Bridge
 

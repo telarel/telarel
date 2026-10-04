@@ -13,10 +13,11 @@ use telarel_plugin::__internal::{HookFuture, LocalHookFuture};
 use telarel_plugin::{
     CommonPluginContext, CompileEndArgs, CompileStartArgs, FinalizeArgs,
     FinalizeOutput, FinalizeReturn, NotifyReturn, OptionsArgs, PluginContext,
-    Pluginable, PrepareArgs, PrepareOutput, PrepareReturn, TransformArgs,
-    TransformOutput, TransformReturn,
+    PluginHookMeta, Pluginable, PrepareArgs, PrepareOutput, PrepareReturn,
+    TransformArgs, TransformOutput, TransformReturn,
 };
 
+use crate::_types::plugin::order::read_hook_meta;
 use crate::plugin::build::NAME_REQUIRED;
 use crate::plugin::build::bridge_plugin;
 use crate::plugin::hooks::{
@@ -47,6 +48,12 @@ pub struct JsPlugin {
     tsfn_transform: Option<TransformTsfn>,
     tsfn_finalize: Option<FinalizeTsfn>,
     tsfn_compile_end: Option<CompileEndTsfn>,
+    hook_meta_options: Option<PluginHookMeta>,
+    hook_meta_compile_start: Option<PluginHookMeta>,
+    hook_meta_prepare: Option<PluginHookMeta>,
+    hook_meta_transform: Option<PluginHookMeta>,
+    hook_meta_finalize: Option<PluginHookMeta>,
+    hook_meta_compile_end: Option<PluginHookMeta>,
     /// The compile's dynamic release list, shared with every JS plugin and
     /// with the compile task's `finally`.
     refs: Arc<RefList>,
@@ -72,6 +79,24 @@ impl JsPlugin {
             tsfn_compile_end,
         ) = hook_scan!(object);
 
+        let hook_meta_options: Option<PluginHookMeta> =
+            read_hook_meta(object, "options")?;
+
+        let hook_meta_compile_start: Option<PluginHookMeta> =
+            read_hook_meta(object, "compileStart")?;
+
+        let hook_meta_prepare: Option<PluginHookMeta> =
+            read_hook_meta(object, "prepare")?;
+
+        let hook_meta_transform: Option<PluginHookMeta> =
+            read_hook_meta(object, "transform")?;
+
+        let hook_meta_finalize: Option<PluginHookMeta> =
+            read_hook_meta(object, "finalize")?;
+
+        let hook_meta_compile_end: Option<PluginHookMeta> =
+            read_hook_meta(object, "compileEnd")?;
+
         Ok(Self {
             name,
             tsfn_options,
@@ -80,6 +105,12 @@ impl JsPlugin {
             tsfn_transform,
             tsfn_finalize,
             tsfn_compile_end,
+            hook_meta_options,
+            hook_meta_compile_start,
+            hook_meta_prepare,
+            hook_meta_transform,
+            hook_meta_finalize,
+            hook_meta_compile_end,
             refs: Arc::clone(refs),
         })
     }
@@ -398,6 +429,10 @@ impl Pluginable for JsPlugin {
         })
     }
 
+    fn call_options_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_options
+    }
+
     fn call_compile_start<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
@@ -430,6 +465,10 @@ impl Pluginable for JsPlugin {
 
             Ok(())
         })
+    }
+
+    fn call_compile_start_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_compile_start
     }
 
     fn call_prepare<'a>(
@@ -482,6 +521,10 @@ impl Pluginable for JsPlugin {
 
             Ok(Some(PrepareOutput { code: output.code, map }))
         })
+    }
+
+    fn call_prepare_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_prepare
     }
 
     fn call_transform<'a, 'ast: 'a>(
@@ -568,6 +611,10 @@ impl Pluginable for JsPlugin {
         })
     }
 
+    fn call_transform_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_transform
+    }
+
     fn call_finalize<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
@@ -620,6 +667,10 @@ impl Pluginable for JsPlugin {
         })
     }
 
+    fn call_finalize_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_finalize
+    }
+
     fn call_compile_end<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
@@ -654,6 +705,10 @@ impl Pluginable for JsPlugin {
 
             Ok(())
         })
+    }
+
+    fn call_compile_end_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_compile_end
     }
 }
 

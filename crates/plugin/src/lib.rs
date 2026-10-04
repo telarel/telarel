@@ -25,6 +25,7 @@ pub use crate::_types::hooks::prepare::PrepareReturn;
 pub use crate::_types::hooks::prepare::{PrepareArgs, PrepareOutput};
 pub use crate::_types::hooks::transform::TransformReturn;
 pub use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
+pub use crate::_types::order::{PluginHookMeta, PluginOrder};
 pub use crate::_types::sourcemap::SourceMap;
 pub use crate::options::fixpoint::options_fixpoint;
 pub use crate::plugin::Plugin;

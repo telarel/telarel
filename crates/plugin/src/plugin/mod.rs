@@ -16,6 +16,7 @@ use crate::_types::hooks::notify::NotifyReturn;
 use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
 use crate::_types::hooks::prepare::{PrepareArgs, PrepareReturn};
 use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
+use crate::_types::order::PluginHookMeta;
 use crate::plugin::pluginable::SharedPluginable;
 
 /// The Rust plugin trait.
@@ -45,6 +46,11 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(None) }
     }
 
+    /// Ordering for the `options` hook; `None` = normal bucket.
+    fn options_meta(&self) -> Option<PluginHookMeta> {
+        None
+    }
+
     /// Run the `compile_start` hook with the fully resolved, read-only
     /// options; notify-only.
     fn compile_start<'a>(
@@ -53,6 +59,11 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         _args: &'a CompileStartArgs,
     ) -> impl Future<Output = NotifyReturn> + Send {
         async { Ok(()) }
+    }
+
+    /// Ordering for the `compile_start` hook; `None` = normal bucket.
+    fn compile_start_meta(&self) -> Option<PluginHookMeta> {
+        None
     }
 
     /// Run the `prepare` hook, before the transform chain. Returning `Some`
@@ -66,6 +77,11 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(None) }
     }
 
+    /// Ordering for the `prepare` hook; `None` = normal bucket.
+    fn prepare_meta(&self) -> Option<PluginHookMeta> {
+        None
+    }
+
     /// Run the `transform` hook; the AST is read-only. A plugin that changes
     /// the tree derives a new program rooted in `args.allocator` and returns
     /// it as `Some(TransformOutput)`; `None` leaves the carried AST untouched.
@@ -75,6 +91,11 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         _args: TransformArgs<'ast>,
     ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
         async { Ok(None) }
+    }
+
+    /// Ordering for the `transform` hook; `None` = normal bucket.
+    fn transform_meta(&self) -> Option<PluginHookMeta> {
+        None
     }
 
     /// Run the `finalize` hook, after the transform chain. Returning `Some`
@@ -88,6 +109,11 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(None) }
     }
 
+    /// Ordering for the `finalize` hook; `None` = normal bucket.
+    fn finalize_meta(&self) -> Option<PluginHookMeta> {
+        None
+    }
+
     /// Run the `compile_end` hook with the final code, map, and error;
     /// notify-only. Core must invoke it on success and on every error path.
     fn compile_end<'a>(
@@ -96,6 +122,11 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         _args: &'a CompileEndArgs,
     ) -> impl Future<Output = NotifyReturn> + Send {
         async { Ok(()) }
+    }
+
+    /// Ordering for the `compile_end` hook; `None` = normal bucket.
+    fn compile_end_meta(&self) -> Option<PluginHookMeta> {
+        None
     }
 }
 
