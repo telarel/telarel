@@ -1,5 +1,8 @@
 import type { SourceMap } from "#/@types/sourcemap";
 
+/**
+ * Arguments for the `compileEnd` hook.
+ */
 type CompileEndArgs = {
     /**
      * Compiled code; the last good state on error.

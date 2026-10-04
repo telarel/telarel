@@ -45,6 +45,9 @@ type CompleteOptions = {
 type Options = Format<Partial<CompleteOptions>>;
 
 type OptionsArgs = {
+    /**
+     * The options bag carried so far.
+     */
     options: Options;
 };
 

@@ -20,6 +20,9 @@ import type { Options, OptionsArgs } from "#/@types/plugin/options";
  * to make no change.
  */
 type Plugin = {
+    /**
+     * The plugin name.
+     */
     name: string;
     /**
      * The options hook: return the full options bag (incl. `plugins`) to

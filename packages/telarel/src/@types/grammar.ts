@@ -1,3 +1,12 @@
+/**
+ * The grammar of the source code.
+ *
+ * - `js` — JavaScript
+ * - `ts` — TypeScript
+ * - `dts` — TypeScript declaration
+ * - `jsx` — JavaScript with JSX
+ * - `tsx` — TypeScript with JSX
+ */
 type Language = "js" | "ts" | "dts" | "jsx" | "tsx";
 
 /**

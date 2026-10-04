@@ -3,6 +3,10 @@ import type {
     TransformPlugin,
 } from "#/@types/builtin/transform";
 
+/**
+ * Creates the builtin transform plugin, which lowers TypeScript and JSX to
+ * JavaScript and applies the configured transforms.
+ */
 const transform = (options?: TransformOptions): TransformPlugin => {
     return { __builtin: true, name: "builtin:transform", options };
 };

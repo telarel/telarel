@@ -7,6 +7,11 @@ import type { RawPlugin } from "#/bridges/plugin";
 import { compile as bindingCompile } from "#/binding";
 import { toRawPlugin } from "#/bridges/plugin";
 
+/**
+ * Compiles a file with plugins, in memory.
+ *
+ * Unset options fall back to their defaults (see {@link CompileOptions}).
+ */
 const compile = async (options: CompileOptions): Promise<CompileResult> => {
     const state: PluginState = new Map();
 
