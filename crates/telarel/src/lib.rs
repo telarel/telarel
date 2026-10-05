@@ -5,24 +5,40 @@
 //! This crate is the public-facing API, re-exporting the compile pipeline,
 //! the plugin system, and the shared types.
 
+pub use telarel_common::{
+    CodegenOptions, CodegenResult, CompileContext, CompileError,
+    CompileOptions, HookUsage, Language, ParseOptions, ParseResult,
+    ResolvedOptions, SourceMap, SourceType, compose_maps,
+};
+
+pub use telarel_plugin::{
+    CommonPluginContext, CompileEndArgs, CompileStartArgs, FinalizeArgs,
+    FinalizeOutput, FinalizeReturn, ModuleInfo, NotifyReturn, OptionsArgs,
+    OptionsReturn, Plugin, PluginContext, PluginHookMeta, PluginOrder,
+    Pluginable, PrepareArgs, PrepareOutput, PrepareReturn, SharedPluginable,
+    TransformArgs, TransformOutput, TransformReturn,
+};
+
+pub use telarel_core::{CompileOutput, compile};
+
 pub mod allocator {
     pub use oxc::allocator::*;
-}
-
-pub mod ast {
-    pub use oxc::ast::*;
-}
-
-pub mod str {
-    pub use oxc::str::*;
 }
 
 pub mod span {
     pub use oxc::span::*;
 }
 
+pub mod str {
+    pub use oxc::str::*;
+}
+
 pub mod syntax {
     pub use oxc::syntax::*;
+}
+
+pub mod ast {
+    pub use oxc::ast::*;
 }
 
 #[cfg(feature = "ast_visit")]
@@ -43,19 +59,3 @@ pub mod traverse {
 pub mod sourcemap {
     pub use oxc_sourcemap::*;
 }
-
-pub use telarel_common::{
-    CodegenOptions, CodegenResult, CompileContext, CompileError,
-    CompileOptions, HookUsage, Language, ParseOptions, ParseResult,
-    ResolvedOptions, SourceMap, SourceType, compose_maps,
-};
-
-pub use telarel_plugin::{
-    CommonPluginContext, CompileEndArgs, CompileStartArgs, FinalizeArgs,
-    FinalizeOutput, FinalizeReturn, ModuleInfo, NotifyReturn, OptionsArgs,
-    OptionsReturn, Plugin, PluginContext, PluginHookMeta, PluginOrder,
-    Pluginable, PrepareArgs, PrepareOutput, PrepareReturn, SharedPluginable,
-    TransformArgs, TransformOutput, TransformReturn,
-};
-
-pub use telarel_core::{CompileOutput, compile};
