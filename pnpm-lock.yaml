@@ -116,31 +116,31 @@ importers:
         version: 0.150.0
     optionalDependencies:
       '@telarel/binding-darwin-arm64':
-        specifier: 0.1.0
+        specifier: workspace:*
         version: link:npm/darwin-arm64
       '@telarel/binding-darwin-x64':
-        specifier: 0.1.0
+        specifier: workspace:*
         version: link:npm/darwin-x64
       '@telarel/binding-linux-arm64-gnu':
-        specifier: 0.1.0
+        specifier: workspace:*
         version: link:npm/linux-arm64-gnu
       '@telarel/binding-linux-arm64-musl':
-        specifier: 0.1.0
+        specifier: workspace:*
         version: link:npm/linux-arm64-musl
       '@telarel/binding-linux-x64-gnu':
-        specifier: 0.1.0
+        specifier: workspace:*
         version: link:npm/linux-x64-gnu
       '@telarel/binding-linux-x64-musl':
-        specifier: 0.1.0
+        specifier: workspace:*
         version: link:npm/linux-x64-musl
       '@telarel/binding-wasm32-wasi':
-        specifier: 0.1.0
+        specifier: workspace:*
         version: link:npm/wasm32-wasi
       '@telarel/binding-win32-arm64-msvc':
-        specifier: 0.1.0
+        specifier: workspace:*
         version: link:npm/win32-arm64-msvc
       '@telarel/binding-win32-x64-msvc':
-        specifier: 0.1.0
+        specifier: workspace:*
         version: link:npm/win32-x64-msvc
 
   packages/telarel/npm/darwin-arm64: {}
@@ -164,8 +164,8 @@ importers:
         specifier: 2.0.0-alpha.5
         version: 2.0.0-alpha.5
       '@napi-rs/wasm-runtime':
-        specifier: ^1.2.4
-        version: 1.2.4(@emnapi/core@2.0.0-alpha.5)(@emnapi/runtime@2.0.0-alpha.5)
+        specifier: ^1.2.5
+        version: 1.2.5(@emnapi/core@2.0.0-alpha.5)(@emnapi/runtime@2.0.0-alpha.5)
 
   packages/telarel/npm/win32-arm64-msvc: {}
 
@@ -635,6 +635,13 @@ packages:
 
   '@napi-rs/wasm-runtime@1.2.4':
     resolution: {integrity: sha512-AJxoUD2/15ESHbvpcyjU274nsAPLuOtPHCk0vKJM5pj//Fg/B1FXNWjPnXTT9PymCYYiHo4zPj0ZomXBKhoy7g==}
+    engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
+    peerDependencies:
+      '@emnapi/core': 2.0.0-alpha.5
+      '@emnapi/runtime': 2.0.0-alpha.5
+
+  '@napi-rs/wasm-runtime@1.2.5':
+    resolution: {integrity: sha512-HshSvXzmBxNzqejd3k/KemgQ3hdREUYFRRrgxOZ+gPljDIsO2SDZrVZMd4Z/HsxudQbE62OVyVFE8z9BCurfjA==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
     peerDependencies:
       '@emnapi/core': 2.0.0-alpha.5
@@ -2456,6 +2463,13 @@ snapshots:
       '@napi-rs/tar-win32-x64-msvc': 1.1.1
 
   '@napi-rs/wasm-runtime@1.2.4(@emnapi/core@2.0.0-alpha.5)(@emnapi/runtime@2.0.0-alpha.5)':
+    dependencies:
+      '@emnapi/core': 2.0.0-alpha.5
+      '@emnapi/runtime': 2.0.0-alpha.5
+      '@tybys/wasm-util': 0.10.3
+    optional: true
+
+  '@napi-rs/wasm-runtime@1.2.5(@emnapi/core@2.0.0-alpha.5)(@emnapi/runtime@2.0.0-alpha.5)':
     dependencies:
       '@emnapi/core': 2.0.0-alpha.5
       '@emnapi/runtime': 2.0.0-alpha.5

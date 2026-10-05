@@ -61,15 +61,15 @@
         "oxc-transform": "~0.150.0"
     },
     "optionalDependencies": {
-        "@telarel/binding-darwin-arm64": "0.1.0",
-        "@telarel/binding-darwin-x64": "0.1.0",
-        "@telarel/binding-linux-arm64-gnu": "0.1.0",
-        "@telarel/binding-linux-arm64-musl": "0.1.0",
-        "@telarel/binding-linux-x64-gnu": "0.1.0",
-        "@telarel/binding-linux-x64-musl": "0.1.0",
-        "@telarel/binding-wasm32-wasi": "0.1.0",
-        "@telarel/binding-win32-arm64-msvc": "0.1.0",
-        "@telarel/binding-win32-x64-msvc": "0.1.0"
+        "@telarel/binding-darwin-arm64": "workspace:*",
+        "@telarel/binding-darwin-x64": "workspace:*",
+        "@telarel/binding-linux-arm64-gnu": "workspace:*",
+        "@telarel/binding-linux-arm64-musl": "workspace:*",
+        "@telarel/binding-linux-x64-gnu": "workspace:*",
+        "@telarel/binding-linux-x64-musl": "workspace:*",
+        "@telarel/binding-wasm32-wasi": "workspace:*",
+        "@telarel/binding-win32-arm64-msvc": "workspace:*",
+        "@telarel/binding-win32-x64-msvc": "workspace:*"
     },
     "napi": {
         "binaryName": "telarel",
