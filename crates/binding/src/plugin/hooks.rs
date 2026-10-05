@@ -245,6 +245,30 @@ impl RefList {
         Self::default()
     }
 
+    /// Snapshot the release-list references, in insertion order.
+    pub fn refs(&self) -> Vec<SharedRef> {
+        self.refs.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    /// Whether the release list holds no rooted references.
+    pub fn is_empty(&self) -> bool {
+        self.refs.lock().unwrap_or_else(PoisonError::into_inner).is_empty()
+    }
+
+    /// The number of rooted references on the release list.
+    pub fn len(&self) -> usize {
+        self.refs.lock().unwrap_or_else(PoisonError::into_inner).len()
+    }
+
+    /// Clone the current bag's descriptor view (one entry per plugin, in
+    /// bag order).
+    pub fn bag_snapshot(&self) -> Vec<SharedRef> {
+        self.bag_descriptors
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
     /// Root a JS object and push its reference onto the release list.
     pub fn push_object(
         &self,
@@ -269,11 +293,6 @@ impl RefList {
             .push(reference);
     }
 
-    /// Snapshot the release-list references, in insertion order.
-    pub fn refs(&self) -> Vec<SharedRef> {
-        self.refs.lock().unwrap_or_else(PoisonError::into_inner).clone()
-    }
-
     /// Replace the current bag's descriptor view.
     ///
     /// The descriptors are `SharedRef` clones SHARING the release list's
@@ -295,15 +314,6 @@ impl RefList {
         *bag = descriptors;
     }
 
-    /// Clone the current bag's descriptor view (one entry per plugin, in
-    /// bag order).
-    pub fn bag_snapshot(&self) -> Vec<SharedRef> {
-        self.bag_descriptors
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-
     /// Release every reference on the release list; first release error wins.
     pub fn release(
         &self,
@@ -312,11 +322,6 @@ impl RefList {
         let refs: Vec<SharedRef> = self.refs();
 
         release_refs(env, &refs)
-    }
-
-    /// The number of rooted references on the release list.
-    pub fn len(&self) -> usize {
-        self.refs.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
 }
 
@@ -406,6 +411,9 @@ pub fn plugin_context(
 pub struct FnCtx<A>(pub JsPluginContext, pub A);
 
 impl<A: ToNapiValue> JsValuesTupleIntoVec for FnCtx<A> {
+    // `env` is a raw napi handle owned by the JS thread; the trait method is
+    // not `unsafe`, matching napi's own `JsValuesTupleIntoVec` impls.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn into_vec(
         self,
         env: sys::napi_env,

@@ -19,7 +19,7 @@ use telarel_plugin::{
 
 use crate::_types::plugin::order::read_hook_meta;
 use crate::plugin::build::NAME_REQUIRED;
-use crate::plugin::build::bridge_plugin;
+use crate::plugin::build::to_plugins;
 use crate::plugin::hooks::{
     CompileEndCall, CompileEndTsfn, CompileStartCall, CompileStartTsfn,
     FinalizeTsfn, OptionsCall, OptionsTsfn, PrepareTsfn, RefList, SharedStr,
@@ -140,70 +140,51 @@ fn unmarshal_options(
         return Ok(None);
     };
 
-    let mut adapters: Vec<telarel_plugin::SharedPluginable> = Vec::new();
-
     // The descriptor references arrive ALREADY rooted: the `Option<
     // JsOptionsOutput>` conversion (`ObjectRef`'s `FromNapiValue`) created a
     // `napi_create_reference` root per descriptor, owned by `ctx.value` in
-    // the resolution callback. They must move onto the release list AS-IS
-    // (`push_ref`): re-rooting them with `push_object` (`SharedRef::new` →
-    // `create_ref`) would leave the conversion-created root un-unref'd when
-    // the callback's value drops (`ObjectRef`'s `Drop` is a no-op),
-    // LEAKING one napi_ref per descriptor per options call, on the success
-    // AND error paths. The entry bridge in `compile` does the same.
-    let current: Option<Vec<napi::bindgen_prelude::ObjectRef<false>>> =
-        output.plugins;
+    // the resolution callback. They must move onto the release list AS-IS:
+    // re-rooting them with `SharedRef::new` (`create_ref`) would leave the
+    // conversion-created root un-unref'd when the callback's value drops
+    // (`ObjectRef`'s `Drop` is a no-op), LEAKING one napi_ref per descriptor
+    // per options call. `to_plugins` wraps the SAME roots (the entry bridge
+    // in `compile` does the same).
+    //
+    // Parse the scalar fields BEFORE touching the descriptor table: the
+    // returned bag is the new CURRENT bag, and its table is only replaced
+    // once every fallible step has succeeded, so any error leaves the view
+    // untouched (the compile aborts and the release list still drains every
+    // rooted descriptor).
+    let language: Option<telarel_common::Language> = match &output.language {
+        | Some(text) => parse_language(text).map_err(hook_error)?,
+        | None => None,
+    };
+
+    let source_type: Option<telarel_common::SourceType> =
+        match &output.source_type {
+            | Some(text) => parse_source_type(text).map_err(hook_error)?,
+            | None => None,
+        };
 
     // The returned bag REPLACES the whole plugin list (the wrapper echoes
     // the payload's `plugins` array): an omitted field means the default
-    // EMPTY list (see `JsOptionsOutput`'s docs). Collect the descriptor
-    // refs in bag order as the table's next view.
-    let mut descriptors: Vec<crate::plugin::hooks::SharedRef> = Vec::new();
-
-    for reference in current.into_iter().flatten() {
-        let object: Object<'static> =
-            crate::plugin::hooks::materialize(&reference, env)?;
-
-        // The conversion-created root moves to the release list BEFORE the
-        // bridging result is examined: a bridging failure mid-list must
-        // leave EVERY materialized descriptor releaseable, and the success
-        // path unrefs the SAME root in `CompileTask::finally`.
-        let shared: crate::plugin::hooks::SharedRef =
-            crate::plugin::hooks::SharedRef::from_ref(reference);
-
-        refs.push_ref(shared.clone());
-
-        let adapter: telarel_plugin::SharedPluginable =
-            bridge_plugin(&object, refs).map_err(hook_error)?;
-
-        adapters.push(adapter);
-
-        descriptors.push(shared);
-    }
+    // EMPTY list (see `JsOptionsOutput`'s docs). `to_plugins` bridges the
+    // whole bag and REPLACES the current descriptor view; on failure it
+    // releases the rooted references and leaves the view untouched.
+    let plugins: Vec<telarel_plugin::SharedPluginable> =
+        to_plugins(env, output.plugins.into_iter().flatten().collect(), refs)
+            .map_err(hook_error)?;
 
     let args: OptionsArgs = OptionsArgs {
         options: CompileOptions {
             cwd: output.cwd,
             file: output.file.unwrap_or_else(|| String::from(DEFAULT_FILE)),
             code: output.code.unwrap_or_else(|| String::from(DEFAULT_CODE)),
-            language: match &output.language {
-                | Some(text) => parse_language(text).map_err(hook_error)?,
-                | None => None,
-            },
-            source_type: match &output.source_type {
-                | Some(text) => parse_source_type(text).map_err(hook_error)?,
-                | None => None,
-            },
+            language,
+            source_type,
         },
-        plugins: adapters,
+        plugins,
     };
-
-    // The returned bag is the new CURRENT bag: its descriptor table REPLACES
-    // the previous view whole (empty when the field was omitted). The table
-    // is only touched once every fallible step above has succeeded, so any
-    // error leaves it untouched (the compile aborts and the release list
-    // still drains every rooted descriptor).
-    refs.set_bag(descriptors);
 
     Ok(Some(args))
 }
