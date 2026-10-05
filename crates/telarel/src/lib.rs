@@ -1,3 +1,10 @@
+//! # Telarel
+//!
+//! An extensible JavaScript compiler.
+//!
+//! This crate is the public-facing API, re-exporting the compile pipeline,
+//! the plugin system, and the shared types.
+
 pub mod allocator {
     pub use oxc::allocator::*;
 }

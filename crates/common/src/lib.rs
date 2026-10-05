@@ -1,3 +1,9 @@
+//! # Telarel Common
+//!
+//! A shared library for the compiler.
+//!
+//! This crate provides the shared types and utilities for the compiler.
+
 mod _types;
 mod ast;
 mod contexts;
