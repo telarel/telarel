@@ -10,7 +10,7 @@ autobenches = false
 
 [dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
-telarel = { workspace = true, features = ["traverse"] }
+telarel = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [[bench]]

@@ -1,5 +1,4 @@
-mod plugin;
-mod plugin_traverse;
+mod plugins;
 
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
@@ -11,8 +10,10 @@ use criterion::{
 
 use telarel::{CompileOptions, Plugin, SharedPluginable, compile};
 
-use crate::plugin::TransformPlugin;
-use crate::plugin_traverse::TraversePlugin;
+use crate::plugins::component_rename::ComponentRenamePlugin;
+use crate::plugins::import_rewrite::ImportRewritePlugin;
+use crate::plugins::jsx_attribute::JsxAttributePlugin;
+use crate::plugins::void_fold::VoidFoldPlugin;
 
 const FIXTURES: [&str; 1] = ["react-page.tsx"];
 
@@ -73,18 +74,35 @@ fn bench_compile(criterion: &mut Criterion) {
             .build()
             .expect("build current-thread tokio runtime");
 
-    bench_case(criterion, &runtime, "common", &[]);
+    bench_case(criterion, &runtime, "plugin-0", &[]);
+
     bench_case(
         criterion,
         &runtime,
-        "plugin",
-        &[Plugin::new_shared(TransformPlugin)],
+        "plugin-1",
+        &[Plugin::new_shared(ImportRewritePlugin)],
     );
+
     bench_case(
         criterion,
         &runtime,
-        "plugin-traverse",
-        &[Plugin::new_shared(TraversePlugin)],
+        "plugin-2",
+        &[
+            Plugin::new_shared(ImportRewritePlugin),
+            Plugin::new_shared(ComponentRenamePlugin),
+        ],
+    );
+
+    bench_case(
+        criterion,
+        &runtime,
+        "plugin-4",
+        &[
+            Plugin::new_shared(ImportRewritePlugin),
+            Plugin::new_shared(ComponentRenamePlugin),
+            Plugin::new_shared(VoidFoldPlugin),
+            Plugin::new_shared(JsxAttributePlugin),
+        ],
     );
 }
 

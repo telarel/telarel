@@ -7,7 +7,10 @@ import * as Url from "node:url";
 import { compile } from "telarel";
 import { describe, test } from "vitest";
 
-import { transformPlugin } from "#/plugin";
+import { componentRenamePlugin } from "#/plugins/component-rename";
+import { importRewritePlugin } from "#/plugins/import-rewrite";
+import { jsxAttributePlugin } from "#/plugins/jsx-attribute";
+import { voidFoldPlugin } from "#/plugins/void-fold";
 
 const benchDir: string = Path.dirname(Url.fileURLToPath(import.meta.url));
 
@@ -36,14 +39,14 @@ if (sanity.code.length === 0) {
     throw new Error("sanity compile produced empty code");
 }
 
-const benchCase = (name: string, plugins: Array<Plugin>): void => {
+const benchCase = (name: string, pluginList: Array<Plugin>): void => {
     for (const fixture of fixtures) {
         // oxlint-disable-next-line vitest/expect-expect
         test(`${name} / ${fixture.name}`, async ({ bench }): Promise<void> => {
             await bench(`${name} / ${fixture.name}`, async (): Promise<void> => {
                 const result: CompileResult = await compile({
                     ...compileOptions(fixture.code),
-                    plugins,
+                    plugins: pluginList,
                 });
                 if (result.code.length === 0) {
                     throw new Error("compile produced empty code");
@@ -54,6 +57,23 @@ const benchCase = (name: string, plugins: Array<Plugin>): void => {
 };
 
 describe("compile", (): void => {
-    benchCase("common", []);
-    benchCase("plugin", [transformPlugin]);
+    benchCase("plugin-0", []);
+
+    benchCase("plugin-1", [
+        //
+        importRewritePlugin,
+    ]);
+
+    benchCase("plugin-2", [
+        //
+        importRewritePlugin,
+        componentRenamePlugin,
+    ]);
+
+    benchCase("plugin-4", [
+        importRewritePlugin,
+        componentRenamePlugin,
+        voidFoldPlugin,
+        jsxAttributePlugin,
+    ]);
 });
