@@ -104,6 +104,23 @@ describe("sourcemap", (): void => {
         );
     });
 
+    it("emits mappings for non-ASCII code through the transform path", async (): Promise<void> => {
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.ts",
+            code: 'const µ = "日本語";',
+            plugins: [
+                {
+                    name: "pass-through",
+                    transform: (): void => void 0,
+                },
+            ],
+        });
+
+        expect(result.map.version).toBe(3);
+        expect(result.map.mappings.length).toBeGreaterThan(0);
+    });
+
     it("pins mappings across multiple lines", async (): Promise<void> => {
         const result: CompileResult = await compile({
             cwd: "/repo",

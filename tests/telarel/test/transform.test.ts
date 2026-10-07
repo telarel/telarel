@@ -447,4 +447,65 @@ describe("transform", (): void => {
         expect(result.code).toBe("const a = 1;");
         expect(seen).toEqual(["from-builtin-custom"]);
     });
+
+    it("exposes UTF-16 code-unit spans to the transform hook", async (): Promise<void> => {
+        const source: string = "const µ = 1; const b = 2;";
+        let start: number = -1;
+        let end: number = -1;
+
+        const plugin: Plugin = {
+            name: "span-observer",
+            transform: (_ctx: PluginContext, args: TransformArgs): void => {
+                const statement = args.ast.body[1] as {
+                    start: number;
+                    end: number;
+                };
+
+                start = statement.start;
+                end = statement.end;
+            },
+        };
+
+        await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: source,
+            plugins: [plugin],
+        });
+
+        expect(source.slice(start, end)).toBe("const b = 2;");
+        expect(end - start).toBe("const b = 2;".length);
+    });
+
+    it("anchors UTF-16 spans to prepare-rewritten code", async (): Promise<void> => {
+        const rewritten: string = "const µ = 1; const b = 2;";
+        let start: number = -1;
+        let end: number = -1;
+
+        const plugin: Plugin = {
+            name: "prepare-rewriter",
+            prepare: (): { code: string } => {
+                return { code: rewritten };
+            },
+            transform: (_ctx: PluginContext, args: TransformArgs): void => {
+                const statement = args.ast.body[1] as {
+                    start: number;
+                    end: number;
+                };
+
+                start = statement.start;
+                end = statement.end;
+            },
+        };
+
+        await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "const a = 1;",
+            plugins: [plugin],
+        });
+
+        expect(rewritten.slice(start, end)).toBe("const b = 2;");
+        expect(end - start).toBe("const b = 2;".length);
+    });
 });

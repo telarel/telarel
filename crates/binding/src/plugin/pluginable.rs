@@ -28,6 +28,7 @@ use crate::plugin::hooks::{
 use crate::plugin::options::{
     language_label, parse_language, parse_source_type, source_type_label,
 };
+use crate::plugin::spans::{SpanMap, spans_to_bytes, spans_to_utf16};
 
 /// The default file when an options-hook bag omits the `file` field.
 const DEFAULT_FILE: &str = "index.js";
@@ -522,10 +523,17 @@ impl Pluginable for JsPlugin {
             // it to anchor the JSON tree.
             let source_type: SourceType = args.ast.source_type();
 
+            // The UTF-16 map is anchored to the AST's own source (the
+            // `prepare`-fold parse input), NOT `ctx.module.code`, so it matches
+            // the byte spans the codec emits below.
             let ast_json: String = oxc_estree_codec::program_to_json(
                 args.ast.program(),
                 oxc_estree_codec::ProgramToJsonOptions::new(),
             );
+
+            let spans: SpanMap = SpanMap::new(args.ast.source());
+
+            let ast_json_utf16: String = spans_to_utf16(&spans, &ast_json);
 
             let call: TransformCall = TransformCall {
                 cwd: SharedStr::new(ctx.cwd),
@@ -537,7 +545,7 @@ impl Pluginable for JsPlugin {
                 source_type: SharedStr::new(source_type_label(Some(
                     ctx.module.source_type,
                 ))),
-                ast_json: ast_json.clone(),
+                ast_json: ast_json_utf16.clone(),
             };
 
             let output: Either<
@@ -559,11 +567,17 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             };
 
-            // Defense in depth: a raw (unwrapped) plugin may send the tree
-            // back unchanged; skip the read-back in that case too.
-            if replaced.ast_json == ast_json {
+            // Defense in depth: a pass-through sends the tree back unchanged,
+            // so compare in the same UTF-16 form the plugin saw and skip the
+            // read-back.
+            if replaced.ast_json == ast_json_utf16 {
                 return Ok(None);
             }
+
+            // The returned spans are UTF-16: map them back to byte offsets
+            // through the same anchored map before the codec reads them.
+            let replaced_bytes: String =
+                spans_to_bytes(&spans, &replaced.ast_json);
 
             // Rebuild the returned tree into a fresh owned AST: the read-back
             // allocates into the new AST's arena and anchors spans against its
@@ -574,7 +588,7 @@ impl Pluginable for JsPlugin {
                 source_type,
                 |source_text: &str, allocator: &oxc::allocator::Allocator| {
                     oxc_estree_codec::json_to_program(
-                        &replaced.ast_json,
+                        &replaced_bytes,
                         oxc_estree_codec::JsonToProgramOptions {
                             allocator,
                             source_type,
