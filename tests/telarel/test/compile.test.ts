@@ -237,6 +237,9 @@ describe("compile", (): void => {
     it("applies a returned bag as full-bag replace with defaults", async (): Promise<void> => {
         // Fields the returned bag omits fall back to their defaults; a bag
         // carrying only `code` compiles with the default file `index.js`.
+        // The returned bag explicitly carries the current plugin list:
+        // omitting `plugins` would wholesale-replace the list to `[]` (the
+        // documented `plugins` default) and drop this plugin.
         const seen: Array<string> = [];
 
         const result: CompileResult = await compile({
@@ -253,7 +256,10 @@ describe("compile", (): void => {
                         seen.push("has-context");
                         seen.push(args.options.file ?? "");
 
-                        return { code: "const replaced = 1;" };
+                        return {
+                            code: "const replaced = 1;",
+                            plugins: args.options.plugins,
+                        };
                     },
                     prepare: (ctx: PluginContext): void => {
                         seen.push(ctx.module.file);
