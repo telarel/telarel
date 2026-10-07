@@ -535,6 +535,12 @@ impl Pluginable for JsPlugin {
 
             let ast_json_utf16: String = spans_to_utf16(&spans, &ast_json);
 
+            // The ESTree codec skips `Program.comments`; keep the parser-owned
+            // comments to reattach them to the rebuilt program (a JS plugin
+            // cannot supply its own).
+            let comments: Vec<oxc::ast::ast::Comment> =
+                args.ast.program().comments.iter().copied().collect();
+
             let call: TransformCall = TransformCall {
                 cwd: SharedStr::new(ctx.cwd),
                 file: SharedStr::new(ctx.module.file),
@@ -583,7 +589,7 @@ impl Pluginable for JsPlugin {
             // allocates into the new AST's arena and anchors spans against its
             // shared source, so the replacement travels as `Some` exactly like
             // a Rust plugin's replacement.
-            let ast: Ast = Ast::try_from_source(
+            let mut ast: Ast = Ast::try_from_source(
                 args.ast.source().clone(),
                 source_type,
                 |source_text: &str, allocator: &oxc::allocator::Allocator| {
@@ -598,6 +604,24 @@ impl Pluginable for JsPlugin {
                 },
             )
             .map_err(anyhow::Error::from)?;
+
+            // The rebuilt program's comments are empty: reattach the original
+            // set so codegen still emits them.
+            if !comments.is_empty() {
+                ast.with_mut(
+                    |allocator: &oxc::allocator::Allocator,
+                     program: &mut oxc::ast::ast::Program<'_>| {
+                        let mut rebuilt: oxc::allocator::Vec<
+                            '_,
+                            oxc::ast::ast::Comment,
+                        > = oxc::allocator::Vec::new_in(&allocator);
+
+                        rebuilt.extend(comments.iter().copied());
+
+                        program.comments = rebuilt;
+                    },
+                );
+            }
 
             Ok(Some(TransformOutput { ast }))
         })

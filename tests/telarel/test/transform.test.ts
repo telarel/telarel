@@ -4,12 +4,17 @@ import type {
     Plugin,
     PluginContext,
     TransformArgs,
+    TransformResult,
 } from "telarel";
 import type { TransformOptions } from "telarel/plugins/transform";
+
+import type { ProgramFixture } from "#/functions/ast";
 
 import { compile } from "telarel";
 import { transform } from "telarel/plugins/transform";
 import { describe, expect, it } from "vitest";
+
+import { renameRootIdentifier } from "#/functions/ast";
 
 const myPlugins = (onPrepare: () => void): Array<Plugin> => [
     {
@@ -507,5 +512,108 @@ describe("transform", (): void => {
 
         expect(rewritten.slice(start, end)).toBe("const b = 2;");
         expect(end - start).toBe("const b = 2;".length);
+    });
+
+    it("keeps comments when a transform mutates the AST", async (): Promise<void> => {
+        const code: string = "// keep me\nconst a = 1;";
+
+        const plugin: Plugin = {
+            name: "comment-renamer",
+            transform: (
+                _ctx: PluginContext,
+                args: TransformArgs,
+            ): TransformResult => {
+                const program: ProgramFixture =
+                    args.ast as unknown as ProgramFixture;
+
+                renameRootIdentifier({ program, name: "renamed" });
+
+                return { ast: args.ast };
+            },
+        };
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code,
+            plugins: [plugin],
+        });
+
+        expect(result.code).toContain("// keep me");
+        expect(result.code).toContain("const renamed = 1;");
+    });
+
+    it("exposes only the ast key on the transform hook payload", async (): Promise<void> => {
+        let keys: Array<string> = [];
+
+        const plugin: Plugin = {
+            name: "payload-shape",
+            transform: (_ctx: PluginContext, args: TransformArgs): void => {
+                keys = Object.keys(args);
+            },
+        };
+
+        await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: "// keep me\nconst a = 1;",
+            plugins: [plugin],
+        });
+
+        expect(keys).toEqual(["ast"]);
+        expect(keys).not.toContain("comments");
+        expect(keys).not.toContain("commentsJson");
+    });
+
+    it("keeps a comment after non-ASCII code through a mutating transform", async (): Promise<void> => {
+        const code: string = "const µ = 1;\n// keep me\nconst b = 2;";
+
+        const plugin: Plugin = {
+            name: "non-ascii-comment-renamer",
+            transform: (
+                _ctx: PluginContext,
+                args: TransformArgs,
+            ): TransformResult => {
+                const program: ProgramFixture =
+                    args.ast as unknown as ProgramFixture;
+
+                renameRootIdentifier({ program, name: "renamed" });
+
+                return { ast: args.ast };
+            },
+        };
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code,
+            plugins: [plugin],
+        });
+
+        expect(result.code).toContain("// keep me");
+        expect(result.code).toContain("const renamed = 1;");
+    });
+
+    it("keeps output byte-identical for a pass-through transform", async (): Promise<void> => {
+        const code: string = "// keep me\nconst a = 1;";
+
+        const plugin: Plugin = {
+            name: "comment-passthrough",
+            transform: (
+                _ctx: PluginContext,
+                args: TransformArgs,
+            ): TransformResult => {
+                return { ast: args.ast };
+            },
+        };
+
+        const result: CompileResult = await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code,
+            plugins: [plugin],
+        });
+
+        expect(result.code).toBe(code);
     });
 });
