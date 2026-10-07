@@ -1,55 +1,41 @@
-use oxc::allocator::Allocator;
-use oxc::ast::ast::Program;
+use telarel_common::Ast;
 
 /// Arguments for the `transform` hook.
 ///
-/// `'ast` is the lifetime of the AST inside the compile allocator. The AST
-/// is read-only; a plugin that changes the tree builds a new program rooted
-/// in `allocator` and returns it in [`TransformOutput`].
+/// The AST is read-only. A plugin that changes the tree builds a new owned
+/// [`Ast`] and returns it in [`TransformOutput`].
 #[derive(Clone, Copy)]
-pub struct TransformArgs<'ast> {
-    /// The allocator the AST is rooted in; interned strings and new nodes
-    /// must be allocated here.
-    pub allocator: &'ast Allocator,
+pub struct TransformArgs<'a> {
     /// The current AST, read-only. A plugin that changes the tree must derive
-    /// a new program rooted in `allocator` and return it as [`TransformOutput`].
-    pub ast: &'ast Program<'ast>,
+    /// a new owned AST and return it as [`TransformOutput`].
+    pub ast: &'a Ast,
 }
 
 /// Result of the `transform` hook: the AST that replaces the carried one.
 ///
 /// Returning `None` leaves the carried AST untouched; returning `Some`
-/// replaces it for the rest of the chain. The returned AST must be rooted in
-/// `args.allocator`.
+/// replaces it for the rest of the chain.
 #[derive(Debug)]
-pub struct TransformOutput<'ast> {
+pub struct TransformOutput {
     /// The replacement AST.
-    pub ast: &'ast Program<'ast>,
+    pub ast: Ast,
 }
 
-/// The `transform` hook return: a replacement AST rooted in the compile
-/// allocator, `None`, or an error. Generic over `'ast` because the returned
-/// AST borrows the compile allocator.
-pub type TransformReturn<'ast> = anyhow::Result<Option<TransformOutput<'ast>>>;
+/// The `transform` hook return: a replacement owned AST, `None`, or an error.
+pub type TransformReturn = anyhow::Result<Option<TransformOutput>>;
 
 #[cfg(test)]
 mod tests {
-    use oxc::allocator::Allocator;
-    use oxc::ast::ast::Program;
-
-    use telarel_common::{CompileContext, ParseOptions, ParseResult, parse};
+    use telarel_common::{Ast, CompileContext, ParseOwnedOptions, parse_owned};
 
     use super::*;
 
     #[test]
     fn test_transform_output_wraps_program() {
-        let allocator: Allocator = Allocator::default();
-
         let ctx: CompileContext<'_> = CompileContext::new("", "a.ts", "let a;");
 
-        let parsed: ParseResult<'_> = parse(ParseOptions {
+        let ast: Ast = parse_owned(ParseOwnedOptions {
             context: &ctx,
-            allocator: &allocator,
             file: "a.ts",
             code: "let a;",
             language: None,
@@ -57,10 +43,8 @@ mod tests {
         })
         .unwrap();
 
-        let program: Program<'_> = parsed.program;
+        let output: TransformOutput = TransformOutput { ast };
 
-        let output: TransformOutput<'_> = TransformOutput { ast: &program };
-
-        assert_eq!(output.ast.span.start, 0);
+        assert_eq!(output.ast.program().span.start, 0);
     }
 }

@@ -24,9 +24,6 @@ pub type SharedPluginable = Arc<dyn Pluginable>;
 /// A boxed, `Send` hook future.
 pub type HookFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// A boxed, non-`Send` hook future.
-pub type LocalHookFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
-
 /// Object-safe mirror of [`Plugin`].
 ///
 /// Each hook is exposed as a `call_*` method returning a boxed future, so the
@@ -75,11 +72,11 @@ pub trait Pluginable: Any + Send + Sync + 'static {
     }
 
     /// Call the `transform` hook.
-    fn call_transform<'a, 'ast: 'a>(
+    fn call_transform<'a>(
         &'a self,
-        ctx: &'a PluginContext<'a>,
-        args: TransformArgs<'ast>,
-    ) -> LocalHookFuture<'a, TransformReturn<'ast>>;
+        ctx: &'a PluginContext<'_>,
+        args: TransformArgs<'a>,
+    ) -> HookFuture<'a, TransformReturn>;
 
     /// Ordering for the `transform` hook.
     fn call_transform_meta(&self) -> Option<PluginHookMeta> {
@@ -156,11 +153,11 @@ impl<T: Plugin> Pluginable for T {
         Plugin::prepare_meta(self)
     }
 
-    fn call_transform<'a, 'ast: 'a>(
+    fn call_transform<'a>(
         &'a self,
-        ctx: &'a PluginContext<'a>,
-        args: TransformArgs<'ast>,
-    ) -> LocalHookFuture<'a, TransformReturn<'ast>> {
+        ctx: &'a PluginContext<'_>,
+        args: TransformArgs<'a>,
+    ) -> HookFuture<'a, TransformReturn> {
         Box::pin(Plugin::transform(self, ctx, args))
     }
 

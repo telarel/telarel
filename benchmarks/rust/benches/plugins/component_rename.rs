@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use telarel::allocator::Allocator;
-use telarel::allocator::CloneIn;
 use telarel::ast::ast::{
     BindingIdentifier, IdentifierReference, JSXIdentifier, Program,
 };
@@ -9,7 +8,7 @@ use telarel::ast_visit::VisitMut;
 use telarel::ast_visit::walk_mut;
 use telarel::str::{Ident, Str};
 use telarel::{
-    HookUsage, Plugin, PluginContext, TransformArgs, TransformOutput,
+    Ast, HookUsage, Plugin, PluginContext, TransformArgs, TransformOutput,
     TransformReturn,
 };
 
@@ -62,18 +61,17 @@ impl Plugin for ComponentRenamePlugin {
         HookUsage::Transform
     }
 
-    async fn transform<'a, 'ast: 'a>(
+    async fn transform<'a>(
         &'a self,
-        _ctx: &'a PluginContext<'a>,
-        args: TransformArgs<'ast>,
-    ) -> TransformReturn<'ast> {
-        let mut current: Program<'ast> = (*args.ast).clone_in(args.allocator);
+        _ctx: &'a PluginContext<'_>,
+        args: TransformArgs<'a>,
+    ) -> TransformReturn {
+        let mut ast: Ast = args.ast.clone();
 
-        let mut renamer: Renamer<'ast> = Renamer { allocator: args.allocator };
-
-        walk_mut::walk_program(&mut renamer, &mut current);
-
-        let ast: &'ast Program<'ast> = args.allocator.alloc(current);
+        ast.with_mut(|allocator: &Allocator, program: &mut Program<'_>| {
+            let mut renamer: Renamer<'_> = Renamer { allocator };
+            walk_mut::walk_program(&mut renamer, program);
+        });
 
         Ok(Some(TransformOutput { ast }))
     }

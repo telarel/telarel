@@ -60,7 +60,7 @@ Hooks receive a context: `options` gets the [`CommonPluginContext`](./crates/plu
 | options       | options          | options   | Fixpoint replace |
 | compile_start | resolved options | ()        | Notify           |
 | prepare       | code             | code, map | Carried fold     |
-| transform     | allocator, ast   | ast       | Carried fold     |
+| transform     | ast              | ast       | Carried fold     |
 | finalize      | code             | code, map | Carried fold     |
 | compile_end   | code, map, err?  | ()        | Notify           |
 
@@ -76,7 +76,7 @@ Ordering is per-hook: a plugin may be `pre` for one hook and `post` for another.
 
 **Notify** hooks run in meta-ranked order (registration order within a bucket); `compile_end` runs on every path after the `options` fixpoint settles, including errors, but is not run when the `options` stage itself fails.
 
-**Carried fold** replaces the carried value on `Some(output)` and keeps it on `None`; for `transform` the driver carries a program reference and reports the **last** `Some` (a later `None` cannot change it — see [`crates/plugin/src/plugin_driver/hooks/transform.rs`](./crates/plugin/src/plugin_driver/hooks/transform.rs#L17)).
+**Carried fold** replaces the carried value on `Some(output)` and keeps it on `None`; for `transform` the driver carries an owned, self-referential [`Ast`](./crates/common/src/ast/ast.rs) and reports the **last** `Some` (a later `None` cannot change it — see [`crates/plugin/src/plugin_driver/hooks/transform.rs`](./crates/plugin/src/plugin_driver/hooks/transform.rs#L27)). The chain starts from a borrow of the parsed AST and only takes ownership once a plugin returns `Some`, so the common "nothing changed" case never clones.
 
 ### Hook Usage Declaration
 
@@ -119,11 +119,11 @@ impl Plugin for MyPlugin {
         HookUsage::Transform
     }
 
-    fn transform<'a, 'ast: 'a>(
+    fn transform<'a>(
         &'a self,
-        ctx: &'a PluginContext<'a>,
-        args: TransformArgs<'ast>,
-    ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+        ctx: &'a PluginContext<'_>,
+        args: TransformArgs<'a>,
+    ) -> impl Future<Output = TransformReturn> + Send + 'a {
         async move { Ok(None) }
     }
 
@@ -197,7 +197,7 @@ The [binding](./crates/binding/src/plugin/build.rs) routes a plugin to its Rust 
 
 ## Execution Model
 
-The transform hook's future is intentionally non-`Send` (`LocalHookFuture`) because programs borrow from the compile allocator. On native, each `compile` call runs on a libuv worker thread and `block_on`s a per-thread, reused current-thread Tokio runtime ([`block_on_compile`](./crates/binding/src/tasks/mod.rs), used by [`CompileTask`](./crates/binding/src/tasks/compile.rs#L12)). The non-`Send` transform future never escapes the worker thread: it is fully driven and dropped inside `block_on`.
+Every hook future is `Send` (`HookFuture`); the transform future crosses threads carrying only a read-only `&Ast`, because the AST is an owned value that bundles its own arena. On native, each `compile` call runs on a libuv worker thread and `block_on`s a per-thread, reused current-thread Tokio runtime ([`block_on_compile`](./crates/binding/src/tasks/mod.rs), used by [`CompileTask`](./crates/binding/src/tasks/compile.rs#L12)).
 
 The same TSFN-based binding also works with `wasm32-wasip1-threads`, and the JS test suite runs against both backends.
 
@@ -212,5 +212,7 @@ Details:
 
 - **Simple field edits** — rename, retag, drop a node; JS `walk` is backed by `oxc-walker`
 - **Parent/scope-aware rewrites** — insert after a node, or rename the binding a reference resolves to
+
+A Rust transform owns its output: `args.ast` is read-only, so a plugin that changes the tree calls `args.ast.clone()`, mutates the clone inside [`Ast::with_mut`](./crates/common/src/ast/ast.rs#L99) (which lends the arena and `&mut Program`), and returns `Ok(Some(TransformOutput { ast }))`. Returning `Ok(None)` leaves the carried AST untouched.
 
 For parent/scope-aware rewrites in Rust, enable the `traverse` feature; [`TraverseCtx`](./crates/telarel/src/lib.rs) provides parent/ancestor access and an `AstBuilder` for allocating nodes, with scoping built per compile via `SemanticBuilder::new().build(program).semantic.into_scoping()`. In JS, add a scope tracker only if the transform does not replace nodes.

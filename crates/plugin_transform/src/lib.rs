@@ -4,8 +4,9 @@
 //!
 //! Implements [`telarel_plugin::Plugin`] over the oxc transformer: resolves
 //! telarel-owned options into oxc [`TransformOptions`], clones the read-only
-//! program into the compile allocator, and runs the TypeScript, JSX, and
-//! syntax-lowering pipeline over the clone, returning it when it changed.
+//! [`telarel_common::Ast`] into a fresh owned AST, and runs the TypeScript,
+//! JSX, and syntax-lowering pipeline over that clone through
+//! [`telarel_common::Ast::with_mut`], returning it when it changed.
 
 mod helpers;
 mod options;

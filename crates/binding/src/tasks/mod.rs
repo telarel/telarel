@@ -10,8 +10,7 @@ use tokio::runtime::Runtime;
 // NAPI async tasks (`Task::compute`) run on libuv worker threads, one task
 // at a time per thread. A current-thread runtime parked here is therefore
 // single-user at any moment: no concurrent `block_on` is possible on the
-// same runtime. The transform hook's non-`Send` future is fully driven and
-// dropped inside `block_on`, so nothing crosses threads.
+// same runtime.
 thread_local! {
     static RUNTIME: RefCell<Option<Runtime>> = const { RefCell::new(None) };
 }

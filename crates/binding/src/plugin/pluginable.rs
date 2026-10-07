@@ -8,8 +8,8 @@ use napi::threadsafe_function::ThreadsafeFunctionCallMode;
 use napi::{Env, Result, Status};
 use oxc::span::SourceType;
 
-use telarel_common::{CompileOptions, HookUsage};
-use telarel_plugin::__internal::{HookFuture, LocalHookFuture};
+use telarel_common::{Ast, CompileOptions, HookUsage};
+use telarel_plugin::__internal::HookFuture;
 use telarel_plugin::{
     CommonPluginContext, CompileEndArgs, CompileStartArgs, FinalizeArgs,
     FinalizeOutput, FinalizeReturn, NotifyReturn, OptionsArgs, PluginContext,
@@ -508,11 +508,11 @@ impl Pluginable for JsPlugin {
         self.hook_meta_prepare
     }
 
-    fn call_transform<'a, 'ast: 'a>(
+    fn call_transform<'a>(
         &'a self,
-        ctx: &'a PluginContext<'a>,
-        args: TransformArgs<'ast>,
-    ) -> LocalHookFuture<'a, TransformReturn<'ast>> {
+        ctx: &'a PluginContext<'_>,
+        args: TransformArgs<'a>,
+    ) -> HookFuture<'a, TransformReturn> {
         Box::pin(async move {
             let Some(tsfn) = self.tsfn_transform.as_ref() else {
                 return Ok(None);
@@ -520,10 +520,10 @@ impl Pluginable for JsPlugin {
 
             // Capture the source type BEFORE serializing; the read-back needs
             // it to anchor the JSON tree.
-            let source_type: SourceType = args.ast.source_type;
+            let source_type: SourceType = args.ast.source_type();
 
             let ast_json: String = oxc_estree_codec::program_to_json(
-                &*args.ast,
+                args.ast.program(),
                 oxc_estree_codec::ProgramToJsonOptions::new(),
             );
 
@@ -565,30 +565,27 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             }
 
-            // Root the source text in the compile allocator so the read-back
-            // tree's data lifetime matches the allocator's, not the hook
-            // call's; the original code anchors the spans.
-            let source: &str = args.allocator.alloc_str(ctx.module.code);
+            // Rebuild the returned tree into a fresh owned AST: the read-back
+            // allocates into the new AST's arena and anchors spans against its
+            // shared source, so the replacement travels as `Some` exactly like
+            // a Rust plugin's replacement.
+            let ast: Ast = Ast::try_from_source(
+                args.ast.source().clone(),
+                source_type,
+                |source_text: &str, allocator: &oxc::allocator::Allocator| {
+                    oxc_estree_codec::json_to_program(
+                        &replaced.ast_json,
+                        oxc_estree_codec::JsonToProgramOptions {
+                            allocator,
+                            source_type,
+                            source_text,
+                        },
+                    )
+                },
+            )
+            .map_err(anyhow::Error::from)?;
 
-            let program: oxc::ast::ast::Program<'_> =
-                oxc_estree_codec::json_to_program(
-                    &replaced.ast_json,
-                    oxc_estree_codec::JsonToProgramOptions {
-                        allocator: args.allocator,
-                        source_type,
-                        source_text: source,
-                    },
-                )
-                .map_err(anyhow::Error::from)?;
-
-            // Root the read-back program in the SAME compile allocator and
-            // return it: the trait is fully return-based, so the replaced
-            // program must travel as `Some(TransformOutput)`, exactly like a
-            // Rust plugin's replacement.
-            let rooted: &'ast oxc::ast::ast::Program<'ast> =
-                args.allocator.alloc(program);
-
-            Ok(Some(TransformOutput { ast: rooted }))
+            Ok(Some(TransformOutput { ast }))
         })
     }
 

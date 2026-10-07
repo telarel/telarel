@@ -1758,6 +1758,7 @@ dependencies = [
  "bitflags",
  "oxc",
  "oxc_sourcemap",
+ "self_cell",
 ]
 
 [[package]]

@@ -1,13 +1,13 @@
 use std::borrow::Cow;
 
-use telarel::allocator::CloneIn;
+use telarel::allocator::Allocator;
 use telarel::ast::ast::{Expression, Program, UnaryOperator};
 use telarel::ast::builder::AstBuilder;
 use telarel::ast_visit::VisitMut;
 use telarel::ast_visit::walk_mut;
 use telarel::span::GetSpan;
 use telarel::{
-    HookUsage, Plugin, PluginContext, TransformArgs, TransformOutput,
+    Ast, HookUsage, Plugin, PluginContext, TransformArgs, TransformOutput,
     TransformReturn,
 };
 
@@ -62,20 +62,20 @@ impl Plugin for VoidFoldPlugin {
         HookUsage::Transform
     }
 
-    async fn transform<'a, 'ast: 'a>(
+    async fn transform<'a>(
         &'a self,
-        _ctx: &'a PluginContext<'a>,
-        args: TransformArgs<'ast>,
-    ) -> TransformReturn<'ast> {
-        let mut current: Program<'ast> = (*args.ast).clone_in(args.allocator);
+        _ctx: &'a PluginContext<'_>,
+        args: TransformArgs<'a>,
+    ) -> TransformReturn {
+        let mut ast: Ast = args.ast.clone();
 
-        let builder: AstBuilder<'ast> = AstBuilder::new(args.allocator);
+        ast.with_mut(|allocator: &Allocator, program: &mut Program<'_>| {
+            let builder: AstBuilder<'_> = AstBuilder::new(allocator);
 
-        let mut folder: VoidFolder<'ast> = VoidFolder { builder };
+            let mut folder: VoidFolder<'_> = VoidFolder { builder };
 
-        walk_mut::walk_program(&mut folder, &mut current);
-
-        let ast: &'ast Program<'ast> = args.allocator.alloc(current);
+            walk_mut::walk_program(&mut folder, program);
+        });
 
         Ok(Some(TransformOutput { ast }))
     }

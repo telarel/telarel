@@ -83,14 +83,14 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
     }
 
     /// Run the `transform` hook; the AST is read-only. A plugin that changes
-    /// the tree derives a new program rooted in `args.allocator` and returns
-    /// it as `Some(TransformOutput)`; `None` leaves the carried AST untouched.
-    fn transform<'a, 'ast: 'a>(
+    /// the tree builds a new owned AST and returns it as
+    /// `Some(TransformOutput)`; `None` leaves the carried AST untouched.
+    fn transform<'a>(
         &'a self,
-        _ctx: &'a PluginContext<'a>,
-        _args: TransformArgs<'ast>,
-    ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
-        async { Ok(None) }
+        _ctx: &'a PluginContext<'_>,
+        _args: TransformArgs<'a>,
+    ) -> impl Future<Output = TransformReturn> + Send + 'a {
+        async move { Ok(None) }
     }
 
     /// Ordering for the `transform` hook; `None` = normal bucket.
@@ -138,14 +138,12 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
 
-    use oxc::allocator::Allocator;
-    use oxc::allocator::CloneIn;
     use oxc::ast::ast::{Directive, Program, StringLiteral};
     use oxc::ast::builder::AstBuilder;
     use oxc::span::SPAN;
     use telarel_common::{
-        CompileContext, HookUsage, Language, ParseOptions, ParseResult,
-        SourceType, parse,
+        Ast, CompileContext, HookUsage, Language, ParseOwnedOptions,
+        SourceType, parse_owned,
     };
 
     use crate::_types::context::{
@@ -266,28 +264,27 @@ mod tests {
             HookUsage::Transform
         }
 
-        fn transform<'a, 'ast: 'a>(
+        fn transform<'a>(
             &'a self,
-            _ctx: &'a PluginContext<'a>,
-            args: TransformArgs<'ast>,
-        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+            _ctx: &'a PluginContext<'_>,
+            args: TransformArgs<'a>,
+        ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
-                let mut working: Program<'ast> =
-                    (*args.ast).clone_in(args.allocator);
+                let mut ast: Ast = args.ast.clone();
 
-                let builder: AstBuilder<'ast> = AstBuilder::new(args.allocator);
+                ast.with_mut(|allocator, program: &mut Program<'_>| {
+                    let builder: AstBuilder<'_> = AstBuilder::new(allocator);
 
-                let string_literal: StringLiteral<'ast> =
-                    StringLiteral::new(SPAN, "\"mark\";", None, &builder);
+                    let string_literal: StringLiteral<'_> =
+                        StringLiteral::new(SPAN, "\"mark\";", None, &builder);
 
-                let directive: Directive<'ast> =
-                    Directive::new(SPAN, string_literal, "mark", &builder);
+                    let directive: Directive<'_> =
+                        Directive::new(SPAN, string_literal, "mark", &builder);
 
-                working.directives.push(directive);
+                    program.directives.push(directive);
+                });
 
-                let rooted: &'ast Program<'ast> = args.allocator.alloc(working);
-
-                Ok(Some(TransformOutput { ast: rooted }))
+                Ok(Some(TransformOutput { ast }))
             }
         }
     }
@@ -304,33 +301,26 @@ mod tests {
             HookUsage::Transform
         }
 
-        fn transform<'a, 'ast: 'a>(
+        fn transform<'a>(
             &'a self,
-            _ctx: &'a PluginContext<'a>,
-            args: TransformArgs<'ast>,
-        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+            _ctx: &'a PluginContext<'_>,
+            _args: TransformArgs<'a>,
+        ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
-                let code: &'ast str = args.allocator.alloc_str("\"replaced\";");
-
-                let file: &'ast str =
-                    args.allocator.alloc_str(_ctx.module.file);
+                let code: &str = "\"replaced\";";
 
                 let ctx: CompileContext<'_> =
-                    CompileContext::new(_ctx.cwd, file, code);
+                    CompileContext::new("/repo", "a.ts", code);
 
-                let parsed: ParseResult<'ast> = parse(ParseOptions {
+                let ast: Ast = parse_owned(ParseOwnedOptions {
                     context: &ctx,
-                    allocator: args.allocator,
-                    file,
+                    file: "a.ts",
                     code,
                     language: None,
                     source_type: None,
                 })?;
 
-                let fresh: &'ast Program<'ast> =
-                    args.allocator.alloc(parsed.program);
-
-                Ok(Some(TransformOutput { ast: fresh }))
+                Ok(Some(TransformOutput { ast }))
             }
         }
     }
@@ -569,82 +559,64 @@ mod tests {
         assert!(finalize_output.map.is_none());
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn test_transform_none_keeps_original_program() {
-        let allocator: Allocator = Allocator::default();
+    fn parse_test_ast(code: &str) -> Ast {
+        let ctx: CompileContext<'_> =
+            CompileContext::new("/repo", "a.ts", code);
 
-        let ctx: PluginContext<'_> = make_context("console.log(1);");
-
-        let parsed: ParseResult<'_> = parse(ParseOptions {
-            context: &telarel_common::CompileContext::new(
-                "/repo",
-                "a.ts",
-                "console.log(1);",
-            ),
-            allocator: &allocator,
+        parse_owned(ParseOwnedOptions {
+            context: &ctx,
             file: "a.ts",
-            code: "console.log(1);",
+            code,
             language: None,
             source_type: None,
         })
-        .unwrap();
+        .unwrap()
+    }
 
-        let program: Program<'_> = parsed.program;
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_none_keeps_original_program() {
+        let ctx: PluginContext<'_> = make_context("console.log(1);");
 
-        let args: TransformArgs<'_> =
-            TransformArgs { allocator: &allocator, ast: &program };
+        let ast: Ast = parse_test_ast("console.log(1);");
+
+        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
 
         let shared: SharedPluginable = Plugin::new_shared(ProbePlugin);
 
-        let result: Option<TransformOutput<'_>> =
+        let result: Option<TransformOutput> =
             shared.call_transform(&ctx, args).await.unwrap();
 
         assert!(result.is_none());
 
-        let out: String = oxc::codegen::Codegen::new().build(&program).code;
+        let out: String =
+            oxc::codegen::Codegen::new().build(ast.program()).code;
 
         assert!(out.contains("console.log"), "{out}");
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_clone_mutation_is_returned() {
-        let allocator: Allocator = Allocator::default();
-
         let ctx: PluginContext<'_> = make_context("console.log(1);");
 
-        let parsed: ParseResult<'_> = parse(ParseOptions {
-            context: &telarel_common::CompileContext::new(
-                "/repo",
-                "a.ts",
-                "console.log(1);",
-            ),
-            allocator: &allocator,
-            file: "a.ts",
-            code: "console.log(1);",
-            language: None,
-            source_type: None,
-        })
-        .unwrap();
+        let ast: Ast = parse_test_ast("console.log(1);");
 
-        let program: Program<'_> = parsed.program;
-
-        let args: TransformArgs<'_> =
-            TransformArgs { allocator: &allocator, ast: &program };
+        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
 
         let shared: SharedPluginable = Plugin::new_shared(CloneMutatePlugin);
 
-        let result: Option<TransformOutput<'_>> =
+        let result: Option<TransformOutput> =
             shared.call_transform(&ctx, args).await.unwrap();
 
-        let output: TransformOutput<'_> =
+        let output: TransformOutput =
             result.expect("clone-mutate must return Some");
 
-        let out: String = oxc::codegen::Codegen::new().build(output.ast).code;
+        let out: String =
+            oxc::codegen::Codegen::new().build(output.ast.program()).code;
 
         assert!(out.contains("mark"), "{out}");
 
         let original: String =
-            oxc::codegen::Codegen::new().build(&program).code;
+            oxc::codegen::Codegen::new().build(ast.program()).code;
 
         assert!(
             !original.contains("mark"),
@@ -654,35 +626,19 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_some_returns_replaced_program() {
-        let allocator: Allocator = Allocator::default();
-
         let ctx: PluginContext<'_> = make_context("console.log(1);");
 
-        let parsed: ParseResult<'_> = parse(ParseOptions {
-            context: &telarel_common::CompileContext::new(
-                "/repo",
-                "a.ts",
-                "console.log(1);",
-            ),
-            allocator: &allocator,
-            file: "a.ts",
-            code: "console.log(1);",
-            language: None,
-            source_type: None,
-        })
-        .unwrap();
+        let ast: Ast = parse_test_ast("console.log(1);");
 
-        let program: Program<'_> = parsed.program;
-
-        let args: TransformArgs<'_> =
-            TransformArgs { allocator: &allocator, ast: &program };
+        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
 
         let shared: SharedPluginable = Plugin::new_shared(ReplaceRootPlugin);
 
-        let output: TransformOutput<'_> =
+        let output: TransformOutput =
             shared.call_transform(&ctx, args).await.unwrap().unwrap();
 
-        let out: String = oxc::codegen::Codegen::new().build(output.ast).code;
+        let out: String =
+            oxc::codegen::Codegen::new().build(output.ast.program()).code;
 
         assert!(out.contains("replaced"), "{out}");
     }

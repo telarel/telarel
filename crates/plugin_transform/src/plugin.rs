@@ -2,12 +2,11 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use oxc::allocator::CloneIn;
 use oxc::semantic::SemanticBuilder;
 use oxc::transformer::{TransformOptions as OxcTransformOptions, Transformer};
 use oxc_transformer_plugins::{InjectGlobalVariables, ReplaceGlobalDefines};
 
-use telarel_common::{CodegenOptions, HookUsage, codegen};
+use telarel_common::{Ast, CodegenOptions, HookUsage, codegen};
 use telarel_plugin::{Plugin, PluginContext, TransformArgs, TransformOutput};
 
 use crate::options::TransformOptions;
@@ -78,11 +77,11 @@ impl Plugin for TransformPlugin {
         HookUsage::Transform
     }
 
-    async fn transform<'a, 'ast: 'a>(
+    async fn transform<'a>(
         &'a self,
-        ctx: &'a PluginContext<'a>,
-        args: TransformArgs<'ast>,
-    ) -> telarel_plugin::TransformReturn<'ast> {
+        ctx: &'a PluginContext<'_>,
+        args: TransformArgs<'a>,
+    ) -> telarel_plugin::TransformReturn {
         // The cached resolution is a pure function of the options; the
         // per-call `cwd` from the plugin context overlays on a clone so
         // the cache itself stays cwd-free.
@@ -121,12 +120,11 @@ impl Plugin for TransformPlugin {
 
         TransformOptions::apply_cwd(&mut resolved_oxc, ctx.cwd);
 
-        // The args program is read-only; clone it once into the compile
-        // allocator and run every pass over the clone. The clone is
-        // discarded when the passes report no change (`Ok(None)`), which
-        // only wastes arena memory.
-        let working: &mut oxc::ast::ast::Program<'ast> =
-            args.allocator.alloc((*args.ast).clone_in(args.allocator));
+        // The args AST is read-only; clone it once into a fresh owned AST
+        // and run every pass over the clone. The clone is discarded when
+        // the passes report no change (`Ok(None)`), which only wastes arena
+        // memory.
+        let mut ast: Ast = args.ast.clone();
 
         // Change detection: the main oxc transformer exposes no changed
         // flag, so its effect is probed exactly by printing the program
@@ -135,101 +133,102 @@ impl Plugin for TransformPlugin {
         // the program.
         let before: String = codegen(CodegenOptions {
             file: ctx.module.file,
-            program: args.ast,
+            program: args.ast.program(),
         })
         .code;
 
         let mut changed: bool = false;
 
-        let scoping = SemanticBuilder::new()
-            .with_excess_capacity(2.0)
-            .with_enum_eval(true)
-            .build(working)
-            .semantic
-            .into_scoping();
-
-        let transformer_return: oxc::transformer::TransformerReturn =
-            Transformer::new(
-                args.allocator,
-                Path::new(ctx.module.file),
-                &resolved_oxc,
-            )
-            .build_with_scoping(scoping, working);
-
-        let diagnostics: oxc::diagnostics::Diagnostics =
-            transformer_return.diagnostics;
-
-        if diagnostics.has_errors() {
-            return Err(render_diagnostics(&diagnostics));
-        }
-
-        changed = changed
-            || codegen(CodegenOptions {
-                file: ctx.module.file,
-                program: working,
-            })
-            .code
-                != before;
-
-        // Replace oxc's runtime helper imports with the vendored bodies
-        // before inject/define run.
-        if resolved.helpers.inline() {
-            let inlined: bool = crate::helpers::run(
-                args.allocator,
-                working,
-                &resolved.helpers.module_name,
-            )?;
-
-            changed = changed || inlined;
-        }
-
-        let inject_configured: bool = resolved.inject.is_some();
-
-        let define_configured: bool = resolved.define.is_some();
-
-        if inject_configured || define_configured {
-            let mut scoping: oxc::semantic::Scoping = SemanticBuilder::new()
+        ast.with_mut(|allocator, program| -> anyhow::Result<()> {
+            let scoping: oxc::semantic::Scoping = SemanticBuilder::new()
                 .with_excess_capacity(2.0)
                 .with_enum_eval(true)
-                .build(working)
+                .build(program)
                 .semantic
                 .into_scoping();
 
-            if let Some(inject) = &resolved.inject {
-                let inject_return: oxc_transformer_plugins::InjectGlobalVariablesReturn =
-                    InjectGlobalVariables::new(args.allocator, inject.clone())
-                        .build(scoping, working);
+            let transformer_return: oxc::transformer::TransformerReturn =
+                Transformer::new(
+                    allocator,
+                    Path::new(ctx.module.file),
+                    &resolved_oxc,
+                )
+                .build_with_scoping(scoping, program);
 
-                scoping = inject_return.scoping;
+            let diagnostics: oxc::diagnostics::Diagnostics =
+                transformer_return.diagnostics;
 
-                changed = changed || inject_return.changed;
+            if diagnostics.has_errors() {
+                return Err(render_diagnostics(&diagnostics));
             }
 
-            if let Some(define) = &resolved.define {
-                let define_return: oxc_transformer_plugins::ReplaceGlobalDefinesReturn =
-                    ReplaceGlobalDefines::new(args.allocator, define.clone())
-                        .build(scoping, working);
+            changed = changed
+                || codegen(CodegenOptions {
+                    file: ctx.module.file,
+                    program,
+                })
+                .code
+                    != before;
 
-                changed = changed || define_return.changed;
+            // Replace oxc's runtime helper imports with the vendored bodies
+            // before inject/define run.
+            if resolved.helpers.inline() {
+                let inlined: bool = crate::helpers::run(
+                    allocator,
+                    program,
+                    &resolved.helpers.module_name,
+                )?;
+
+                changed = changed || inlined;
             }
-        }
+
+            let inject_configured: bool = resolved.inject.is_some();
+
+            let define_configured: bool = resolved.define.is_some();
+
+            if inject_configured || define_configured {
+                let mut scoping: oxc::semantic::Scoping = SemanticBuilder::new()
+                    .with_excess_capacity(2.0)
+                    .with_enum_eval(true)
+                    .build(program)
+                    .semantic
+                    .into_scoping();
+
+                if let Some(inject) = &resolved.inject {
+                    let inject_return: oxc_transformer_plugins::InjectGlobalVariablesReturn =
+                        InjectGlobalVariables::new(allocator, inject.clone())
+                            .build(scoping, program);
+
+                    scoping = inject_return.scoping;
+
+                    changed = changed || inject_return.changed;
+                }
+
+                if let Some(define) = &resolved.define {
+                    let define_return: oxc_transformer_plugins::ReplaceGlobalDefinesReturn =
+                        ReplaceGlobalDefines::new(allocator, define.clone())
+                            .build(scoping, program);
+
+                    changed = changed || define_return.changed;
+                }
+            }
+
+            Ok(())
+        })?;
 
         if !changed {
             return Ok(None);
         }
 
-        Ok(Some(TransformOutput { ast: working }))
+        Ok(Some(TransformOutput { ast }))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use oxc::allocator::Allocator;
-    use oxc::ast::ast::Program;
-    use oxc::parser::Parser;
-    use oxc::span::SourceType;
-
-    use telarel_common::Language;
+    use telarel_common::{
+        Ast, CompileContext, Language, ParseOwnedOptions, parse_owned,
+    };
     use telarel_plugin::{ModuleInfo, Plugin, PluginContext, TransformOutput};
 
     use crate::options::TransformOptions;
@@ -255,15 +254,20 @@ mod tests {
 
     const SOURCE_REGEX: &str = "const r = /(/;";
 
-    fn parse<'a>(
-        allocator: &'a Allocator,
-        file: &'a str,
-        code: &'a str,
-    ) -> Program<'a> {
-        let source_type: SourceType =
-            SourceType::from_path(file).expect("known file extension");
+    fn parse(
+        file: &str,
+        code: &str,
+    ) -> Ast {
+        let ctx: CompileContext<'_> = CompileContext::new(CWD, file, code);
 
-        Parser::new(allocator, code, source_type).parse().program
+        parse_owned(ParseOwnedOptions {
+            context: &ctx,
+            file,
+            code,
+            language: None,
+            source_type: None,
+        })
+        .expect("valid source parses")
     }
 
     fn make_context<'a>(file: &'a str) -> PluginContext<'a> {
@@ -277,15 +281,14 @@ mod tests {
         PluginContext::new(CWD, module)
     }
 
-    async fn run_hook<'a>(
+    async fn run_hook(
         plugin: &TransformPlugin,
-        allocator: &'a Allocator,
         file: &str,
-        program: &'a Program<'a>,
-    ) -> anyhow::Result<Option<TransformOutput<'a>>> {
+        ast: &Ast,
+    ) -> anyhow::Result<Option<TransformOutput>> {
         let ctx: PluginContext<'_> = make_context(file);
 
-        let args: TransformArgs<'_> = TransformArgs { allocator, ast: program };
+        let args: TransformArgs<'_> = TransformArgs { ast };
 
         plugin.transform(&ctx, args).await
     }
@@ -295,50 +298,49 @@ mod tests {
         file: &str,
         code: &str,
     ) -> String {
-        let allocator: Allocator = Allocator::default();
-
-        let program: Program<'_> = parse(&allocator, file, code);
+        let ast: Ast = parse(file, code);
 
         // Mirror the driver semantics: `Some` carries the transformed
         // program; `None` means the read-only input stands.
-        let code: String = match run_hook(&plugin, &allocator, file, &program)
-            .await
-            .expect("transform succeeds")
-        {
+        match run_hook(&plugin, file, &ast).await.expect("transform succeeds") {
             | Some(output) => {
                 telarel_common::codegen(telarel_common::CodegenOptions {
                     file,
-                    program: output.ast,
+                    program: output.ast.program(),
                 })
                 .code
             },
             | None => {
                 telarel_common::codegen(telarel_common::CodegenOptions {
                     file,
-                    program: &program,
+                    program: ast.program(),
                 })
                 .code
             },
-        };
-
-        code
+        }
     }
 
-    fn codegen_output<'a>(
-        program: &'a Program<'a>,
-        output: Option<TransformOutput<'a>>,
+    fn codegen_output(
+        ast: &Ast,
+        output: Option<TransformOutput>,
         file: &str,
     ) -> String {
-        let final_program: &Program<'_> = match output {
-            | Some(output) => output.ast,
-            | None => program,
-        };
-
-        telarel_common::codegen(telarel_common::CodegenOptions {
-            file,
-            program: final_program,
-        })
-        .code
+        match &output {
+            | Some(output) => {
+                telarel_common::codegen(telarel_common::CodegenOptions {
+                    file,
+                    program: output.ast.program(),
+                })
+                .code
+            },
+            | None => {
+                telarel_common::codegen(telarel_common::CodegenOptions {
+                    file,
+                    program: ast.program(),
+                })
+                .code
+            },
+        }
     }
 
     fn inline_helper_plugin() -> TransformPlugin {
@@ -379,20 +381,15 @@ mod tests {
         // transformed program, and the carried program must reflect the edit.
         let plugin: TransformPlugin = inline_helper_plugin();
 
-        let allocator: Allocator = Allocator::default();
+        let ast: Ast =
+            parse("index.js", "async function main() { await g(); }");
 
-        let program: Program<'_> = parse(
-            &allocator,
-            "index.js",
-            "async function main() { await g(); }",
-        );
-
-        let output: Option<TransformOutput<'_>> =
-            run_hook(&plugin, &allocator, "index.js", &program)
+        let output: Option<TransformOutput> =
+            run_hook(&plugin, "index.js", &ast)
                 .await
                 .expect("transform succeeds");
 
-        let output: TransformOutput<'_> =
+        let output: TransformOutput =
             output.expect("changed program must return Some");
 
         // The transformed program is a distinct allocation; the input
@@ -400,7 +397,7 @@ mod tests {
         let input_code: String =
             telarel_common::codegen(telarel_common::CodegenOptions {
                 file: "index.js",
-                program: &program,
+                program: ast.program(),
             })
             .code;
 
@@ -409,7 +406,7 @@ mod tests {
         let code: String =
             telarel_common::codegen(telarel_common::CodegenOptions {
                 file: "index.js",
-                program: output.ast,
+                program: output.ast.program(),
             })
             .code;
 
@@ -431,12 +428,10 @@ mod tests {
                 ..TransformOptions::default()
             });
 
-        let allocator: Allocator = Allocator::default();
+        let ast: Ast = parse("index.js", "main();");
 
-        let program: Program<'_> = parse(&allocator, "index.js", "main();");
-
-        let output: Option<TransformOutput<'_>> =
-            run_hook(&plugin, &allocator, "index.js", &program)
+        let output: Option<TransformOutput> =
+            run_hook(&plugin, "index.js", &ast)
                 .await
                 .expect("transform succeeds");
 
@@ -445,7 +440,7 @@ mod tests {
         let code: String =
             telarel_common::codegen(telarel_common::CodegenOptions {
                 file: "index.js",
-                program: &program,
+                program: ast.program(),
             })
             .code;
 
@@ -531,8 +526,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_inline_helper_mode_does_not_reach_oxc_inline() {
-        // oxc's `Inline` mode panics at helper load time in 0.150.0; telarel
-        // maps it to oxc `Runtime` until the inline helpers pass replaces it.
+        // oxc's `Inline` mode panics at helper load time; telarel maps it to
+        // oxc `Runtime` until the inline helpers pass replaces it.
         let plugin: TransformPlugin =
             TransformPlugin::with_options(TransformOptions {
                 targets: vec![TransformTarget::Es2015],
@@ -543,16 +538,11 @@ mod tests {
                 ..TransformOptions::default()
             });
 
-        let allocator: Allocator = Allocator::default();
+        let ast: Ast =
+            parse("index.js", "async function main() { await g(); }");
 
-        let program: Program<'_> = parse(
-            &allocator,
-            "index.js",
-            "async function main() { await g(); }",
-        );
-
-        let output: Option<TransformOutput<'_>> =
-            run_hook(&plugin, &allocator, "index.js", &program)
+        let output: Option<TransformOutput> =
+            run_hook(&plugin, "index.js", &ast)
                 .await
                 .expect("transform succeeds");
 
@@ -565,13 +555,13 @@ mod tests {
 
         assert!(resolved.helpers.inline());
 
-        let output: TransformOutput<'_> =
+        let output: TransformOutput =
             output.expect("the inline helper pass must change the program");
 
         let code: String =
             telarel_common::codegen(telarel_common::CodegenOptions {
                 file: "index.js",
-                program: output.ast,
+                program: output.ast.program(),
             })
             .code;
 
@@ -644,12 +634,10 @@ mod tests {
                 ..TransformOptions::default()
             });
 
-        let allocator: Allocator = Allocator::default();
+        let ast: Ast = parse("index.js", SOURCE_REGEX);
 
-        let program: Program<'_> = parse(&allocator, "index.js", SOURCE_REGEX);
-
-        let result: anyhow::Result<Option<TransformOutput<'_>>> =
-            run_hook(&plugin, &allocator, "index.js", &program).await;
+        let result: anyhow::Result<Option<TransformOutput>> =
+            run_hook(&plugin, "index.js", &ast).await;
 
         let error: anyhow::Error =
             result.expect_err("malformed regexp must error");
@@ -665,13 +653,10 @@ mod tests {
                 ..TransformOptions::default()
             });
 
-        let allocator: Allocator = Allocator::default();
+        let ast: Ast = parse("index.js", "const value = await promise;");
 
-        let program: Program<'_> =
-            parse(&allocator, "index.js", "const value = await promise;");
-
-        let result: anyhow::Result<Option<TransformOutput<'_>>> =
-            run_hook(&plugin, &allocator, "index.js", &program).await;
+        let result: anyhow::Result<Option<TransformOutput>> =
+            run_hook(&plugin, "index.js", &ast).await;
 
         assert!(result.is_ok());
     }
@@ -695,10 +680,7 @@ mod tests {
                 ..TransformOptions::default()
             });
 
-        let allocator: Allocator = Allocator::default();
-
-        let program: Program<'_> =
-            parse(&allocator, "index.js", "async function main() {}");
+        let ast: Ast = parse("index.js", "async function main() {}");
 
         let module: ModuleInfo<'_> = ModuleInfo {
             file: "index.js",
@@ -709,8 +691,7 @@ mod tests {
 
         let ctx: PluginContext<'_> = PluginContext::new("/repo", module);
 
-        let args: TransformArgs<'_> =
-            TransformArgs { allocator: &allocator, ast: &program };
+        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
 
         plugin.transform(&ctx, args).await.expect("transform succeeds");
 
@@ -737,21 +718,17 @@ mod tests {
                 ..TransformOptions::default()
             });
 
-        let allocator: Allocator = Allocator::default();
+        let first: Ast = parse("index.js", "async function main() {}");
 
-        let first: Program<'_> =
-            parse(&allocator, "index.js", "async function main() {}");
-
-        let first_output: Option<TransformOutput<'_>> =
-            run_hook(&plugin, &allocator, "index.js", &first)
+        let first_output: Option<TransformOutput> =
+            run_hook(&plugin, "index.js", &first)
                 .await
                 .expect("first transform succeeds");
 
-        let second: Program<'_> =
-            parse(&allocator, "index.js", "async function other() {}");
+        let second: Ast = parse("index.js", "async function other() {}");
 
-        let second_output: Option<TransformOutput<'_>> =
-            run_hook(&plugin, &allocator, "index.js", &second)
+        let second_output: Option<TransformOutput> =
+            run_hook(&plugin, "index.js", &second)
                 .await
                 .expect("second transform succeeds");
 
@@ -1003,12 +980,10 @@ mod tests {
                 ..TransformOptions::default()
             });
 
-        let allocator: Allocator = Allocator::default();
+        let ast: Ast = parse("index.js", "main();");
 
-        let program: Program<'_> = parse(&allocator, "index.js", "main();");
-
-        let result: anyhow::Result<Option<TransformOutput<'_>>> =
-            run_hook(&plugin, &allocator, "index.js", &program).await;
+        let result: anyhow::Result<Option<TransformOutput>> =
+            run_hook(&plugin, "index.js", &ast).await;
 
         let error: anyhow::Error =
             result.expect_err("invalid define config must error");
@@ -1018,7 +993,7 @@ mod tests {
         let code: String =
             telarel_common::codegen(telarel_common::CodegenOptions {
                 file: "index.js",
-                program: &program,
+                program: ast.program(),
             })
             .code;
 

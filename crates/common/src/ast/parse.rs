@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use oxc::allocator::Allocator;
 use oxc::ast::ast::Program;
 use oxc::diagnostics::LabeledSpan;
@@ -6,6 +8,7 @@ use oxc::span::{SourceType as OxcSourceType, Span};
 
 use crate::_types::options::language::{Language, grammar_source_type};
 use crate::_types::options::source_type::{SourceType, with_module_kind};
+use crate::ast::ast::Ast;
 use crate::contexts::compile::CompileContext;
 use crate::errors::compile::CompileError;
 
@@ -16,6 +19,23 @@ pub struct ParseOptions<'ctx, 'a> {
     pub context: &'ctx CompileContext<'ctx>,
     /// Destination allocator for the parsed program.
     pub allocator: &'a Allocator,
+    /// File path.
+    pub file: &'a str,
+    /// Source code to parse.
+    pub code: &'a str,
+    /// The grammar of the code;
+    /// `None` infers the grammar from the file extension.
+    pub language: Option<Language>,
+    /// The module system of the code;
+    /// `None` keeps the module kind resolved from the grammar.
+    pub source_type: Option<SourceType>,
+}
+
+/// Options for [`parse_owned`].
+#[derive(Clone, Copy)]
+pub struct ParseOwnedOptions<'ctx, 'a> {
+    /// Compile context for diagnostics.
+    pub context: &'ctx CompileContext<'ctx>,
     /// File path.
     pub file: &'a str,
     /// Source code to parse.
@@ -49,26 +69,29 @@ pub fn source_type_for_module_id(module_id: &str) -> OxcSourceType {
     OxcSourceType::from_path(path).unwrap_or_default()
 }
 
-/// Parse source code into a [`Program`].
-pub fn parse<'ctx, 'a>(
-    options: ParseOptions<'ctx, 'a>
-) -> Result<ParseResult<'a>, CompileError> {
-    // Resolve the grammar: an explicit language option wins;
-    // otherwise infer from the module id.
-    let grammar: OxcSourceType = options
-        .language
+/// Resolve the oxc source type: an explicit language wins, the module kind is
+/// overlaid, and otherwise the module id's extension is inferred.
+fn resolve_source_type(
+    file: &str,
+    language: Option<Language>,
+    source_type: Option<SourceType>,
+) -> OxcSourceType {
+    let grammar: OxcSourceType = language
         .map(grammar_source_type)
-        .unwrap_or_else(|| source_type_for_module_id(options.file));
+        .unwrap_or_else(|| source_type_for_module_id(file));
 
-    // Overlay an explicit module kind, keeping the grammar's kind otherwise.
-    let source_type: OxcSourceType = match options.source_type {
+    match source_type {
         | Some(module_kind) => with_module_kind(grammar, module_kind),
         | None => grammar,
-    };
+    }
+}
 
-    let parser_return: oxc::parser::ParserReturn<'_> =
-        Parser::new(options.allocator, options.code, source_type).parse();
-
+/// Convert the first parser diagnostic (or fatal error) into a
+/// [`CompileError`].
+fn parse_error(
+    context: &CompileContext<'_>,
+    parser_return: &oxc::parser::ParserReturn<'_>,
+) -> Option<CompileError> {
     if let Some(diagnostic) = parser_return.diagnostics.first() {
         let span: Span = diagnostic
             .labels
@@ -80,19 +103,68 @@ pub fn parse<'ctx, 'a>(
 
         let message: String = diagnostic.to_string();
 
-        return Err(CompileError::new(options.context, span, message));
+        return Some(CompileError::new(context, span, message));
     }
 
     if parser_return.fatal_error {
         let span: Span = Span::new(0, 0);
-        return Err(CompileError::new(
-            options.context,
+        return Some(CompileError::new(
+            context,
             span,
             "the parser aborted".to_string(),
         ));
     }
 
+    None
+}
+
+/// Parse source code into a [`Program`].
+pub fn parse<'ctx, 'a>(
+    options: ParseOptions<'ctx, 'a>
+) -> Result<ParseResult<'a>, CompileError> {
+    let source_type: OxcSourceType = resolve_source_type(
+        options.file,
+        options.language,
+        options.source_type,
+    );
+
+    let parser_return: oxc::parser::ParserReturn<'_> =
+        Parser::new(options.allocator, options.code, source_type).parse();
+
+    if let Some(error) = parse_error(options.context, &parser_return) {
+        return Err(error);
+    }
+
     Ok(ParseResult { program: parser_return.program })
+}
+
+/// Parse source code into an owned [`Ast`].
+pub fn parse_owned(
+    options: ParseOwnedOptions<'_, '_>
+) -> Result<Ast, CompileError> {
+    let source_type: OxcSourceType = resolve_source_type(
+        options.file,
+        options.language,
+        options.source_type,
+    );
+
+    let source: Arc<str> = Arc::from(options.code);
+    let context: &CompileContext<'_> = options.context;
+
+    Ast::try_from_source(
+        source,
+        source_type,
+        |src: &str, allocator: &Allocator| {
+            let parser_return: oxc::parser::ParserReturn<'_> =
+                Parser::new(allocator, src, source_type).parse();
+
+            if let Some(error) = parse_error(context, &parser_return) {
+                return Err(error);
+            }
+
+            Ok(parser_return.program)
+        },
+    )
 }
 
 #[cfg(test)]
@@ -132,6 +204,90 @@ mod tests {
         code: &'a str,
     ) -> Result<ParseResult<'a>, CompileError> {
         parse_code_with_options(allocator, file, None, None, code)
+    }
+
+    fn parse_owned_code(
+        file: &str,
+        language: Option<Language>,
+        source_type: Option<SourceType>,
+        code: &str,
+    ) -> Result<Ast, CompileError> {
+        let context: CompileContext<'_> = CompileContext::new(CWD, file, code);
+
+        let options: ParseOwnedOptions<'_, '_> = ParseOwnedOptions {
+            context: &context,
+            file,
+            code,
+            language,
+            source_type,
+        };
+
+        parse_owned(options)
+    }
+
+    #[test]
+    fn test_parse_owned_ok() {
+        let ast: Ast = parse_owned_code(FILE, None, None, "const a = 1;")
+            .expect("valid source parses");
+
+        assert!(!ast.program().body.is_empty());
+        assert!(ast.program().source_type.is_typescript());
+        assert_eq!(ast.source().as_ref(), "const a = 1;");
+    }
+
+    #[test]
+    fn test_parse_owned_source_text_borrows_owned_source() {
+        let ast: Ast = parse_owned_code(FILE, None, None, "const a = 1;")
+            .expect("valid source parses");
+
+        assert_eq!(ast.program().source_text, ast.source().as_ref());
+    }
+
+    #[test]
+    fn test_parse_owned_invalid_syntax_errors() {
+        let result: Result<Ast, CompileError> =
+            parse_owned_code(FILE, None, None, "const = ;");
+
+        let error: CompileError = result.expect_err("invalid syntax errors");
+
+        assert!(error.to_string().contains(FILE));
+    }
+
+    #[test]
+    fn test_parse_owned_resolves_explicit_language() {
+        let ast: Ast = parse_owned_code(
+            "app.js",
+            Some(Language::TS),
+            None,
+            "const a: number = 1;",
+        )
+        .expect("explicit language parses");
+
+        assert!(ast.program().source_type.is_typescript());
+    }
+
+    #[test]
+    fn test_parse_owned_resolves_explicit_module_kind() {
+        let ast: Ast = parse_owned_code(
+            FILE,
+            Some(Language::JS),
+            Some(SourceType::Script),
+            "const a = 1;",
+        )
+        .expect("script module kind parses");
+
+        assert!(ast.program().source_type.is_script());
+    }
+
+    #[test]
+    fn test_parse_owned_clone_round_trips() {
+        let ast: Ast = parse_owned_code(FILE, None, None, "const a = 1;")
+            .expect("valid source parses");
+
+        let clone: Ast = ast.clone();
+
+        assert_eq!(clone.program().body.len(), ast.program().body.len());
+        assert_eq!(clone.program().source_text, ast.program().source_text);
     }
 
     #[test]

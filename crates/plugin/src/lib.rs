@@ -33,7 +33,7 @@ pub use crate::plugin::pluginable::{Pluginable, SharedPluginable};
 
 #[doc(hidden)]
 pub mod __internal {
-    pub use crate::plugin::pluginable::{HookFuture, LocalHookFuture};
+    pub use crate::plugin::pluginable::HookFuture;
     pub use crate::plugin_driver::PluginDriver;
     pub use crate::plugin_driver::hooks::finalize::FinalizeFold;
     pub use crate::plugin_driver::hooks::prepare::PrepareFold;

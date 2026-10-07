@@ -7,13 +7,12 @@
 
 mod resolve;
 
-use oxc::allocator::Allocator;
 use oxc::ast::ast::Program;
 use oxc_sourcemap::SourceMapBuilder;
 
 use telarel_common::{
-    CompileContext, CompileError, HookUsage, Language, ParseOptions,
-    ParseResult, ResolvedOptions, SourceType, compose_maps, parse,
+    Ast, CompileContext, CompileError, HookUsage, Language, ParseOwnedOptions,
+    ResolvedOptions, SourceType, compose_maps, parse_owned,
 };
 use telarel_plugin::__internal::PluginDriver;
 use telarel_plugin::{
@@ -168,42 +167,32 @@ async fn run_stages(
 
     let (code, map): (String, SourceMap) =
         if driver.usage().contains(HookUsage::Transform) {
-            // Parse ONCE before the transform chain. Root the resolved source in
-            // the allocator so the parsed program borrows from the same
-            // allocation.
-            let allocator: Allocator = Allocator::default();
-
-            let source: &'_ str = allocator.alloc_str(&parse_code);
-
-            let parse_options: ParseOptions<'_, '_> = ParseOptions {
+            // Parse ONCE before the transform chain into an owned `Ast`; the
+            // AST bundles its own allocator, so it moves through the chain by
+            // value and hands out a read-only program by reference.
+            let ast: Ast = parse_owned(ParseOwnedOptions {
                 context: ctx,
-                allocator: &allocator,
                 file: &resolved.file,
-                code: source,
+                code: &parse_code,
                 language: Some(resolved_options.language),
                 source_type: Some(resolved_options.source_type),
-            };
+            })
+            .map_err(|error| StageError {
+                error,
+                last_good: LastGood {
+                    code: parse_code.clone(),
+                    // `prepare_maps` is in reverse fold order; the
+                    // FIRST element is the LAST-SERVED surviving
+                    // map (the map closest to the parse input).
+                    map: prepare_maps.first().cloned(),
+                },
+            })?;
 
-            let parse_result: ParseResult<'_> =
-                parse(parse_options).map_err(|error| StageError {
-                    error,
-                    last_good: LastGood {
-                        code: parse_code.clone(),
-                        // `prepare_maps` is in reverse fold order; the
-                        // FIRST element is the LAST-SERVED surviving
-                        // map (the map closest to the parse input).
-                        map: prepare_maps.first().cloned(),
-                    },
-                })?;
-
-            let parse_program: &Program<'_> = &parse_result.program;
-
-            let transform_args: TransformArgs<'_> =
-                TransformArgs { allocator: &allocator, ast: parse_program };
-
-            let transform_output: Option<telarel_plugin::TransformOutput<'_>> =
-                driver.transform(plugin_ctx, &transform_args).await.map_err(
-                    |error| StageError {
+            let transform_output: Option<telarel_plugin::TransformOutput> =
+                driver
+                    .transform(plugin_ctx, TransformArgs { ast: &ast })
+                    .await
+                    .map_err(|error| StageError {
                         error: CompileError::from_message(&format!(
                             "transform hook: {error:#}"
                         )),
@@ -213,16 +202,14 @@ async fn run_stages(
                             // LAST-SERVED surviving one.
                             map: prepare_maps.first().cloned(),
                         },
-                    },
-                )?;
+                    })?;
 
             // The driver's `Some` carries the last replacement; `None`
-            // means no plugin changed anything, so the parse result is
-            // codegen'd directly. Both are rooted in the compile
-            // allocator; no copy is needed.
+            // means no plugin changed anything, so the parsed AST is
+            // codegen'd directly. Both are owned `Ast`s; borrow the program.
             let final_program: &Program<'_> = match &transform_output {
-                | Some(output) => output.ast,
-                | None => parse_program,
+                | Some(output) => output.ast.program(),
+                | None => ast.program(),
             };
 
             let result: telarel_common::CodegenResult<'_> =
@@ -457,12 +444,12 @@ pub async fn compile(
 mod tests {
     use std::borrow::Cow;
 
-    use telarel_common::{CompileOptions, ParseResult};
+    use telarel_common::{Ast, CompileOptions, ParseOwnedOptions, parse_owned};
     use telarel_plugin::{
         Plugin, SharedPluginable, TransformArgs, TransformReturn,
     };
 
-    use oxc::allocator::CloneIn;
+    use oxc::allocator::Allocator;
     use oxc::ast_visit::VisitMut;
     use oxc::ast_visit::walk_mut;
 
@@ -531,35 +518,29 @@ mod tests {
             HookUsage::Transform
         }
 
-        // Replace the whole root with a freshly parsed program and return
-        // `Some`: the replaced program becomes the carried one.
-        fn transform<'a, 'ast: 'a>(
+        // Replace the whole root with a freshly parsed AST and return
+        // `Some`: the replaced AST becomes the carried one.
+        fn transform<'a>(
             &'a self,
-            _ctx: &'a PluginContext<'a>,
-            args: TransformArgs<'ast>,
-        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+            ctx: &'a PluginContext<'_>,
+            _args: TransformArgs<'a>,
+        ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
-                let code: &'ast str = args.allocator.alloc_str(REPLACED_CODE);
+                let compile_ctx: CompileContext<'_> = CompileContext::new(
+                    "/repo",
+                    ctx.module.file,
+                    REPLACED_CODE,
+                );
 
-                let file: &'ast str =
-                    args.allocator.alloc_str(_ctx.module.file);
-
-                let ctx: CompileContext<'_> =
-                    CompileContext::new("/repo", file, code);
-
-                let parsed: ParseResult<'_> = parse(ParseOptions {
-                    context: &ctx,
-                    allocator: args.allocator,
-                    file,
-                    code,
+                let ast: Ast = parse_owned(ParseOwnedOptions {
+                    context: &compile_ctx,
+                    file: ctx.module.file,
+                    code: REPLACED_CODE,
                     language: None,
                     source_type: None,
                 })?;
 
-                let fresh: &'ast Program<'ast> =
-                    args.allocator.alloc(parsed.program);
-
-                Ok(Some(telarel_plugin::TransformOutput { ast: fresh }))
+                Ok(Some(telarel_plugin::TransformOutput { ast }))
             }
         }
     }
@@ -591,26 +572,26 @@ mod tests {
             HookUsage::Transform
         }
 
-        // Clone the read-only program into the compile allocator, rename
-        // every `console` IdentifierReference to `consolex` on the clone,
-        // and return it as the replacement.
-        fn transform<'a, 'ast: 'a>(
+        // Clone the read-only AST, rename every `console`
+        // IdentifierReference to `consolex` on the clone, and return it as
+        // the replacement.
+        fn transform<'a>(
             &'a self,
-            _ctx: &'a PluginContext<'a>,
-            args: TransformArgs<'ast>,
-        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+            _ctx: &'a PluginContext<'_>,
+            args: TransformArgs<'a>,
+        ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
-                let mut working: Program<'ast> =
-                    (*args.ast).clone_in(args.allocator);
+                let mut ast: Ast = args.ast.clone();
 
-                let mut renamer: Renamer<'ast> =
-                    Renamer { allocator: args.allocator };
+                ast.with_mut(
+                    |allocator: &Allocator, program: &mut Program<'_>| {
+                        let mut renamer: Renamer<'_> = Renamer { allocator };
 
-                walk_mut::walk_program(&mut renamer, &mut working);
+                        walk_mut::walk_program(&mut renamer, program);
+                    },
+                );
 
-                let rooted: &'ast Program<'ast> = args.allocator.alloc(working);
-
-                Ok(Some(telarel_plugin::TransformOutput { ast: rooted }))
+                Ok(Some(telarel_plugin::TransformOutput { ast }))
             }
         }
     }
@@ -627,30 +608,36 @@ mod tests {
             HookUsage::Transform
         }
 
-        // Clone the read-only program into the compile allocator and append
-        // one extra directive to the clone, then return it.
-        fn transform<'a, 'ast: 'a>(
+        // Clone the read-only AST and append one extra directive to the
+        // clone, then return it.
+        fn transform<'a>(
             &'a self,
-            _ctx: &'a PluginContext<'a>,
-            args: TransformArgs<'ast>,
-        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+            _ctx: &'a PluginContext<'_>,
+            args: TransformArgs<'a>,
+        ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
-                let mut working: Program<'ast> =
-                    (*args.ast).clone_in(args.allocator);
+                let mut ast: Ast = args.ast.clone();
 
-                let builder: AstBuilder<'ast> = AstBuilder::new(args.allocator);
+                ast.with_mut(
+                    |allocator: &Allocator, program: &mut Program<'_>| {
+                        let builder: AstBuilder<'_> =
+                            AstBuilder::new(allocator);
 
-                let string_literal: StringLiteral<'ast> =
-                    StringLiteral::new(SPAN, DIRECTIVE, None, &builder);
+                        let string_literal: StringLiteral<'_> =
+                            StringLiteral::new(SPAN, DIRECTIVE, None, &builder);
 
-                let directive: Directive<'ast> =
-                    Directive::new(SPAN, string_literal, DIRECTIVE, &builder);
+                        let directive: Directive<'_> = Directive::new(
+                            SPAN,
+                            string_literal,
+                            DIRECTIVE,
+                            &builder,
+                        );
 
-                working.directives.push(directive);
+                        program.directives.push(directive);
+                    },
+                );
 
-                let rooted: &'ast Program<'ast> = args.allocator.alloc(working);
-
-                Ok(Some(telarel_plugin::TransformOutput { ast: rooted }))
+                Ok(Some(telarel_plugin::TransformOutput { ast }))
             }
         }
     }
@@ -669,11 +656,11 @@ mod tests {
 
         // A transform hook that changes nothing: returns `None`, so the
         // parsed original is carried unchanged to the rest of the chain.
-        fn transform<'a, 'ast: 'a>(
+        fn transform<'a>(
             &'a self,
-            _ctx: &'a PluginContext<'a>,
-            _args: TransformArgs<'ast>,
-        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+            _ctx: &'a PluginContext<'_>,
+            _args: TransformArgs<'a>,
+        ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move { Ok(None) }
         }
     }
@@ -2803,11 +2790,11 @@ mod tests {
             HookUsage::Transform
         }
 
-        fn transform<'a, 'ast: 'a>(
+        fn transform<'a>(
             &'a self,
             _ctx: &'a telarel_plugin::PluginContext<'_>,
-            _args: TransformArgs<'ast>,
-        ) -> impl Future<Output = TransformReturn<'ast>> + 'a {
+            _args: TransformArgs<'a>,
+        ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move { Err(anyhow::anyhow!("transform boom")) }
         }
     }

@@ -6,9 +6,10 @@
 //! the plugin system, and the shared types.
 
 pub use telarel_common::{
-    CodegenOptions, CodegenResult, CompileContext, CompileError,
-    CompileOptions, HookUsage, Language, ParseOptions, ParseResult,
-    ResolvedOptions, SourceMap, SourceType, compose_maps,
+    Ast, CodegenOptions, CodegenResult, CompileContext, CompileError,
+    CompileOptions, HookUsage, Language, ParseOptions, ParseOwnedOptions,
+    ParseResult, ResolvedOptions, SourceMap, SourceType, compose_maps,
+    parse_owned,
 };
 
 pub use telarel_plugin::{

@@ -17,9 +17,11 @@ pub use crate::_types::options::language::grammar_source_type;
 pub use crate::_types::options::resolved::ResolvedOptions;
 pub use crate::_types::options::source_type::SourceType;
 pub use crate::_types::options::source_type::with_module_kind;
+pub use crate::ast::ast::Ast;
 pub use crate::ast::codegen::{CodegenOptions, CodegenResult, codegen};
 pub use crate::ast::parse::{
-    ParseOptions, ParseResult, parse, source_type_for_module_id,
+    ParseOptions, ParseOwnedOptions, ParseResult, parse, parse_owned,
+    source_type_for_module_id,
 };
 pub use crate::contexts::compile::CompileContext;
 pub use crate::errors::compile::CompileError;

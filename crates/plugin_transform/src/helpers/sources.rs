@@ -1,13 +1,13 @@
 /// An embedded helper: name and ESM source.
 #[derive(Debug)]
 pub struct HelperSource {
-    /// The helper name; primary entries match the oxc 0.150.0 `Helper` enum names.
+    /// The helper name; primary entries match the oxc `Helper` enum names.
     pub name: &'static str,
     /// The embedded ESM source from the installed `@oxc-project/runtime` package.
     pub esm_source: &'static str,
 }
 
-/// The oxc 0.150.0 runtime helpers, mirroring its `Helper` enum exactly.
+/// The oxc runtime helpers, mirroring its `Helper` enum exactly.
 pub const HELPERS: &[HelperSource] = &[
     HelperSource {
         name: "awaitAsyncGenerator",

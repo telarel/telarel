@@ -1,43 +1,66 @@
 use anyhow::Context;
-use oxc::ast::ast::Program;
+use telarel_common::Ast;
 
 use crate::_types::context::PluginContext;
 use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
 use crate::plugin::pluginable::SharedPluginable;
 
+/// The carried AST through the `transform` fold.
+///
+/// Starts as a borrow of the caller's AST so the common "no plugin changed
+/// anything" case never clones. The first `Some(output)` replaces the borrow
+/// with the plugin's owned AST, and later plugins see that.
+enum Carried<'a> {
+    Borrowed(&'a Ast),
+    Owned(Ast),
+}
+
+impl Carried<'_> {
+    fn as_ref(&self) -> &Ast {
+        match self {
+            | Carried::Borrowed(ast) => ast,
+            | Carried::Owned(ast) => ast,
+        }
+    }
+}
+
 /// Run the `transform` hook chain.
 ///
-/// The chain is a fold over a carried program reference: each plugin
-/// receives the program carried by the previous one and may return a
-/// replacement. `Some(output)` replaces the carried program; `None` keeps
-/// it. The returned value carries the LAST `Some`-returned program (a later
-/// `None` plugin cannot change it, since a `None` result is by definition
-/// the program that was carried in), so callers can codegen it directly.
-/// `None` means no plugin changed anything.
-pub async fn transform<'a, 'ast: 'a>(
+/// The chain is a fold over a carried AST: each plugin receives the AST
+/// carried by the previous one and may return a replacement. `Some(output)`
+/// replaces the carried AST; `None` keeps it. The fold returns the LAST
+/// `Some`-returned AST (`None` = no plugin changed anything), so callers can
+/// codegen it directly. The initial AST is borrowed, not cloned.
+pub async fn transform<'a>(
     plugins: &'a [SharedPluginable],
-    ctx: &'a PluginContext<'a>,
-    args: &TransformArgs<'ast>,
-) -> anyhow::Result<Option<TransformOutput<'ast>>> {
-    let mut current: &'ast Program<'ast> = args.ast;
+    ctx: &'a PluginContext<'_>,
+    args: TransformArgs<'a>,
+) -> anyhow::Result<Option<TransformOutput>> {
+    let mut current: Carried<'a> = Carried::Borrowed(args.ast);
 
-    let mut last_some: Option<&'ast Program<'ast>> = None;
+    let mut changed: bool = false;
 
     for plugin in plugins {
-        let hook_args: TransformArgs<'ast> =
-            TransformArgs { allocator: args.allocator, ast: current };
-
-        let next: Option<TransformOutput<'ast>> = plugin
-            .call_transform(ctx, hook_args)
+        let next: Option<TransformOutput> = plugin
+            .call_transform(ctx, TransformArgs { ast: current.as_ref() })
             .await
             .with_context(|| format!("`{}` transform", plugin.call_name()))?;
 
         if let Some(output) = next {
-            current = output.ast;
+            current = Carried::Owned(output.ast);
 
-            last_some = Some(output.ast);
+            changed = true;
         }
     }
 
-    Ok(last_some.map(|ast| TransformOutput { ast }))
+    if !changed {
+        return Ok(None);
+    }
+
+    let ast: Ast = match current {
+        | Carried::Borrowed(ast) => ast.clone(),
+        | Carried::Owned(ast) => ast,
+    };
+
+    Ok(Some(TransformOutput { ast }))
 }
