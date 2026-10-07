@@ -21,8 +21,8 @@ pub struct JsSourceMap {
     pub names: Vec<String>,
     /// Indices of the `sources` entries known to be third-party code,
     /// allowing developer tools to ignore-list them.
-    #[napi(js_name = "x_google_ignoreList")]
-    pub x_google_ignorelist: Option<Vec<u32>>,
+    #[napi(js_name = "ignoreList")]
+    pub ignore_list: Option<Vec<u32>>,
 }
 
 impl From<OxcSourceMap<'_>> for JsSourceMap {
@@ -37,7 +37,7 @@ impl From<OxcSourceMap<'_>> for JsSourceMap {
             sources: json.sources,
             sources_content: json.sources_content,
             names: json.names,
-            x_google_ignorelist: json.x_google_ignore_list,
+            ignore_list: json.ignore_list,
         }
     }
 }
@@ -66,7 +66,7 @@ mod tests {
             ]),
             names: vec![String::from("a")],
             debug_id: None,
-            x_google_ignore_list: Some(vec![0]),
+            ignore_list: Some(vec![0]),
         };
         let converted: JsSourceMap = to_js_source_map(json);
 
@@ -80,7 +80,7 @@ mod tests {
             Some(vec![Some(String::from("const a = 1;")), None])
         );
         assert_eq!(converted.names, vec![String::from("a")]);
-        assert_eq!(converted.x_google_ignorelist, Some(vec![0_u32]));
+        assert_eq!(converted.ignore_list, Some(vec![0_u32]));
     }
 
     #[test]
@@ -94,7 +94,7 @@ mod tests {
             sources_content: None,
             names: Vec::new(),
             debug_id: None,
-            x_google_ignore_list: None,
+            ignore_list: None,
         };
         let converted: JsSourceMap = to_js_source_map(json);
 
@@ -105,7 +105,7 @@ mod tests {
         assert!(converted.sources.is_empty());
         assert_eq!(converted.sources_content, None);
         assert!(converted.names.is_empty());
-        assert_eq!(converted.x_google_ignorelist, None);
+        assert_eq!(converted.ignore_list, None);
     }
 
     #[test]
@@ -120,7 +120,7 @@ mod tests {
             sources_content: None,
             names: Vec::new(),
             debug_id: None,
-            x_google_ignore_list: None,
+            ignore_list: None,
         };
         let source_map: OxcSourceMap<'static> =
             OxcSourceMap::from_json(json).unwrap();
@@ -151,7 +151,7 @@ mod tests {
             sources_content: None,
             names: Vec::new(),
             debug_id: Some(String::from("debug-1234")),
-            x_google_ignore_list: None,
+            ignore_list: None,
         };
         let converted: JsSourceMap = to_js_source_map(json);
 
@@ -170,7 +170,7 @@ mod tests {
             sources_content: Some(vec![Some(String::from("const a = 1;"))]),
             names: vec![String::from("a")],
             debug_id: None,
-            x_google_ignore_list: None,
+            ignore_list: None,
         };
         let source_map: OxcSourceMap<'static> =
             OxcSourceMap::from_json(json).unwrap();

@@ -28,7 +28,7 @@ describe("sourcemap", (): void => {
         // input file.
         expect(result.map.file).toBe("index.ts");
         expect(result.map.sourceRoot).toBe(void 0);
-        expect(result.map.x_google_ignoreList).toBe(void 0);
+        expect(result.map.ignoreList).toBe(void 0);
         expect(result.map.sources).toEqual(["index.ts"]);
         expect(result.map.sourcesContent).toEqual(["const a = 1;"]);
         expect(result.map.names).toEqual([]);

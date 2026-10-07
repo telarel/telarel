@@ -36,7 +36,7 @@ type SourceMap = {
      * Indices of the `sources` entries known to be third-party code, allowing
      * developer tools to ignore-list them.
      */
-    x_google_ignoreList?: number[] | undefined;
+    ignoreList?: number[] | undefined;
 };
 
 export type { SourceMap };
