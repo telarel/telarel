@@ -13,7 +13,7 @@ repository.workspace = true
 license.workspace = true
 keywords = ["telarel", "compiler", "plugin", "transform"]
 categories.workspace = true
-include = ["src/**", "Cargo.toml", "README.md"]
+include = ["src/**", "Cargo.toml", "README.md", "LICENSE-THIRD-PARTY"]
 
 [dependencies]
 
@@ -27,9 +27,6 @@ oxc = { workspace = true, features = ["transformer", "semantic", "ast_visit"] }
 oxc_compat = { workspace = true }
 oxc_transformer_plugins = { workspace = true }
 serde = { workspace = true }
-
-[build-dependencies]
-workspace_root = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }

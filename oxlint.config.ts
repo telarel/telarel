@@ -13,6 +13,8 @@ export default defineConfig(
             // Rust
             "crates/**",
             "target/**",
+            // Transform plugin runtime helpers
+            "crates/plugin_transform/src/helpers/runtime/**",
             // Binding
             "packages/telarel/src/binding/**",
         ],

@@ -79,6 +79,13 @@ lint: lint-rs lint-js
 create-npm-dirs:
     cd ./{{telarel}} && {{napi}} create-npm-dirs
 
+# Copy @oxc-project/runtime helpers into telarel_plugin_transform
+copy-transform-runtime-helpers:
+    node ./scripts/copy-transform-runtime-helpers.ts
+
+# Prebuild Rust crates
+prebuild-rs: copy-transform-runtime-helpers
+
 # Build NAPI binding
 build-rs:
     node ./{{telarel}}/scripts/build.ts

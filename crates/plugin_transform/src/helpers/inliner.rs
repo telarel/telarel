@@ -158,7 +158,7 @@ impl<'a, 's> Inliner<'a, 's> {
         self.claimed.insert(target_name.to_string());
 
         let parsed: oxc::parser::ParserReturn<'a> =
-            Parser::new(self.allocator, helper.esm_source, SourceType::mjs())
+            Parser::new(self.allocator, helper.source, SourceType::mjs())
                 .parse();
 
         if parsed.fatal_error || parsed.diagnostics.has_errors() {

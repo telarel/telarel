@@ -44,8 +44,8 @@ importers:
         specifier: ~3.7.4
         version: 3.7.4(@emnapi/runtime@2.0.0-alpha.5)(@types/node@26.5.0)
       '@oxc-project/runtime':
-        specifier: 0.150.0
-        version: 0.150.0
+        specifier: 0.152.0
+        version: 0.152.0
       '@types/node':
         specifier: ^26.1.2
         version: 26.5.0
@@ -790,8 +790,8 @@ packages:
   '@octokit/types@18.0.0':
     resolution: {integrity: sha512-l6bAF43PNxkJp6g+W4PjoUSSkxHomXw2nOum5CTftJz1NlV3vu93NImgOYtLf6CbBUb5j+fiuzW0PPQ5JTSvZA==}
 
-  '@oxc-project/runtime@0.150.0':
-    resolution: {integrity: sha512-vC4tN4n2c+gVq69Oi6CoZxGk/1mYjLiN4hVEYwvtuns/S4QwUBiJYViwLGLxPaLQnsY5FQDgGs+h6moAmSedvA==}
+  '@oxc-project/runtime@0.152.0':
+    resolution: {integrity: sha512-fsq/7JVJo8YAmMPnt3Z7akMdMoCokRND5jjawa5DxuKJBEaI0Dl3ZqEXFlLabKoZhlApIexZ7aycXFcjcTcWvw==}
     engines: {node: ^20.19.0 || >=22.12.0}
 
   '@oxc-project/types@0.148.0':
@@ -2603,7 +2603,7 @@ snapshots:
     dependencies:
       '@octokit/openapi-types': 29.0.1
 
-  '@oxc-project/runtime@0.150.0': {}
+  '@oxc-project/runtime@0.152.0': {}
 
   '@oxc-project/types@0.148.0': {}
 

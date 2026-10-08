@@ -6,6 +6,8 @@ export default defineConfig({
         ...IGNORE_PATTERNS_DEFAULT,
         // Rust
         "target/**",
+        // Transform plugin runtime helpers
+        "crates/plugin_transform/src/helpers/runtime/**",
         // Binding
         "packages/telarel/src/binding/**",
     ],

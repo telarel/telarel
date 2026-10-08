@@ -1,216 +1,129 @@
-/// An embedded helper: name and ESM source.
+/// An embedded helper: name and source.
 #[derive(Debug)]
 pub struct HelperSource {
     /// The helper name; primary entries match the oxc `Helper` enum names.
     pub name: &'static str,
-    /// The embedded ESM source from the installed `@oxc-project/runtime` package.
-    pub esm_source: &'static str,
+    /// The embedded source vendored from `@oxc-project/runtime`.
+    pub source: &'static str,
 }
 
 /// The oxc runtime helpers, mirroring its `Helper` enum exactly.
 pub const HELPERS: &[HelperSource] = &[
     HelperSource {
         name: "awaitAsyncGenerator",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/awaitAsyncGenerator.js"
-        )),
+        source: include_str!("runtime/awaitAsyncGenerator.js"),
     },
     HelperSource {
         name: "asyncGeneratorDelegate",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/asyncGeneratorDelegate.js"
-        )),
+        source: include_str!("runtime/asyncGeneratorDelegate.js"),
     },
     HelperSource {
         name: "asyncIterator",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/asyncIterator.js"
-        )),
+        source: include_str!("runtime/asyncIterator.js"),
     },
     HelperSource {
         name: "asyncToGenerator",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/asyncToGenerator.js"
-        )),
+        source: include_str!("runtime/asyncToGenerator.js"),
     },
     HelperSource {
         name: "objectSpread2",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/objectSpread2.js"
-        )),
+        source: include_str!("runtime/objectSpread2.js"),
     },
     HelperSource {
         name: "wrapAsyncGenerator",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/wrapAsyncGenerator.js"
-        )),
+        source: include_str!("runtime/wrapAsyncGenerator.js"),
     },
     HelperSource {
         name: "extends",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/extends.js"
-        )),
+        source: include_str!("runtime/extends.js"),
     },
     HelperSource {
         name: "objectDestructuringEmpty",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/objectDestructuringEmpty.js"
-        )),
+        source: include_str!("runtime/objectDestructuringEmpty.js"),
     },
     HelperSource {
         name: "objectWithoutProperties",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/objectWithoutProperties.js"
-        )),
+        source: include_str!("runtime/objectWithoutProperties.js"),
     },
     HelperSource {
         name: "toPropertyKey",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/toPropertyKey.js"
-        )),
+        source: include_str!("runtime/toPropertyKey.js"),
     },
     HelperSource {
         name: "defineProperty",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/defineProperty.js"
-        )),
+        source: include_str!("runtime/defineProperty.js"),
     },
     HelperSource {
         name: "classPrivateFieldInitSpec",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/classPrivateFieldInitSpec.js"
-        )),
+        source: include_str!("runtime/classPrivateFieldInitSpec.js"),
     },
     HelperSource {
         name: "classPrivateMethodInitSpec",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/classPrivateMethodInitSpec.js"
-        )),
+        source: include_str!("runtime/classPrivateMethodInitSpec.js"),
     },
     HelperSource {
         name: "classPrivateFieldGet2",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/classPrivateFieldGet2.js"
-        )),
+        source: include_str!("runtime/classPrivateFieldGet2.js"),
     },
     HelperSource {
         name: "classPrivateFieldSet2",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/classPrivateFieldSet2.js"
-        )),
+        source: include_str!("runtime/classPrivateFieldSet2.js"),
     },
     HelperSource {
         name: "assertClassBrand",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/assertClassBrand.js"
-        )),
+        source: include_str!("runtime/assertClassBrand.js"),
     },
     HelperSource {
         name: "toSetter",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/toSetter.js"
-        )),
+        source: include_str!("runtime/toSetter.js"),
     },
     HelperSource {
         name: "classPrivateFieldLooseKey",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/classPrivateFieldLooseKey.js"
-        )),
+        source: include_str!("runtime/classPrivateFieldLooseKey.js"),
     },
     HelperSource {
         name: "classPrivateFieldLooseBase",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/classPrivateFieldLooseBase.js"
-        )),
+        source: include_str!("runtime/classPrivateFieldLooseBase.js"),
     },
     HelperSource {
         name: "superPropGet",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/superPropGet.js"
-        )),
+        source: include_str!("runtime/superPropGet.js"),
     },
     HelperSource {
         name: "superPropSet",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/superPropSet.js"
-        )),
+        source: include_str!("runtime/superPropSet.js"),
     },
     HelperSource {
         name: "readOnlyError",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/readOnlyError.js"
-        )),
+        source: include_str!("runtime/readOnlyError.js"),
     },
     HelperSource {
         name: "writeOnlyError",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/writeOnlyError.js"
-        )),
+        source: include_str!("runtime/writeOnlyError.js"),
     },
     HelperSource {
         name: "checkInRHS",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/checkInRHS.js"
-        )),
+        source: include_str!("runtime/checkInRHS.js"),
     },
     HelperSource {
         name: "decorate",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/decorate.js"
-        )),
+        source: include_str!("runtime/decorate.js"),
     },
     HelperSource {
         name: "decorateParam",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/decorateParam.js"
-        )),
+        source: include_str!("runtime/decorateParam.js"),
     },
     HelperSource {
         name: "decorateMetadata",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/decorateMetadata.js"
-        )),
+        source: include_str!("runtime/decorateMetadata.js"),
     },
     HelperSource {
         name: "usingCtx",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/usingCtx.js"
-        )),
+        source: include_str!("runtime/usingCtx.js"),
     },
     HelperSource {
         name: "taggedTemplateLiteral",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/taggedTemplateLiteral.js"
-        )),
+        source: include_str!("runtime/taggedTemplateLiteral.js"),
     },
 ];
 
@@ -219,67 +132,31 @@ pub const HELPERS: &[HelperSource] = &[
 pub const DEPENDENCY_HELPERS: &[HelperSource] = &[
     HelperSource {
         name: "OverloadYield",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/OverloadYield.js"
-        )),
+        source: include_str!("runtime/OverloadYield.js"),
     },
     HelperSource {
         name: "checkPrivateRedeclaration",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/checkPrivateRedeclaration.js"
-        )),
+        source: include_str!("runtime/checkPrivateRedeclaration.js"),
     },
-    HelperSource {
-        name: "get",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/get.js"
-        )),
-    },
+    HelperSource { name: "get", source: include_str!("runtime/get.js") },
     HelperSource {
         name: "getPrototypeOf",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/getPrototypeOf.js"
-        )),
+        source: include_str!("runtime/getPrototypeOf.js"),
     },
     HelperSource {
         name: "objectWithoutPropertiesLoose",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/objectWithoutPropertiesLoose.js"
-        )),
+        source: include_str!("runtime/objectWithoutPropertiesLoose.js"),
     },
-    HelperSource {
-        name: "set",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/set.js"
-        )),
-    },
+    HelperSource { name: "set", source: include_str!("runtime/set.js") },
     HelperSource {
         name: "superPropBase",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/superPropBase.js"
-        )),
+        source: include_str!("runtime/superPropBase.js"),
     },
     HelperSource {
         name: "toPrimitive",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/toPrimitive.js"
-        )),
+        source: include_str!("runtime/toPrimitive.js"),
     },
-    HelperSource {
-        name: "typeof",
-        esm_source: include_str!(concat!(
-            env!("TELAREL_RUNTIME_HELPERS_DIR"),
-            "/typeof.js"
-        )),
-    },
+    HelperSource { name: "typeof", source: include_str!("runtime/typeof.js") },
 ];
 
 /// Look up a helper by name, covering both the oxc helpers and the
@@ -347,8 +224,8 @@ mod tests {
             assert!(resolved.is_some(), "helper {} must resolve", helper.name);
 
             assert!(
-                !helper.esm_source.is_empty(),
-                "{} ESM source must be non-empty",
+                !helper.source.is_empty(),
+                "{} source must be non-empty",
                 helper.name
             );
         }
@@ -356,7 +233,7 @@ mod tests {
 
     fn dependency_imports(helper: &HelperSource) -> Vec<&str> {
         helper
-            .esm_source
+            .source
             .lines()
             .filter_map(|line: &str| {
                 let import: &str = line.strip_prefix("import ")?;
