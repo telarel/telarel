@@ -226,15 +226,20 @@ impl Plugin for TransformPlugin {
 
 #[cfg(test)]
 mod tests {
+    use oxc::transformer::CompilerAssumptions;
+    use oxc::transformer::DecoratorOptions;
+    use oxc::transformer::PluginsOptions;
+
     use telarel_common::{
         Ast, CompileContext, Language, ParseOwnedOptions, parse_owned,
     };
     use telarel_plugin::{ModuleInfo, Plugin, PluginContext, TransformOutput};
 
+    use crate::helpers::sources::{DEPENDENCY_HELPERS, HELPERS, HelperSource};
     use crate::options::TransformOptions;
     use crate::options::define::DefineOptions;
     use crate::options::helper_loader::{
-        HelperLoaderMode, HelperLoaderOptions,
+        DEFAULT_HELPER_MODULE_NAME, HelperLoaderMode, HelperLoaderOptions,
     };
     use crate::options::inject::{InjectEntry, InjectOptions, InjectSpecifier};
     use crate::options::jsx::{JsxOptions, JsxRuntime};
@@ -352,6 +357,363 @@ mod tests {
             }),
             ..TransformOptions::default()
         })
+    }
+
+    /// One source snippet that makes the transform plugin emit a specific
+    /// runtime helper, plus the options needed to reach it.
+    #[derive(Clone, Copy)]
+    struct Trigger {
+        helper: &'static str,
+        file: &'static str,
+        source: &'static str,
+        targets: &'static [TransformTarget],
+        private_loose: bool,
+        legacy_decorators: bool,
+        decorator_metadata: bool,
+        tagged_template: bool,
+        // Proves a dependency-only helper arrived transitively, by a
+        // rename-stable marker in the dependent's inlined body.
+        dependency_marker: Option<&'static str>,
+    }
+
+    const BASE: Trigger = Trigger {
+        helper: "",
+        file: "index.mjs",
+        source: "",
+        targets: &[],
+        private_loose: false,
+        legacy_decorators: false,
+        decorator_metadata: false,
+        tagged_template: false,
+        dependency_marker: None,
+    };
+
+    const ES2015: &[TransformTarget] = &[TransformTarget::Es2015];
+
+    const ES2017: &[TransformTarget] = &[TransformTarget::Es2017];
+
+    fn trigger_options(
+        trigger: &Trigger,
+        mode: HelperLoaderMode,
+    ) -> TransformOptions {
+        TransformOptions {
+            targets: trigger.targets.to_vec(),
+            helper_loader: Some(HelperLoaderOptions {
+                mode: Some(mode),
+                module_name: None,
+            }),
+            oxc: Some(OxcTransformOptions {
+                assumptions: CompilerAssumptions {
+                    private_fields_as_properties: trigger.private_loose,
+                    ..CompilerAssumptions::default()
+                },
+                decorator: DecoratorOptions {
+                    legacy: trigger.legacy_decorators,
+                    emit_decorator_metadata: trigger.decorator_metadata,
+                    ..DecoratorOptions::default()
+                },
+                plugins: PluginsOptions {
+                    tagged_template_transform: trigger.tagged_template,
+                    ..PluginsOptions::default()
+                },
+                ..OxcTransformOptions::default()
+            }),
+            ..TransformOptions::default()
+        }
+    }
+
+    /// Every vendored helper, mapped to a snippet that makes the transform
+    /// plugin emit it. The dependency-only helpers (`OverloadYield`, `get`,
+    /// `set`, `typeof`, ...) are never loaded directly by oxc; they are pulled
+    /// in transitively, so their entry reuses the dependent snippet and a
+    /// rename-stable marker proves they were inlined.
+    const TRIGGERS: &[Trigger] = &[
+        Trigger {
+            helper: "awaitAsyncGenerator",
+            source: "async function* g() { await x; }",
+            targets: ES2017,
+            ..BASE
+        },
+        Trigger {
+            helper: "asyncGeneratorDelegate",
+            source: "async function* g() { yield* x; }",
+            targets: ES2017,
+            ..BASE
+        },
+        Trigger {
+            helper: "asyncIterator",
+            source: "async function f() { for await (const x of y) {} }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "asyncToGenerator",
+            source: "async function f() { await x; }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "objectSpread2",
+            source: "const o = { ...a, ...b };",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "wrapAsyncGenerator",
+            source: "async function* g() { yield 1; }",
+            targets: ES2017,
+            ..BASE
+        },
+        Trigger {
+            helper: "extends",
+            source: "const { ...r } = obj;",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "objectDestructuringEmpty",
+            source: "const { ...r } = obj;",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "objectWithoutProperties",
+            source: "const { a, ...r } = obj;",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "toPropertyKey",
+            source: "const { [k]: v, ...r } = obj;",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "defineProperty",
+            source: "class C { x = 1; }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "classPrivateFieldInitSpec",
+            source: "class C { #x = 1; m() { return this.#x; } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "classPrivateMethodInitSpec",
+            source: "class C { #m() {} c() { this.#m(); } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "classPrivateFieldGet2",
+            source: "class C { #x = 1; m() { return this.#x; } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "classPrivateFieldSet2",
+            source: "class C { #x = 1; m() { this.#x = 2; } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "assertClassBrand",
+            source: "class C { #m() {} c() { this.#m(); } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "toSetter",
+            source: "class C { set #x(v) {} m() { this.#x = 1; } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "classPrivateFieldLooseKey",
+            source: "class C { #x = 1; m() { return this.#x; } }",
+            targets: ES2015,
+            private_loose: true,
+            ..BASE
+        },
+        Trigger {
+            helper: "classPrivateFieldLooseBase",
+            source: "class C { #x = 1; m() { return this.#x; } }",
+            targets: ES2015,
+            private_loose: true,
+            ..BASE
+        },
+        Trigger {
+            helper: "superPropGet",
+            source: "class C extends B { static { const z = super.x; } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "superPropSet",
+            source: "class C extends B { static { super.x = 1; } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "readOnlyError",
+            source: "class C { get #x() { return 1; } m() { this.#x = 2; } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "writeOnlyError",
+            source: "class C { set #x(v) {} m() { return this.#x; } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "checkInRHS",
+            source: "class C { #x; has(o) { return #x in o; } }",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "decorate",
+            file: "index.ts",
+            source: "@dec class C {}",
+            legacy_decorators: true,
+            ..BASE
+        },
+        Trigger {
+            helper: "decorateParam",
+            file: "index.ts",
+            source: "class C { m(@dec x: any) {} }",
+            legacy_decorators: true,
+            ..BASE
+        },
+        Trigger {
+            helper: "decorateMetadata",
+            file: "index.ts",
+            source: "class C { @dec m() {} }",
+            legacy_decorators: true,
+            decorator_metadata: true,
+            ..BASE
+        },
+        Trigger {
+            helper: "usingCtx",
+            source: "using x = y;",
+            targets: ES2015,
+            ..BASE
+        },
+        Trigger {
+            helper: "taggedTemplateLiteral",
+            source: "const t = tag`</script>`;",
+            tagged_template: true,
+            ..BASE
+        },
+        Trigger {
+            helper: "OverloadYield",
+            source: "async function* g() { yield 1; }",
+            targets: ES2017,
+            dependency_marker: Some("this.v = e, this.k = d"),
+            ..BASE
+        },
+        Trigger {
+            helper: "checkPrivateRedeclaration",
+            source: "class C { #x = 1; m() { return this.#x; } }",
+            targets: ES2015,
+            dependency_marker: Some(
+                "Cannot initialize the same private elements twice on an object",
+            ),
+            ..BASE
+        },
+        Trigger {
+            helper: "get",
+            source: "class C extends B { static { const z = super.x; } }",
+            targets: ES2015,
+            dependency_marker: Some("Reflect.get.bind"),
+            ..BASE
+        },
+        Trigger {
+            helper: "getPrototypeOf",
+            source: "class C extends B { static { const z = super.x; } }",
+            targets: ES2015,
+            dependency_marker: Some(
+                "Object.setPrototypeOf ? Object.getPrototypeOf.bind()",
+            ),
+            ..BASE
+        },
+        Trigger {
+            helper: "objectWithoutPropertiesLoose",
+            source: "const { a, ...r } = obj;",
+            targets: ES2015,
+            dependency_marker: Some(".includes(n)) continue"),
+            ..BASE
+        },
+        Trigger {
+            helper: "set",
+            source: "class C extends B { static { super.x = 1; } }",
+            targets: ES2015,
+            dependency_marker: Some("failed to set property"),
+            ..BASE
+        },
+        Trigger {
+            helper: "superPropBase",
+            source: "class C extends B { static { const z = super.x; } }",
+            targets: ES2015,
+            dependency_marker: Some(
+                "!{}.hasOwnProperty.call(t, o) && null !==",
+            ),
+            ..BASE
+        },
+        Trigger {
+            helper: "toPrimitive",
+            source: "const o = { ...a, ...b };",
+            targets: ES2015,
+            dependency_marker: Some(
+                "@@toPrimitive must return a primitive value.",
+            ),
+            ..BASE
+        },
+        Trigger {
+            helper: "typeof",
+            source: "const o = { ...a, ...b };",
+            targets: ES2015,
+            dependency_marker: Some("@babel/helpers - typeof"),
+            ..BASE
+        },
+    ];
+
+    /// The local binding oxc gave the default import/require of `specifier`.
+    ///
+    /// Matches both emitted shapes: `import <local> from "<specifier>";` and
+    /// `var <local> = require("<specifier>");`.
+    fn runtime_import_local(
+        code: &str,
+        specifier: &str,
+    ) -> Option<String> {
+        for line in code.lines() {
+            let line: &str = line.trim();
+
+            if let Some(import) = line.strip_prefix("import ") {
+                let Some(local) = import.split(" from ").next() else {
+                    continue;
+                };
+
+                if line.contains(&format!("\"{specifier}\"")) {
+                    return Some(local.trim().to_string());
+                }
+            }
+
+            if let Some(require) = line.strip_prefix("var ") {
+                if !line.contains(&format!("require(\"{specifier}\")")) {
+                    continue;
+                }
+
+                if let Some(local) = require.split(" = ").next() {
+                    return Some(local.trim().to_string());
+                }
+            }
+        }
+
+        None
     }
 
     #[test]
@@ -1265,6 +1627,110 @@ mod tests {
         assert!(
             helper_index < marker_index,
             "inlined helpers must precede user statements: {code}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_every_helper_is_triggered_and_inlined() {
+        let module_name: &str = DEFAULT_HELPER_MODULE_NAME;
+
+        for trigger in TRIGGERS {
+            let runtime_plugin: TransformPlugin = TransformPlugin::with_options(
+                trigger_options(trigger, HelperLoaderMode::Runtime),
+            );
+
+            let inline_plugin: TransformPlugin = TransformPlugin::with_options(
+                trigger_options(trigger, HelperLoaderMode::Inline),
+            );
+
+            let runtime_code: String =
+                codegen_after(runtime_plugin, trigger.file, trigger.source)
+                    .await;
+
+            let inline_code: String =
+                codegen_after(inline_plugin, trigger.file, trigger.source)
+                    .await;
+
+            let specifier: String =
+                format!("{module_name}/helpers/{}", trigger.helper);
+
+            match trigger.dependency_marker {
+                | Some(marker) => {
+                    // Dependency-only helper: oxc never loads it directly, so
+                    // prove it arrived transitively by its inlined body.
+                    assert!(
+                        !runtime_code.contains(&specifier),
+                        "dependency-only `{}` must not be loaded directly: {runtime_code}",
+                        trigger.helper
+                    );
+                    assert!(
+                        inline_code.contains(marker),
+                        "dependency `{}` must be inlined ({marker}): {inline_code}",
+                        trigger.helper
+                    );
+                },
+                | None => {
+                    // Direct helper: the snippet must make the plugin emit
+                    // the runtime import for this helper...
+                    assert!(
+                        runtime_code.contains(&specifier),
+                        "snippet must trigger helper `{}` ({specifier}): {runtime_code}",
+                        trigger.helper
+                    );
+
+                    // ...and the inline pass must bind the helper's body under
+                    // the very local name oxc chose for that import, proving
+                    // the emitted import was replaced by the inlined function.
+                    let local: String =
+                        runtime_import_local(&runtime_code, &specifier)
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "runtime import for `{}` must bind a local: {runtime_code}",
+                                    trigger.helper
+                                )
+                            });
+
+                    assert!(
+                        inline_code.contains(&format!("function {local}(")),
+                        "helper `{}` ({local}) must be inlined as a function: {inline_code}",
+                        trigger.helper
+                    );
+                },
+            }
+
+            // ...and the inline pass must consume every runtime import.
+            assert!(
+                !inline_code.contains(module_name),
+                "helper `{}` runtime import must be inlined: {inline_code}",
+                trigger.helper
+            );
+        }
+    }
+
+    #[test]
+    fn test_trigger_table_covers_every_vendored_helper() {
+        // A newly vendored (or removed) helper must not silently lose its
+        // trigger; the table is the source of truth for plugin-level coverage.
+        let expected: Vec<&str> = HELPERS
+            .iter()
+            .chain(DEPENDENCY_HELPERS.iter())
+            .map(|helper: &HelperSource| helper.name)
+            .collect();
+
+        let covered: Vec<&str> =
+            TRIGGERS.iter().map(|trigger: &Trigger| trigger.helper).collect();
+
+        for name in &expected {
+            assert!(
+                covered.contains(name),
+                "helper `{name}` has no trigger entry"
+            );
+        }
+
+        assert_eq!(
+            covered.len(),
+            expected.len(),
+            "trigger table must cover every helper exactly once"
         );
     }
 }

@@ -1,7 +1,7 @@
-mod inliner;
-mod rewriter;
-mod sources;
-mod usage;
+pub mod inliner;
+pub mod rewriter;
+pub mod sources;
+pub mod usage;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -120,4 +120,90 @@ pub fn run<'a>(
     program.body = new_body;
 
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use oxc::allocator::Allocator;
+    use oxc::ast::ast::Program;
+    use oxc::parser::Parser;
+    use oxc::parser::ParserReturn;
+    use oxc::span::SourceType;
+
+    use telarel_common::{CodegenOptions, codegen};
+
+    use crate::helpers::sources::{DEPENDENCY_HELPERS, HELPERS, HelperSource};
+    use crate::options::helper_loader::DEFAULT_HELPER_MODULE_NAME;
+
+    use super::*;
+
+    const ALL_HELPERS: [&[HelperSource]; 2] = [HELPERS, DEPENDENCY_HELPERS];
+
+    fn every_helper() -> impl Iterator<Item = &'static HelperSource> {
+        ALL_HELPERS.into_iter().flat_map(|table: &[HelperSource]| table)
+    }
+
+    fn parse_program<'a>(
+        allocator: &'a Allocator,
+        source: &'a str,
+        source_type: SourceType,
+    ) -> Program<'a> {
+        let parsed: ParserReturn<'a> =
+            Parser::new(allocator, source, source_type).parse();
+
+        assert!(
+            !parsed.fatal_error && !parsed.diagnostics.has_errors(),
+            "synthetic program must parse: {source}"
+        );
+
+        parsed.program
+    }
+
+    fn codegen_program(program: &Program<'_>) -> String {
+        codegen(CodegenOptions { file: "index.mjs", program }).code
+    }
+
+    #[test]
+    fn test_all_helpers_inline_in_one_program() {
+        let mut source: String = String::new();
+
+        for helper in every_helper() {
+            source.push_str(&format!(
+                "import _{0} from \"{DEFAULT_HELPER_MODULE_NAME}/helpers/{0}\";\n",
+                helper.name
+            ));
+        }
+
+        let allocator: Allocator = Allocator::default();
+
+        let mut program: Program<'_> =
+            parse_program(&allocator, &source, SourceType::mjs());
+
+        let inlined: bool =
+            run(&allocator, &mut program, DEFAULT_HELPER_MODULE_NAME)
+                .expect("every helper inlines together");
+
+        assert!(inlined, "the combined program must be edited");
+
+        let code: String = codegen_program(&program);
+
+        // At this scale a helper can be pulled into an earlier helper's
+        // dependency closure under a fresh uid before its own direct import
+        // is processed, so exact per-name assertions belong to the
+        // plugin-level trigger tests in `plugin.rs`. Here the load-bearing
+        // invariant is that every runtime specifier was consumed and
+        // deconfliction did not panic or drop helpers.
+        assert!(
+            !code.contains(DEFAULT_HELPER_MODULE_NAME),
+            "no runtime specifier may survive: {code}"
+        );
+        assert!(
+            !code.contains("import "),
+            "no helper import may survive: {code}"
+        );
+        assert!(
+            code.matches("function _").count() > every_helper().count(),
+            "every helper and its closure must emit a function: {code}"
+        );
+    }
 }

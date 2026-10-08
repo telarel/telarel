@@ -12,6 +12,13 @@ const transform = (options?: TransformOptions): TransformPlugin => {
 };
 
 export type {
+    DecoratorOptions as OxcDecoratorOptions,
+    JsxOptions as OxcJsxOptions,
+    ReactRefreshOptions as OxcReactRefreshOptions,
+    TypeScriptOptions as OxcTypeScriptOptions,
+} from "oxc-transform";
+
+export type {
     TransformPluginName,
     TransformPlugin,
     TransformOptions,
@@ -22,6 +29,7 @@ export type {
     InjectObject,
     InjectShorthand,
 } from "#/@types/builtin/transform/inject";
+export type { OxcCompilerAssumptions } from "#/@types/builtin/transform/oxc/assumptions";
 export type {
     EnvModules,
     OxcEnvOptions,

@@ -22,7 +22,7 @@ use crate::helpers::sources::HelperSource;
 use crate::helpers::sources::lookup;
 
 /// Whether the module export name is the default export (`default`).
-fn is_default_export_name(name: &ModuleExportName<'_>) -> bool {
+pub fn is_default_export_name(name: &ModuleExportName<'_>) -> bool {
     match name {
         | ModuleExportName::IdentifierName(name) => name.name == "default",
         | ModuleExportName::StringLiteral(literal) => {

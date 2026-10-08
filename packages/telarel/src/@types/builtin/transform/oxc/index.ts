@@ -1,11 +1,11 @@
 import type {
-    CompilerAssumptions,
-    DecoratorOptions,
+    DecoratorOptions as OxcDecoratorOptions,
     JsxOptions as OxcJsxOptions,
-    ReactRefreshOptions,
+    ReactRefreshOptions as OxcReactRefreshOptions,
     TypeScriptOptions as OxcTypeScriptOptions,
 } from "oxc-transform";
 
+import type { OxcCompilerAssumptions } from "#/@types/builtin/transform/oxc/assumptions";
 import type { OxcEnvOptions } from "#/@types/builtin/transform/oxc/env";
 import type { HelperLoaderMode } from "#/@types/builtin/transform/oxc/helper-loader";
 
@@ -16,7 +16,7 @@ type OxcTransformOptions = {
     /**
      * Assumptions for producing smaller output.
      */
-    assumptions?: CompilerAssumptions;
+    assumptions?: OxcCompilerAssumptions;
     /**
      * The raw oxc TypeScript options.
      */
@@ -24,13 +24,13 @@ type OxcTransformOptions = {
     /**
      * The raw oxc decorator options.
      */
-    decorator?: DecoratorOptions;
+    decorator?: OxcDecoratorOptions;
     /**
      * The raw oxc JSX options, with `refresh` narrowed to the object form: the
      * binding's serde rejects the `boolean` member npm's type allows.
      */
     jsx?: Omit<OxcJsxOptions, "refresh"> & {
-        refresh?: ReactRefreshOptions;
+        refresh?: OxcReactRefreshOptions;
     };
     /**
      * Babel `preset-env` style environment options, mirroring oxc's

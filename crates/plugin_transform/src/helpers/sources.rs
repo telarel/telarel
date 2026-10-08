@@ -172,6 +172,12 @@ pub fn lookup(name: &str) -> Option<&'static HelperSource> {
 
 #[cfg(test)]
 mod tests {
+    use oxc::allocator::Allocator;
+    use oxc::ast::ast::Statement;
+    use oxc::parser::Parser;
+    use oxc::parser::ParserReturn;
+    use oxc::span::SourceType;
+
     use super::*;
 
     const OXC_HELPER_NAMES: [&str; 29] = [
@@ -279,5 +285,87 @@ mod tests {
     #[test]
     fn test_lookup_unknown_name_returns_none() {
         assert!(lookup("doesNotExist").is_none());
+    }
+
+    #[test]
+    fn test_every_vendored_source_parses() {
+        for helper in HELPERS.iter().chain(DEPENDENCY_HELPERS.iter()) {
+            let helper: &HelperSource = helper;
+
+            let allocator: Allocator = Allocator::default();
+
+            let parsed: ParserReturn<'_> =
+                Parser::new(&allocator, helper.source, SourceType::mjs())
+                    .parse();
+
+            assert!(
+                !parsed.fatal_error,
+                "helper {} must not have a fatal parse error",
+                helper.name
+            );
+
+            assert!(
+                !parsed.diagnostics.has_errors(),
+                "helper {} must parse without errors",
+                helper.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_every_vendored_source_has_single_default_export() {
+        for helper in HELPERS.iter().chain(DEPENDENCY_HELPERS.iter()) {
+            let helper: &HelperSource = helper;
+
+            let allocator: Allocator = Allocator::default();
+
+            let parsed: ParserReturn<'_> =
+                Parser::new(&allocator, helper.source, SourceType::mjs())
+                    .parse();
+
+            let exports: Vec<&Statement<'_>> = parsed
+                .program
+                .body
+                .iter()
+                .filter(|statement: &&Statement<'_>| {
+                    matches!(
+                        statement,
+                        Statement::ExportNamedDeclaration(_)
+                            | Statement::ExportDefaultDeclaration(_)
+                            | Statement::ExportFromDeclaration(_)
+                            | Statement::ExportAllDeclaration(_)
+                    )
+                })
+                .collect();
+
+            assert_eq!(
+                exports.len(),
+                1,
+                "helper {} must have exactly one export statement",
+                helper.name
+            );
+
+            let Statement::ExportNamedDeclaration(export) = exports[0] else {
+                panic!(
+                    "helper {} export must be `export {{ x as default }}`",
+                    helper.name
+                )
+            };
+
+            assert_eq!(
+                export.specifiers.len(),
+                1,
+                "helper {} export must have exactly one specifier",
+                helper.name
+            );
+
+            assert!(
+                crate::helpers::inliner::is_default_export_name(
+                    &export.specifiers[0].exported
+                ),
+                "helper {} export must be named `default`",
+                helper.name
+            );
+        }
     }
 }
