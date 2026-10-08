@@ -222,7 +222,63 @@ publish-js-try:
 publish-js:
     just publish-js-pkgs {{telarel}} "{{publish_js}}"
 
-# Clean
+# Clean builds (Linux)
+clean-linux:
+    rm -rf ./{{telarel}}/dist
+    rm -rf ./{{telarel}}/src/binding
+    rm -rf ./{{telarel}}/npm
+    rm -rf ./{{telarel}}/artifacts
+
+# Clean builds (macOS)
+clean-macos:
+    just clean-linux
+
+# Clean builds (Windows)
+clean-windows:
+    if (Test-Path "./{{telarel}}/dist") { Remove-Item -Recurse -Force "./{{telarel}}/dist" }
+    if (Test-Path "./{{telarel}}/src/binding") { Remove-Item -Recurse -Force "./{{telarel}}/src/binding" }
+    if (Test-Path "./{{telarel}}/npm") { Remove-Item -Recurse -Force "./{{telarel}}/npm" }
+    if (Test-Path "./{{telarel}}/artifacts") { Remove-Item -Recurse -Force "./{{telarel}}/artifacts" }
+
+# Clean builds
 clean:
+    just clean-{{os()}}
+
+# Clean everything (Linux)
+clean-all-linux:
+    just clean
+
+    rm -rf ./{{example_js}}/transform/node_modules
+    rm -rf ./{{example_js}}/common/node_modules
+
+    rm -rf ./{{bench_js}}/node_modules
+
+    rm -rf ./{{test_telarel}}/node_modules
+
+    rm -rf ./{{telarel}}/node_modules
+
+    rm -rf ./node_modules
+
+# Clean everything (macOS)
+clean-all-macos:
+    just clean-all-linux
+
+# Clean everything (Windows)
+clean-all-windows:
+    just clean
+
+    if (Test-Path "./{{example_js}}/transform/node_modules") { Remove-Item -Recurse -Force "./{{example_js}}/transform/node_modules" }
+    if (Test-Path "./{{example_js}}/common/node_modules") { Remove-Item -Recurse -Force "./{{example_js}}/common/node_modules" }
+
+    if (Test-Path "./{{bench_js}}/node_modules") { Remove-Item -Recurse -Force "./{{bench_js}}/node_modules" }
+
+    if (Test-Path "./{{test_telarel}}/node_modules") { Remove-Item -Recurse -Force "./{{test_telarel}}/node_modules" }
+
+    if (Test-Path "./{{telarel}}/node_modules") { Remove-Item -Recurse -Force "./{{telarel}}/node_modules" }
+
+    if (Test-Path "./node_modules") { Remove-Item -Recurse -Force "./node_modules" }
+
+# Clean everything
+clean-all:
+    just clean-all-{{os()}}
     cargo clean
-    pnpm clean
