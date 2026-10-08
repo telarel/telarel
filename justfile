@@ -97,9 +97,10 @@ build-js:
 # Build binding and JavaScript packages
 build: build-rs build-js
 
-# Build NAPI binding for distribution (all platforms + optimization)
-dist:
+# Build NAPI binding and JavaScript packages for distribution (all platforms + optimization)
+dist: copy-transform-runtime-helpers create-npm-dirs
     node ./{{telarel}}/scripts/dist.ts
+    cd ./{{telarel}} && {{tsdown}}
 
 # Run Rust test
 test-rs:
