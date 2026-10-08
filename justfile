@@ -164,6 +164,7 @@ check-full: create-npm-dirs build fmt ls-lint typos lint test
 
 # Bump package versions
 ver VERSION:
+    node ./scripts/bump-crate-versions.ts {{VERSION}}
     pnpm version \
         --no-git-tag-version \
         --no-commit-hooks \

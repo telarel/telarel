@@ -34,6 +34,9 @@ importers:
       '@apst/tsdown':
         specifier: ~0.5.0
         version: 0.5.0(tsdown@0.23.0(typescript@7.0.2))
+      '@decimalturn/toml-patch':
+        specifier: ^3.3.0
+        version: 3.3.0
       '@emnapi/core':
         specifier: 2.0.0-alpha.5
         version: 2.0.0-alpha.5
@@ -217,6 +220,10 @@ packages:
     peerDependenciesMeta:
       tsdown:
         optional: true
+
+  '@decimalturn/toml-patch@3.3.0':
+    resolution: {integrity: sha512-xyamcHl5Jlm+KfI9Vn7k6Je+kqQ8bAmJtoWleQ7yNqUL9fwwc66+Q3bRO326U/ZLYjrVzB3irvJz8nuG+JwFdA==}
+    engines: {node: '>=16'}
 
   '@emnapi/core@2.0.0-alpha.5':
     resolution: {integrity: sha512-DbeLFquQJyYGwM3LzPdjvb4IRmAAQuTzEmqUGtIAYxlAO4ArfUZ7WMytLWDSsCAYm6MZJNeojaawQQiFrFVehg==}
@@ -2135,6 +2142,8 @@ snapshots:
       es-toolkit: 1.52.0
     optionalDependencies:
       tsdown: 0.23.0(typescript@7.0.2)
+
+  '@decimalturn/toml-patch@3.3.0': {}
 
   '@emnapi/core@2.0.0-alpha.5':
     dependencies:

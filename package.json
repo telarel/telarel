@@ -6,6 +6,7 @@
         "@apst/oxlint": "~0.5.0",
         "@apst/tsconfig": "~0.3.0",
         "@apst/tsdown": "~0.5.0",
+        "@decimalturn/toml-patch": "^3.3.0",
         "@emnapi/core": "2.0.0-alpha.5",
         "@emnapi/runtime": "2.0.0-alpha.5",
         "@napi-rs/cli": "~3.7.4",
