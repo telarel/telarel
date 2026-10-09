@@ -150,6 +150,16 @@ const toSourceType = (sourceType: string): SourceType | void => {
     return sourceType.length === 0 ? void 0 : (sourceType as SourceType);
 };
 
+const toContext = (rawCtx: RawPluginContext): PluginContext => ({
+    cwd: rawCtx.cwd,
+    module: {
+        file: rawCtx.file,
+        code: rawCtx.code,
+        language: toLanguage(rawCtx.language),
+        sourceType: toSourceType(rawCtx.sourceType),
+    },
+});
+
 const parseSourceMap = (json: string): SourceMap => {
     return JSON.parse(json) as SourceMap;
 };
@@ -272,16 +282,6 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
     const raw: RawHookPlugin = { name };
 
     Object.defineProperty(raw, RAW_PLUGIN_MARKER, { value: true });
-
-    const toContext = (rawCtx: RawPluginContext): PluginContext => ({
-        cwd: rawCtx.cwd,
-        module: {
-            file: rawCtx.file,
-            code: rawCtx.code,
-            language: toLanguage(rawCtx.language),
-            sourceType: toSourceType(rawCtx.sourceType),
-        },
-    });
 
     const options: NormalizedHook<OptionsHook> = normalizeHook<OptionsHook>(
         plugin.options,
