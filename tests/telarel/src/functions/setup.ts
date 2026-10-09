@@ -1,3 +1,4 @@
+import * as Fs from "node:fs";
 import * as Fsp from "node:fs/promises";
 import * as Path from "node:path";
 import * as Url from "node:url";
@@ -24,6 +25,13 @@ const bindingDir: string = Path.join(distDir, "binding");
 const npmDir: string = Path.join(pkgDir, "npm");
 
 const staged: Array<string> = [];
+const deferred: Array<string> = [];
+
+const LOCK_ERROR_CODES: ReadonlyArray<string> = ["EPERM", "EBUSY"];
+
+const isLockError = (error: unknown): boolean =>
+    error instanceof Error &&
+    LOCK_ERROR_CODES.includes((error as NodeJS.ErrnoException).code ?? "");
 
 const exists = async (path: string): Promise<boolean> => {
     try {
@@ -167,12 +175,40 @@ const stageWasi = async (): Promise<void> => {
     staged.push(nodeModulesTarget);
 };
 
-const removeStaged = async (): Promise<void> => {
-    for (const target of staged) {
+let exitCleanupRegistered: boolean = false;
+
+const removeTarget = async (target: string): Promise<void> => {
+    try {
         await Fsp.rm(target, { force: true, recursive: true });
+    } catch (error) {
+        if (!isLockError(error)) throw error;
+        deferred.push(target);
+    }
+};
+
+const removeStaged = async (): Promise<void> => {
+    const targets: Array<string> = staged.slice();
+    staged.length = 0;
+
+    for (const target of targets) {
+        await removeTarget(target);
     }
 
-    staged.length = 0;
+    if (deferred.length === 0 || exitCleanupRegistered) return;
+
+    exitCleanupRegistered = true;
+
+    process.once("exit", (): void => {
+        for (const target of deferred) {
+            try {
+                Fs.rmSync(target, { force: true, recursive: true });
+            } catch {
+                // Exit-time cleanup runs after the worker processes are closed,
+                // but the OS may still hold the mapping briefly; `stage`
+                // re-clears each target on the next run.
+            }
+        }
+    });
 };
 
 const setup = async (): Promise<Teardown> => {
@@ -198,6 +234,7 @@ const setup = async (): Promise<Teardown> => {
 export type { PackageManifest, StageOptions, Teardown };
 export {
     exists,
+    isLockError,
     selectPlatformPackages,
     stage,
     stageNative,

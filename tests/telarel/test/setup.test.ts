@@ -2,7 +2,7 @@ import type { PackageManifest } from "#/functions/setup";
 
 import { describe, expect, it } from "vitest";
 
-import { selectPlatformPackages } from "#/functions/setup";
+import { isLockError, selectPlatformPackages } from "#/functions/setup";
 
 const manifest = (
     directory: string,
@@ -15,6 +15,12 @@ const manifest = (
     os,
     cpu,
 });
+
+const errorWithCode = (code: string): NodeJS.ErrnoException => {
+    const error: NodeJS.ErrnoException = new Error(code);
+    error.code = code;
+    return error;
+};
 
 const NPM_PACKAGES: ReadonlyArray<PackageManifest> = [
     manifest(
@@ -101,5 +107,22 @@ describe("selectPlatformPackages", (): void => {
         expect(selectPlatformPackages(NPM_PACKAGES, "freebsd", "x64")).toEqual(
             [],
         );
+    });
+});
+
+describe("isLockError", (): void => {
+    it("matches transient Windows lock codes", (): void => {
+        expect(isLockError(errorWithCode("EPERM"))).toBe(true);
+        expect(isLockError(errorWithCode("EBUSY"))).toBe(true);
+    });
+
+    it("ignores other error codes", (): void => {
+        expect(isLockError(errorWithCode("ENOENT"))).toBe(false);
+        expect(isLockError(errorWithCode("EACCES"))).toBe(false);
+    });
+
+    it("ignores non-error values", (): void => {
+        expect(isLockError("EPERM")).toBe(false);
+        expect(isLockError(void 0)).toBe(false);
     });
 });
