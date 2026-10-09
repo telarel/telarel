@@ -1,0 +1,72 @@
+version: 2
+updates:
+    # GitHub Actions
+    - package-ecosystem: "github-actions"
+      directory: "/"
+      schedule:
+          interval: "daily"
+          time: "00:00"
+          timezone: "Etc/UTC"
+      cooldown:
+          default-days: 1
+          include:
+              - "*"
+      commit-message:
+          prefix: "chore"
+    # NPM
+    - package-ecosystem: "npm"
+      directory: "/"
+      schedule:
+          interval: "daily"
+          time: "00:00"
+          timezone: "Etc/UTC"
+      cooldown:
+          default-days: 1
+          include:
+              - "*"
+      commit-message:
+          prefix: "chore"
+      ignore:
+          # NAPI-RS
+          - dependency-name: "@napi-rs/cli"
+          - dependency-name: "@napi-rs/wasm-runtime"
+          - dependency-name: "@emnapi/core"
+          - dependency-name: "@emnapi/runtime"
+          - dependency-name: "emnapi"
+          # Dependencies
+          - dependency-name: "@oxc-project/runtime"
+          - dependency-name: "@oxc-project/types"
+          - dependency-name: "oxc-transform"
+          - dependency-name: "oxc-walker"
+          - dependency-name: "ts-vista"
+    # Cargo
+    - package-ecosystem: "cargo"
+      directory: "/"
+      schedule:
+          interval: "daily"
+          time: "00:00"
+          timezone: "Etc/UTC"
+      cooldown:
+          default-days: 1
+          include:
+              - "*"
+      commit-message:
+          prefix: "chore"
+      ignore:
+          # NAPI-RS
+          - dependency-name: "napi"
+          - dependency-name: "napi-build"
+          - dependency-name: "napi-derive"
+          # Dependencies
+          - dependency-name: "anyhow"
+          - dependency-name: "bitflags"
+          - dependency-name: "oxc"
+          - dependency-name: "oxc_compat"
+          - dependency-name: "oxc_estree_codec"
+          - dependency-name: "oxc_sourcemap"
+          - dependency-name: "oxc_traverse"
+          - dependency-name: "oxc_transformer_plugins"
+          - dependency-name: "self_cell"
+          - dependency-name: "serde"
+          - dependency-name: "serde_json"
+          - dependency-name: "tokio"
