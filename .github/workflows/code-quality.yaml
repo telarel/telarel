@@ -21,6 +21,7 @@ jobs:
               with:
                   toolchain: "1.97.0"
                   components: clippy
+                  target: wasm32-wasip1-threads
 
             - name: Setup Node
               uses: alpheusci/setup-node@v1

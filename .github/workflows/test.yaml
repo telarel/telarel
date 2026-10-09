@@ -39,6 +39,7 @@ jobs:
               uses: actions-rust-lang/setup-rust-toolchain@v2
               with:
                   toolchain: ${{ matrix.rust.code }}
+                  target: wasm32-wasip1-threads
 
             - name: Setup Node
               uses: alpheusci/setup-node@v1
