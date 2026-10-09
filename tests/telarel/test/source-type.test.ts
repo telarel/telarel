@@ -376,26 +376,23 @@ describe("source type", (): void => {
         expect(result.code).toBe("await Promise.resolve();");
     });
 
-    it("keeps module syntax parseable with an explicit script source type", async (): Promise<void> => {
-        // Pinned observed behavior (oxc 0.150): the parser does not reject
-        // `import` / `export` in script mode at parse time, so module
-        // syntax survives even though the file is declared a script. The
-        // script goal is enforced through module-goal-only constructs such
-        // as top-level await and `import.meta` instead.
-        const result: CompileResult = await compile({
-            file: "index.js",
-            code: "import a from 'mod';\nexport const b = a;",
-            sourceType: "script",
-            plugins: [
-                {
-                    name: "force-parse",
-                    transform: (): void => void 0,
-                },
-            ],
-        });
-
-        expect(result.code).toBe('import a from "mod";\nexport const b = a;');
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+    it("rejects module syntax with an explicit script source type", async (): Promise<void> => {
+        // Pinned observed behavior (oxc 0.153): the parser rejects `import`
+        // / `export` when the file is declared a script, since module
+        // declarations can only be used at the top level of a module.
+        await expect(
+            compile({
+                file: "index.js",
+                code: "import a from 'mod';\nexport const b = a;",
+                sourceType: "script",
+                plugins: [
+                    {
+                        name: "force-parse",
+                        transform: (): void => void 0,
+                    },
+                ],
+            }),
+        ).rejects.toThrow("Cannot use import statement outside a module");
     });
 
     it("rejects a sourceType that is not script, commonjs, module, or unambiguous", async (): Promise<void> => {

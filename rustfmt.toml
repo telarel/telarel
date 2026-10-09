@@ -1,3 +1,5 @@
+#:schema https://www.schemastore.org/rustfmt.json
+
 disable_all_formatting = false
 edition = "2024"
 fn_params_layout = "Vertical"
