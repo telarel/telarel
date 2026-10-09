@@ -9,10 +9,18 @@ type StageOptions = {
 
 type Teardown = () => Promise<void>;
 
+type PackageManifest = {
+    directory: string;
+    main: string;
+    os?: ReadonlyArray<string>;
+    cpu?: ReadonlyArray<string>;
+};
+
 const testDir: string = Path.dirname(Url.fileURLToPath(import.meta.url));
 const repoDir: string = Path.resolve(testDir, "..", "..", "..", "..");
 const pkgDir: string = Path.resolve(repoDir, "packages", "telarel");
 const distDir: string = Path.join(pkgDir, "dist");
+const bindingDir: string = Path.join(distDir, "binding");
 const npmDir: string = Path.join(pkgDir, "npm");
 
 const staged: Array<string> = [];
@@ -32,29 +40,102 @@ const clear = async (target: string): Promise<void> => {
 
 const stage = async (options: StageOptions): Promise<void> => {
     await clear(options.target);
-    await Fsp.symlink(options.source, options.target, "file");
+    await Fsp.copyFile(options.source, options.target);
     staged.push(options.target);
 };
 
-const stageNative = async (): Promise<void> => {
-    const fileName: string = `telarel.${process.platform}-${process.arch}.node`;
+const matchesConstraint = (
+    constraint: ReadonlyArray<string> | undefined,
+    value: string,
+): boolean => constraint === void 0 || constraint.includes(value);
 
-    const npmDirs: Array<string> = await Fsp.readdir(npmDir);
+/**
+ * Selects the npm packages whose `os`/`cpu` metadata matches the running
+ * platform. An absent constraint is a wildcard, while a `libc` mismatch is
+ * ignored on purpose: every matching variant is staged and the generated loader
+ * (`src/binding/index.js`) picks the right one at runtime.
+ */
+const selectPlatformPackages = (
+    manifests: ReadonlyArray<PackageManifest>,
+    platform: string,
+    arch: string,
+): Array<PackageManifest> =>
+    manifests.filter(
+        (manifest: PackageManifest): boolean =>
+            matchesConstraint(manifest.os, platform) &&
+            matchesConstraint(manifest.cpu, arch),
+    );
 
-    for (const npmDirName of npmDirs) {
-        const source: string = Path.join(npmDir, npmDirName, fileName);
-        if (await exists(source)) {
-            await stage({
-                target: Path.join(distDir, fileName),
-                source,
-            });
-            return;
-        }
+const readManifest = async (directory: string): Promise<PackageManifest> => {
+    const raw: string = await Fsp.readFile(
+        Path.join(npmDir, directory, "package.json"),
+        "utf-8",
+    );
+
+    type ParsedManifest = {
+        main?: string;
+        os?: Array<string>;
+        cpu?: Array<string>;
+    };
+
+    // oxlint-disable-next-line typescript/no-unsafe-assignment
+    const parsed: ParsedManifest = JSON.parse(raw);
+
+    if (parsed.main === void 0) {
+        throw new Error(`Missing "main" in ${directory}/package.json.`);
     }
 
-    throw new Error(
-        `Native binding "${fileName}" not found under ${npmDir}. Run \`just build-rs\` first.`,
+    return {
+        directory,
+        main: parsed.main,
+        os: parsed.os,
+        cpu: parsed.cpu,
+    };
+};
+
+const stageNative = async (): Promise<void> => {
+    const directories: Array<string> = await Fsp.readdir(npmDir);
+
+    const manifests: Array<PackageManifest> = await Promise.all(
+        directories.map(
+            async (directory: string): Promise<PackageManifest> =>
+                await readManifest(directory),
+        ),
     );
+
+    const matches: Array<PackageManifest> = selectPlatformPackages(
+        manifests,
+        process.platform,
+        process.arch,
+    );
+
+    let stagedCount: number = 0;
+
+    for (const manifest of matches) {
+        const source: string = Path.join(
+            npmDir,
+            manifest.directory,
+            manifest.main,
+        );
+
+        // `create-npm-dirs` scaffolds a package directory for every target,
+        // but the host build only produces the binary for its own target, so
+        // a matching directory can still lack its `.node` file.
+        if (!(await exists(source))) continue;
+
+        await stage({
+            target: Path.join(bindingDir, manifest.main),
+            source,
+        });
+
+        stagedCount += 1;
+    }
+
+    if (stagedCount === 0) {
+        throw new Error(
+            `No native binding matches ${process.platform}-${process.arch} under ${npmDir}. Run \`just build-rs\` first.`,
+        );
+    }
 };
 
 const stageWasi = async (): Promise<void> => {
@@ -68,7 +149,7 @@ const stageWasi = async (): Promise<void> => {
 
     for (const fileName of fileNames) {
         await stage({
-            target: Path.join(distDir, fileName),
+            target: Path.join(bindingDir, fileName),
             source: Path.join(wasiDir, fileName),
         });
     }
@@ -80,14 +161,17 @@ const stageWasi = async (): Promise<void> => {
     await Fsp.symlink(
         Path.join(wasiDir, "node_modules"),
         nodeModulesTarget,
-        "dir",
+        process.platform === "win32" ? "junction" : "dir",
     );
 
     staged.push(nodeModulesTarget);
 };
 
 const removeStaged = async (): Promise<void> => {
-    for (const target of staged) await Fsp.rm(target, { force: true });
+    for (const target of staged) {
+        await Fsp.rm(target, { force: true, recursive: true });
+    }
+
     staged.length = 0;
 };
 
@@ -100,6 +184,8 @@ const setup = async (): Promise<Teardown> => {
         );
     }
 
+    await Fsp.mkdir(bindingDir, { recursive: true });
+
     if (process.env.NAPI_RS_FORCE_WASI === "error") {
         await stageWasi();
     } else {
@@ -109,6 +195,14 @@ const setup = async (): Promise<Teardown> => {
     return removeStaged;
 };
 
-export type { StageOptions, Teardown };
-export { exists, stage, stageNative, stageWasi, removeStaged, setup };
+export type { PackageManifest, StageOptions, Teardown };
+export {
+    exists,
+    selectPlatformPackages,
+    stage,
+    stageNative,
+    stageWasi,
+    removeStaged,
+    setup,
+};
 export default setup;
