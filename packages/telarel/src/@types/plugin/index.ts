@@ -13,7 +13,7 @@ import type {
     TransformArgs,
     TransformResult,
 } from "#/@types/plugin/hooks/transform";
-import type { Options, OptionsArgs } from "#/@types/plugin/options";
+import type { OptionsArgs } from "#/@types/plugin/options";
 
 /**
  * The order a hook requests relative to the normal registration order.
@@ -35,8 +35,8 @@ type Plugin = {
      */
     name: string;
     /**
-     * The options hook: return the full options bag (incl. `plugins`) to
-     * replace it, or `null`/`void` for no change.
+     * The options hook: return the full options args to replace it, or
+     * `null`/`void` for no change.
      *
      * Runs before resolution, as a fixpoint: plugins added here get their own
      * `options` hook run too.
@@ -45,7 +45,7 @@ type Plugin = {
         (
             ctx: CommonPluginContext,
             args: OptionsArgs,
-        ) => Options | null | void | Promise<Options | null | void>
+        ) => OptionsArgs | null | void | Promise<OptionsArgs | null | void>
     >;
     /**
      * The compileStart hook: notify on the start of compilation, with resolved

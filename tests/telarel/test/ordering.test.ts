@@ -1,7 +1,6 @@
 import type {
     CommonPluginContext,
     CompileResult,
-    Options,
     OptionsArgs,
     Plugin,
     PluginContext,
@@ -342,10 +341,15 @@ describe("ordering", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options => {
+                    ): OptionsArgs => {
                         seen.push("normal");
 
-                        return { ...args.options, code: "const normal = 1;" };
+                        return {
+                            options: {
+                                ...args.options,
+                                code: "const normal = 1;",
+                            },
+                        };
                     },
                 },
                 {
@@ -355,10 +359,15 @@ describe("ordering", (): void => {
                         handler: (
                             _ctx: CommonPluginContext,
                             args: OptionsArgs,
-                        ): Options => {
+                        ): OptionsArgs => {
                             seen.push("pre");
 
-                            return { ...args.options, code: "const pre = 1;" };
+                            return {
+                                options: {
+                                    ...args.options,
+                                    code: "const pre = 1;",
+                                },
+                            };
                         },
                     },
                 },

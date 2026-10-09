@@ -3,7 +3,6 @@ import type {
     CompileEndArgs,
     CompileResult,
     CompileStartArgs,
-    Options,
     OptionsArgs,
     Plugin,
     PluginContext,
@@ -118,9 +117,11 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => ({
-                        ...args.options,
-                        code: "const b = 2;",
+                    ): OptionsArgs | null | void => ({
+                        options: {
+                            ...args.options,
+                            code: "const b = 2;",
+                        },
                     }),
                 },
                 {
@@ -128,9 +129,11 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => ({
-                        ...args.options,
-                        code: "const c = 3;",
+                    ): OptionsArgs | null | void => ({
+                        options: {
+                            ...args.options,
+                            code: "const c = 3;",
+                        },
                     }),
                 },
             ],
@@ -151,9 +154,11 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => ({
-                        ...args.options,
-                        code: "const b = 2;",
+                    ): OptionsArgs | null | void => ({
+                        options: {
+                            ...args.options,
+                            code: "const b = 2;",
+                        },
                     }),
                 },
                 {
@@ -168,9 +173,11 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => ({
-                        ...args.options,
-                        code: `${args.options.code}; const c = 3;`,
+                    ): OptionsArgs | null | void => ({
+                        options: {
+                            ...args.options,
+                            code: `${args.options.code}; const c = 3;`,
+                        },
                     }),
                 },
             ],
@@ -195,9 +202,11 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => ({
-                        ...args.options,
-                        code: "const b = 2;",
+                    ): OptionsArgs | null | void => ({
+                        options: {
+                            ...args.options,
+                            code: "const b = 2;",
+                        },
                     }),
                 },
                 {
@@ -205,13 +214,15 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => {
+                    ): OptionsArgs | null | void => {
                         seen.push(args.options.code ?? "");
                         seen.push(args.options.cwd ?? "");
 
                         return {
-                            ...args.options,
-                            file: "renamed.ts",
+                            options: {
+                                ...args.options,
+                                file: "renamed.ts",
+                            },
                         };
                     },
                 },
@@ -252,13 +263,15 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => {
+                    ): OptionsArgs | null | void => {
                         seen.push("has-context");
                         seen.push(args.options.file ?? "");
 
                         return {
-                            code: "const replaced = 1;",
-                            plugins: args.options.plugins,
+                            options: {
+                                code: "const replaced = 1;",
+                                plugins: args.options.plugins,
+                            },
                         };
                     },
                     prepare: (ctx: PluginContext): void => {
@@ -321,8 +334,10 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options => {
-                        return { ...args.options, cwd: void 0 };
+                    ): OptionsArgs => {
+                        return {
+                            options: { ...args.options, cwd: void 0 },
+                        };
                     },
                 },
                 {
@@ -352,14 +367,16 @@ describe("compile", (): void => {
                     options: async (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Promise<Options> => {
+                    ): Promise<OptionsArgs> => {
                         await new Promise<void>((resolve): void => {
                             setTimeout(resolve, 0);
                         });
 
                         return {
-                            ...args.options,
-                            code: "const replaced = 2;",
+                            options: {
+                                ...args.options,
+                                code: "const replaced = 2;",
+                            },
                         };
                     },
                 },
@@ -387,25 +404,29 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => {
+                    ): OptionsArgs | null | void => {
                         if (isInjected) {
                             return null;
                         }
                         isInjected = true;
 
                         return {
-                            ...args.options,
-                            plugins: [
-                                ...(args.options.plugins ?? []),
-                                {
-                                    name: "injected",
-                                    prepare: (): PrepareResult | null => {
-                                        seen.push("injected.prepare");
+                            options: {
+                                ...args.options,
+                                plugins: [
+                                    ...(args.options.plugins ?? []),
+                                    {
+                                        name: "injected",
+                                        prepare: (): PrepareResult | null => {
+                                            seen.push("injected.prepare");
 
-                                        return { code: "const injected = 3;" };
+                                            return {
+                                                code: "const injected = 3;",
+                                            };
+                                        },
                                     },
-                                },
-                            ],
+                                ],
+                            },
                         };
                     },
                 },
@@ -431,7 +452,7 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => {
+                    ): OptionsArgs | null | void => {
                         seen.push(`in:${String(lateRan)}`);
 
                         if (isInjected) {
@@ -439,22 +460,24 @@ describe("compile", (): void => {
                         }
                         isInjected = true;
 
-                        const next: Options = {
-                            ...args.options,
-                            code: "const replaced = 2;",
-                            plugins: [
-                                ...(args.options.plugins ?? []),
-                                {
-                                    name: "late",
-                                    options: (
-                                        _lateCtx: CommonPluginContext,
-                                        _lateArgs: OptionsArgs,
-                                    ): void => {
-                                        lateRan = true;
-                                        seen.push("late.options");
+                        const next: OptionsArgs = {
+                            options: {
+                                ...args.options,
+                                code: "const replaced = 2;",
+                                plugins: [
+                                    ...(args.options.plugins ?? []),
+                                    {
+                                        name: "late",
+                                        options: (
+                                            _lateCtx: CommonPluginContext,
+                                            _lateArgs: OptionsArgs,
+                                        ): void => {
+                                            lateRan = true;
+                                            seen.push("late.options");
+                                        },
                                     },
-                                },
-                            ],
+                                ],
+                            },
                         };
 
                         return next;
@@ -630,12 +653,14 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => {
+                    ): OptionsArgs | null | void => {
                         seen.push("options");
 
                         return {
-                            ...args.options,
-                            code: "const b = 2;",
+                            options: {
+                                ...args.options,
+                                code: "const b = 2;",
+                            },
                         };
                     },
                     prepare: async (): Promise<void> => {
@@ -788,9 +813,11 @@ describe("compile", (): void => {
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
-                    ): Options | null | void => ({
-                        ...args.options,
-                        code: "const b = 2;",
+                    ): OptionsArgs | null | void => ({
+                        options: {
+                            ...args.options,
+                            code: "const b = 2;",
+                        },
                     }),
                 },
                 {

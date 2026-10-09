@@ -2,7 +2,6 @@ import type {
     CommonPluginContext,
     CompileOptions,
     CompileResult,
-    Options,
     OptionsArgs,
     Plugin,
     PluginContext,
@@ -111,7 +110,7 @@ describe("validation", (): void => {
     });
 
     it("applies a returned options bag", async (): Promise<void> => {
-        // Return-based contract: the hook returns the replacement bag; the
+        // Return-based contract: the hook returns the replacement args; the
         // transform observes the new `code` with the current `cwd` and
         // `file` carried over by the spread.
         let stage: string = "__NONE__";
@@ -121,12 +120,14 @@ describe("validation", (): void => {
             options: (
                 _ctx: CommonPluginContext,
                 args: OptionsArgs,
-            ): Options => {
+            ): OptionsArgs => {
                 stage = "options";
 
                 return {
-                    ...args.options,
-                    code: "const b = 2;",
+                    options: {
+                        ...args.options,
+                        code: "const b = 2;",
+                    },
                 };
             },
             transform: (ctx: PluginContext): void => {
@@ -156,8 +157,10 @@ describe("validation", (): void => {
         // uses the returned bag verbatim.
         const plugin: unknown = {
             name: "returned-bag",
-            options: (): Options => ({
-                code: "const replaced = 2;",
+            options: (): OptionsArgs => ({
+                options: {
+                    code: "const replaced = 2;",
+                },
             }),
         };
 

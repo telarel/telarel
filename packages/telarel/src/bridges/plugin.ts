@@ -191,7 +191,7 @@ type ToRawPluginsOptions = {
 type OptionsHook = (
     ctx: CommonPluginContext,
     args: OptionsArgs,
-) => Options | null | void | Promise<Options | null | void>;
+) => OptionsArgs | null | void | Promise<OptionsArgs | null | void>;
 
 type CompileStartHook = (
     ctx: PluginContext,
@@ -315,7 +315,7 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
             const args: OptionsArgs = { options: bag };
 
-            const result: Options | null | void = await optionsHandler(
+            const result: OptionsArgs | null | void = await optionsHandler(
                 ctx,
                 args,
             );
@@ -324,30 +324,32 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                 return null;
             }
 
+            const next: Options = result.options;
+
             const output: RawOptionsOutput = {
                 plugins: await toRawPlugins({
-                    plugins: result.plugins ?? [],
+                    plugins: next.plugins ?? [],
                 }),
             };
 
-            if (typeof result.cwd === "string") {
-                output.cwd = result.cwd;
+            if (typeof next.cwd === "string") {
+                output.cwd = next.cwd;
             }
 
-            if (typeof result.file === "string") {
-                output.file = result.file;
+            if (typeof next.file === "string") {
+                output.file = next.file;
             }
 
-            if (typeof result.code === "string") {
-                output.code = result.code;
+            if (typeof next.code === "string") {
+                output.code = next.code;
             }
 
-            if (typeof result.language === "string") {
-                output.language = result.language;
+            if (typeof next.language === "string") {
+                output.language = next.language;
             }
 
-            if (typeof result.sourceType === "string") {
-                output.sourceType = result.sourceType;
+            if (typeof next.sourceType === "string") {
+                output.sourceType = next.sourceType;
             }
 
             return output;
