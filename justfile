@@ -40,7 +40,11 @@ init:
 
 # Install
 i:
-    pnpm install
+    pnpm install --no-frozen-lockfile
+
+# Install with frozen lockfile
+if:
+    pnpm install --frozen-lockfile
 
 # Format Rust code
 fmt-rs:
