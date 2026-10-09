@@ -43,9 +43,15 @@ jobs:
 
             - name: Setup Node
               uses: alpheusci/setup-node@v1
+              with:
+                  auto-install: false
 
             - name: Prebuild
-              run: just create-npm-dirs && just build
+              run: |
+                  just i
+                  just create-npm-dirs
+                  just i
+                  just build
 
             - name: Run tests
               run: just test
