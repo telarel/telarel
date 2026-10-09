@@ -11,6 +11,8 @@ export default defineConfig(
         ],
         platform: "node",
         deps: {
+            onlyBundle: false,
+            neverBundle: true,
             alwaysBundle: ["oxc-transform"],
         },
         unbundle: true,
