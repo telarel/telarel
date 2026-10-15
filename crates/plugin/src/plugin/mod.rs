@@ -142,8 +142,7 @@ mod tests {
     use oxc::ast::builder::AstBuilder;
     use oxc::span::SPAN;
     use telarel_common::{
-        Ast, CompileContext, HookUsage, Language, ParseOwnedOptions,
-        SourceType, parse_owned,
+        Ast, HookUsage, Language, ParseAstOptions, SourceType, parse_ast,
     };
 
     use crate::_types::context::{
@@ -309,16 +308,16 @@ mod tests {
             async move {
                 let code: &str = "\"replaced\";";
 
-                let ctx: CompileContext<'_> =
-                    CompileContext::new("/repo", "a.ts", code);
-
-                let ast: Ast = parse_owned(ParseOwnedOptions {
-                    context: &ctx,
-                    file: "a.ts",
-                    code,
-                    language: None,
-                    source_type: None,
-                })?;
+                let ast: Ast = parse_ast(
+                    code.to_string(),
+                    ParseAstOptions {
+                        cwd: String::from("/repo"),
+                        file: String::from("a.ts"),
+                        language: None,
+                        source_type: None,
+                        input_map: None,
+                    },
+                )?;
 
                 Ok(Some(TransformOutput { ast }))
             }
@@ -560,16 +559,16 @@ mod tests {
     }
 
     fn parse_test_ast(code: &str) -> Ast {
-        let ctx: CompileContext<'_> =
-            CompileContext::new("/repo", "a.ts", code);
-
-        parse_owned(ParseOwnedOptions {
-            context: &ctx,
-            file: "a.ts",
-            code,
-            language: None,
-            source_type: None,
-        })
+        parse_ast(
+            code.to_string(),
+            ParseAstOptions {
+                cwd: String::from("/repo"),
+                file: String::from("a.ts"),
+                language: None,
+                source_type: None,
+                input_map: None,
+            },
+        )
         .unwrap()
     }
 

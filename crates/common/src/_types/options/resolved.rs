@@ -1,5 +1,5 @@
-use crate::_types::options::language::Language;
-use crate::_types::options::source_type::SourceType;
+use crate::_types::grammar::language::Language;
+use crate::_types::grammar::source_type::SourceType;
 
 /// Resolved options, as seen by `compile_start` and later hooks.
 #[derive(Debug, Clone)]
@@ -20,8 +20,8 @@ pub struct ResolvedOptions {
 
 #[cfg(test)]
 mod tests {
-    use crate::_types::options::language::Language;
-    use crate::_types::options::source_type::SourceType;
+    use crate::_types::grammar::language::Language;
+    use crate::_types::grammar::source_type::SourceType;
 
     use super::*;
 

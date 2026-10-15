@@ -130,7 +130,7 @@ mod tests {
     use oxc::parser::ParserReturn;
     use oxc::span::SourceType;
 
-    use telarel_common::{CodegenOptions, codegen};
+    use telarel_common::generate_program;
 
     use crate::helpers::sources::{DEPENDENCY_HELPERS, HELPERS, HelperSource};
     use crate::options::helper_loader::DEFAULT_HELPER_MODULE_NAME;
@@ -160,7 +160,7 @@ mod tests {
     }
 
     fn codegen_program(program: &Program<'_>) -> String {
-        codegen(CodegenOptions { file: "index.mjs", program }).code
+        generate_program(program, "index.mjs").0
     }
 
     #[test]

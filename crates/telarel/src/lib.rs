@@ -6,10 +6,12 @@
 //! the plugin system, and the shared types.
 
 pub use telarel_common::{
-    Ast, CodegenOptions, CodegenResult, CompileContext, CompileError,
-    CompileOptions, HookUsage, Language, ParseOptions, ParseOwnedOptions,
-    ParseResult, ResolvedOptions, SourceMap, SourceType, compose_maps,
-    parse_owned,
+    Ast, AstResult, CodeResult, CompileContext, CompileError,
+    CompileFromAstOptions, CompileOptions, GenerateOptions, Generator,
+    GeneratorOptions, HookUsage, InputSourceMap, InputSourceMapMode, Language,
+    OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions, ParseOptions,
+    Parser, ParserOptions, ResolvableOptions, ResolvedOptions, RewriteOptions,
+    SourceMap, SourceMapOptions, SourceType,
 };
 
 pub use telarel_plugin::{

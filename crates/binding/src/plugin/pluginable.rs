@@ -592,6 +592,7 @@ impl Pluginable for JsPlugin {
             let mut ast: Ast = Ast::try_from_source(
                 args.ast.source().clone(),
                 source_type,
+                args.ast.map().cloned(),
                 |source_text: &str, allocator: &oxc::allocator::Allocator| {
                     oxc_estree_codec::json_to_program(
                         &replaced_bytes,

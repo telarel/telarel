@@ -1,5 +1,5 @@
-use crate::_types::options::language::Language;
-use crate::_types::options::source_type::SourceType;
+use crate::_types::grammar::language::Language;
+use crate::_types::grammar::source_type::SourceType;
 
 /// User options for a compile run.
 #[derive(Debug, Clone)]

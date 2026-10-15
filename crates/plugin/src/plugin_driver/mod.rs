@@ -207,7 +207,7 @@ mod tests {
     use oxc::span::SPAN;
 
     use telarel_common::{
-        Ast, HookUsage, Language, ParseOwnedOptions, SourceType, parse_owned,
+        Ast, HookUsage, Language, ParseAstOptions, SourceType, parse_ast,
     };
 
     use crate::_types::context::ModuleInfo;
@@ -232,34 +232,30 @@ mod tests {
     }
 
     fn test_ast() -> Ast {
-        let ctx: telarel_common::CompileContext<'_> =
-            telarel_common::CompileContext::new(
-                "/repo",
-                "a.ts",
-                "console.log(1);",
-            );
-
-        parse_owned(ParseOwnedOptions {
-            context: &ctx,
-            file: "a.ts",
-            code: "console.log(1);",
-            language: None,
-            source_type: None,
-        })
+        parse_ast(
+            String::from("console.log(1);"),
+            ParseAstOptions {
+                cwd: String::from("/repo"),
+                file: String::from("a.ts"),
+                language: None,
+                source_type: None,
+                input_map: None,
+            },
+        )
         .unwrap()
     }
 
     fn parse_fixture(code: &str) -> anyhow::Result<Ast> {
-        let ctx: telarel_common::CompileContext<'_> =
-            telarel_common::CompileContext::new("/repo", "a.ts", code);
-
-        parse_owned(ParseOwnedOptions {
-            context: &ctx,
-            file: "a.ts",
-            code,
-            language: None,
-            source_type: None,
-        })
+        parse_ast(
+            code.to_string(),
+            ParseAstOptions {
+                cwd: String::from("/repo"),
+                file: String::from("a.ts"),
+                language: None,
+                source_type: None,
+                input_map: None,
+            },
+        )
         .map_err(anyhow::Error::from)
     }
 

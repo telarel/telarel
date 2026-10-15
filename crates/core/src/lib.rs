@@ -5,14 +5,12 @@
 //! This crate drives the per-file compile pipeline: it runs plugin hooks,
 //! parses the source, applies transforms, and produces code with a map.
 
-mod resolve;
-
-use oxc::ast::ast::Program;
 use oxc_sourcemap::SourceMapBuilder;
 
 use telarel_common::{
-    Ast, CompileContext, CompileError, HookUsage, Language, ParseOwnedOptions,
-    ResolvedOptions, SourceType, compose_maps, parse_owned,
+    Ast, CompileContext, CompileError, GenerateCodeOptions, HookUsage,
+    Language, ParseAstOptions, ResolvedOptions, SourceType, compose_maps,
+    generate_code, infer_language, parse_ast, resolve_source_type,
 };
 use telarel_plugin::__internal::PluginDriver;
 use telarel_plugin::{
@@ -21,25 +19,8 @@ use telarel_plugin::{
     options_fixpoint,
 };
 
-use crate::resolve::language::infer_language;
-use crate::resolve::source_type::resolve_source_type;
-
 pub use telarel_common::CompileOptions;
 pub use telarel_common::SourceMap;
-
-/// Strip a trailing `\n`, then a trailing `\r`, so `\n`, `\r\n`, and
-/// lone `\r` terminators disappear while interior line endings survive.
-///
-/// Input is owned, so the terminator is removed in place rather than
-/// copying the whole string into a fresh `String`.
-fn strip_trailing_newline(mut source: String) -> String {
-    let new_len: usize =
-        source.trim_end_matches('\n').trim_end_matches('\r').len();
-
-    source.truncate(new_len);
-
-    source
-}
 
 /// Build a per-line identity map: each generated line maps to the same
 /// source line at column 0.
@@ -170,13 +151,16 @@ async fn run_stages(
             // Parse ONCE before the transform chain into an owned `Ast`; the
             // AST bundles its own allocator, so it moves through the chain by
             // value and hands out a read-only program by reference.
-            let ast: Ast = parse_owned(ParseOwnedOptions {
-                context: ctx,
-                file: &resolved.file,
-                code: &parse_code,
-                language: Some(resolved_options.language),
-                source_type: Some(resolved_options.source_type),
-            })
+            let ast: Ast = parse_ast(
+                parse_code.clone(),
+                ParseAstOptions {
+                    cwd: ctx.cwd.to_string(),
+                    file: resolved.file.clone(),
+                    language: Some(resolved_options.language),
+                    source_type: Some(resolved_options.source_type),
+                    input_map: None,
+                },
+            )
             .map_err(|error| StageError {
                 error,
                 last_good: LastGood {
@@ -206,21 +190,22 @@ async fn run_stages(
 
             // The driver's `Some` carries the last replacement; `None`
             // means no plugin changed anything, so the parsed AST is
-            // codegen'd directly. Both are owned `Ast`s; borrow the program.
-            let final_program: &Program<'_> = match &transform_output {
-                | Some(output) => output.ast.program(),
-                | None => ast.program(),
+            // codegen'd directly. Both are owned `Ast`s; select the winning
+            // one and let `generate_code` compose its input map.
+            let final_ast: &Ast = match &transform_output {
+                | Some(output) => &output.ast,
+                | None => &ast,
             };
 
-            let result: telarel_common::CodegenResult<'_> =
-                telarel_common::codegen(telarel_common::CodegenOptions {
-                    file: &resolved.file,
-                    program: final_program,
-                });
+            let result: telarel_common::CodeResult = generate_code(
+                final_ast,
+                GenerateCodeOptions { file: resolved.file.clone() },
+            );
 
-            let code: String = strip_trailing_newline(result.code);
+            let code: String = result.code;
 
-            let map: SourceMap = result.map.into_owned();
+            let map: SourceMap =
+                result.map.expect("generate_code always produces a map");
 
             (code, map)
         } else {
@@ -228,7 +213,10 @@ async fn run_stages(
             // pass the source through with a per-line identity map. A clone is
             // required here: `ctx` borrows the parse source until the `finalize`
             // hook below, so the strip cannot consume it in place.
-            let code: String = strip_trailing_newline(parse_code.clone());
+            let code: String = parse_code
+                .trim_end_matches('\n')
+                .trim_end_matches('\r')
+                .to_string();
 
             let map: SourceMap = identity_map(&resolved.file, &parse_code);
 
@@ -444,12 +432,13 @@ pub async fn compile(
 mod tests {
     use std::borrow::Cow;
 
-    use telarel_common::{Ast, CompileOptions, ParseOwnedOptions, parse_owned};
+    use telarel_common::{Ast, CompileOptions, ParseAstOptions, parse_ast};
     use telarel_plugin::{
         Plugin, SharedPluginable, TransformArgs, TransformReturn,
     };
 
     use oxc::allocator::Allocator;
+    use oxc::ast::ast::Program;
     use oxc::ast_visit::VisitMut;
     use oxc::ast_visit::walk_mut;
 
@@ -526,19 +515,16 @@ mod tests {
             _args: TransformArgs<'a>,
         ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
-                let compile_ctx: CompileContext<'_> = CompileContext::new(
-                    "/repo",
-                    ctx.module.file,
-                    REPLACED_CODE,
-                );
-
-                let ast: Ast = parse_owned(ParseOwnedOptions {
-                    context: &compile_ctx,
-                    file: ctx.module.file,
-                    code: REPLACED_CODE,
-                    language: None,
-                    source_type: None,
-                })?;
+                let ast: Ast = parse_ast(
+                    REPLACED_CODE.to_string(),
+                    ParseAstOptions {
+                        cwd: String::from("/repo"),
+                        file: ctx.module.file.to_string(),
+                        language: None,
+                        source_type: None,
+                        input_map: None,
+                    },
+                )?;
 
                 Ok(Some(telarel_plugin::TransformOutput { ast }))
             }

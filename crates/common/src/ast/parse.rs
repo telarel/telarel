@@ -6,23 +6,23 @@ use oxc::diagnostics::LabeledSpan;
 use oxc::parser::Parser;
 use oxc::span::{SourceType as OxcSourceType, Span};
 
-use crate::_types::options::language::{Language, grammar_source_type};
-use crate::_types::options::source_type::{SourceType, with_module_kind};
+use crate::_types::grammar::language::Language;
+use crate::_types::grammar::source_type::{SourceType, with_module_kind};
 use crate::ast::ast::Ast;
 use crate::contexts::compile::CompileContext;
 use crate::errors::compile::CompileError;
+use crate::helpers::resolve::resolve_grammar;
+use crate::sourcemap::SourceMap;
 
-/// Options for [`parse`].
+/// Options for [`parse_program`].
 #[derive(Clone, Copy)]
-pub struct ParseOptions<'ctx, 'a> {
+pub struct ParseProgramOptions<'ctx, 'a> {
     /// Compile context for diagnostics.
     pub context: &'ctx CompileContext<'ctx>,
     /// Destination allocator for the parsed program.
     pub allocator: &'a Allocator,
     /// File path.
     pub file: &'a str,
-    /// Source code to parse.
-    pub code: &'a str,
     /// The grammar of the code;
     /// `None` infers the grammar from the file extension.
     pub language: Option<Language>,
@@ -31,59 +31,29 @@ pub struct ParseOptions<'ctx, 'a> {
     pub source_type: Option<SourceType>,
 }
 
-/// Options for [`parse_owned`].
-#[derive(Clone, Copy)]
-pub struct ParseOwnedOptions<'ctx, 'a> {
-    /// Compile context for diagnostics.
-    pub context: &'ctx CompileContext<'ctx>,
-    /// File path.
-    pub file: &'a str,
-    /// Source code to parse.
-    pub code: &'a str,
-    /// The grammar of the code;
-    /// `None` infers the grammar from the file extension.
-    pub language: Option<Language>,
-    /// The module system of the code;
-    /// `None` keeps the module kind resolved from the grammar.
-    pub source_type: Option<SourceType>,
-}
-
-/// Result of [`parse`].
+/// Result of [`parse_program`].
 #[derive(Debug)]
-pub struct ParseResult<'a> {
+pub struct ParseProgramResult<'a> {
     /// The parsed program.
     pub program: Program<'a>,
 }
 
-/// Drop the `?query`/`#hash` suffix from a module id.
-fn strip_id_suffix(module_id: &str) -> &str {
-    let without_hash: &str =
-        module_id.split_once('#').map_or(module_id, |(path, _)| path);
-    without_hash.split_once('?').map_or(without_hash, |(path, _)| path)
-}
-
-/// Infer the source type from a module id, falling back to the default
-/// (an ES module) for extensionless or unknown virtual files.
-pub fn source_type_for_module_id(module_id: &str) -> OxcSourceType {
-    let path: &str = strip_id_suffix(module_id);
-    OxcSourceType::from_path(path).unwrap_or_default()
-}
-
-/// Resolve the oxc source type: an explicit language wins, the module kind is
-/// overlaid, and otherwise the module id's extension is inferred.
-fn resolve_source_type(
-    file: &str,
-    language: Option<Language>,
-    source_type: Option<SourceType>,
-) -> OxcSourceType {
-    let grammar: OxcSourceType = language
-        .map(grammar_source_type)
-        .unwrap_or_else(|| source_type_for_module_id(file));
-
-    match source_type {
-        | Some(module_kind) => with_module_kind(grammar, module_kind),
-        | None => grammar,
-    }
+/// Options for [`parse_ast`].
+#[derive(Debug, Clone)]
+pub struct ParseAstOptions {
+    /// Current working directory (for diagnostics).
+    pub cwd: String,
+    /// File path.
+    pub file: String,
+    /// The grammar of the code;
+    /// `None` infers the grammar from the file extension.
+    pub language: Option<Language>,
+    /// The module system of the code;
+    /// `None` keeps the module kind resolved from the grammar.
+    pub source_type: Option<SourceType>,
+    /// The input source map describing how `code` was produced from
+    /// upstream originals, if any.
+    pub input_map: Option<SourceMap>,
 }
 
 /// Convert the first parser diagnostic (or fatal error) into a
@@ -118,47 +88,56 @@ fn parse_error(
     None
 }
 
-/// Parse source code into a [`Program`].
-pub fn parse<'ctx, 'a>(
-    options: ParseOptions<'ctx, 'a>
-) -> Result<ParseResult<'a>, CompileError> {
-    let source_type: OxcSourceType = resolve_source_type(
-        options.file,
-        options.language,
-        options.source_type,
-    );
+/// Parse source code into a [`Program`] borrowed from `allocator`.
+pub fn parse_program<'ctx, 'a>(
+    code: &'a str,
+    options: ParseProgramOptions<'ctx, 'a>,
+) -> Result<ParseProgramResult<'a>, CompileError> {
+    let grammar: OxcSourceType =
+        resolve_grammar(options.file, options.language);
+
+    let source_type: OxcSourceType = match options.source_type {
+        | Some(module_kind) => with_module_kind(grammar, module_kind),
+        | None => grammar,
+    };
 
     let parser_return: oxc::parser::ParserReturn<'_> =
-        Parser::new(options.allocator, options.code, source_type).parse();
+        Parser::new(options.allocator, code, source_type).parse();
 
     if let Some(error) = parse_error(options.context, &parser_return) {
         return Err(error);
     }
 
-    Ok(ParseResult { program: parser_return.program })
+    Ok(ParseProgramResult { program: parser_return.program })
 }
 
 /// Parse source code into an owned [`Ast`].
-pub fn parse_owned(
-    options: ParseOwnedOptions<'_, '_>
+pub fn parse_ast(
+    code: String,
+    options: ParseAstOptions,
 ) -> Result<Ast, CompileError> {
-    let source_type: OxcSourceType = resolve_source_type(
-        options.file,
-        options.language,
-        options.source_type,
-    );
+    let grammar: OxcSourceType =
+        resolve_grammar(&options.file, options.language);
 
-    let source: Arc<str> = Arc::from(options.code);
-    let context: &CompileContext<'_> = options.context;
+    let source_type: OxcSourceType = match options.source_type {
+        | Some(module_kind) => with_module_kind(grammar, module_kind),
+        | None => grammar,
+    };
+
+    let source: Arc<str> = Arc::from(code.as_str());
+
+    let context: CompileContext<'_> =
+        CompileContext::new(&options.cwd, &options.file, &code);
 
     Ast::try_from_source(
         source,
         source_type,
+        options.input_map,
         |src: &str, allocator: &Allocator| {
             let parser_return: oxc::parser::ParserReturn<'_> =
                 Parser::new(allocator, src, source_type).parse();
 
-            if let Some(error) = parse_error(context, &parser_return) {
+            if let Some(error) = parse_error(&context, &parser_return) {
                 return Err(error);
             }
 
@@ -170,6 +149,9 @@ pub fn parse_owned(
 #[cfg(test)]
 mod tests {
     use oxc::allocator::Allocator;
+    use oxc_sourcemap::SourceMapBuilder;
+
+    use crate::_types::grammar::language::grammar_source_type;
 
     use super::*;
 
@@ -183,51 +165,48 @@ mod tests {
         language: Option<Language>,
         source_type: Option<SourceType>,
         code: &'a str,
-    ) -> Result<ParseResult<'a>, CompileError> {
+    ) -> Result<ParseProgramResult<'a>, CompileError> {
         let context: CompileContext<'_> = CompileContext::new(CWD, file, code);
 
-        let options: ParseOptions<'_, 'a> = ParseOptions {
+        let options: ParseProgramOptions<'_, 'a> = ParseProgramOptions {
             context: &context,
             allocator,
             file,
-            code,
             language,
             source_type,
         };
 
-        parse(options)
+        parse_program(code, options)
     }
 
     fn parse_code<'a>(
         allocator: &'a Allocator,
         file: &'a str,
         code: &'a str,
-    ) -> Result<ParseResult<'a>, CompileError> {
+    ) -> Result<ParseProgramResult<'a>, CompileError> {
         parse_code_with_options(allocator, file, None, None, code)
     }
 
-    fn parse_owned_code(
+    fn parse_ast_code(
         file: &str,
         language: Option<Language>,
         source_type: Option<SourceType>,
         code: &str,
     ) -> Result<Ast, CompileError> {
-        let context: CompileContext<'_> = CompileContext::new(CWD, file, code);
-
-        let options: ParseOwnedOptions<'_, '_> = ParseOwnedOptions {
-            context: &context,
-            file,
-            code,
+        let options: ParseAstOptions = ParseAstOptions {
+            cwd: CWD.to_string(),
+            file: file.to_string(),
             language,
             source_type,
+            input_map: None,
         };
 
-        parse_owned(options)
+        parse_ast(code.to_string(), options)
     }
 
     #[test]
-    fn test_parse_owned_ok() {
-        let ast: Ast = parse_owned_code(FILE, None, None, "const a = 1;")
+    fn test_parse_ast_ok() {
+        let ast: Ast = parse_ast_code(FILE, None, None, "const a = 1;")
             .expect("valid source parses");
 
         assert!(!ast.program().body.is_empty());
@@ -236,17 +215,17 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_owned_source_text_borrows_owned_source() {
-        let ast: Ast = parse_owned_code(FILE, None, None, "const a = 1;")
+    fn test_parse_ast_source_text_borrows_owned_source() {
+        let ast: Ast = parse_ast_code(FILE, None, None, "const a = 1;")
             .expect("valid source parses");
 
         assert_eq!(ast.program().source_text, ast.source().as_ref());
     }
 
     #[test]
-    fn test_parse_owned_invalid_syntax_errors() {
+    fn test_parse_ast_invalid_syntax_errors() {
         let result: Result<Ast, CompileError> =
-            parse_owned_code(FILE, None, None, "const = ;");
+            parse_ast_code(FILE, None, None, "const = ;");
 
         let error: CompileError = result.expect_err("invalid syntax errors");
 
@@ -254,8 +233,45 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_owned_resolves_explicit_language() {
-        let ast: Ast = parse_owned_code(
+    fn test_parse_ast_attaches_input_map() {
+        let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
+
+        builder.set_file("upstream.ts");
+
+        let source_id: u32 =
+            builder.add_source_and_content("upstream.ts", "const a = 1;");
+
+        builder.add_token(0, 0, 0, 0, Some(source_id), None);
+
+        let input_map: SourceMap = builder.into_owned_sourcemap().into_inner();
+
+        let options: ParseAstOptions = ParseAstOptions {
+            cwd: CWD.to_string(),
+            file: FILE.to_string(),
+            language: None,
+            source_type: None,
+            input_map: Some(input_map.clone()),
+        };
+
+        let ast: Ast =
+            parse_ast("const a = 1;".to_string(), options).expect("parses");
+
+        let attached: &SourceMap = ast.map().expect("input map attached");
+
+        assert_eq!(attached.to_json_string(), input_map.to_json_string());
+    }
+
+    #[test]
+    fn test_parse_ast_without_input_map_attaches_none() {
+        let ast: Ast = parse_ast_code(FILE, None, None, "const a = 1;")
+            .expect("valid source parses");
+
+        assert!(ast.map().is_none());
+    }
+
+    #[test]
+    fn test_parse_ast_resolves_explicit_language() {
+        let ast: Ast = parse_ast_code(
             "app.js",
             Some(Language::TS),
             None,
@@ -267,8 +283,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_owned_resolves_explicit_module_kind() {
-        let ast: Ast = parse_owned_code(
+    fn test_parse_ast_resolves_explicit_module_kind() {
+        let ast: Ast = parse_ast_code(
             FILE,
             Some(Language::JS),
             Some(SourceType::Script),
@@ -280,8 +296,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_owned_clone_round_trips() {
-        let ast: Ast = parse_owned_code(FILE, None, None, "const a = 1;")
+    fn test_parse_ast_clone_round_trips() {
+        let ast: Ast = parse_ast_code(FILE, None, None, "const a = 1;")
             .expect("valid source parses");
 
         let clone: Ast = ast.clone();
@@ -293,7 +309,7 @@ mod tests {
     #[test]
     fn test_parse_ok() {
         let allocator: Allocator = Allocator::default();
-        let result: ParseResult<'_> =
+        let result: ParseProgramResult<'_> =
             parse_code(&allocator, FILE, "const a = 1;")
                 .expect("valid source parses");
 
@@ -304,7 +320,7 @@ mod tests {
     #[test]
     fn test_parse_invalid_syntax_errors() {
         let allocator: Allocator = Allocator::default();
-        let result: Result<ParseResult<'_>, CompileError> =
+        let result: Result<ParseProgramResult<'_>, CompileError> =
             parse_code(&allocator, FILE, "const = ;");
 
         assert!(result.is_err());
@@ -314,7 +330,7 @@ mod tests {
     fn test_parse_strips_query_suffix() {
         let allocator: Allocator = Allocator::default();
         let file: &str = "index.js?v=d48eb52a";
-        let result: ParseResult<'_> =
+        let result: ParseProgramResult<'_> =
             parse_code(&allocator, file, "const x = 1;")
                 .expect("query suffix is stripped");
 
@@ -326,7 +342,7 @@ mod tests {
     fn test_parse_strips_hash_suffix() {
         let allocator: Allocator = Allocator::default();
         let file: &str = "index.ts#hash";
-        let result: ParseResult<'_> =
+        let result: ParseProgramResult<'_> =
             parse_code(&allocator, file, "const x = 1;")
                 .expect("hash suffix is stripped");
 
@@ -337,7 +353,7 @@ mod tests {
     fn test_parse_strips_query_and_hash() {
         let allocator: Allocator = Allocator::default();
         let file: &str = "index.tsx?v=1#h";
-        let result: ParseResult<'_> =
+        let result: ParseProgramResult<'_> =
             parse_code(&allocator, file, "const x = 1;")
                 .expect("query and hash suffixes are stripped");
 
@@ -348,7 +364,7 @@ mod tests {
     fn test_parse_strips_hash_before_query() {
         let allocator: Allocator = Allocator::default();
         let file: &str = "index.ts#h?v=1";
-        let result: ParseResult<'_> =
+        let result: ParseProgramResult<'_> =
             parse_code(&allocator, file, "const x = 1;")
                 .expect("hash-before-query suffix is stripped");
 
@@ -359,12 +375,13 @@ mod tests {
     fn test_parse_unknown_extension_falls_back_to_esm() {
         let allocator: Allocator = Allocator::default();
         let file: &str = "index.unknown";
-        let result: Result<ParseResult<'_>, CompileError> =
+        let result: Result<ParseProgramResult<'_>, CompileError> =
             parse_code(&allocator, file, "const x = 1;");
 
         assert!(result.is_ok());
 
-        let parsed: ParseResult<'_> = result.expect("ESM fallback parses");
+        let parsed: ParseProgramResult<'_> =
+            result.expect("ESM fallback parses");
 
         assert!(parsed.program.source_type.is_javascript());
         assert!(!parsed.program.source_type.is_typescript());
@@ -374,7 +391,7 @@ mod tests {
     fn test_parse_tsx_source_type() {
         let allocator: Allocator = Allocator::default();
         let file: &str = "index.tsx";
-        let result: ParseResult<'_> =
+        let result: ParseProgramResult<'_> =
             parse_code(&allocator, file, "const x = <div>hi</div>;")
                 .expect("tsx source parses");
 
@@ -386,7 +403,7 @@ mod tests {
     fn test_parse_jsx_source_type() {
         let allocator: Allocator = Allocator::default();
         let file: &str = "index.jsx";
-        let result: ParseResult<'_> =
+        let result: ParseProgramResult<'_> =
             parse_code(&allocator, file, "const x = <div>hi</div>;")
                 .expect("jsx source parses");
 
@@ -401,7 +418,7 @@ mod tests {
 
         let file: &str = "app.js";
 
-        let result: ParseResult<'_> = parse_code_with_options(
+        let result: ParseProgramResult<'_> = parse_code_with_options(
             &allocator,
             file,
             Some(Language::TS),
@@ -420,7 +437,7 @@ mod tests {
 
         let file: &str = "app";
 
-        let result: ParseResult<'_> = parse_code_with_options(
+        let result: ParseProgramResult<'_> = parse_code_with_options(
             &allocator,
             file,
             Some(Language::JSX),
@@ -439,7 +456,7 @@ mod tests {
 
         let file: &str = "app.js";
 
-        let result: ParseResult<'_> = parse_code_with_options(
+        let result: ParseProgramResult<'_> = parse_code_with_options(
             &allocator,
             file,
             Some(Language::DTS),
@@ -456,7 +473,7 @@ mod tests {
     fn test_parse_module_kind_script_overrides_unambiguous() {
         let allocator: Allocator = Allocator::default();
 
-        let result: ParseResult<'_> = parse_code_with_options(
+        let result: ParseProgramResult<'_> = parse_code_with_options(
             &allocator,
             FILE,
             Some(Language::JS),
@@ -474,7 +491,7 @@ mod tests {
     fn test_parse_module_kind_module_on_typescript() {
         let allocator: Allocator = Allocator::default();
 
-        let result: ParseResult<'_> = parse_code_with_options(
+        let result: ParseProgramResult<'_> = parse_code_with_options(
             &allocator,
             FILE,
             Some(Language::TS),
@@ -493,7 +510,7 @@ mod tests {
 
         let file: &str = "index.ts";
 
-        let result: ParseResult<'_> = parse_code_with_options(
+        let result: ParseProgramResult<'_> = parse_code_with_options(
             &allocator,
             file,
             None,
@@ -510,7 +527,7 @@ mod tests {
     fn test_parse_module_kind_unambiguous_pins_default() {
         let allocator: Allocator = Allocator::default();
 
-        let result: ParseResult<'_> = parse_code_with_options(
+        let result: ParseProgramResult<'_> = parse_code_with_options(
             &allocator,
             FILE,
             Some(Language::TS),

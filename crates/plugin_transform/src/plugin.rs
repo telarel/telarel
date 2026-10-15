@@ -6,7 +6,7 @@ use oxc::semantic::SemanticBuilder;
 use oxc::transformer::{TransformOptions as OxcTransformOptions, Transformer};
 use oxc_transformer_plugins::{InjectGlobalVariables, ReplaceGlobalDefines};
 
-use telarel_common::{Ast, CodegenOptions, HookUsage, codegen};
+use telarel_common::{Ast, HookUsage, generate_program};
 use telarel_plugin::{Plugin, PluginContext, TransformArgs, TransformOutput};
 
 use crate::options::TransformOptions;
@@ -131,11 +131,8 @@ impl Plugin for TransformPlugin {
         // before and after the pass; the inject and define passes report
         // their own `changed`; the helpers pass reports whether it edited
         // the program.
-        let before: String = codegen(CodegenOptions {
-            file: ctx.module.file,
-            program: args.ast.program(),
-        })
-        .code;
+        let before: String =
+            generate_program(args.ast.program(), ctx.module.file).0;
 
         let mut changed: bool = false;
 
@@ -163,12 +160,7 @@ impl Plugin for TransformPlugin {
             }
 
             changed = changed
-                || codegen(CodegenOptions {
-                    file: ctx.module.file,
-                    program,
-                })
-                .code
-                    != before;
+                || generate_program(program, ctx.module.file).0 != before;
 
             // Replace oxc's runtime helper imports with the vendored bodies
             // before inject/define run.
@@ -230,9 +222,7 @@ mod tests {
     use oxc::transformer::DecoratorOptions;
     use oxc::transformer::PluginsOptions;
 
-    use telarel_common::{
-        Ast, CompileContext, Language, ParseOwnedOptions, parse_owned,
-    };
+    use telarel_common::{Ast, Language, ParseAstOptions, parse_ast};
     use telarel_plugin::{ModuleInfo, Plugin, PluginContext, TransformOutput};
 
     use crate::helpers::sources::{DEPENDENCY_HELPERS, HELPERS, HelperSource};
@@ -263,15 +253,16 @@ mod tests {
         file: &str,
         code: &str,
     ) -> Ast {
-        let ctx: CompileContext<'_> = CompileContext::new(CWD, file, code);
-
-        parse_owned(ParseOwnedOptions {
-            context: &ctx,
-            file,
-            code,
-            language: None,
-            source_type: None,
-        })
+        parse_ast(
+            code.to_string(),
+            ParseAstOptions {
+                cwd: CWD.to_string(),
+                file: file.to_string(),
+                language: None,
+                source_type: None,
+                input_map: None,
+            },
+        )
         .expect("valid source parses")
     }
 
@@ -309,19 +300,9 @@ mod tests {
         // program; `None` means the read-only input stands.
         match run_hook(&plugin, file, &ast).await.expect("transform succeeds") {
             | Some(output) => {
-                telarel_common::codegen(telarel_common::CodegenOptions {
-                    file,
-                    program: output.ast.program(),
-                })
-                .code
+                telarel_common::generate_program(output.ast.program(), file).0
             },
-            | None => {
-                telarel_common::codegen(telarel_common::CodegenOptions {
-                    file,
-                    program: ast.program(),
-                })
-                .code
-            },
+            | None => telarel_common::generate_program(ast.program(), file).0,
         }
     }
 
@@ -332,19 +313,9 @@ mod tests {
     ) -> String {
         match &output {
             | Some(output) => {
-                telarel_common::codegen(telarel_common::CodegenOptions {
-                    file,
-                    program: output.ast.program(),
-                })
-                .code
+                telarel_common::generate_program(output.ast.program(), file).0
             },
-            | None => {
-                telarel_common::codegen(telarel_common::CodegenOptions {
-                    file,
-                    program: ast.program(),
-                })
-                .code
-            },
+            | None => telarel_common::generate_program(ast.program(), file).0,
         }
     }
 
@@ -757,20 +728,13 @@ mod tests {
         // The transformed program is a distinct allocation; the input
         // program stays untouched.
         let input_code: String =
-            telarel_common::codegen(telarel_common::CodegenOptions {
-                file: "index.js",
-                program: ast.program(),
-            })
-            .code;
+            telarel_common::generate_program(ast.program(), "index.js").0;
 
         assert!(input_code.contains("async function"), "{input_code}");
 
         let code: String =
-            telarel_common::codegen(telarel_common::CodegenOptions {
-                file: "index.js",
-                program: output.ast.program(),
-            })
-            .code;
+            telarel_common::generate_program(output.ast.program(), "index.js")
+                .0;
 
         assert!(!code.contains("async function"), "{code}");
         assert!(code.contains("asyncToGenerator"), "{code}");
@@ -800,11 +764,7 @@ mod tests {
         assert!(output.is_none(), "unchanged program must return None");
 
         let code: String =
-            telarel_common::codegen(telarel_common::CodegenOptions {
-                file: "index.js",
-                program: ast.program(),
-            })
-            .code;
+            telarel_common::generate_program(ast.program(), "index.js").0;
 
         assert!(code.contains("main"), "{code}");
     }
@@ -921,11 +881,8 @@ mod tests {
             output.expect("the inline helper pass must change the program");
 
         let code: String =
-            telarel_common::codegen(telarel_common::CodegenOptions {
-                file: "index.js",
-                program: output.ast.program(),
-            })
-            .code;
+            telarel_common::generate_program(output.ast.program(), "index.js")
+                .0;
 
         assert!(!code.contains("@oxc-project/runtime"), "{}", code);
         assert!(
@@ -1353,11 +1310,7 @@ mod tests {
         assert!(error.to_string().contains("bad key"), "{}", error);
 
         let code: String =
-            telarel_common::codegen(telarel_common::CodegenOptions {
-                file: "index.js",
-                program: ast.program(),
-            })
-            .code;
+            telarel_common::generate_program(ast.program(), "index.js").0;
 
         assert!(
             code.contains("main"),

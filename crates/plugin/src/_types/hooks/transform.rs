@@ -26,21 +26,22 @@ pub type TransformReturn = anyhow::Result<Option<TransformOutput>>;
 
 #[cfg(test)]
 mod tests {
-    use telarel_common::{Ast, CompileContext, ParseOwnedOptions, parse_owned};
+    use telarel_common::{Ast, ParseAstOptions, parse_ast};
 
     use super::*;
 
     #[test]
     fn test_transform_output_wraps_program() {
-        let ctx: CompileContext<'_> = CompileContext::new("", "a.ts", "let a;");
-
-        let ast: Ast = parse_owned(ParseOwnedOptions {
-            context: &ctx,
-            file: "a.ts",
-            code: "let a;",
-            language: None,
-            source_type: None,
-        })
+        let ast: Ast = parse_ast(
+            String::from("let a;"),
+            ParseAstOptions {
+                cwd: String::from(""),
+                file: String::from("a.ts"),
+                language: None,
+                source_type: None,
+                input_map: None,
+            },
+        )
         .unwrap();
 
         let output: TransformOutput = TransformOutput { ast };
