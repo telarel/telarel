@@ -1,27 +1,15 @@
-import type { SourceMap } from "#/@types/sourcemap";
+import type { Program } from "@oxc-project/types";
 
 /**
  * Arguments for the `prepare` hook.
+ *
+ * The `prepare` hook observes the parsed AST: its return value is ignored.
  */
 type PrepareArgs = {
     /**
-     * The code entering the stage.
+     * Read-only.
      */
-    code: string;
+    ast: Program;
 };
 
-/**
- * Result of the `prepare` hook.
- */
-type PrepareResult = {
-    /**
-     * The replacement code.
-     */
-    code: string;
-    /**
-     * An optional map accompanying the replacement code.
-     */
-    map?: SourceMap | null;
-};
-
-export type { PrepareArgs, PrepareResult };
+export type { PrepareArgs };

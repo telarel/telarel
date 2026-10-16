@@ -9,8 +9,6 @@ pub struct JsPluginContext {
     pub cwd: SharedStr,
     /// The original file.
     pub file: SharedStr,
-    /// The original code.
-    pub code: SharedStr,
     /// The grammar of the code.
     pub language: SharedStr,
     /// The module system of the code.
@@ -29,8 +27,6 @@ impl ToNapiValue for JsPluginContext {
         object.set("cwd", val.cwd)?;
 
         object.set("file", val.file)?;
-
-        object.set("code", val.code)?;
 
         object.set("language", val.language)?;
 

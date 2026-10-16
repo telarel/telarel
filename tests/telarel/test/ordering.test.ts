@@ -347,7 +347,7 @@ describe("ordering", (): void => {
                         return {
                             options: {
                                 ...args.options,
-                                code: "const normal = 1;",
+                                file: "normal.ts",
                             },
                         };
                     },
@@ -365,7 +365,7 @@ describe("ordering", (): void => {
                             return {
                                 options: {
                                     ...args.options,
-                                    code: "const pre = 1;",
+                                    file: "pre.ts",
                                 },
                             };
                         },
@@ -374,11 +374,15 @@ describe("ordering", (): void => {
             ],
         });
 
+        // The `pre` hook runs first; the `normal` hook runs last, so its
+        // returned bag wins the fold. The code is never part of the bag, so
+        // the source is untouched.
         expect(seen).toEqual(["pre", "normal"]);
-        expect(result.code).toBe("const normal = 1;");
+        expect(result.code).toBe("const a = 1;");
+        expect(result.map?.sources).toEqual(["normal.ts"]);
     });
 
-    it("orders compileStart hooks across plugins", async (): Promise<void> => {
+    it("orders start hooks across plugins", async (): Promise<void> => {
         const seen: Array<string> = [];
 
         const result: CompileResult = await compile({
@@ -388,13 +392,13 @@ describe("ordering", (): void => {
             plugins: [
                 {
                     name: "normal",
-                    compileStart: (): void => {
+                    start: (): void => {
                         seen.push("normal");
                     },
                 },
                 {
                     name: "pre",
-                    compileStart: {
+                    start: {
                         order: "pre",
                         handler: (): void => {
                             seen.push("pre");
@@ -403,7 +407,7 @@ describe("ordering", (): void => {
                 },
                 {
                     name: "post",
-                    compileStart: {
+                    start: {
                         order: "post",
                         handler: (): void => {
                             seen.push("post");
@@ -417,7 +421,7 @@ describe("ordering", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
-    it("orders compileEnd hooks across plugins", async (): Promise<void> => {
+    it("orders end hooks across plugins", async (): Promise<void> => {
         const seen: Array<string> = [];
 
         const result: CompileResult = await compile({
@@ -427,13 +431,13 @@ describe("ordering", (): void => {
             plugins: [
                 {
                     name: "normal",
-                    compileEnd: (): void => {
+                    end: (): void => {
                         seen.push("normal");
                     },
                 },
                 {
                     name: "pre",
-                    compileEnd: {
+                    end: {
                         order: "pre",
                         handler: (): void => {
                             seen.push("pre");
@@ -442,7 +446,7 @@ describe("ordering", (): void => {
                 },
                 {
                     name: "post",
-                    compileEnd: {
+                    end: {
                         order: "post",
                         handler: (): void => {
                             seen.push("post");

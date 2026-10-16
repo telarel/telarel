@@ -6,8 +6,9 @@ mod tasks;
 pub use crate::_types::options::{JsOptions, to_compile_options};
 pub use crate::_types::plugin::context::JsPluginContext;
 pub use crate::_types::plugin::hooks::{
-    JsCompileEndArgs, JsCompileStartArgs, JsOptionsOutput, JsStageArgs,
-    JsStageOutput, JsTransformArgs, JsTransformOutput,
+    JsAstArgs, JsAstOutput, JsCodeOutput, JsEndArgs, JsGenerateArgs,
+    JsGeneratorOptions, JsOptionsOutput, JsParseArgs, JsParseOutput,
+    JsParserOptions, JsResolvedOptions, JsStartArgs, JsTransformOutput,
 };
 pub use crate::_types::results::JsCompileResult;
 pub use crate::_types::sourcemap::JsSourceMap;
@@ -59,12 +60,12 @@ pub mod __internal {
     };
     pub use crate::plugin::build::NAME_REQUIRED;
     pub use crate::plugin::hooks::{
-        CompileEndCall, CompileEndTsfn, CompileStartCall, CompileStartTsfn,
-        CtxTsfn, FinalizeTsfn, FnCtx, HookCall, OptionsCall, OptionsTsfn,
-        PrepareTsfn, StageCall, TransformCall, TransformTsfn, Tsfn,
-        compile_end, compile_start, finalize, materialize, options,
-        plugin_context, prepare, release_refs, scan_hook, scan_options,
-        transform,
+        CtxTsfn, EndCall, EndTsfn, FinalizeTsfn, FnCtx, GenerateCall,
+        GenerateTsfn, HookCall, ObserveCall, OptionsCall, OptionsTsfn,
+        ParseCall, ParseTsfn, PrepareTsfn, StartCall, StartTsfn, TransformCall,
+        TransformTsfn, Tsfn, end, finalize, generate, materialize, options,
+        parse, plugin_context, prepare, release_refs, scan_hook, scan_options,
+        start, transform,
     };
     pub use crate::plugin::options::{
         language_label, parse_language, parse_source_type, source_type_label,

@@ -14,14 +14,17 @@ const compile = async (options: CompileOptions): Promise<CompileResult> => {
         plugins: options.plugins ?? [],
     });
 
-    return await bindingCompile({
-        cwd: options.cwd,
-        file: options.file,
-        code: options.code,
-        language: options.language,
-        sourceType: options.sourceType,
-        plugins,
-    });
+    const result: Awaited<ReturnType<typeof bindingCompile>> =
+        await bindingCompile({
+            cwd: options.cwd,
+            file: options.file,
+            code: options.code,
+            language: options.language,
+            sourceType: options.sourceType,
+            plugins,
+        });
+
+    return { code: result.code, map: result.map ?? null };
 };
 
 export { compile };

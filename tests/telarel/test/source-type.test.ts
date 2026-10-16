@@ -22,8 +22,8 @@ describe("language", (): void => {
         });
 
         expect(result.code).toBe("const a: number = 1;");
-        expect(result.map.version).toBe(3);
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.version).toBe(3);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("rejects ts syntax on a ts file with an explicit js language", async (): Promise<void> => {
@@ -136,7 +136,7 @@ describe("language", (): void => {
         });
 
         expect(result.code).toBe("declare const a: number;");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("rejects a language that is not js, ts, dts, jsx, or tsx", async (): Promise<void> => {
@@ -178,7 +178,7 @@ describe("language", (): void => {
         });
 
         expect(result.code).toBe("const a = <Button>hi</Button>;");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("compiles tsx syntax on a js file with an explicit tsx language", async (): Promise<void> => {
@@ -195,7 +195,7 @@ describe("language", (): void => {
         });
 
         expect(result.code).toBe("const a: number = <Button>hi</Button>;");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 });
 
@@ -246,7 +246,7 @@ describe("source type", (): void => {
         });
 
         expect(result.code).toBe("await Promise.resolve();");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("auto-detects the module goal with an unambiguous source type", async (): Promise<void> => {
@@ -322,7 +322,7 @@ describe("source type", (): void => {
         });
 
         expect(result.code).toBe("if (true) {\n\treturn;\n}");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("rejects import.meta with a commonjs source type", async (): Promise<void> => {

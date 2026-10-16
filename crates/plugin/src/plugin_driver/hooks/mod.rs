@@ -1,5 +1,7 @@
-pub mod compile_end;
-pub mod compile_start;
+pub mod end;
 pub mod finalize;
+pub mod generate;
+pub mod parse;
 pub mod prepare;
+pub mod start;
 pub mod transform;

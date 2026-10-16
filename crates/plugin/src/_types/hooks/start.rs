@@ -1,6 +1,6 @@
-/// Arguments for the `compile_start` hook.
+/// Arguments for the `start` hook.
 #[derive(Debug, Clone)]
-pub struct CompileStartArgs {
+pub struct StartArgs {
     /// Resolved options; read-only.
     pub options: telarel_common::ResolvedOptions,
 }
@@ -12,8 +12,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_compile_start_args_carry_resolved_options() {
-        let args: CompileStartArgs = CompileStartArgs {
+    fn test_start_args_carry_resolved_options() {
+        let args: StartArgs = StartArgs {
             options: ResolvedOptions {
                 cwd: String::from("/repo"),
                 file: String::from("a.ts"),

@@ -1,28 +1,31 @@
 import type { Program } from "@oxc-project/types";
 
+import type { AstResult, CodeResult } from "#/@types/ast";
 import type { BuiltinPlugin } from "#/@types/builtin";
+import type { GeneratorOptions } from "#/@types/generator";
 import type { Language, SourceType } from "#/@types/grammar";
+import type { ParserOptions } from "#/@types/parser";
 import type { Plugin } from "#/@types/plugin";
 import type {
     CommonPluginContext,
     PluginContext,
 } from "#/@types/plugin/context";
-import type { CompileEndArgs } from "#/@types/plugin/hooks/compile-end";
-import type { CompileStartArgs } from "#/@types/plugin/hooks/compile-start";
-import type {
-    FinalizeArgs,
-    FinalizeResult,
-} from "#/@types/plugin/hooks/finalize";
-import type { PrepareArgs, PrepareResult } from "#/@types/plugin/hooks/prepare";
+import type { EndArgs } from "#/@types/plugin/hooks/end";
+import type { FinalizeArgs } from "#/@types/plugin/hooks/finalize";
+import type { GenerateArgs } from "#/@types/plugin/hooks/generate";
+import type { ParseArgs } from "#/@types/plugin/hooks/parse";
+import type { PrepareArgs } from "#/@types/plugin/hooks/prepare";
+import type { StartArgs } from "#/@types/plugin/hooks/start";
 import type {
     TransformArgs,
     TransformResult,
 } from "#/@types/plugin/hooks/transform";
 import type {
-    Options,
     OptionsArgs,
     PluginOption,
+    ResolvableOptions,
 } from "#/@types/plugin/options";
+import type { SourceMapOptions } from "#/@types/source-map";
 import type { SourceMap } from "#/@types/sourcemap";
 import type { NormalizedHook } from "#/bridges/normalize-hook";
 
@@ -36,36 +39,17 @@ import { normalizeHook } from "#/bridges/normalize-hook";
 type RawPluginContext = {
     cwd: string;
     file: string;
-    code: string;
     language: string;
     sourceType: string;
 };
 
-type RawStageArgs = { code: string };
+type RawAstArgs = { astJson: string };
 
-type RawStageOutput = { code: string; map?: string };
-
-type RawTransformArgs = { astJson: string };
-
-type RawCompileStartArgs = {
-    cwd: string;
-    file: string;
-    code: string;
-    language: string;
-    sourceType: string;
-    plugins: Array<string>;
-};
-
-type RawCompileEndArgs = {
-    code: string;
-    map?: string;
-    err?: string;
-};
+type RawTransformOutput = { astJson: string } | null;
 
 type RawOptionsArgs = {
     cwd: string;
     file: string;
-    code: string;
     language: string;
     sourceType: string;
     plugins: Array<RawPlugin>;
@@ -74,13 +58,57 @@ type RawOptionsArgs = {
 type RawOptionsOutput = {
     cwd?: string;
     file?: string;
-    code?: string;
     language?: string;
     sourceType?: string;
     plugins?: Array<RawPlugin>;
 };
 
-type RawTransformOutput = { astJson: string } | null;
+type RawStartArgs = {
+    options: {
+        cwd: string;
+        file: string;
+        code: string;
+        language: string;
+        sourceType: string;
+        plugins: Array<string>;
+    };
+};
+
+type RawParserOptions = {
+    cwd: string;
+    file: string;
+    language: string;
+    sourceType: string;
+    sourceMap: SourceMapOptions;
+};
+
+type RawParseArgs = {
+    code: string;
+    options: RawParserOptions;
+};
+
+type RawAstOutput = {
+    program: Program;
+    code: string;
+    map?: string;
+};
+
+type RawParseOutput = { ast: RawAstOutput } | null;
+
+type RawGeneratorOptions = {
+    cwd: string;
+    file: string;
+    sourceMap: SourceMapOptions;
+};
+
+type RawGenerateArgs = {
+    astJson: string;
+    options: RawGeneratorOptions;
+};
+
+type RawCodeOutput = { code: string; map?: string } | null;
+
+type RawEndArgs = { error?: string };
 
 type RawHookMeta = { order?: "pre" | "post" };
 
@@ -88,31 +116,29 @@ type RawHookPlugin = {
     name: string;
     options?: (args: RawOptionsArgs) => Promise<RawOptionsOutput | null>;
     optionsMeta?: RawHookMeta;
-    compileStart?: (
+    start?: (ctx: RawPluginContext, args: RawStartArgs) => Promise<void>;
+    startMeta?: RawHookMeta;
+    parse?: (
         ctx: RawPluginContext,
-        args: RawCompileStartArgs,
-    ) => Promise<void>;
-    compileStartMeta?: RawHookMeta;
-    prepare?: (
-        ctx: RawPluginContext,
-        args: RawStageArgs,
-    ) => Promise<RawStageOutput | null>;
+        args: RawParseArgs,
+    ) => Promise<RawParseOutput>;
+    parseMeta?: RawHookMeta;
+    prepare?: (ctx: RawPluginContext, args: RawAstArgs) => Promise<void>;
     prepareMeta?: RawHookMeta;
     transform?: (
         ctx: RawPluginContext,
-        args: RawTransformArgs,
+        args: RawAstArgs,
     ) => Promise<RawTransformOutput | null>;
     transformMeta?: RawHookMeta;
-    finalize?: (
-        ctx: RawPluginContext,
-        args: RawStageArgs,
-    ) => Promise<RawStageOutput | null>;
+    finalize?: (ctx: RawPluginContext, args: RawAstArgs) => Promise<void>;
     finalizeMeta?: RawHookMeta;
-    compileEnd?: (
+    generate?: (
         ctx: RawPluginContext,
-        args: RawCompileEndArgs,
-    ) => Promise<void>;
-    compileEndMeta?: RawHookMeta;
+        args: RawGenerateArgs,
+    ) => Promise<RawCodeOutput>;
+    generateMeta?: RawHookMeta;
+    end?: (ctx: RawPluginContext, args: RawEndArgs) => Promise<void>;
+    endMeta?: RawHookMeta;
 };
 
 type RawBuiltinPlugin = {
@@ -154,30 +180,37 @@ const toContext = (rawCtx: RawPluginContext): PluginContext => ({
     cwd: rawCtx.cwd,
     module: {
         file: rawCtx.file,
-        code: rawCtx.code,
         language: toLanguage(rawCtx.language),
         sourceType: toSourceType(rawCtx.sourceType),
     },
 });
 
-const parseSourceMap = (json: string): SourceMap => {
-    return JSON.parse(json) as SourceMap;
-};
+const toParserOptions = (rawOptions: RawParserOptions): ParserOptions => ({
+    cwd: rawOptions.cwd,
+    file: rawOptions.file,
+    language: rawOptions.language as Language,
+    sourceType: rawOptions.sourceType as SourceType,
+    sourceMap: rawOptions.sourceMap,
+});
 
-const toRawStageOutput = (
-    result: { code: string; map?: SourceMap | null } | null | void,
-): RawStageOutput | null => {
-    if (result === null || result === void 0) {
-        return null;
+const toGeneratorOptions = (
+    rawOptions: RawGeneratorOptions,
+): GeneratorOptions => ({
+    cwd: rawOptions.cwd,
+    file: rawOptions.file,
+    sourceMap: rawOptions.sourceMap,
+});
+
+/**
+ * Serialize a source map for the JSON-string wire form, or `void` when there is
+ * no map to send.
+ */
+const serializeSourceMap = (map: SourceMap | null | void): string | void => {
+    if (map === null || map === void 0) {
+        return void 0;
     }
 
-    const output: RawStageOutput = { code: result.code };
-
-    if (result.map !== null && result.map !== void 0) {
-        output.map = JSON.stringify(result.map);
-    }
-
-    return output;
+    return JSON.stringify(map);
 };
 
 type ToRawPluginOptions = {
@@ -193,15 +226,17 @@ type OptionsHook = (
     args: OptionsArgs,
 ) => OptionsArgs | null | void | Promise<OptionsArgs | null | void>;
 
-type CompileStartHook = (
+type StartHook = (ctx: PluginContext, args: StartArgs) => void | Promise<void>;
+
+type ParseHook = (
     ctx: PluginContext,
-    args: CompileStartArgs,
-) => void | Promise<void>;
+    args: ParseArgs,
+) => AstResult | null | void | Promise<AstResult | null | void>;
 
 type PrepareHook = (
     ctx: PluginContext,
     args: PrepareArgs,
-) => PrepareResult | null | void | Promise<PrepareResult | null | void>;
+) => void | Promise<void>;
 
 type TransformHook = (
     ctx: PluginContext,
@@ -211,12 +246,14 @@ type TransformHook = (
 type FinalizeHook = (
     ctx: PluginContext,
     args: FinalizeArgs,
-) => FinalizeResult | null | void | Promise<FinalizeResult | null | void>;
-
-type CompileEndHook = (
-    ctx: PluginContext,
-    args: CompileEndArgs,
 ) => void | Promise<void>;
+
+type GenerateHook = (
+    ctx: PluginContext,
+    args: GenerateArgs,
+) => CodeResult | null | void | Promise<CodeResult | null | void>;
+
+type EndHook = (ctx: PluginContext, args: EndArgs) => void | Promise<void>;
 
 /**
  * Flatten a plugin option list into concrete plugins.
@@ -296,10 +333,9 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
             // The payload's plugin descriptors are the bag's current list as
             // raw plugin objects (rooted Rust-side): presented to the bag as
             // `Plugin | BuiltinPlugin` and passed through untouched.
-            const bag: Options = {
+            const bag: ResolvableOptions = {
                 cwd: rawArgs.cwd,
                 file: rawArgs.file,
-                code: rawArgs.code,
                 plugins: rawArgs.plugins as unknown as Array<PluginOption>,
             };
 
@@ -324,7 +360,7 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                 return null;
             }
 
-            const next: Options = result.options;
+            const next: ResolvableOptions = result.options;
 
             const output: RawOptionsOutput = {
                 plugins: await toRawPlugins({
@@ -338,10 +374,6 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
             if (typeof next.file === "string") {
                 output.file = next.file;
-            }
-
-            if (typeof next.code === "string") {
-                output.code = next.code;
             }
 
             if (typeof next.language === "string") {
@@ -360,32 +392,77 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         }
     }
 
-    const compileStart: NormalizedHook<CompileStartHook> =
-        normalizeHook<CompileStartHook>(plugin.compileStart);
+    const start: NormalizedHook<StartHook> = normalizeHook<StartHook>(
+        plugin.start,
+    );
 
-    if (typeof compileStart.handler === "function") {
-        const compileStartHandler: CompileStartHook = compileStart.handler;
+    if (typeof start.handler === "function") {
+        const startHandler: StartHook = start.handler;
 
-        raw.compileStart = async (
+        raw.start = async (
             rawCtx: RawPluginContext,
-            rawArgs: RawCompileStartArgs,
+            rawArgs: RawStartArgs,
         ): Promise<void> => {
-            const args: CompileStartArgs = {
+            const args: StartArgs = {
                 options: {
-                    cwd: rawArgs.cwd,
-                    file: rawArgs.file,
-                    code: rawArgs.code,
-                    language: rawArgs.language as Language,
-                    sourceType: rawArgs.sourceType as SourceType,
-                    plugins: rawArgs.plugins,
+                    cwd: rawArgs.options.cwd,
+                    file: rawArgs.options.file,
+                    code: rawArgs.options.code,
+                    language: rawArgs.options.language as Language,
+                    sourceType: rawArgs.options.sourceType as SourceType,
+                    plugins: rawArgs.options.plugins,
                 },
             };
 
-            await compileStartHandler(toContext(rawCtx), args);
+            await startHandler(toContext(rawCtx), args);
         };
 
-        if (compileStart.meta.order !== void 0) {
-            raw.compileStartMeta = { order: compileStart.meta.order };
+        if (start.meta.order !== void 0) {
+            raw.startMeta = { order: start.meta.order };
+        }
+    }
+
+    const parse: NormalizedHook<ParseHook> = normalizeHook<ParseHook>(
+        plugin.parse,
+    );
+
+    if (typeof parse.handler === "function") {
+        const parseHandler: ParseHook = parse.handler;
+
+        raw.parse = async (
+            rawCtx: RawPluginContext,
+            rawArgs: RawParseArgs,
+        ): Promise<RawParseOutput> => {
+            const args: ParseArgs = {
+                code: rawArgs.code,
+                options: toParserOptions(rawArgs.options),
+            };
+
+            const result: AstResult | null | void = await parseHandler(
+                toContext(rawCtx),
+                args,
+            );
+
+            if (result === null || result === void 0) {
+                return null;
+            }
+
+            const ast: RawAstOutput = {
+                program: result.ast.program,
+                code: result.ast.code,
+            };
+
+            const map: string | void = serializeSourceMap(result.ast.map);
+
+            if (map !== void 0) {
+                ast.map = map;
+            }
+
+            return { ast };
+        };
+
+        if (parse.meta.order !== void 0) {
+            raw.parseMeta = { order: parse.meta.order };
         }
     }
 
@@ -398,14 +475,11 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
         raw.prepare = async (
             rawCtx: RawPluginContext,
-            rawArgs: RawStageArgs,
-        ): Promise<RawStageOutput | null> => {
-            const result: PrepareResult | null | void = await prepareHandler(
-                toContext(rawCtx),
-                { code: rawArgs.code },
-            );
+            rawArgs: RawAstArgs,
+        ): Promise<void> => {
+            const ast: Program = JSON.parse(rawArgs.astJson) as Program;
 
-            return toRawStageOutput(result as PrepareResult | null | void);
+            await prepareHandler(toContext(rawCtx), { ast });
         };
 
         if (prepare.meta.order !== void 0) {
@@ -421,7 +495,7 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
         raw.transform = async (
             rawCtx: RawPluginContext,
-            rawArgs: RawTransformArgs,
+            rawArgs: RawAstArgs,
         ): Promise<RawTransformOutput | null> => {
             const ast: Program = JSON.parse(rawArgs.astJson) as Program;
 
@@ -449,14 +523,11 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
         raw.finalize = async (
             rawCtx: RawPluginContext,
-            rawArgs: RawStageArgs,
-        ): Promise<RawStageOutput | null> => {
-            const result: FinalizeResult | null | void = await finalizeHandler(
-                toContext(rawCtx),
-                { code: rawArgs.code },
-            );
+            rawArgs: RawAstArgs,
+        ): Promise<void> => {
+            const ast: Program = JSON.parse(rawArgs.astJson) as Program;
 
-            return toRawStageOutput(result as FinalizeResult | null | void);
+            await finalizeHandler(toContext(rawCtx), { ast });
         };
 
         if (finalize.meta.order !== void 0) {
@@ -464,31 +535,65 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         }
     }
 
-    const compileEnd: NormalizedHook<CompileEndHook> =
-        normalizeHook<CompileEndHook>(plugin.compileEnd);
+    const generate: NormalizedHook<GenerateHook> = normalizeHook<GenerateHook>(
+        plugin.generate,
+    );
 
-    if (typeof compileEnd.handler === "function") {
-        const compileEndHandler: CompileEndHook = compileEnd.handler;
+    if (typeof generate.handler === "function") {
+        const generateHandler: GenerateHook = generate.handler;
 
-        raw.compileEnd = async (
+        raw.generate = async (
             rawCtx: RawPluginContext,
-            rawArgs: RawCompileEndArgs,
-        ): Promise<void> => {
-            const args: CompileEndArgs = {
-                code: rawArgs.code,
-                map:
-                    rawArgs.map === void 0 ? null : parseSourceMap(rawArgs.map),
+            rawArgs: RawGenerateArgs,
+        ): Promise<RawCodeOutput> => {
+            const ast: Program = JSON.parse(rawArgs.astJson) as Program;
+
+            const args: GenerateArgs = {
+                ast,
+                options: toGeneratorOptions(rawArgs.options),
             };
 
-            if (rawArgs.err !== void 0) {
-                args.err = new Error(rawArgs.err);
+            const result: CodeResult | null | void = await generateHandler(
+                toContext(rawCtx),
+                args,
+            );
+
+            if (result === null || result === void 0) {
+                return null;
             }
 
-            await compileEndHandler(toContext(rawCtx), args);
+            const output: RawCodeOutput = { code: result.code };
+
+            const map: string | void = serializeSourceMap(result.map);
+
+            if (map !== void 0) {
+                output.map = map;
+            }
+
+            return output;
         };
 
-        if (compileEnd.meta.order !== void 0) {
-            raw.compileEndMeta = { order: compileEnd.meta.order };
+        if (generate.meta.order !== void 0) {
+            raw.generateMeta = { order: generate.meta.order };
+        }
+    }
+
+    const end: NormalizedHook<EndHook> = normalizeHook<EndHook>(plugin.end);
+
+    if (typeof end.handler === "function") {
+        const endHandler: EndHook = end.handler;
+
+        raw.end = async (
+            rawCtx: RawPluginContext,
+            rawArgs: RawEndArgs,
+        ): Promise<void> => {
+            const args: EndArgs = { error: rawArgs.error ?? null };
+
+            await endHandler(toContext(rawCtx), args);
+        };
+
+        if (end.meta.order !== void 0) {
+            raw.endMeta = { order: end.meta.order };
         }
     }
 

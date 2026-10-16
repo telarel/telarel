@@ -14,10 +14,6 @@ type ModuleInfo = {
      */
     file: string;
     /**
-     * The code being compiled.
-     */
-    code: string;
-    /**
      * The language of the source code. By default, it is inferred from the file
      * extension.
      */

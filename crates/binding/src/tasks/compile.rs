@@ -54,7 +54,7 @@ impl Task for CompileTask {
     ) -> napi::Result<Self::JsValue> {
         Ok(crate::_types::results::JsCompileResult {
             code: output.code,
-            map: output.map.into(),
+            map: output.map.map(crate::_types::sourcemap::JsSourceMap::from),
         })
     }
 

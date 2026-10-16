@@ -1,7 +1,7 @@
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
 
-/// Resolved options, as seen by `compile_start` and later hooks.
+/// Resolved options, as seen by `start` and later hooks.
 #[derive(Debug, Clone)]
 pub struct ResolvedOptions {
     /// Current working directory, resolved.

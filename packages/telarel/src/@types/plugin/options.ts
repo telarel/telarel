@@ -23,7 +23,7 @@ type CompleteOptions = {
      *
      * Inside an `options` hook it reflects the value carried so far, and may be
      * empty when a previous `options` hook omitted it; it is re-resolved to the
-     * process working directory before `compileStart` and later hooks.
+     * process working directory before `start` and later hooks.
      */
     cwd: string;
     /**
@@ -57,15 +57,23 @@ type CompleteOptions = {
  */
 type Options = Format<Partial<CompleteOptions>>;
 
+/**
+ * The options bag an `options` hook observes and returns.
+ *
+ * The code is deliberately absent: the source text belongs to the compile call
+ * and is never carried in the options bag.
+ */
+type ResolvableOptions = Format<Partial<Omit<CompleteOptions, "code">>>;
+
 type OptionsArgs = {
     /**
      * The options bag carried so far.
      */
-    options: Options;
+    options: ResolvableOptions;
 };
 
 /**
- * Resolved options, as seen by `compileStart` and later hooks.
+ * Resolved options, as seen by `start` and later hooks.
  */
 type ResolvedOptions = Format<
     Omit<CompleteOptions, "plugins"> & {
@@ -82,5 +90,6 @@ export type {
     Options,
     OptionsArgs,
     PluginOption,
+    ResolvableOptions,
     ResolvedOptions,
 };

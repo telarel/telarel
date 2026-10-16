@@ -141,10 +141,9 @@ mod tests {
 
     fn make_args(plugins: Vec<SharedPluginable>) -> OptionsArgs {
         OptionsArgs {
-            options: telarel_common::CompileOptions {
-                file: "a.ts".to_string(),
-                code: "console.log(1);".to_string(),
-                ..telarel_common::CompileOptions::default()
+            options: telarel_common::ResolvableOptions {
+                file: Some("a.ts".to_string()),
+                ..telarel_common::ResolvableOptions::default()
             },
             plugins,
         }
@@ -193,11 +192,11 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct RewriteCodeOptionsPlugin;
+    struct RewriteFileOptionsPlugin;
 
-    impl Plugin for RewriteCodeOptionsPlugin {
+    impl Plugin for RewriteFileOptionsPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "rewrite-code-options".into()
+            "rewrite-file-options".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
@@ -212,7 +211,7 @@ mod tests {
             async move {
                 let mut next: OptionsArgs = args.clone();
 
-                next.options.code = "const rewritten = 7;".to_string();
+                next.options.file = Some("rewritten.ts".to_string());
 
                 Ok(Some(next))
             }
@@ -231,12 +230,12 @@ mod tests {
 
         fn record(
             &self,
-            code: &str,
+            file: Option<&str>,
         ) {
             let mut observed: MutexGuard<'_, Vec<String>> =
                 self.observed.lock().unwrap();
 
-            observed.push(code.to_string());
+            observed.push(file.unwrap_or_default().to_string());
         }
     }
 
@@ -255,7 +254,7 @@ mod tests {
             args: &'a OptionsArgs,
         ) -> impl Future<Output = OptionsReturn> + Send {
             async move {
-                self.record(&args.options.code);
+                self.record(args.options.file.as_deref());
 
                 Ok(None)
             }
@@ -346,9 +345,9 @@ mod tests {
         ) -> impl Future<Output = OptionsReturn> + Send {
             async {
                 Ok(Some(OptionsArgs {
-                    options: telarel_common::CompileOptions {
+                    options: telarel_common::ResolvableOptions {
                         cwd: Some("/only".to_string()),
-                        ..telarel_common::CompileOptions::default()
+                        ..telarel_common::ResolvableOptions::default()
                     },
                     plugins: Vec::new(),
                 }))
@@ -430,7 +429,7 @@ mod tests {
             Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(RewriteCodeOptionsPlugin),
+            Plugin::new_shared(RewriteFileOptionsPlugin),
             Plugin::new_shared(ObserveOptionsPlugin::new(Arc::clone(
                 &observed,
             ))),
@@ -441,11 +440,11 @@ mod tests {
         let (settled, _list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        assert_eq!(settled.options.code, "const rewritten = 7;");
+        assert_eq!(settled.options.file.as_deref(), Some("rewritten.ts"));
 
         let recorded: Vec<String> = observed.lock().unwrap().clone();
 
-        assert_eq!(recorded, vec!["const rewritten = 7;".to_string()]);
+        assert_eq!(recorded, vec!["rewritten.ts".to_string()]);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -497,7 +496,7 @@ mod tests {
 
         let recorded: Vec<String> = observed.lock().unwrap().clone();
 
-        assert_eq!(recorded, vec!["console.log(1);".to_string()]);
+        assert_eq!(recorded, vec!["a.ts".to_string()]);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -506,7 +505,7 @@ mod tests {
         // `options` hook must run in the pass after it joins the list, so
         // its rewrite is visible in the settled args.
         let appended: SharedPluginable =
-            Plugin::new_shared(RewriteCodeOptionsPlugin);
+            Plugin::new_shared(RewriteFileOptionsPlugin);
 
         let root: SharedPluginable =
             Plugin::new_shared(AppendingOptionsPlugin {
@@ -522,7 +521,7 @@ mod tests {
         let (settled, list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        assert_eq!(settled.options.code, "const rewritten = 7;");
+        assert_eq!(settled.options.file.as_deref(), Some("rewritten.ts"));
 
         let names: Vec<String> =
             list.iter().map(|p| p.call_name().into_owned()).collect();
@@ -531,7 +530,7 @@ mod tests {
             names,
             vec![
                 "append-rewrite".to_string(),
-                "rewrite-code-options".to_string()
+                "rewrite-file-options".to_string()
             ]
         );
     }
@@ -617,8 +616,9 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_options_some_replaces_whole_args_drops_fields() {
         // Struct-level replace: returned args REPLACE the whole set, so
-        // every field they do not carry falls back to `CompileOptions`'s
-        // own defaults (the input args' `file: "a.ts"` is NOT preserved).
+        // every field they do not carry falls back to `ResolvableOptions`'s
+        // own defaults (`None`); the input args' `file: Some("a.ts")` is
+        // NOT preserved.
         let plugins: Vec<SharedPluginable> =
             vec![Plugin::new_shared(ReplaceArgsDroppingFieldsOptionsPlugin)];
 
@@ -629,9 +629,12 @@ mod tests {
 
         assert_eq!(settled.options.cwd.as_deref(), Some("/only"));
 
-        assert_eq!(settled.options.file, "index.js");
+        assert!(
+            settled.options.file.is_none(),
+            "file must be dropped by the whole-struct replace"
+        );
 
-        assert_eq!(settled.options.code, "");
+        assert!(settled.options.language.is_none());
     }
 
     #[derive(Debug)]

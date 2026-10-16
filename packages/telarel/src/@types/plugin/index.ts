@@ -1,14 +1,14 @@
+import type { AstResult, CodeResult } from "#/@types/ast";
 import type {
     CommonPluginContext,
     PluginContext,
 } from "#/@types/plugin/context";
-import type { CompileEndArgs } from "#/@types/plugin/hooks/compile-end";
-import type { CompileStartArgs } from "#/@types/plugin/hooks/compile-start";
-import type {
-    FinalizeArgs,
-    FinalizeResult,
-} from "#/@types/plugin/hooks/finalize";
-import type { PrepareArgs, PrepareResult } from "#/@types/plugin/hooks/prepare";
+import type { EndArgs } from "#/@types/plugin/hooks/end";
+import type { FinalizeArgs } from "#/@types/plugin/hooks/finalize";
+import type { GenerateArgs } from "#/@types/plugin/hooks/generate";
+import type { ParseArgs } from "#/@types/plugin/hooks/parse";
+import type { PrepareArgs } from "#/@types/plugin/hooks/prepare";
+import type { StartArgs } from "#/@types/plugin/hooks/start";
 import type {
     TransformArgs,
     TransformResult,
@@ -27,7 +27,8 @@ type ObjectHook<T> = T | { order?: PluginOrder; handler: T };
 
 /**
  * Hooks are return-based: return the new value to replace it, or `null`/`void`
- * to make no change.
+ * to make no change. The `start`, `prepare`, `finalize`, and `end` hooks are
+ * observers: return values are ignored.
  */
 type Plugin = {
     /**
@@ -36,7 +37,7 @@ type Plugin = {
     name: string;
     /**
      * The options hook: return the full options args to replace it, or
-     * `null`/`void` for no change.
+     * `null`/`void` for no change. The `code` is never part of the bag.
      *
      * Runs before resolution, as a fixpoint: plugins added here get their own
      * `options` hook run too.
@@ -48,21 +49,28 @@ type Plugin = {
         ) => OptionsArgs | null | void | Promise<OptionsArgs | null | void>
     >;
     /**
-     * The compileStart hook: notify on the start of compilation, with resolved
+     * The start hook: notify on the start of compilation, with resolved
      * read-only options.
      */
-    compileStart?: ObjectHook<
-        (ctx: PluginContext, args: CompileStartArgs) => void | Promise<void>
+    start?: ObjectHook<
+        (ctx: PluginContext, args: StartArgs) => void | Promise<void>
     >;
     /**
-     * The prepare hook: run before parsing; return `{ code, map? }` to replace
-     * the source, or `null`/`void` for no change.
+     * The parse hook: first-win. Return `{ ast }` to supply the AST, or
+     * `null`/`void` to defer to the next `parse` hook and, after all defer, the
+     * builtin parser.
      */
-    prepare?: ObjectHook<
+    parse?: ObjectHook<
         (
             ctx: PluginContext,
-            args: PrepareArgs,
-        ) => PrepareResult | null | void | Promise<PrepareResult | null | void>
+            args: ParseArgs,
+        ) => AstResult | null | void | Promise<AstResult | null | void>
+    >;
+    /**
+     * The prepare hook: observer on the parsed AST; return values are ignored.
+     */
+    prepare?: ObjectHook<
+        (ctx: PluginContext, args: PrepareArgs) => void | Promise<void>
     >;
     /**
      * The transform hook: chained AST transformation; return `{ ast }` to
@@ -79,27 +87,30 @@ type Plugin = {
             | Promise<TransformResult | null | void>
     >;
     /**
-     * The finalize hook: run after codegen; return `{ code, map? }` to replace
-     * the output, or `null`/`void` for no change.
+     * The finalize hook: observer on the final AST; return values are ignored.
      */
     finalize?: ObjectHook<
-        (
-            ctx: PluginContext,
-            args: FinalizeArgs,
-        ) =>
-            | FinalizeResult
-            | null
-            | void
-            | Promise<FinalizeResult | null | void>
+        (ctx: PluginContext, args: FinalizeArgs) => void | Promise<void>
     >;
     /**
-     * The compileEnd hook: notify on the end of compilation.
+     * The generate hook: first-win. Return `{ code, map? }` to supply the
+     * output, or `null`/`void` to defer to the next `generate` hook and, after
+     * all defer, the builtin generator.
+     */
+    generate?: ObjectHook<
+        (
+            ctx: PluginContext,
+            args: GenerateArgs,
+        ) => CodeResult | null | void | Promise<CodeResult | null | void>
+    >;
+    /**
+     * The end hook: notify on the end of compilation.
      *
      * Runs on every path after the options fixpoint settles, including when the
      * compile failed. Not run when the options stage itself fails.
      */
-    compileEnd?: ObjectHook<
-        (ctx: PluginContext, args: CompileEndArgs) => void | Promise<void>
+    end?: ObjectHook<
+        (ctx: PluginContext, args: EndArgs) => void | Promise<void>
     >;
 };
 

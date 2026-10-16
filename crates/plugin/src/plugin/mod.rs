@@ -9,12 +9,14 @@ use std::sync::Arc;
 use telarel_common::HookUsage;
 
 use crate::_types::context::{CommonPluginContext, PluginContext};
-use crate::_types::hooks::compile_end::CompileEndArgs;
-use crate::_types::hooks::compile_start::CompileStartArgs;
-use crate::_types::hooks::finalize::{FinalizeArgs, FinalizeReturn};
+use crate::_types::hooks::end::EndArgs;
+use crate::_types::hooks::finalize::FinalizeArgs;
+use crate::_types::hooks::generate::{GenerateArgs, GenerateReturn};
 use crate::_types::hooks::notify::NotifyReturn;
 use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
-use crate::_types::hooks::prepare::{PrepareArgs, PrepareReturn};
+use crate::_types::hooks::parse::{ParseArgs, ParseReturn};
+use crate::_types::hooks::prepare::PrepareArgs;
+use crate::_types::hooks::start::StartArgs;
 use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
 use crate::_types::order::PluginHookMeta;
 use crate::plugin::pluginable::SharedPluginable;
@@ -51,30 +53,44 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         None
     }
 
-    /// Run the `compile_start` hook with the fully resolved, read-only
-    /// options; notify-only.
-    fn compile_start<'a>(
+    /// Run the `start` hook with the fully resolved, read-only options;
+    /// notify-only.
+    fn start<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        _args: &'a CompileStartArgs,
+        _args: &'a StartArgs,
     ) -> impl Future<Output = NotifyReturn> + Send {
         async { Ok(()) }
     }
 
-    /// Ordering for the `compile_start` hook; `None` = normal bucket.
-    fn compile_start_meta(&self) -> Option<PluginHookMeta> {
+    /// Ordering for the `start` hook; `None` = normal bucket.
+    fn start_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 
-    /// Run the `prepare` hook, before the transform chain. Returning `Some`
-    /// replaces the source code; the carried map is incremental relative
-    /// to the code this hook received.
+    /// Run the `parse` hook. Returning `Some` wins the parse stage and the
+    /// rest of the chain is skipped; `None` defers to the next plugin.
+    fn parse<'a>(
+        &'a self,
+        _ctx: &'a PluginContext<'_>,
+        _args: ParseArgs<'a>,
+    ) -> impl Future<Output = ParseReturn> + Send + 'a {
+        async { Ok(None) }
+    }
+
+    /// Ordering for the `parse` hook; `None` = normal bucket.
+    fn parse_meta(&self) -> Option<PluginHookMeta> {
+        None
+    }
+
+    /// Run the `prepare` hook as a read-only observer of the parsed AST;
+    /// notify-only.
     fn prepare<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        _args: &'a PrepareArgs<'_>,
-    ) -> impl Future<Output = PrepareReturn> + Send {
-        async { Ok(None) }
+        _args: PrepareArgs<'a>,
+    ) -> impl Future<Output = NotifyReturn> + Send + 'a {
+        async { Ok(()) }
     }
 
     /// Ordering for the `prepare` hook; `None` = normal bucket.
@@ -98,15 +114,14 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         None
     }
 
-    /// Run the `finalize` hook, after the transform chain. Returning `Some`
-    /// replaces the generated code; the carried map is incremental
-    /// relative to the generated code this hook received.
+    /// Run the `finalize` hook as a read-only observer of the final AST;
+    /// notify-only.
     fn finalize<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        _args: &'a FinalizeArgs<'_>,
-    ) -> impl Future<Output = FinalizeReturn> + Send {
-        async { Ok(None) }
+        _args: FinalizeArgs<'a>,
+    ) -> impl Future<Output = NotifyReturn> + Send + 'a {
+        async { Ok(()) }
     }
 
     /// Ordering for the `finalize` hook; `None` = normal bucket.
@@ -114,18 +129,33 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         None
     }
 
-    /// Run the `compile_end` hook with the final code, map, and error;
-    /// notify-only. Core must invoke it on success and on every error path.
-    fn compile_end<'a>(
+    /// Run the `generate` hook. Returning `Some` wins the generate stage and
+    /// the rest of the chain is skipped; `None` defers to the next plugin.
+    fn generate<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        _args: &'a CompileEndArgs,
+        _args: GenerateArgs<'a>,
+    ) -> impl Future<Output = GenerateReturn> + Send + 'a {
+        async { Ok(None) }
+    }
+
+    /// Ordering for the `generate` hook; `None` = normal bucket.
+    fn generate_meta(&self) -> Option<PluginHookMeta> {
+        None
+    }
+
+    /// Run the `end` hook with the compile error, if any; notify-only. Core
+    /// must invoke it on success and on every error path.
+    fn end<'a>(
+        &'a self,
+        _ctx: &'a PluginContext<'_>,
+        _args: &'a EndArgs,
     ) -> impl Future<Output = NotifyReturn> + Send {
         async { Ok(()) }
     }
 
-    /// Ordering for the `compile_end` hook; `None` = normal bucket.
-    fn compile_end_meta(&self) -> Option<PluginHookMeta> {
+    /// Ordering for the `end` hook; `None` = normal bucket.
+    fn end_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 }
@@ -142,16 +172,15 @@ mod tests {
     use oxc::ast::builder::AstBuilder;
     use oxc::span::SPAN;
     use telarel_common::{
-        Ast, HookUsage, Language, ParseAstOptions, SourceType, parse_ast,
+        Ast, AstResult, CodeResult, HookUsage, Language, ParseAstOptions,
+        ParserOptions, ResolvableOptions, SourceMapOptions, SourceType,
+        parse_ast,
     };
 
     use crate::_types::context::{
         CommonPluginContext, ModuleInfo, PluginContext,
     };
-    use crate::_types::hooks::compile_end::CompileEndArgs;
-    use crate::_types::hooks::compile_start::CompileStartArgs;
-    use crate::_types::hooks::finalize::FinalizeOutput;
-    use crate::_types::hooks::prepare::{PrepareArgs, PrepareOutput};
+    use crate::_types::hooks::start::StartArgs;
     use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
     use crate::plugin::pluginable::SharedPluginable;
 
@@ -192,7 +221,7 @@ mod tests {
             async move {
                 let mut next: OptionsArgs = args.clone();
 
-                next.options.file = self.file.to_string();
+                next.options.file = Some(self.file.to_string());
 
                 Ok(Some(next))
             }
@@ -200,11 +229,11 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct PrepareReplacePlugin;
+    struct PrepareObserverPlugin;
 
-    impl Plugin for PrepareReplacePlugin {
+    impl Plugin for PrepareObserverPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "prepare-replace".into()
+            "prepare-observer".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
@@ -214,23 +243,18 @@ mod tests {
         fn prepare<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: &'a PrepareArgs<'_>,
-        ) -> impl Future<Output = PrepareReturn> + Send {
-            async {
-                Ok(Some(PrepareOutput {
-                    code: String::from("let b;"),
-                    map: None,
-                }))
-            }
+            _args: PrepareArgs<'a>,
+        ) -> impl Future<Output = NotifyReturn> + Send + 'a {
+            async { Ok(()) }
         }
     }
 
     #[derive(Debug)]
-    struct FinalizeReplacePlugin;
+    struct FinalizeObserverPlugin;
 
-    impl Plugin for FinalizeReplacePlugin {
+    impl Plugin for FinalizeObserverPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "finalize-replace".into()
+            "finalize-observer".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
@@ -240,11 +264,71 @@ mod tests {
         fn finalize<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: &'a FinalizeArgs<'_>,
-        ) -> impl Future<Output = FinalizeReturn> + Send {
+            _args: FinalizeArgs<'a>,
+        ) -> impl Future<Output = NotifyReturn> + Send + 'a {
+            async { Ok(()) }
+        }
+    }
+
+    fn parse_test_ast(code: &str) -> Ast {
+        parse_ast(
+            code.to_string(),
+            ParseAstOptions {
+                cwd: String::from("/repo"),
+                file: String::from("a.ts"),
+                language: None,
+                source_type: None,
+                input_map: None,
+            },
+        )
+        .unwrap()
+    }
+
+    #[derive(Debug)]
+    struct ParsePlugin;
+
+    impl Plugin for ParsePlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "parse".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Parse
+        }
+
+        fn parse<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            args: ParseArgs<'a>,
+        ) -> impl Future<Output = ParseReturn> + Send + 'a {
+            async move {
+                let ast: Ast = parse_test_ast(args.code);
+
+                Ok(Some(AstResult { ast }))
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct GeneratePlugin;
+
+    impl Plugin for GeneratePlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "generate".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Generate
+        }
+
+        fn generate<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: GenerateArgs<'a>,
+        ) -> impl Future<Output = GenerateReturn> + Send + 'a {
             async {
-                Ok(Some(FinalizeOutput {
-                    code: String::from("let c;"),
+                Ok(Some(CodeResult {
+                    code: String::from("generated;"),
                     map: None,
                 }))
             }
@@ -345,11 +429,11 @@ mod tests {
         }
     }
 
-    type EndedLog = Vec<(String, Option<String>)>;
+    type EndedLog = Vec<Option<String>>;
 
     #[derive(Debug)]
     struct NotifyPlugin {
-        started: Arc<Mutex<Vec<String>>>,
+        started: Arc<Mutex<Option<String>>>,
         ended: Arc<Mutex<EndedLog>>,
     }
 
@@ -359,41 +443,40 @@ mod tests {
         }
 
         fn register_hook_usage(&self) -> HookUsage {
-            HookUsage::CompileStart | HookUsage::CompileEnd
+            HookUsage::Start | HookUsage::End
         }
 
-        fn compile_start<'a>(
+        fn start<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            args: &'a CompileStartArgs,
+            args: &'a StartArgs,
         ) -> impl Future<Output = NotifyReturn> + Send {
             async move {
-                self.started.lock().unwrap().push(args.options.cwd.clone());
+                *self.started.lock().unwrap() = Some(args.options.cwd.clone());
 
                 Ok(())
             }
         }
 
-        fn compile_end<'a>(
+        fn end<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            args: &'a CompileEndArgs,
+            args: &'a EndArgs,
         ) -> impl Future<Output = NotifyReturn> + Send {
             async move {
                 self.ended
                     .lock()
                     .unwrap()
-                    .push((args.code.clone(), args.err.clone()));
+                    .push(args.error.as_ref().map(ToString::to_string));
 
                 Ok(())
             }
         }
     }
 
-    fn make_context<'a>(code: &'a str) -> PluginContext<'a> {
+    fn make_context<'a>() -> PluginContext<'a> {
         let module: ModuleInfo<'a> = ModuleInfo {
             file: "a.ts",
-            code,
             language: Language::TS,
             source_type: SourceType::Module,
         };
@@ -403,12 +486,34 @@ mod tests {
 
     fn make_args(plugins: Vec<SharedPluginable>) -> OptionsArgs {
         OptionsArgs {
-            options: telarel_common::CompileOptions {
-                file: "a.ts".into(),
-                code: "console.log(1);".into(),
-                ..telarel_common::CompileOptions::default()
+            options: ResolvableOptions {
+                file: Some("a.ts".into()),
+                ..ResolvableOptions::default()
             },
             plugins,
+        }
+    }
+
+    fn parser_options() -> ParserOptions {
+        ParserOptions {
+            cwd: String::from("/repo"),
+            file: String::from("a.ts"),
+            language: Language::TS,
+            source_type: SourceType::Module,
+            source_map: SourceMapOptions::default(),
+        }
+    }
+
+    fn make_start_args() -> StartArgs {
+        StartArgs {
+            options: telarel_common::ResolvedOptions {
+                cwd: String::from("/resolved"),
+                file: String::from("a.ts"),
+                code: String::from("let a;"),
+                language: Language::TS,
+                source_type: SourceType::Module,
+                plugins: vec![String::from("probe")],
+            },
         }
     }
 
@@ -424,59 +529,55 @@ mod tests {
     async fn test_default_hooks_are_noops() {
         let common: CommonPluginContext = CommonPluginContext::default();
 
-        let ctx: PluginContext<'_> = make_context("console.log(1);");
+        let ctx: PluginContext<'_> = make_context();
+
+        let ast: Ast = parse_test_ast("console.log(1);");
 
         let shared: SharedPluginable = Plugin::new_shared(ProbePlugin);
 
         let args: OptionsArgs = make_args(vec![]);
 
+        let options: ParserOptions = parser_options();
+
+        let generator: telarel_common::GeneratorOptions =
+            telarel_common::GeneratorOptions {
+                cwd: String::from("/repo"),
+                file: String::from("a.ts"),
+                source_map: SourceMapOptions::default(),
+            };
+
         assert!(shared.call_options(&common, &args).await.unwrap().is_none());
         assert!(
             shared
-                .call_prepare(&ctx, &PrepareArgs { code: "let a;" })
-                .await
-                .unwrap()
-                .is_none()
-        );
-        assert!(
-            shared
-                .call_finalize(
+                .call_parse(
                     &ctx,
-                    &crate::_types::hooks::finalize::FinalizeArgs {
-                        code: "let a;"
-                    }
+                    ParseArgs { code: "let a;", options: &options }
                 )
                 .await
                 .unwrap()
                 .is_none()
         );
-        shared
-            .call_compile_start(
-                &ctx,
-                &CompileStartArgs {
-                    options: telarel_common::ResolvedOptions {
-                        cwd: String::from("/repo"),
-                        file: String::from("a.ts"),
-                        code: String::from("let a;"),
-                        language: Language::TS,
-                        source_type: SourceType::Module,
-                        plugins: vec![],
-                    },
-                },
-            )
-            .await
-            .unwrap();
-        shared
-            .call_compile_end(
-                &ctx,
-                &CompileEndArgs {
-                    code: String::from("let a;"),
-                    map: None,
-                    err: None,
-                },
-            )
-            .await
-            .unwrap();
+        shared.call_prepare(&ctx, PrepareArgs { ast: &ast }).await.unwrap();
+        assert!(
+            shared
+                .call_transform(&ctx, TransformArgs { ast: &ast })
+                .await
+                .unwrap()
+                .is_none()
+        );
+        shared.call_finalize(&ctx, FinalizeArgs { ast: &ast }).await.unwrap();
+        assert!(
+            shared
+                .call_generate(
+                    &ctx,
+                    GenerateArgs { ast: &ast, options: &generator }
+                )
+                .await
+                .unwrap()
+                .is_none()
+        );
+        shared.call_start(&ctx, &make_start_args()).await.unwrap();
+        shared.call_end(&ctx, &EndArgs { error: None }).await.unwrap();
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -505,8 +606,7 @@ mod tests {
         let next: OptionsArgs =
             shared.call_options(&common, &args).await.unwrap().unwrap();
 
-        assert_eq!(next.options.file, "b.ts");
-        assert_eq!(next.options.code, "console.log(1);");
+        assert_eq!(next.options.file.as_deref(), Some("b.ts"));
         assert!(next.plugins.is_empty());
     }
 
@@ -525,56 +625,72 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_prepare_and_finalize_return_outputs() {
-        let ctx: PluginContext<'_> = make_context("console.log(1);");
+    async fn test_parse_returns_ast_result() {
+        let ctx: PluginContext<'_> = make_context();
 
-        let prepare: SharedPluginable =
-            Plugin::new_shared(PrepareReplacePlugin);
+        let options: ParserOptions = parser_options();
 
-        let prepare_output: PrepareOutput = prepare
-            .call_prepare(&ctx, &PrepareArgs { code: "console.log(1);" })
+        let shared: SharedPluginable = Plugin::new_shared(ParsePlugin);
+
+        let result: Option<AstResult> = shared
+            .call_parse(&ctx, ParseArgs { code: "let b;", options: &options })
             .await
-            .unwrap()
             .unwrap();
 
-        assert_eq!(prepare_output.code, "let b;");
-        assert!(prepare_output.map.is_none());
+        let result: AstResult = result.expect("parse plugin returns Some");
 
-        let finalize: SharedPluginable =
-            Plugin::new_shared(FinalizeReplacePlugin);
-
-        let finalize_output: FinalizeOutput = finalize
-            .call_finalize(
-                &ctx,
-                &crate::_types::hooks::finalize::FinalizeArgs {
-                    code: "let b;",
-                },
-            )
-            .await
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(finalize_output.code, "let c;");
-        assert!(finalize_output.map.is_none());
+        assert_eq!(result.ast.source().as_ref(), "let b;");
     }
 
-    fn parse_test_ast(code: &str) -> Ast {
-        parse_ast(
-            code.to_string(),
-            ParseAstOptions {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_returns_code_result() {
+        let ctx: PluginContext<'_> = make_context();
+
+        let ast: Ast = parse_test_ast("console.log(1);");
+
+        let generator: telarel_common::GeneratorOptions =
+            telarel_common::GeneratorOptions {
                 cwd: String::from("/repo"),
                 file: String::from("a.ts"),
-                language: None,
-                source_type: None,
-                input_map: None,
-            },
-        )
-        .unwrap()
+                source_map: SourceMapOptions::default(),
+            };
+
+        let shared: SharedPluginable = Plugin::new_shared(GeneratePlugin);
+
+        let result: Option<CodeResult> = shared
+            .call_generate(
+                &ctx,
+                GenerateArgs { ast: &ast, options: &generator },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result.expect("generate plugin returns Some").code,
+            "generated;"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_prepare_and_finalize_are_observers() {
+        let ctx: PluginContext<'_> = make_context();
+
+        let ast: Ast = parse_test_ast("console.log(1);");
+
+        let prepare: SharedPluginable =
+            Plugin::new_shared(PrepareObserverPlugin);
+
+        prepare.call_prepare(&ctx, PrepareArgs { ast: &ast }).await.unwrap();
+
+        let finalize: SharedPluginable =
+            Plugin::new_shared(FinalizeObserverPlugin);
+
+        finalize.call_finalize(&ctx, FinalizeArgs { ast: &ast }).await.unwrap();
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_none_keeps_original_program() {
-        let ctx: PluginContext<'_> = make_context("console.log(1);");
+        let ctx: PluginContext<'_> = make_context();
 
         let ast: Ast = parse_test_ast("console.log(1);");
 
@@ -595,7 +711,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_clone_mutation_is_returned() {
-        let ctx: PluginContext<'_> = make_context("console.log(1);");
+        let ctx: PluginContext<'_> = make_context();
 
         let ast: Ast = parse_test_ast("console.log(1);");
 
@@ -625,7 +741,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_some_returns_replaced_program() {
-        let ctx: PluginContext<'_> = make_context("console.log(1);");
+        let ctx: PluginContext<'_> = make_context();
 
         let ast: Ast = parse_test_ast("console.log(1);");
 
@@ -643,52 +759,34 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_compile_start_and_end_receive_args() {
-        let started: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    async fn test_start_and_end_receive_args() {
+        let started: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
         let ended: Arc<Mutex<EndedLog>> = Arc::new(Mutex::new(Vec::new()));
 
-        let ctx: PluginContext<'_> = make_context("console.log(1);");
+        let ctx: PluginContext<'_> = make_context();
 
         let shared: SharedPluginable = Plugin::new_shared(NotifyPlugin {
             started: Arc::clone(&started),
             ended: Arc::clone(&ended),
         });
 
+        shared.call_start(&ctx, &make_start_args()).await.unwrap();
+
         shared
-            .call_compile_start(
+            .call_end(
                 &ctx,
-                &CompileStartArgs {
-                    options: telarel_common::ResolvedOptions {
-                        cwd: String::from("/resolved"),
-                        file: String::from("a.ts"),
-                        code: String::from("let a;"),
-                        language: Language::TS,
-                        source_type: SourceType::Module,
-                        plugins: vec![String::from("probe")],
-                    },
+                &EndArgs {
+                    error: Some(telarel_common::CompileError::from_message(
+                        "boom",
+                    )),
                 },
             )
             .await
             .unwrap();
 
-        shared
-            .call_compile_end(
-                &ctx,
-                &CompileEndArgs {
-                    code: String::from("let b;"),
-                    map: None,
-                    err: Some(String::from("boom")),
-                },
-            )
-            .await
-            .unwrap();
+        assert_eq!(started.lock().unwrap().as_deref(), Some("/resolved"));
 
-        assert_eq!(*started.lock().unwrap(), vec![String::from("/resolved")]);
-
-        assert_eq!(
-            *ended.lock().unwrap(),
-            vec![(String::from("let b;"), Some(String::from("boom")))]
-        );
+        assert_eq!(*ended.lock().unwrap(), vec![Some(String::from("boom"))]);
     }
 }

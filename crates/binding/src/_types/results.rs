@@ -3,6 +3,6 @@
 pub struct JsCompileResult {
     /// Compiled code.
     pub code: String,
-    /// Source map.
-    pub map: crate::_types::sourcemap::JsSourceMap,
+    /// Source map, when a stage produced one.
+    pub map: Option<crate::_types::sourcemap::JsSourceMap>,
 }

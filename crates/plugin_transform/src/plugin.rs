@@ -269,7 +269,6 @@ mod tests {
     fn make_context<'a>(file: &'a str) -> PluginContext<'a> {
         let module: ModuleInfo<'a> = ModuleInfo {
             file,
-            code: "",
             language: Language::JS,
             source_type: telarel_common::SourceType::Module,
         };
@@ -1003,7 +1002,6 @@ mod tests {
 
         let module: ModuleInfo<'_> = ModuleInfo {
             file: "index.js",
-            code: "",
             language: Language::JS,
             source_type: telarel_common::SourceType::Module,
         };

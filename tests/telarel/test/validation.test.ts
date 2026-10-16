@@ -12,10 +12,10 @@ import { describe, expect, it } from "vitest";
 
 describe("validation", (): void => {
     it("rejects on a parse error with file context", async (): Promise<void> => {
-        // A plugin declaring `transform` forces the parse path; without one
-        // the skip path passes invalid code through verbatim. Pinned
-        // observed message: the native parser renders a code-frame style
-        // diagnostic including the file name and caret position.
+        // A plugin declaring `transform` is irrelevant here: parse always
+        // runs. Pinned observed message: the builtin parser renders a
+        // code-frame style diagnostic including the file name and caret
+        // position.
         await expect(
             compile({
                 cwd: "/repo",
@@ -45,16 +45,25 @@ describe("validation", (): void => {
         ).rejects.toThrow(/expected|Unexpected token/i);
     });
 
-    it("passes invalid code through verbatim when no transform plugin exists", async (): Promise<void> => {
-        // Skip path: without a `transform` hook the source is never parsed,
-        // so syntactically invalid code compiles to itself.
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.ts",
-            code: "const = ;",
-        });
+    it("rejects invalid code with a parse error when no transform plugin exists", async (): Promise<void> => {
+        // Parse always runs now: without any plugin, syntactically invalid
+        // code fails with the builtin parser's diagnostic instead of passing
+        // through verbatim.
+        await expect(
+            compile({
+                cwd: "/repo",
+                file: "index.ts",
+                code: "const = ;",
+            }),
+        ).rejects.toThrow("index.ts");
 
-        expect(result.code).toBe("const = ;");
+        await expect(
+            compile({
+                cwd: "/repo",
+                file: "index.ts",
+                code: "const = ;",
+            }),
+        ).rejects.toThrow(/expected|Unexpected token/i);
     });
 
     it("rejects on a missing required compile option", async (): Promise<void> => {
@@ -109,10 +118,10 @@ describe("validation", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
-    it("applies a returned options bag", async (): Promise<void> => {
-        // Return-based contract: the hook returns the replacement args; the
-        // transform observes the new `code` with the current `cwd` and
-        // `file` carried over by the spread.
+    it("applies a returned options bag to the resolved file", async (): Promise<void> => {
+        // Return-based contract: the hook returns the replacement bag; the
+        // later stage observes the new `file`. The bag never carries `code`,
+        // so the options hook cannot retarget the source.
         let stage: string = "__NONE__";
 
         const plugin: unknown = {
@@ -126,15 +135,15 @@ describe("validation", (): void => {
                 return {
                     options: {
                         ...args.options,
-                        code: "const b = 2;",
+                        file: "renamed.ts",
                     },
                 };
             },
             transform: (ctx: PluginContext): void => {
                 expect(stage).toBe("options");
                 expect(ctx.cwd).toBe("/repo");
-                expect(ctx.module.file).toBe("index.ts");
-                expect(ctx.module.code).toBe("const b = 2;");
+                expect(ctx.module.file).toBe("renamed.ts");
+                expect("code" in ctx.module).toBe(false);
             },
         };
 
@@ -145,22 +154,19 @@ describe("validation", (): void => {
             plugins: [plugin as Plugin],
         });
 
-        expect(result.code).toBe("const b = 2;");
+        expect(result.code).toBe("const a = 1;");
     });
 
     it("applies a returned bag that omits plugins as full-bag replace", async (): Promise<void> => {
-        // Full-bag semantics: a returned bag replacing the whole bag, so a
-        // bag that carries only `code` drops the plugin list (default: the
-        // EMPTY list) and every omitted scalar falls back to its default.
-        // This compile's only plugin replaces the bag without `plugins`,
-        // so nobody survives to carry a `code` rewrite: the compile itself
-        // uses the returned bag verbatim.
+        // Full-bag semantics: a returned bag replaces the whole bag, so a bag
+        // that omits `plugins` drops the plugin list (default: the EMPTY
+        // list) and every omitted scalar falls back to its default. The bag
+        // cannot carry a `code` rewrite; the compile uses the untouched
+        // source and the defaulted file.
         const plugin: unknown = {
             name: "returned-bag",
             options: (): OptionsArgs => ({
-                options: {
-                    code: "const replaced = 2;",
-                },
+                options: {},
             }),
         };
 
@@ -171,7 +177,8 @@ describe("validation", (): void => {
             plugins: [plugin as Plugin],
         });
 
-        expect(result.code).toBe("const replaced = 2;");
+        expect(result.code).toBe("const a = 1;");
+        expect(result.map?.sources).toEqual(["index.js"]);
     });
 
     it("allows duplicate plugin names in registration order", async (): Promise<void> => {

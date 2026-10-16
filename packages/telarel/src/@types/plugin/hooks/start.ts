@@ -1,13 +1,13 @@
 import type { ResolvedOptions } from "#/@types/plugin/options";
 
 /**
- * Arguments for the `compileStart` hook.
+ * Arguments for the `start` hook.
  */
-type CompileStartArgs = {
+type StartArgs = {
     /**
      * Read-only.
      */
     options: ResolvedOptions;
 };
 
-export type { CompileStartArgs };
+export type { StartArgs };

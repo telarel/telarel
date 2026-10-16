@@ -1,58 +1,36 @@
-use crate::_types::sourcemap::SourceMap;
+use telarel_common::Ast;
 
-/// Arguments for the `prepare` hook.
+/// Arguments for the `prepare` hook: the parsed AST, read-only.
+///
+/// `prepare` is an observer; its return value is ignored.
 #[derive(Debug, Clone, Copy)]
 pub struct PrepareArgs<'a> {
-    /// The code to be compiled.
-    pub code: &'a str,
+    /// The parsed AST, read-only.
+    pub ast: &'a Ast,
 }
-
-/// Result of the `prepare` hook: the updated code and an optional incremental map.
-#[derive(Debug, Clone)]
-pub struct PrepareOutput {
-    /// The updated code.
-    pub code: String,
-    /// The updated source map, relative to the code this hook received.
-    pub map: Option<SourceMap>,
-}
-
-/// The `prepare` hook return: replacement code with an optional map, `None`, or an error.
-pub type PrepareReturn = anyhow::Result<Option<PrepareOutput>>;
 
 #[cfg(test)]
 mod tests {
-    use oxc_sourcemap::SourceMapBuilder;
+    use telarel_common::{Ast, ParseAstOptions, parse_ast};
 
     use super::*;
 
     #[test]
-    fn test_prepare_output_without_map() {
-        let output: PrepareOutput =
-            PrepareOutput { code: String::from("let a;"), map: None };
+    fn test_prepare_args_borrow_ast() {
+        let ast: Ast = parse_ast(
+            String::from("let a;"),
+            ParseAstOptions {
+                cwd: String::from("/repo"),
+                file: String::from("a.ts"),
+                language: None,
+                source_type: None,
+                input_map: None,
+            },
+        )
+        .unwrap();
 
-        assert_eq!(output.code, "let a;");
-        assert!(output.map.is_none());
-    }
+        let args: PrepareArgs<'_> = PrepareArgs { ast: &ast };
 
-    #[test]
-    fn test_prepare_output_with_map() {
-        let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
-
-        builder.set_file("a.ts");
-
-        let source_id: u32 = builder.add_source_and_content("a.ts", "let a;");
-
-        builder.add_token(0, 0, 0, 0, Some(source_id), None);
-
-        let map: SourceMap = builder.into_owned_sourcemap().into_inner();
-
-        let output: PrepareOutput =
-            PrepareOutput { code: String::from("let a;"), map: Some(map) };
-
-        assert_eq!(output.code, "let a;");
-        assert_eq!(
-            output.map.as_ref().and_then(|m| m.get_source(0)),
-            Some("a.ts")
-        );
+        assert_eq!(args.ast.source().as_ref(), "let a;");
     }
 }

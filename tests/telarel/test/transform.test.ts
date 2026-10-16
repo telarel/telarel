@@ -1,6 +1,8 @@
 import type {
+    AstResult,
     BuiltinPlugin,
     CompileResult,
+    ParseArgs,
     Plugin,
     PluginContext,
     TransformArgs,
@@ -36,7 +38,7 @@ describe("transform", (): void => {
 
         expect(result.code).not.toContain(": number");
         expect(result.code).toContain("const a");
-        expect(result.map.version).toBe(3);
+        expect(result.map?.version).toBe(3);
     });
 
     it("lowers async await with an es2015 target", async (): Promise<void> => {
@@ -482,18 +484,44 @@ describe("transform", (): void => {
         expect(end - start).toBe("const b = 2;".length);
     });
 
-    it("anchors UTF-16 spans to prepare-rewritten code", async (): Promise<void> => {
+    it("anchors UTF-16 spans to the parse-hook-returned source", async (): Promise<void> => {
+        // A `parse` hook supplies the AST; its spans anchor to the `code` the
+        // hook returns, not to the compile call's source. Capture a real AST
+        // for the rewritten source from a first compile, then hand it back.
         const rewritten: string = "const µ = 1; const b = 2;";
+
+        let snapshot: unknown;
+
+        await compile({
+            cwd: "/repo",
+            file: "index.js",
+            code: rewritten,
+            plugins: [
+                {
+                    name: "snapshotter",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): void => {
+                        snapshot = structuredClone(args.ast);
+                    },
+                },
+            ],
+        });
+
         let start: number = -1;
         let end: number = -1;
 
         const plugin: Plugin = {
-            name: "prepare-rewriter",
-            prepare: (): { code: string } => {
-                return { code: rewritten };
-            },
+            name: "parse-supplier",
+            parse: (_ctx: PluginContext, _args: ParseArgs): AstResult => ({
+                ast: {
+                    program: snapshot as AstResult["ast"]["program"],
+                    code: rewritten,
+                },
+            }),
             transform: (_ctx: PluginContext, args: TransformArgs): void => {
-                const statement = args.ast.body[1] as {
+                const statement = args.ast.body[1] as unknown as {
                     start: number;
                     end: number;
                 };

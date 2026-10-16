@@ -15,11 +15,11 @@ pub use telarel_common::{
 };
 
 pub use telarel_plugin::{
-    CommonPluginContext, CompileEndArgs, CompileStartArgs, FinalizeArgs,
-    FinalizeOutput, FinalizeReturn, ModuleInfo, NotifyReturn, OptionsArgs,
-    OptionsReturn, Plugin, PluginContext, PluginHookMeta, PluginOrder,
-    Pluginable, PrepareArgs, PrepareOutput, PrepareReturn, SharedPluginable,
-    TransformArgs, TransformOutput, TransformReturn,
+    CommonPluginContext, EndArgs, FinalizeArgs, GenerateArgs, GenerateReturn,
+    ModuleInfo, NotifyReturn, OptionsArgs, OptionsReturn, ParseArgs,
+    ParseReturn, Plugin, PluginContext, PluginHookMeta, PluginOrder,
+    Pluginable, PrepareArgs, SharedPluginable, StartArgs, TransformArgs,
+    TransformOutput, TransformReturn,
 };
 
 pub use telarel_core::{CompileOutput, compile};
