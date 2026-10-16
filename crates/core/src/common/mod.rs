@@ -1,4 +1,4 @@
-pub(crate) mod pipeline;
+pub mod pipeline;
 
 #[cfg(test)]
-pub(crate) mod test_util;
+pub mod test_util;

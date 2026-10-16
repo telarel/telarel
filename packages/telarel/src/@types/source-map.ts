@@ -1,11 +1,6 @@
 import type { SourceMap } from "#/@types/sourcemap";
 
 /**
- * A input source map path, relatively resolved against `cwd`.
- */
-type InputSourceMapPath = string & Record<never, never>;
-
-/**
  * How an input source map is obtained for a step.
  *
  * - {@link SourceMap} — used directly
@@ -13,12 +8,17 @@ type InputSourceMapPath = string & Record<never, never>;
  * - `"inline"` — read a `//# sourceMappingURL=data:...` comment from the code
  * - `"external"` — read `<cwd>/<file>.map` from disk
  * - `"auto"` — inline comment first, then the external file (best effort)
+ *
+ * The literal modes are documentation only: `string` absorbs them for typing.
  */
 type InputSourceMapMode =
     | SourceMap
-    | InputSourceMapPath
+    | string /* path */
+    // oxlint-disable-next-line typescript/no-redundant-type-constituents
     | "inline"
+    // oxlint-disable-next-line typescript/no-redundant-type-constituents
     | "external"
+    // oxlint-disable-next-line typescript/no-redundant-type-constituents
     | "auto";
 
 /**
@@ -53,16 +53,14 @@ type OutputSourceMap = OutputSourceMapMode | OutputSourceMapOptions;
 /**
  * The source-map inputs and outputs requested for a step.
  *
- * An omitted or `null` field is off (no input map lookup) / the default output
- * mode.
+ * An omitted field is off (no input map lookup) / the default output mode.
  */
 type SourceMapOptions = Partial<{
-    input: InputSourceMap | null;
-    output: OutputSourceMap | null;
+    input: InputSourceMap;
+    output: OutputSourceMap;
 }>;
 
 export type {
-    InputSourceMapPath,
     InputSourceMapMode,
     InputSourceMap,
     OutputSourceMapMode,

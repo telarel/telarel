@@ -1,4 +1,4 @@
-pub mod compile;
+pub mod function;
 
 use std::cell::RefCell;
 use std::future::Future;
@@ -54,6 +54,21 @@ where
 /// Convert a compile error into a napi error.
 pub fn error_to_napi(error: telarel_common::CompileError) -> napi::Error {
     napi::Error::new(napi::Status::GenericFailure, error.to_string())
+}
+
+/// Convert an arbitrary error, such as a fallible Ast read-back, into a napi
+/// error.
+pub fn anyhow_to_napi(error: anyhow::Error) -> napi::Error {
+    napi::Error::new(napi::Status::GenericFailure, error.to_string())
+}
+
+/// Run a pipeline future to completion on the calling thread, mapping its
+/// compile error to a napi error.
+pub fn run_core<F, T>(future: F) -> napi::Result<T>
+where
+    F: Future<Output = std::result::Result<T, telarel_common::CompileError>>,
+{
+    block_on_compile(future).and_then(|result| result.map_err(error_to_napi))
 }
 
 #[cfg(test)]

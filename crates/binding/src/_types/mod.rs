@@ -1,3 +1,4 @@
+pub mod ast;
 pub mod options;
 pub mod plugin;
 pub mod results;

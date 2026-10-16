@@ -4,6 +4,7 @@ import type { BuiltinPlugin } from "#/@types/builtin";
 import type { MaybePromise } from "#/@types/common";
 import type { Language, SourceType } from "#/@types/grammar";
 import type { Plugin } from "#/@types/plugin";
+import type { SourceMapOptions } from "#/@types/source-map";
 
 /**
  * A conditional plugin slot that is skipped.
@@ -17,6 +18,12 @@ type PluginOption = MaybePromise<
     Plugin | BuiltinPlugin | FalsyPlugin | PluginOption[]
 >;
 
+/**
+ * The full, resolved shape of a compile run's options.
+ *
+ * The source text is deliberately absent: it belongs to the call, never to the
+ * options bag.
+ */
 type CompleteOptions = {
     /**
      * Current working directory. By default, it is `process.cwd()`.
@@ -31,10 +38,6 @@ type CompleteOptions = {
      */
     file: string;
     /**
-     * The code to be compiled. By default, it is `""`.
-     */
-    code: string;
-    /**
      * The grammar of the code. By default, it is inferred from the file
      * extension.
      */
@@ -45,6 +48,10 @@ type CompleteOptions = {
      */
     sourceType: SourceType;
     /**
+     * The source-map inputs and outputs requested for the run.
+     */
+    sourceMap: SourceMapOptions;
+    /**
      * Plugins to run.
      *
      * By default, it is `[]`. Duplicates are allowed.
@@ -53,17 +60,64 @@ type CompleteOptions = {
 };
 
 /**
+ * Options for `parse`.
+ */
+type ParseOptions = Partial<
+    Pick<
+        CompleteOptions,
+        "cwd" | "file" | "language" | "sourceType" | "sourceMap" | "plugins"
+    >
+>;
+
+/**
+ * Options for `rewrite`.
+ */
+type RewriteOptions = Partial<
+    Pick<
+        CompleteOptions,
+        "cwd" | "file" | "language" | "sourceType" | "sourceMap" | "plugins"
+    >
+>;
+
+/**
+ * Options for `generate`.
+ *
+ * The grammar and module kind are absent: the generated program's own
+ * `sourceType` settles the module kind.
+ */
+type GenerateOptions = Partial<
+    Pick<CompleteOptions, "cwd" | "file" | "sourceMap" | "plugins">
+>;
+
+/**
+ * Options for `compileFromAst`.
+ */
+type CompileFromAstOptions = Partial<
+    Pick<
+        CompleteOptions,
+        "cwd" | "file" | "language" | "sourceType" | "sourceMap" | "plugins"
+    >
+>;
+
+/**
+ * Options for `compile`.
+ */
+type CompileOptions = Partial<
+    Pick<
+        CompleteOptions,
+        "cwd" | "file" | "language" | "sourceType" | "sourceMap" | "plugins"
+    >
+>;
+
+/**
  * User options for a compile run.
  */
 type Options = Format<Partial<CompleteOptions>>;
 
 /**
  * The options bag an `options` hook observes and returns.
- *
- * The code is deliberately absent: the source text belongs to the compile call
- * and is never carried in the options bag.
  */
-type ResolvableOptions = Format<Partial<Omit<CompleteOptions, "code">>>;
+type ResolvableOptions = Partial<CompleteOptions>;
 
 type OptionsArgs = {
     /**
@@ -86,10 +140,15 @@ type ResolvedOptions = Format<
 
 export type {
     CompleteOptions,
+    CompileFromAstOptions,
+    CompileOptions,
     FalsyPlugin,
+    GenerateOptions,
     Options,
     OptionsArgs,
+    ParseOptions,
     PluginOption,
     ResolvableOptions,
     ResolvedOptions,
+    RewriteOptions,
 };

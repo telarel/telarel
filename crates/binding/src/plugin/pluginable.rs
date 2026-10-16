@@ -21,11 +21,17 @@ use telarel_plugin::{
     TransformOutput, TransformReturn,
 };
 
+use crate::_types::ast::JsAst;
 use crate::_types::plugin::hooks::{
-    JsAstOutput, JsCodeOutput, JsGeneratorOptions, JsOptionsOutput,
-    JsParseOutput, JsParserOptions, JsTransformOutput,
+    JsCodeOutput, JsGeneratorHookOptions, JsOptionsOutput, JsParseOutput,
+    JsParserHookOptions, JsResolvedOptions, JsTransformOutput,
+    optional_source_map_options_to_js,
 };
 use crate::_types::plugin::order::read_hook_meta;
+use crate::ast::{
+    ast_from_json, ast_from_program, ast_to_estree_json,
+    js_source_map_to_owned, source_type_for_options,
+};
 use crate::plugin::build::NAME_REQUIRED;
 use crate::plugin::build::to_plugins;
 use crate::plugin::hooks::{
@@ -36,7 +42,6 @@ use crate::plugin::hooks::{
 use crate::plugin::options::{
     language_label, parse_language, parse_source_type, source_type_label,
 };
-use crate::plugin::spans::{SpanMap, spans_to_bytes, spans_to_utf16};
 
 /// A JS plugin object bridged into the Rust plugin layer.
 ///
@@ -138,69 +143,6 @@ impl JsPlugin {
 /// Convert a napi error raised by a hook call into an anyhow error.
 fn hook_error(error: napi::Error) -> anyhow::Error {
     anyhow::Error::from(error)
-}
-
-/// Serialize `ast` to the ESTree JSON string hooks receive: the spans are
-/// converted from byte offsets to UTF-16 code units, matching JS strings.
-fn ast_to_estree_json(ast: &Ast) -> String {
-    let json: String = oxc_estree_codec::program_to_json(
-        ast.program(),
-        oxc_estree_codec::ProgramToJsonOptions::new(),
-    );
-
-    let spans: SpanMap = SpanMap::new(ast.source());
-
-    spans_to_utf16(&spans, &json)
-}
-
-/// Parse a hook's JSON-string source map into an owned map.
-fn parse_json_map(json: &str) -> anyhow::Result<SourceMap> {
-    Ok(oxc_sourcemap::OwnedSourceMap::from_json_string(json)
-        .map_err(anyhow::Error::msg)?
-        .into_inner())
-}
-
-/// Rebuild an owned [`Ast`] from a `parse` hook's returned ESTree program.
-///
-/// `program` is the JS-supplied ESTree tree (its spans are UTF-16 code units),
-/// `code` its own source text, and `map` an optional incremental source map as
-/// a JSON string. The spans are mapped back to byte offsets against `code`
-/// before the codec rebuilds the program into a fresh arena.
-fn ast_from_parse_output(
-    program: &serde_json::Value,
-    code: String,
-    map: Option<String>,
-    source_type: SourceType,
-) -> anyhow::Result<Ast> {
-    let json: String = serde_json::to_string(program)?;
-
-    let source: Arc<str> = Arc::from(code);
-
-    let spans: SpanMap = SpanMap::new(&source);
-
-    let bytes: String = spans_to_bytes(&spans, &json);
-
-    let input_map: Option<SourceMap> = match map {
-        | Some(json) => Some(parse_json_map(&json)?),
-        | None => None,
-    };
-
-    Ast::try_from_source(
-        source,
-        source_type,
-        input_map,
-        |source_text: &str, allocator: &oxc::allocator::Allocator| {
-            oxc_estree_codec::json_to_program(
-                &bytes,
-                oxc_estree_codec::JsonToProgramOptions {
-                    allocator,
-                    source_type,
-                    source_text,
-                },
-            )
-        },
-    )
-    .map_err(anyhow::Error::from)
 }
 
 /// The JS-thread unmarshalling of an `options` hook return value into the
@@ -500,6 +442,9 @@ impl Pluginable for JsPlugin {
                 source_type: SharedStr::new(source_type_label(
                     args.options.source_type,
                 )),
+                source_map: optional_source_map_options_to_js(
+                    args.options.source_map.as_ref(),
+                ),
                 plugins: self.refs.bag_snapshot(),
             };
 
@@ -521,24 +466,16 @@ impl Pluginable for JsPlugin {
                 return Ok(());
             };
 
-            // TEMPORARY ADAPTER (Task-4 deletion target): `ResolvedOptions` no
-            // longer carries `code`; read the compile input back from the
-            // shared per-compile state so the JS-observable `start` payload is
-            // unchanged from before the reshape.
-            let code: SharedStr =
-                self.refs.source_code().unwrap_or_else(|| SharedStr::new(""));
-
             let call: StartCall = StartCall {
                 cwd: SharedStr::new(&args.options.cwd),
                 file: SharedStr::new(&args.options.file),
-                code,
                 language: SharedStr::new(language_label(Some(
                     args.options.language,
                 ))),
                 source_type: SharedStr::new(source_type_label(Some(
                     args.options.source_type,
                 ))),
-                plugins: args.options.plugins.clone(),
+                options: JsResolvedOptions::from(&args.options),
             };
 
             let output: Either<Promise<Undefined>, Undefined> =
@@ -576,7 +513,7 @@ impl Pluginable for JsPlugin {
                 source_type: SharedStr::new(source_type_label(Some(
                     ctx.module.source_type,
                 ))),
-                options: JsParserOptions::from(args.options),
+                options: JsParserHookOptions::from(args.options),
             };
 
             let output: Either<
@@ -597,20 +534,21 @@ impl Pluginable for JsPlugin {
             // The returned AST's spans anchor to its own `code`, so resolve the
             // grammar from the hook's parser options (the same resolution the
             // builtin parser applies) and rebuild the tree against it.
-            let grammar: SourceType = telarel_common::resolve_grammar(
+            let source_type: SourceType = source_type_for_options(
                 &args.options.file,
                 Some(args.options.language),
-            );
-
-            let source_type: SourceType = telarel_common::with_module_kind(
-                grammar,
                 args.options.source_type,
             );
 
-            let JsAstOutput { program, code, map } = replaced.ast;
+            let JsAst { program, code, map } = replaced.ast;
+
+            let input_map: Option<SourceMap> = match map {
+                | Some(map) => Some(js_source_map_to_owned(&map)?),
+                | None => None,
+            };
 
             let ast: Ast =
-                ast_from_parse_output(&program, code, map, source_type)?;
+                ast_from_program(&program, code, input_map, source_type)?;
 
             Ok(Some(AstResult { ast }))
         })
@@ -673,15 +611,8 @@ impl Pluginable for JsPlugin {
 
             // The UTF-16 map is anchored to the AST's own source (the parse
             // input), NOT the module's original code, so it matches the byte
-            // spans the codec emits below.
-            let ast_json: String = oxc_estree_codec::program_to_json(
-                args.ast.program(),
-                oxc_estree_codec::ProgramToJsonOptions::new(),
-            );
-
-            let spans: SpanMap = SpanMap::new(args.ast.source());
-
-            let ast_json_utf16: String = spans_to_utf16(&spans, &ast_json);
+            // spans the codec emits.
+            let ast_json_utf16: String = ast_to_estree_json(args.ast);
 
             // The ESTree codec skips `Program.comments`; keep the parser-owned
             // comments to reattach them to the rebuilt program (a JS plugin
@@ -723,31 +654,16 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             }
 
-            // The returned spans are UTF-16: map them back to byte offsets
-            // through the same anchored map before the codec reads them.
-            let replaced_bytes: String =
-                spans_to_bytes(&spans, &replaced.ast_json);
-
             // Rebuild the returned tree into a fresh owned AST: the read-back
             // allocates into the new AST's arena and anchors spans against its
             // shared source, so the replacement travels as `Some` exactly like
             // a Rust plugin's replacement.
-            let mut ast: Ast = Ast::try_from_source(
+            let mut ast: Ast = ast_from_json(
+                &replaced.ast_json,
                 args.ast.source().clone(),
-                source_type,
                 args.ast.map().cloned(),
-                |source_text: &str, allocator: &oxc::allocator::Allocator| {
-                    oxc_estree_codec::json_to_program(
-                        &replaced_bytes,
-                        oxc_estree_codec::JsonToProgramOptions {
-                            allocator,
-                            source_type,
-                            source_text,
-                        },
-                    )
-                },
-            )
-            .map_err(anyhow::Error::from)?;
+                source_type,
+            )?;
 
             // The rebuilt program's comments are empty: reattach the original
             // set so codegen still emits them.
@@ -831,8 +747,8 @@ impl Pluginable for JsPlugin {
                 source_type: SharedStr::new(source_type_label(Some(
                     ctx.module.source_type,
                 ))),
-                ast_json: ast_to_estree_json(args.ast),
-                options: JsGeneratorOptions::from(args.options),
+                ast: JsAst::from_ast(args.ast)?,
+                options: JsGeneratorHookOptions::from(args.options),
             };
 
             let output: Either<
@@ -851,7 +767,7 @@ impl Pluginable for JsPlugin {
             };
 
             let map: Option<SourceMap> = match replaced.map {
-                | Some(json) => Some(parse_json_map(&json)?),
+                | Some(map) => Some(js_source_map_to_owned(&map)?),
                 | None => None,
             };
 
@@ -903,14 +819,14 @@ impl Pluginable for JsPlugin {
 
 /// Tests for the ENV-FREE parts of the hook marshaling: the options
 /// unmarshalling (no full-bag scalar defaulting; omitted-`plugins` = empty
-/// list), the ESTree serialization helpers, and the JSON-string map parsing.
-/// The descriptor-loop / promise-wiring paths touch napi FFI (reference
-/// rooting, `napi_is_promise`) and are only observable through a JS runtime —
-/// that surface is exercised by the options-injection tests in
-/// `tests/telarel/test/compile.test.ts`.
+/// list) and the bag/release-list bookkeeping. The ESTree serialization and
+/// map parsing live in `crate::ast` and are tested there. The descriptor-loop /
+/// promise-wiring paths touch napi FFI (reference rooting, `napi_is_promise`)
+/// and are only observable through a JS runtime — that surface is exercised by
+/// the options-injection tests in `tests/telarel/test/compile.test.ts`.
 #[cfg(test)]
 mod tests {
-    use telarel_common::{Language, ParseAstOptions, SourceType, parse_ast};
+    use telarel_common::{Language, SourceType};
 
     use crate::plugin::hooks::RefList;
 
@@ -937,34 +853,6 @@ mod tests {
             source_map: None,
             plugins: None,
         }
-    }
-
-    fn fixture_ast(code: &str) -> Ast {
-        parse_ast(
-            code.to_owned(),
-            ParseAstOptions {
-                cwd: String::from("/repo"),
-                file: String::from("a.ts"),
-                language: None,
-                source_type: None,
-                input_map: None,
-            },
-        )
-        .expect("fixture parses")
-    }
-
-    fn sample_map() -> SourceMap {
-        let mut builder: oxc_sourcemap::SourceMapBuilder<'_> =
-            oxc_sourcemap::SourceMapBuilder::default();
-
-        builder.set_file("upstream.ts");
-
-        let source_id: u32 =
-            builder.add_source_and_content("upstream.ts", "const a = 1;");
-
-        builder.add_token(0, 0, 0, 0, Some(source_id), None);
-
-        builder.into_owned_sourcemap().into_inner()
     }
 
     #[test]
@@ -1167,122 +1055,5 @@ mod tests {
             outcome.expect_err("an invalid source type is the hook error");
 
         assert!(error.to_string().contains("invalid source type"), "{error}");
-    }
-
-    #[test]
-    fn test_ast_to_estree_json_ascii_is_identity() {
-        let ast: Ast = fixture_ast("const a = 1;");
-
-        let json: String = ast_to_estree_json(&ast);
-
-        assert!(json.contains(r#""type":"Program""#), "{json}");
-        assert!(json.contains(r#""start":0"#), "{json}");
-    }
-
-    #[test]
-    fn test_ast_from_parse_output_round_trips_ascii() {
-        let ast: Ast = fixture_ast("const a = 1;");
-
-        let json: String = ast_to_estree_json(&ast);
-
-        let program: serde_json::Value =
-            serde_json::from_str(&json).expect("serialized program parses");
-
-        let rebuilt: Ast = ast_from_parse_output(
-            &program,
-            String::from("const a = 1;"),
-            None,
-            ast.source_type(),
-        )
-        .expect("read-back succeeds");
-
-        assert_eq!(rebuilt.source().as_ref(), "const a = 1;");
-        assert_eq!(rebuilt.program().source_text, "const a = 1;");
-        assert!(rebuilt.map().is_none());
-    }
-
-    #[test]
-    fn test_ast_from_parse_output_converts_utf16_spans_to_bytes() {
-        // `日` is three UTF-8 bytes but one UTF-16 code unit: a read-back that
-        // forgot the conversion would misplace every span after it.
-        let ast: Ast = fixture_ast("日a");
-
-        let json: String = ast_to_estree_json(&ast);
-
-        let program: serde_json::Value =
-            serde_json::from_str(&json).expect("serialized program parses");
-
-        let rebuilt: Ast = ast_from_parse_output(
-            &program,
-            String::from("日a"),
-            None,
-            ast.source_type(),
-        )
-        .expect("read-back succeeds");
-
-        assert_eq!(rebuilt.source().as_ref(), "日a");
-
-        // A correct read-back re-serializes to the exact UTF-16 JSON it came
-        // from; a byte/UTF-16 mix-up would shift every span after `日`.
-        assert_eq!(ast_to_estree_json(&rebuilt), json);
-    }
-
-    #[test]
-    fn test_ast_from_parse_output_attaches_returned_map() {
-        let ast: Ast = fixture_ast("const a = 1;");
-
-        let json: String = ast_to_estree_json(&ast);
-
-        let program: serde_json::Value =
-            serde_json::from_str(&json).expect("serialized program parses");
-
-        let input_map: SourceMap = sample_map();
-
-        let rebuilt: Ast = ast_from_parse_output(
-            &program,
-            String::from("const a = 1;"),
-            Some(input_map.to_json_string()),
-            ast.source_type(),
-        )
-        .expect("read-back succeeds");
-
-        let carried: &SourceMap =
-            rebuilt.map().expect("the returned map is attached");
-
-        assert_eq!(carried.to_json_string(), input_map.to_json_string());
-    }
-
-    #[test]
-    fn test_ast_from_parse_output_invalid_map_errors() {
-        let ast: Ast = fixture_ast("const a = 1;");
-
-        let json: String = ast_to_estree_json(&ast);
-
-        let program: serde_json::Value =
-            serde_json::from_str(&json).expect("serialized program parses");
-
-        let outcome: anyhow::Result<Ast> = ast_from_parse_output(
-            &program,
-            String::from("const a = 1;"),
-            Some(String::from("not json")),
-            ast.source_type(),
-        );
-
-        assert!(outcome.is_err());
-    }
-
-    #[test]
-    fn test_parse_json_map_round_trips() {
-        let map: SourceMap = sample_map();
-
-        let parsed: SourceMap =
-            parse_json_map(&map.to_json_string()).expect("map parses");
-
-        assert_eq!(parsed.to_json_string(), map.to_json_string());
-    }
-
-    #[test]
-    fn test_parse_json_map_invalid_errors() {
-        assert!(parse_json_map("not json").is_err());
     }
 }

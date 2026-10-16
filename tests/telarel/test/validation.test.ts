@@ -1,7 +1,6 @@
 import type {
+    CodeResult,
     CommonPluginContext,
-    CompileOptions,
-    CompileResult,
     OptionsArgs,
     Plugin,
     PluginContext,
@@ -16,33 +15,22 @@ describe("validation", (): void => {
         // runs. Pinned observed message: the builtin parser renders a
         // code-frame style diagnostic including the file name and caret
         // position.
-        await expect(
-            compile({
-                cwd: "/repo",
-                file: "index.ts",
-                code: "const = ;",
-                plugins: [
-                    {
-                        name: "force-parse",
-                        transform: (): void => void 0,
-                    },
-                ],
-            }),
-        ).rejects.toThrow("index.ts");
+        const options = {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "force-parse",
+                    transform: (): void => void 0,
+                },
+            ],
+        };
 
-        await expect(
-            compile({
-                cwd: "/repo",
-                file: "index.ts",
-                code: "const = ;",
-                plugins: [
-                    {
-                        name: "force-parse",
-                        transform: (): void => void 0,
-                    },
-                ],
-            }),
-        ).rejects.toThrow(/expected|Unexpected token/i);
+        await expect(compile("const = ;", options)).rejects.toThrow("index.ts");
+
+        await expect(compile("const = ;", options)).rejects.toThrow(
+            /expected|Unexpected token/i,
+        );
     });
 
     it("rejects invalid code with a parse error when no transform plugin exists", async (): Promise<void> => {
@@ -50,35 +38,23 @@ describe("validation", (): void => {
         // code fails with the builtin parser's diagnostic instead of passing
         // through verbatim.
         await expect(
-            compile({
-                cwd: "/repo",
-                file: "index.ts",
-                code: "const = ;",
-            }),
+            compile("const = ;", { cwd: "/repo", file: "index.ts" }),
         ).rejects.toThrow("index.ts");
 
         await expect(
-            compile({
-                cwd: "/repo",
-                file: "index.ts",
-                code: "const = ;",
-            }),
+            compile("const = ;", { cwd: "/repo", file: "index.ts" }),
         ).rejects.toThrow(/expected|Unexpected token/i);
     });
 
-    it("rejects on a missing required compile option", async (): Promise<void> => {
-        // Pinned observed behavior: the napi bridge validates the options
-        // record before the pipeline runs and rejects with a serde-style
-        // `Missing field` error naming the absent field. `cwd` is optional
-        // and defaults to the process working directory, so `code` is the
-        // remaining required field without a default.
-        const noCode: unknown = {
-            cwd: "/repo",
-            file: "index.ts",
-        };
+    it("rejects a non-string source before the pipeline runs", async (): Promise<void> => {
+        // Pinned observed behavior: the bridge validates the source value
+        // before the pipeline runs and rejects with a conversion error naming
+        // the received JavaScript type. The source is a call argument now, so
+        // the equivalent of the old missing-`code` case is a non-string value.
+        const notAString: unknown = void 0;
 
-        await expect(compile(noCode as CompileOptions)).rejects.toThrow(
-            "Missing field `code`",
+        await expect(compile(notAString as string)).rejects.toThrow(
+            "Failed to convert JavaScript value `Undefined` into rust type `String`",
         );
     });
 
@@ -90,10 +66,9 @@ describe("validation", (): void => {
             options: (): null => null,
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [plugin as Plugin],
         });
 
@@ -108,10 +83,9 @@ describe("validation", (): void => {
             options: (): void => void 0,
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [plugin as Plugin],
         });
 
@@ -147,10 +121,9 @@ describe("validation", (): void => {
             },
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [plugin as Plugin],
         });
 
@@ -173,10 +146,9 @@ describe("validation", (): void => {
             }),
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [plugin as Plugin],
         });
 
@@ -188,10 +160,9 @@ describe("validation", (): void => {
         const seen: Array<string> = [];
         let marker: unknown = "__NO_MARKER__";
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "dup",

@@ -1,4 +1,4 @@
-import type { CompileResult } from "telarel";
+import type { CodeResult } from "telarel";
 import type { TransformOptions } from "telarel/plugins/transform";
 
 import * as Fsp from "node:fs/promises";
@@ -352,11 +352,10 @@ type CompileInModeOptions = {
 const compileInMode = async ({
     trigger,
     mode,
-}: CompileInModeOptions): Promise<CompileResult> =>
-    await compile({
+}: CompileInModeOptions): Promise<CodeResult> =>
+    await compile(trigger.code, {
         cwd: "/repo",
         file: trigger.file,
-        code: trigger.code,
         plugins: [transform(inlineMode({ options: trigger.options, mode }))],
     });
 
@@ -374,11 +373,11 @@ const dependencyTriggers: ReadonlyArray<[Trigger, string]> = TRIGGERS.flatMap(
 describe("transform helpers", (): void => {
     for (const trigger of directTriggers) {
         it(`emits and inlines ${trigger.helper}`, async (): Promise<void> => {
-            const runtime: CompileResult = await compileInMode({
+            const runtime: CodeResult = await compileInMode({
                 trigger,
                 mode: "runtime",
             });
-            const inlined: CompileResult = await compileInMode({
+            const inlined: CodeResult = await compileInMode({
                 trigger,
                 mode: "inline",
             });
@@ -405,11 +404,11 @@ describe("transform helpers", (): void => {
 
     for (const [trigger, marker] of dependencyTriggers) {
         it(`inlines dependency ${trigger.helper}`, async (): Promise<void> => {
-            const runtime: CompileResult = await compileInMode({
+            const runtime: CodeResult = await compileInMode({
                 trigger,
                 mode: "runtime",
             });
-            const inlined: CompileResult = await compileInMode({
+            const inlined: CodeResult = await compileInMode({
                 trigger,
                 mode: "inline",
             });

@@ -1,4 +1,4 @@
-import type { CompileOptions, CompileResult, Plugin } from "telarel";
+import type { CodeResult, CompileOptions, Plugin } from "telarel";
 
 import * as Fs from "node:fs";
 import * as Path from "node:path";
@@ -26,14 +26,11 @@ const fixtures: Array<{ code: string; name: string }> = ["react-page.tsx"].map(
     },
 );
 
-const compileOptions = (code: string): CompileOptions => {
-    return {
-        file: "index.tsx",
-        code,
-    };
+const compileOptions: CompileOptions = {
+    file: "index.tsx",
 };
 
-const sanity: CompileResult = await compile(compileOptions("const a = 1;"));
+const sanity: CodeResult = await compile("const a = 1;", compileOptions);
 
 if (sanity.code.length === 0) {
     throw new Error("sanity compile produced empty code");
@@ -44,8 +41,8 @@ const benchCase = (name: string, pluginList: Array<Plugin>): void => {
         // oxlint-disable-next-line vitest/expect-expect
         test(`${name} / ${fixture.name}`, async ({ bench }): Promise<void> => {
             await bench(`${name} / ${fixture.name}`, async (): Promise<void> => {
-                const result: CompileResult = await compile({
-                    ...compileOptions(fixture.code),
+                const result: CodeResult = await compile(fixture.code, {
+                    ...compileOptions,
                     plugins: pluginList,
                 });
                 if (result.code.length === 0) {

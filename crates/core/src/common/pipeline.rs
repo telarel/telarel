@@ -22,7 +22,7 @@ use telarel_plugin::{
 };
 
 /// The stage plan of one public entry point.
-pub(crate) trait Stage {
+pub trait Stage {
     /// The entry point's result type.
     type Output;
 
@@ -249,8 +249,8 @@ async fn finish<T>(
 }
 
 /// `parse`: only the `parse` stage.
-pub(crate) struct ParseStage {
-    pub(crate) code: String,
+pub struct ParseStage {
+    pub code: String,
 }
 
 impl Stage for ParseStage {
@@ -267,8 +267,8 @@ impl Stage for ParseStage {
 }
 
 /// `rewrite`: input-map attach, then `prepare` → `transform` → `finalize`.
-pub(crate) struct RewriteStage {
-    pub(crate) ast: Ast,
+pub struct RewriteStage {
+    pub ast: Ast,
 }
 
 impl Stage for RewriteStage {
@@ -289,8 +289,8 @@ impl Stage for RewriteStage {
 }
 
 /// `generate`: input-map attach, then the `generate` stage.
-pub(crate) struct GenerateStage {
-    pub(crate) ast: Ast,
+pub struct GenerateStage {
+    pub ast: Ast,
 }
 
 impl Stage for GenerateStage {
@@ -310,8 +310,8 @@ impl Stage for GenerateStage {
 
 /// `compile_from_ast`: input-map attach, `prepare` → `transform` →
 /// `finalize`, then `generate`.
-pub(crate) struct CompileFromAstStage {
-    pub(crate) ast: Ast,
+pub struct CompileFromAstStage {
+    pub ast: Ast,
 }
 
 impl Stage for CompileFromAstStage {
@@ -333,8 +333,8 @@ impl Stage for CompileFromAstStage {
 
 /// `compile`: `parse`, then `prepare` → `transform` → `finalize`, then
 /// `generate`.
-pub(crate) struct CompileStage {
-    pub(crate) code: String,
+pub struct CompileStage {
+    pub code: String,
 }
 
 impl Stage for CompileStage {
@@ -356,7 +356,7 @@ impl Stage for CompileStage {
 }
 
 /// Run the shared skeleton around `stage`.
-pub(crate) async fn run<S: Stage>(
+pub async fn run<S: Stage>(
     stage: S,
     options: ResolvableOptions,
     plugins: Vec<SharedPluginable>,

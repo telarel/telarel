@@ -9,10 +9,11 @@ use napi::sys;
 use napi::threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunction};
 use napi::{Env, Error, Result, Status};
 
+use crate::_types::ast::JsAst;
 use crate::_types::plugin::context::JsPluginContext;
 use crate::_types::plugin::hooks::{
     JsAstArgs, JsCodeOutput, JsEndArgs, JsGenerateArgs, JsParseArgs,
-    JsParseOutput, JsStartArgs, JsTransformOutput,
+    JsParseOutput, JsResolvedOptions, JsStartArgs, JsTransformOutput,
 };
 
 /// A TSFN bridging one JS hook.
@@ -71,7 +72,7 @@ macro_rules! for_each_hook_slot {
         $macro_name! {
             $($extra,)*
             {
-                (options, Options, crate::_types::options::JsOptions, Option<crate::_types::plugin::hooks::JsOptionsOutput>, 0),
+                (options, Options, crate::plugin::hooks::OptionsCall, Option<crate::_types::plugin::hooks::JsOptionsOutput>, 0),
                 (start, Start, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsStartArgs>, napi::bindgen_prelude::Undefined, 1),
                 (parse, Parse, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsParseArgs>, Option<crate::_types::plugin::hooks::JsParseOutput>, 2),
                 (prepare, Prepare, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsAstArgs>, napi::bindgen_prelude::Undefined, 3),
@@ -93,7 +94,7 @@ macro_rules! hook_slots {
 macro_rules! hook_slots_rows {
     ({ $(($name:ident, $Name:ident, $args:ty, $ret:ty, $slot:literal)),* $(,)? }) => {
         $( // Declarative slot metadata; the `options` hook's `Args` is the
-           // `JsOptions` shape emitted by `OptionsCall`.
+           // `OptionsCall` payload producer.
             #[allow(dead_code)]
             pub mod $name {
             /// Slot index of the hook in the plugin slot table.
@@ -221,8 +222,8 @@ pub fn release_refs(
 ///   array, each plugin object). The `options` hook APPENDS late plugins'
 ///   references — plugins injected by the fixpoint — as they are wrapped and
 ///   registered, BEFORE the driver is built;
-///   [`crate::tasks::compile::CompileTask::finally`] drains the list once the
-///   compile settles, so mid-compile additions are still released.
+///   [`crate::tasks::function::FunctionTask::finally`] drains the list once
+///   the call settles, so mid-call additions are still released.
 /// - `bag_descriptors` — a VIEW of the CURRENT bag's plugin descriptors, one
 ///   per plugin in the `OptionsArgs` being folded. Entries are
 ///   `SharedRef` clones that SHARE the same roots as the release list (the
@@ -230,18 +231,10 @@ pub fn release_refs(
 ///   [`RefList::set_bag`] (entry seed, then each returned bag).
 #[derive(Default)]
 pub struct RefList {
-    /// Rooted references drained in `CompileTask::finally`.
+    /// Rooted references drained in `FunctionTask::finally`.
     refs: Mutex<Vec<SharedRef>>,
     /// The current bag's descriptor view; see the type's docs.
     bag_descriptors: Mutex<Vec<SharedRef>>,
-    /// The compile's source text.
-    ///
-    /// TEMPORARY ADAPTER (Task-4 deletion target): the reshape removed `code`
-    /// from `ResolvedOptions`, so the adapter records the compile input here
-    /// (the one per-compile handle every bridged `JsPlugin` already shares)
-    /// and the `start` payload reads it back. Task 4 deletes this slot with
-    /// the rest of the adapter.
-    source_code: Mutex<Option<SharedStr>>,
 }
 
 unsafe impl Send for RefList {}
@@ -276,26 +269,6 @@ impl RefList {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
-    }
-
-    /// Record the compile's source text for the `start` hook payload.
-    ///
-    /// TEMPORARY ADAPTER (Task-4 deletion target); see the `source_code` field.
-    pub fn set_source_code(
-        &self,
-        code: SharedStr,
-    ) {
-        let mut slot: MutexGuard<'_, Option<SharedStr>> =
-            self.source_code.lock().unwrap_or_else(PoisonError::into_inner);
-
-        *slot = Some(code);
-    }
-
-    /// The compile's source text, when recorded.
-    ///
-    /// TEMPORARY ADAPTER (Task-4 deletion target); see the `source_code` field.
-    pub fn source_code(&self) -> Option<SharedStr> {
-        self.source_code.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
     /// Root a JS object and push its reference onto the release list.
@@ -364,6 +337,9 @@ pub struct OptionsCall {
     pub language: SharedStr,
     /// The module system of the code.
     pub source_type: SharedStr,
+    /// The source-map inputs and outputs requested so far, as the JS union;
+    /// `None` (unspecified) is omitted from the payload.
+    pub source_map: Option<serde_json::Value>,
     /// The CURRENT bag's plugin descriptors, snapshotted at call time; the
     /// JS-thread payload materializes the ARRAY from this exact list (NOT
     /// the accumulating release list — see the binding contract).
@@ -384,6 +360,12 @@ impl ToNapiValue for OptionsCall {
         object.set("language", val.language)?;
         object.set("sourceType", val.source_type)?;
 
+        // An omitted `sourceMap` means "unspecified" on the wire; only a
+        // requested map is transmitted.
+        if let Some(source_map) = val.source_map {
+            object.set("sourceMap", source_map)?;
+        }
+
         let descriptors: Vec<Object<'static>> = val
             .plugins
             .iter()
@@ -402,7 +384,7 @@ impl ToNapiValue for OptionsCall {
 }
 
 /// TSFN bridging the `options` hook. Its payload is emitted by
-/// [`OptionsCall`] in the `JsOptions` shape (the slot table's `Args`); the
+/// [`OptionsCall`] (the slot table's `Args`); the
 /// `plugins` property is the CURRENT bag's plugin descriptors.
 /// The RAW `options` hook is async: it returns a promise carrying
 /// `Option<JsOptionsOutput>`, delivered RAW (see
@@ -456,18 +438,12 @@ pub struct StartCall {
     pub cwd: SharedStr,
     /// The file being compiled.
     pub file: SharedStr,
-    /// The compile's source text.
-    ///
-    /// TEMPORARY ADAPTER (Task-4 deletion target): the reshape removed `code`
-    /// from `ResolvedOptions`, so the adapter threads the compile's input here
-    /// from the per-compile state to keep the JS-observable payload unchanged.
-    pub code: SharedStr,
     /// The grammar of the code, resolved.
     pub language: SharedStr,
     /// The module system of the code, resolved.
     pub source_type: SharedStr,
-    /// The settled plugin-name list, after the options fixpoint.
-    pub plugins: Vec<String>,
+    /// The JS-facing resolved options, including the requested source map.
+    pub options: JsResolvedOptions,
 }
 
 impl HookCall for StartCall {
@@ -482,16 +458,7 @@ impl HookCall for StartCall {
             self.source_type.clone(),
         )?;
 
-        let payload: JsStartArgs = JsStartArgs {
-            options: crate::_types::plugin::hooks::JsResolvedOptions {
-                cwd: self.cwd.as_str().to_owned(),
-                file: self.file.as_str().to_owned(),
-                code: self.code.as_str().to_owned(),
-                language: self.language.as_str().to_owned(),
-                source_type: self.source_type.as_str().to_owned(),
-                plugins: self.plugins,
-            },
-        };
+        let payload: JsStartArgs = JsStartArgs { options: self.options };
 
         Ok((context, payload))
     }
@@ -515,7 +482,7 @@ pub struct ParseCall {
     /// The module system of the code.
     pub source_type: SharedStr,
     /// The JS-facing resolved parser options.
-    pub options: crate::_types::plugin::hooks::JsParserOptions,
+    pub options: crate::_types::plugin::hooks::JsParserHookOptions,
 }
 
 impl HookCall for ParseCall {
@@ -636,10 +603,10 @@ pub struct GenerateCall {
     pub language: SharedStr,
     /// The module system of the code.
     pub source_type: SharedStr,
-    /// The AST as a JSON string.
-    pub ast_json: String,
+    /// The AST as a normalized object.
+    pub ast: JsAst,
     /// The JS-facing resolved generator options.
-    pub options: crate::_types::plugin::hooks::JsGeneratorOptions,
+    pub options: crate::_types::plugin::hooks::JsGeneratorHookOptions,
 }
 
 impl HookCall for GenerateCall {
@@ -655,7 +622,7 @@ impl HookCall for GenerateCall {
         )?;
 
         let payload: JsGenerateArgs =
-            JsGenerateArgs { ast_json: self.ast_json, options: self.options };
+            JsGenerateArgs { ast: self.ast, options: self.options };
 
         Ok((context, payload))
     }
@@ -745,8 +712,8 @@ where
 
 /// Scan the `options` hook slot on a JS plugin object and bridge its function
 /// into a TSFN. The `options` hook runs before any context exists, so its
-/// payload is the `OptionsCall` data itself (emitted in the `JsOptions` shape,
-/// carrying the rooted plugin array instead of a context).
+/// payload is the `OptionsCall` data itself (carrying the rooted plugin array
+/// instead of a context).
 pub fn scan_options(object: &Object<'static>) -> Result<Option<OptionsTsfn>> {
     let Some(function) = object.get::<Function<
         '_,
@@ -819,7 +786,6 @@ pub(crate) use hook_scan;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin::hooks::SharedStr;
 
     #[test]
     fn test_hook_slots_are_sequential() {
@@ -871,33 +837,33 @@ mod tests {
     }
 
     #[test]
-    fn test_ref_list_source_code_round_trips() {
-        let refs: RefList = RefList::new();
-
-        assert!(refs.source_code().is_none());
-
-        refs.set_source_code(SharedStr::new("const a = 1;"));
-
-        assert_eq!(
-            refs.source_code().expect("recorded").as_str(),
-            "const a = 1;"
-        );
-    }
-
-    #[test]
-    fn test_start_call_payload_carries_code() {
+    fn test_start_call_payload_carries_resolved_options() {
         let call: StartCall = StartCall {
             cwd: SharedStr::new("/repo"),
             file: SharedStr::new("index.ts"),
-            code: SharedStr::new("const a = 1;"),
             language: SharedStr::new("ts"),
-            source_type: SharedStr::new("unambiguous"),
-            plugins: vec![String::from("observe")],
+            source_type: SharedStr::new("module"),
+            options: JsResolvedOptions {
+                cwd: String::from("/repo"),
+                file: String::from("index.ts"),
+                language: String::from("ts"),
+                source_type: String::from("module"),
+                source_map: serde_json::json!({
+                    "input": "auto",
+                    "output": "both",
+                }),
+                plugins: vec![String::from("observe")],
+            },
         };
 
         let (_context, payload) = call.into_payload().expect("payload builds");
 
-        assert_eq!(payload.options.code, "const a = 1;");
         assert_eq!(payload.options.file, "index.ts");
+        assert_eq!(payload.options.cwd, "/repo");
+        assert_eq!(payload.options.plugins, vec![String::from("observe")]);
+        assert_eq!(
+            payload.options.source_map,
+            serde_json::json!({ "input": "auto", "output": "both" })
+        );
     }
 }

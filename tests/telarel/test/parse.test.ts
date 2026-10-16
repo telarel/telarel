@@ -1,0 +1,260 @@
+import type {
+    AstResult,
+    ParseArgs,
+    ParserOptions,
+    Plugin,
+    PluginContext,
+} from "telarel";
+
+import * as Fsp from "node:fs/promises";
+import * as Path from "node:path";
+
+import { generate, parse } from "telarel";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+    appendInlineMap,
+    buildMap,
+    makeTempDir,
+    removeTempDir,
+} from "#/functions/sourcemap";
+
+const tempDirs: Array<string> = [];
+
+const tempDir = async (): Promise<string> => {
+    const directory: string = await makeTempDir("telarel-parse-");
+
+    tempDirs.push(directory);
+
+    return directory;
+};
+
+afterEach(async (): Promise<void> => {
+    await Promise.all(tempDirs.splice(0).map(removeTempDir));
+});
+
+const upstreamMap = (): ReturnType<typeof buildMap> =>
+    buildMap({
+        file: "upstream.ts",
+        mappings: "AASA",
+        names: [],
+        sources: ["upstream.ts"],
+        sourcesContent: ["const a = 1;"],
+    });
+
+describe("parse", (): void => {
+    it("returns the source and program in an AST result", async (): Promise<void> => {
+        const result: AstResult = await parse("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+        });
+
+        expect(result.ast.code).toBe("const a = 1;");
+        expect(result.ast.program.type).toBe("Program");
+        // Input maps are off by default: no map is attached.
+        expect(result.ast.map).toBeUndefined();
+    });
+
+    it("round-trips the parsed program through generate", async (): Promise<void> => {
+        const parsed: AstResult = await parse("const a = 1;", {
+            file: "index.ts",
+        });
+
+        const fromAst = await generate(parsed.ast, { file: "index.ts" });
+        const fromProgram = await generate(
+            parsed.ast.program,
+            parsed.ast.code,
+            {
+                file: "index.ts",
+            },
+        );
+
+        expect(fromAst.code).toBe("const a = 1;");
+        expect(fromProgram.code).toBe("const a = 1;");
+    });
+
+    it("rejects invalid code with a file-context parse error", async (): Promise<void> => {
+        await expect(
+            parse("const = ;", { cwd: "/repo", file: "index.ts" }),
+        ).rejects.toThrow("index.ts");
+
+        await expect(
+            parse("const = ;", { cwd: "/repo", file: "index.ts" }),
+        ).rejects.toThrow(/expected|Unexpected token/i);
+    });
+
+    it("fires options, start, parse, and end exactly once", async (): Promise<void> => {
+        const seen: Array<string> = [];
+
+        await parse("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "observer",
+                    options: (): void => {
+                        seen.push("options");
+                    },
+                    start: (): void => {
+                        seen.push("start");
+                    },
+                    parse: (): void => {
+                        seen.push("parse");
+                    },
+                    prepare: (): void => {
+                        seen.push("prepare");
+                    },
+                    transform: (): void => {
+                        seen.push("transform");
+                    },
+                    finalize: (): void => {
+                        seen.push("finalize");
+                    },
+                    generate: (): void => {
+                        seen.push("generate");
+                    },
+                    end: (): void => {
+                        seen.push("end");
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["options", "start", "parse", "end"]);
+    });
+
+    it("exposes the code and resolved parser options to the parse hook", async (): Promise<void> => {
+        const seen: Array<{ keys: Array<string>; options: ParserOptions }> = [];
+
+        await parse("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "observe-parse",
+                    parse: (_ctx: PluginContext, args: ParseArgs): void => {
+                        seen.push({
+                            keys: Object.keys(args),
+                            options: args.options,
+                        });
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toHaveLength(1);
+        expect(seen[0]?.keys).toEqual(["code", "options"]);
+        expect(seen[0]?.options.file).toBe("index.ts");
+        expect(seen[0]?.options.cwd).toBe("/repo");
+        expect(seen[0]?.options.language).toBe("ts");
+        expect(seen[0]?.options.sourceType).toBe("unambiguous");
+    });
+
+    it("attaches a value input map to the AST", async (): Promise<void> => {
+        const result: AstResult = await parse("const a = 1;", {
+            file: "index.ts",
+            sourceMap: { input: upstreamMap() },
+        });
+
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+        expect(result.ast.map?.mappings).toBe("AASA");
+    });
+
+    it("attaches an inline input map from a code comment", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+
+        const result: AstResult = await parse(code, {
+            file: "index.ts",
+            sourceMap: { input: "inline" },
+        });
+
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+    });
+
+    it("attaches an external input map read next to the source", async (): Promise<void> => {
+        const directory: string = await tempDir();
+
+        await Fsp.writeFile(
+            Path.join(directory, "index.ts.map"),
+            JSON.stringify(upstreamMap()),
+            "utf-8",
+        );
+
+        const result: AstResult = await parse("const a = 1;", {
+            cwd: directory,
+            file: "index.ts",
+            sourceMap: { input: "external" },
+        });
+
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+    });
+
+    it("prefers the inline map in auto mode and falls back to external", async (): Promise<void> => {
+        const directory: string = await tempDir();
+
+        await Fsp.writeFile(
+            Path.join(directory, "index.ts.map"),
+            JSON.stringify(upstreamMap()),
+            "utf-8",
+        );
+
+        const inlineMap = buildMap({
+            file: "inline.ts",
+            mappings: "AAAA",
+            sources: ["inline.ts"],
+        });
+
+        const fromInline: AstResult = await parse(
+            appendInlineMap("const a = 1;", inlineMap),
+            {
+                cwd: directory,
+                file: "index.ts",
+                sourceMap: { input: "auto" },
+            },
+        );
+
+        expect(fromInline.ast.map?.sources).toEqual(["inline.ts"]);
+
+        const fromExternal: AstResult = await parse("const a = 1;", {
+            cwd: directory,
+            file: "index.ts",
+            sourceMap: { input: "auto" },
+        });
+
+        expect(fromExternal.ast.map?.sources).toEqual(["upstream.ts"]);
+    });
+
+    it("attaches no map in auto mode when none is available", async (): Promise<void> => {
+        const directory: string = await tempDir();
+
+        const result: AstResult = await parse("const a = 1;", {
+            cwd: directory,
+            file: "index.ts",
+            sourceMap: { input: "auto" },
+        });
+
+        expect(result.ast.map).toBeUndefined();
+    });
+
+    it("rejects a plugin with a missing name", async (): Promise<void> => {
+        const nameless: unknown = { prepare: (): void => {} };
+
+        await expect(
+            parse("const a = 1;", {
+                file: "index.ts",
+                plugins: [nameless as Plugin],
+            }),
+        ).rejects.toThrow("plugin.name must be a non-empty string");
+    });
+
+    it("rejects a bare function plugin entry", async (): Promise<void> => {
+        const factory: Plugin = (() => void 0) as unknown as Plugin;
+
+        await expect(
+            parse("const a = 1;", {
+                file: "index.ts",
+                plugins: [factory],
+            }),
+        ).rejects.toThrow("pass a plugin object, not a factory");
+    });
+});

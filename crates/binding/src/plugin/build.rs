@@ -23,7 +23,7 @@ pub const NAME_REQUIRED: &str = "plugin `name` is required";
 ///
 /// The caller roots the descriptor's reference (the entry bridge seeds the
 /// list first; the `options` hook pushes late descriptors as it wraps) and
-/// the release list drains in `CompileTask::finally`.
+/// the release list drains in the function task's `finally`.
 pub fn bridge_plugin(
     object: &napi::bindgen_prelude::Object<'static>,
     refs: &Arc<RefList>,

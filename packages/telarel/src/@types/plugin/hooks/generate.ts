@@ -1,5 +1,4 @@
-import type { Program } from "@oxc-project/types";
-
+import type { Ast } from "#/@types/ast";
 import type { GeneratorOptions } from "#/@types/generator";
 
 /**
@@ -9,7 +8,7 @@ type GenerateArgs = {
     /**
      * The final AST to generate from.
      */
-    ast: Program;
+    ast: Ast;
     /**
      * Resolved generator options.
      */

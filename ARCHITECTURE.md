@@ -175,7 +175,7 @@ pub async fn compile(
 ) -> Result<CodeResult, CompileError>;
 ```
 
-All five share one pipline ([`crates/core/src/common/pipeline.rs`](./crates/core/src/common/pipeline.rs)): convert the options to [`ResolvableOptions`](./crates/common/src/_types/options/resolvable.rs#L12), run the `options` fixpoint, resolve to [`ResolvedOptions`](./crates/common/src/_types/options/resolved.rs#L7), build the driver, run `start`, run the entry point's stages inline, then run `end`. Stages are never run by re-entering another entry point, so `options`, `start`, and `end` fire exactly once per invocation. A `start` failure still runs `end`; the only path that skips `end` is a failed `options` fixpoint, where no driver exists yet.
+All five share one pipeline ([`crates/core/src/common/pipeline.rs`](./crates/core/src/common/pipeline.rs)): convert the options to [`ResolvableOptions`](./crates/common/src/_types/options/resolvable.rs#L12), run the `options` fixpoint, resolve to [`ResolvedOptions`](./crates/common/src/_types/options/resolved.rs#L7), build the driver, run `start`, run the entry point's stages inline, then run `end`. Stages are never run by re-entering another entry point, so `options`, `start`, and `end` fire exactly once per invocation. A `start` failure still runs `end`; the only path that skips `end` is a failed `options` fixpoint, where no driver exists yet.
 
 Each entry point runs only its own stages:
 
@@ -218,19 +218,76 @@ The code-entry functions (`parse`, `compile`) resolve the input map inside the b
 
 When the winning hook produced no map, the code is returned byte-identical in every mode — no identity map is ever fabricated.
 
+## JS API
+
+The binding registers seven async NAPI functions, each wrapping one core entry point or a builtin primitive:
+
+| NAPI function                   | Wraps                                   |
+| ------------------------------- | --------------------------------------- |
+| `parse(code, options)`          | `core::parse`                           |
+| `compile(code, options)`        | `core::compile`                         |
+| `rewrite(ast, options)`         | `core::rewrite`                         |
+| `generate(ast, options)`        | `core::generate`                        |
+| `compileFromAst(ast, options)`  | `core::compile_from_ast`                |
+| `builtinParse(code, options)`   | `Parser::new(code, opts).parse()`       |
+| `builtinGenerate(ast, options)` | `Generator::new(&ast, opts).generate()` |
+
+No NAPI function takes `code` inside an options object: the source is the first argument for `parse`/`compile`/`builtinParse`, and the AST is the first argument for `rewrite`/`generate`/`compileFromAst`/`builtinGenerate`. Every options object is code-free. The plugin-running functions carry `cwd?`, `file?`, `language?` (absent on `generate`), `sourceType?` (absent on `generate`), `sourceMap?`, and `plugins`; the builtin pair carries the same scalars minus `plugins`, since it never runs the plugin chain.
+
+The AST crosses the NAPI boundary as a normalized object pair:
+
+```ts
+interface JsAstInput {
+    program: unknown;
+    code: string;
+    map?: JsSourceMap;
+}
+interface JsAst {
+    program: unknown;
+    code: string;
+    map?: JsSourceMap;
+}
+interface JsAstResult {
+    ast: JsAst;
+}
+interface JsCodeResult {
+    code: string;
+    map?: JsSourceMap;
+}
+```
+
+`program` is the ESTree program object, `code` is the source text its spans anchor to, and `map` is the optional input source map. [`packages/telarel`](./packages/telarel/src/index.ts) wraps the seven functions in the public surface:
+
+```ts
+compile(code, options?): Promise<CodeResult>;
+parse(code, options?): Promise<AstResult>;
+rewrite(ast, options?): Promise<AstResult>;
+rewrite(program, code, options?): Promise<AstResult>;
+generate(ast, options?): Promise<CodeResult>;
+generate(program, code, options?): Promise<CodeResult>;
+compileFromAst(ast, options?): Promise<CodeResult>;
+compileFromAst(program, code, options?): Promise<CodeResult>;
+createParser(code, options): { parse(): Promise<AstResult> };
+createGenerator(ast, options): { generate(): Promise<CodeResult> };
+```
+
+The `rewrite`/`generate`/`compileFromAst` overloads discriminate on the first argument: a normalized [`Ast`](./packages/telarel/src/@types/ast.ts#L9) carries a `program` property, a bare ESTree `Program` does not, so the `(program, code, options?)` form wraps the program with its source text ([`normalizeAstInput`](./packages/telarel/src/functions/ast-input.ts#L18)). `createParser`/`createGenerator` are thin builtin-only wrappers over `builtinParse`/`builtinGenerate`.
+
 ## JS Plugin Bridge
 
-The [binding](./crates/binding/src/plugin/pluginable.rs#L341) wraps JS plugin objects in `Pluginable` implementations that call JS through thread-safe function calls (TSFNs). The AST crosses the boundary as a JSON-serialized ESTree string via `oxc_estree_codec`:
+The [binding](./crates/binding/src/plugin/pluginable.rs#L51) wraps JS plugin objects in `Pluginable` implementations that call JS through thread-safe function calls (TSFNs). The AST crosses the boundary in two aligned forms. The `parse` hook return and the `generate` hook args/returns use the normalized object (the same `{ program, code, map? }` shape as `JsAst`), so a hook can return a `createParser(...).parse()` or `createGenerator(...).generate()` result verbatim; the `prepare`, `transform`, and `finalize` hooks carry the program as a JSON-serialized ESTree string (`astJson`) via `oxc_estree_codec`:
 
 ```mermaid
 flowchart LR
-    P["Rust: Program"] -- serialize --> S["JSON string"] -- parse --> E["JS: ESTree AST"]
-    E -- stringify --> S -- deserialize --> P
+    P["Rust: Ast"] -- normalize --> O["JS: { program, code, map? }"]
+    O -- normalize --> P
+    P -- serialize --> S["JS: astJson string"]
+    S -- deserialize --> P
 ```
 
-The JS `options` hook receives the bag and the wrapper maps each user hook's return value to the raw output shape the binding expects; the binding unmarshals it back into the pipeline types.
+The JS `options` hook receives the code-free options bag (carried fields only; an omitted field means "leave unspecified") and the wrapper maps each user hook's return value to the raw output shape the binding expects; the binding unmarshals it back into the pipeline types.
 
-The JS `transform` hook send the returned AST as `astJson`. The binding keeps an equality short-circuit (`ast_json` unchanged -> `None`) as defense in depth for raw/unwrapped plugins.
+The JS `transform` hook sends the returned AST as `astJson`. The binding keeps an equality short-circuit (`ast_json` unchanged -> `None`) as defense in depth for raw/unwrapped plugins.
 
 Every `Plugin` hook is an [`ObjectHook<T>`](./packages/telarel/src/@types/plugin/index.ts#L26), i.e. `T | { order?: "pre" | "post"; handler: T }`. The [wrapper](./packages/telarel/src/bridges/normalize-hook.ts#L23) splits it into a handler plus a `<hook>Meta` sibling read by the binding.
 
@@ -276,9 +333,7 @@ The [binding](./crates/binding/src/plugin/build.rs) routes a plugin to its Rust 
 
 ## Execution Model
 
-Every hook future is `Send` (`HookFuture`); the transform future crosses threads carrying only a read-only `&Ast`, because the AST is an owned value that bundles its own arena. On native, each `compile` call runs on a libuv worker thread and `block_on`s a per-thread, reused current-thread Tokio runtime ([`block_on_compile`](./crates/binding/src/tasks/mod.rs), used by [`CompileTask`](./crates/binding/src/tasks/compile.rs#L15)).
-
-The binding keeps the old JS-visible `compile(options)` surface alive through a temporary adapter, marked `TEMPORARY ADAPTER (Task-4 deletion target)`: the source text is lifted out of the options bag and passed as `core::compile`'s first argument. Task 4 deletes the adapter and lands the real JS surface.
+Every hook future is `Send` (`HookFuture`); the transform future crosses threads carrying only a read-only `&Ast`, because the AST is an owned value that bundles its own arena. On native, every NAPI entry point runs its whole call on a libuv worker thread through a shared [`FunctionTask`](./crates/binding/src/tasks/function.rs#L23), which `block_on`s a per-thread, reused current-thread Tokio runtime ([`block_on_compile`](./crates/binding/src/tasks/mod.rs#L20)).
 
 The same TSFN-based binding also works with `wasm32-wasip1-threads`, and the JS test suite runs against both backends.
 

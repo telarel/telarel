@@ -1,6 +1,6 @@
 import type {
+    CodeResult,
     CommonPluginContext,
-    CompileResult,
     OptionsArgs,
     Plugin,
     PluginContext,
@@ -17,10 +17,9 @@ describe("ordering", (): void => {
         const seenPrepare: Array<string> = [];
         const seenTransform: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "a",
@@ -73,10 +72,9 @@ describe("ordering", (): void => {
         const seenPrepare: Array<string> = [];
         const seenFinalize: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "meta",
@@ -113,10 +111,9 @@ describe("ordering", (): void => {
     it("keeps plain hooks in the normal bucket in registration order", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "plain-a",
@@ -165,11 +162,10 @@ describe("ordering", (): void => {
             },
         };
 
-        const build = async (): Promise<CompileResult> =>
-            await compile({
+        const build = async (): Promise<CodeResult> =>
+            await compile("const a = 1;", {
                 cwd: "/repo",
                 file: "index.ts",
-                code: "const a = 1;",
                 plugins: [sideways as Plugin],
             });
 
@@ -215,10 +211,9 @@ describe("ordering", (): void => {
             },
         });
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [prePlugin(), ...shared(), postPlugin()],
         });
 
@@ -241,10 +236,9 @@ describe("ordering", (): void => {
             collect("my-b"),
         ];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [myPlugins(), collect("my-c"), [collect("my-d")]],
         });
 
@@ -255,10 +249,9 @@ describe("ordering", (): void => {
     it("skips falsy conditional plugin entries", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 false,
                 null,
@@ -285,10 +278,9 @@ describe("ordering", (): void => {
     it("awaits promise plugin entries", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 Promise.resolve({
                     name: "promised",
@@ -314,11 +306,10 @@ describe("ordering", (): void => {
     it("rejects a bare function plugin entry", async (): Promise<void> => {
         const factory: Plugin = (() => void 0) as unknown as Plugin;
 
-        const build = async (): Promise<CompileResult> =>
-            await compile({
+        const build = async (): Promise<CodeResult> =>
+            await compile("const a = 1;", {
                 cwd: "/repo",
                 file: "index.ts",
-                code: "const a = 1;",
                 plugins: [factory],
             });
 
@@ -331,10 +322,9 @@ describe("ordering", (): void => {
     it("runs pre options hooks before normal and applies last-wins", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "normal",
@@ -385,10 +375,9 @@ describe("ordering", (): void => {
     it("orders start hooks across plugins", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "normal",
@@ -424,10 +413,9 @@ describe("ordering", (): void => {
     it("orders end hooks across plugins", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "normal",
@@ -463,10 +451,9 @@ describe("ordering", (): void => {
     it("orders finalize hooks across plugins", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "normal",
@@ -502,10 +489,9 @@ describe("ordering", (): void => {
     it("treats an object hook without order as normal", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "normal-object",

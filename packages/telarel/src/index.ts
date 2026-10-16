@@ -1,18 +1,9 @@
 export type { Ast, AstResult, CodeResult } from "#/@types/ast";
 export type { BuiltinPlugin } from "#/@types/builtin";
-export type { CompileOptions, CompileResult } from "#/@types/compile";
 export type { GeneratorOptions } from "#/@types/generator";
 export type { Language, SourceType } from "#/@types/grammar";
 export type { ParserOptions } from "#/@types/parser";
 export type { ObjectHook, Plugin, PluginOrder } from "#/@types/plugin";
-export type {
-    FalsyPlugin,
-    Options,
-    OptionsArgs,
-    PluginOption,
-    ResolvableOptions,
-    ResolvedOptions,
-} from "#/@types/plugin/options";
 export type {
     CommonPluginContext,
     ModuleInfo,
@@ -29,6 +20,20 @@ export type {
     TransformResult,
 } from "#/@types/plugin/hooks/transform";
 export type {
+    CompileFromAstOptions,
+    CompileOptions,
+    FalsyPlugin,
+    GenerateOptions,
+    Options,
+    OptionsArgs,
+    ParseOptions,
+    PluginOption,
+    ResolvableOptions,
+    ResolvedOptions,
+    RewriteOptions,
+} from "#/@types/plugin/options";
+export type { SourceMap } from "#/@types/sourcemap";
+export type {
     InputSourceMap,
     InputSourceMapMode,
     OutputSourceMap,
@@ -36,6 +41,14 @@ export type {
     OutputSourceMapOptions,
     SourceMapOptions,
 } from "#/@types/source-map";
-export type { SourceMap } from "#/@types/sourcemap";
+export type { Generator } from "#/functions/generator";
+export type { Parser } from "#/functions/parser";
 
+export { compileFromAst } from "#/functions/compile-from-ast";
 export { compile } from "#/functions/compile";
+export { generate } from "#/functions/generate";
+export { createGenerator } from "#/functions/generator";
+export { parse } from "#/functions/parse";
+export { createParser } from "#/functions/parser";
+export { rewrite } from "#/functions/rewrite";
+export { transform } from "#/plugins/transform";

@@ -1,22 +1,31 @@
 mod _types;
+pub mod ast;
 mod functions;
 mod plugin;
 mod tasks;
 
-pub use crate::_types::options::{JsOptions, to_compile_options};
+pub use crate::_types::ast::{JsAst, JsAstInput, JsAstResult};
+pub use crate::_types::options::{
+    JsCompileFromAstOptions, JsCompileOptions, JsGenerateOptions,
+    JsGeneratorOptions, JsParseOptions, JsParserOptions, JsRewriteOptions,
+};
 pub use crate::_types::plugin::context::JsPluginContext;
 pub use crate::_types::plugin::hooks::{
-    JsAstArgs, JsAstOutput, JsCodeOutput, JsEndArgs, JsGenerateArgs,
-    JsGeneratorOptions, JsOptionsOutput, JsParseArgs, JsParseOutput,
-    JsParserOptions, JsResolvedOptions, JsStartArgs, JsTransformOutput,
+    JsAstArgs, JsCodeOutput, JsEndArgs, JsGenerateArgs, JsGeneratorHookOptions,
+    JsOptionsOutput, JsParseArgs, JsParseOutput, JsParserHookOptions,
+    JsResolvedOptions, JsStartArgs, JsTransformOutput,
 };
-pub use crate::_types::results::JsCompileResult;
+pub use crate::_types::results::JsCodeResult;
 pub use crate::_types::sourcemap::JsSourceMap;
-pub use crate::functions::compile::compile;
+pub use crate::functions::{
+    builtin_generate::builtin_generate, builtin_parse::builtin_parse,
+    compile::compile, compile_from_ast::compile_from_ast, generate::generate,
+    parse::parse, rewrite::rewrite,
+};
 pub use crate::plugin::build::{bridge_plugin, to_plugins};
 pub use crate::plugin::hooks::{RefList, SharedRef, SharedStr};
 pub use crate::plugin::pluginable::JsPlugin;
-pub use crate::tasks::compile::CompileTask;
+pub use crate::tasks::function::FunctionTask;
 
 /// The builtin plugins related.
 pub mod builtin {
@@ -71,6 +80,7 @@ pub mod __internal {
         language_label, parse_language, parse_source_type, source_type_label,
     };
     pub use crate::plugin::pluginable::OptionsReturn;
-    pub use crate::tasks::block_on_compile;
-    pub use crate::tasks::error_to_napi;
+    pub use crate::tasks::{
+        anyhow_to_napi, block_on_compile, error_to_napi, run_core,
+    };
 }

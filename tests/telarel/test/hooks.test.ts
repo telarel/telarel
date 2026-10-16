@@ -1,17 +1,19 @@
 import type {
     AstResult,
     CodeResult,
-    CompileResult,
     EndArgs,
     FinalizeArgs,
+    GenerateArgs,
+    Generator,
     ParseArgs,
+    Parser,
     PluginContext,
     PrepareArgs,
     SourceMap,
     TransformArgs,
 } from "telarel";
 
-import { compile } from "telarel";
+import { compile, createGenerator, createParser } from "telarel";
 import { describe, expect, it } from "vitest";
 
 type CaptureProgramOptions = {
@@ -28,10 +30,9 @@ const captureProgram = async ({
 }: CaptureProgramOptions): Promise<unknown> => {
     let snapshot: unknown;
 
-    await compile({
+    await compile(code, {
         cwd: "/repo",
         file: "index.ts",
-        code,
         plugins: [
             {
                 name: "snapshotter",
@@ -54,10 +55,9 @@ describe("hooks", (): void => {
         })) as Program;
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "parser-first",
@@ -98,10 +98,9 @@ describe("hooks", (): void => {
         })) as Program;
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "parser-first",
@@ -134,10 +133,9 @@ describe("hooks", (): void => {
     it("parse: all hooks deferring falls back to the builtin parser", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "defers",
@@ -157,10 +155,9 @@ describe("hooks", (): void => {
 
     it("parse: wraps a hook error with the stage prefix", async (): Promise<void> => {
         await expect(
-            compile({
+            compile("const a = 1;", {
                 cwd: "/repo",
                 file: "index.ts",
-                code: "const a = 1;",
                 plugins: [
                     {
                         name: "boom-parse",
@@ -176,10 +173,9 @@ describe("hooks", (): void => {
     it("generate: first non-null wins and later hooks are ignored", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "gen-first",
@@ -208,10 +204,9 @@ describe("hooks", (): void => {
     it("generate: a null return defers to the builtin generator", async (): Promise<void> => {
         const seen: Array<string> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "gen-defer",
@@ -238,10 +233,9 @@ describe("hooks", (): void => {
             mappings: "AAAA",
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "gen-map",
@@ -260,10 +254,9 @@ describe("hooks", (): void => {
 
     it("generate: wraps a hook error with the stage prefix", async (): Promise<void> => {
         await expect(
-            compile({
+            compile("const a = 1;", {
                 cwd: "/repo",
                 file: "index.ts",
-                code: "const a = 1;",
                 plugins: [
                     {
                         name: "boom-generate",
@@ -280,10 +273,9 @@ describe("hooks", (): void => {
         const prepareKeys: Array<Array<string>> = [];
         const finalizeKeys: Array<Array<string>> = [];
 
-        await compile({
+        await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "prepare-observer",
@@ -310,10 +302,9 @@ describe("hooks", (): void => {
     it("end receives only the error key on the success path", async (): Promise<void> => {
         const seen: Array<{ keys: Array<string>; error: string | null }> = [];
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "end-observer",
@@ -335,10 +326,9 @@ describe("hooks", (): void => {
         const seen: Array<string> = [];
 
         await expect(
-            compile({
+            compile("const a = 1;", {
                 cwd: "/repo",
                 file: "index.ts",
-                code: "const a = 1;",
                 plugins: [
                     {
                         name: "end-observer",
@@ -359,5 +349,94 @@ describe("hooks", (): void => {
         expect(seen).toHaveLength(1);
         expect(seen[0]).toContain("kaboom");
         expect(seen[0]).toContain("transform hook");
+    });
+
+    it("drives a custom language through parse and generate hooks only", async (): Promise<void> => {
+        // The custom source is not valid JS: the builtin parser rejects it.
+        // A plugin `parse` hook supplies an unrelated program, so the run
+        // never reaches the builtin parser, and a plugin `generate` hook
+        // returns the custom output, so it never reaches the builtin
+        // generator either.
+        const custom: string = "greet world!";
+        const program: Program = (await captureProgram({
+            code: "const fromCustom = 1;",
+        })) as Program;
+
+        await expect(
+            compile(custom, { cwd: "/repo", file: "index.ts" }),
+        ).rejects.toThrow("index.ts");
+
+        const result: CodeResult = await compile(custom, {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "custom-language",
+                    parse: (): AstResult => ({
+                        ast: { program, code: custom },
+                    }),
+                    generate: (
+                        _ctx: PluginContext,
+                        args: GenerateArgs,
+                    ): CodeResult => {
+                        // The generate hook sees the AST the parse hook put in
+                        // place, not one built from `custom`.
+                        expect(args.ast.code).toBe(custom);
+
+                        return { code: "// custom output", map: null };
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("// custom output");
+        expect(result.map).toBeNull();
+    });
+
+    it("passes createParser/createGenerator results through hooks verbatim", async (): Promise<void> => {
+        const seen: Array<string> = [];
+
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "builtin-verbatim",
+                    parse: async (
+                        _ctx: PluginContext,
+                        args: ParseArgs,
+                    ): Promise<AstResult> => {
+                        // A hook can drive the builtin parser directly and
+                        // return its result unchanged.
+                        const parser: Parser = createParser(
+                            args.code,
+                            args.options,
+                        );
+
+                        seen.push("parse");
+
+                        return await parser.parse();
+                    },
+                    generate: async (
+                        _ctx: PluginContext,
+                        args: GenerateArgs,
+                    ): Promise<CodeResult> => {
+                        // Likewise for the builtin generator.
+                        const generator: Generator = createGenerator(
+                            args.ast,
+                            args.options,
+                        );
+
+                        seen.push("generate");
+
+                        return await generator.generate();
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["parse", "generate"]);
+        expect(result.code).toBe("const a = 1;");
+        expect(result.map?.version).toBe(3);
     });
 });

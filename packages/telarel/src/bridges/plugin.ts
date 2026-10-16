@@ -52,6 +52,7 @@ type RawOptionsArgs = {
     file: string;
     language: string;
     sourceType: string;
+    sourceMap?: SourceMapOptions;
     plugins: Array<RawPlugin>;
 };
 
@@ -60,6 +61,7 @@ type RawOptionsOutput = {
     file?: string;
     language?: string;
     sourceType?: string;
+    sourceMap?: SourceMapOptions;
     plugins?: Array<RawPlugin>;
 };
 
@@ -67,9 +69,9 @@ type RawStartArgs = {
     options: {
         cwd: string;
         file: string;
-        code: string;
         language: string;
         sourceType: string;
+        sourceMap: SourceMapOptions;
         plugins: Array<string>;
     };
 };
@@ -90,7 +92,7 @@ type RawParseArgs = {
 type RawAstOutput = {
     program: Program;
     code: string;
-    map?: string;
+    map?: SourceMap;
 };
 
 type RawParseOutput = { ast: RawAstOutput } | null;
@@ -102,11 +104,11 @@ type RawGeneratorOptions = {
 };
 
 type RawGenerateArgs = {
-    astJson: string;
+    ast: RawAstOutput;
     options: RawGeneratorOptions;
 };
 
-type RawCodeOutput = { code: string; map?: string } | null;
+type RawCodeOutput = { code: string; map?: SourceMap } | null;
 
 type RawEndArgs = { error?: string };
 
@@ -200,18 +202,6 @@ const toGeneratorOptions = (
     file: rawOptions.file,
     sourceMap: rawOptions.sourceMap,
 });
-
-/**
- * Serialize a source map for the JSON-string wire form, or `void` when there is
- * no map to send.
- */
-const serializeSourceMap = (map: SourceMap | null | void): string | void => {
-    if (map === null || map === void 0) {
-        return void 0;
-    }
-
-    return JSON.stringify(map);
-};
 
 type ToRawPluginOptions = {
     plugin: Plugin | BuiltinPlugin;
@@ -347,6 +337,10 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                 bag.sourceType = rawArgs.sourceType as SourceType;
             }
 
+            if (rawArgs.sourceMap !== void 0) {
+                bag.sourceMap = rawArgs.sourceMap;
+            }
+
             const ctx: CommonPluginContext = {};
 
             const args: OptionsArgs = { options: bag };
@@ -384,6 +378,10 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                 output.sourceType = next.sourceType;
             }
 
+            if (next.sourceMap !== void 0) {
+                output.sourceMap = next.sourceMap;
+            }
+
             return output;
         };
 
@@ -407,9 +405,9 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                 options: {
                     cwd: rawArgs.options.cwd,
                     file: rawArgs.options.file,
-                    code: rawArgs.options.code,
                     language: rawArgs.options.language as Language,
                     sourceType: rawArgs.options.sourceType as SourceType,
+                    sourceMap: rawArgs.options.sourceMap,
                     plugins: rawArgs.options.plugins,
                 },
             };
@@ -452,10 +450,8 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                 code: result.ast.code,
             };
 
-            const map: string | void = serializeSourceMap(result.ast.map);
-
-            if (map !== void 0) {
-                ast.map = map;
+            if (result.ast.map !== void 0) {
+                ast.map = result.ast.map;
             }
 
             return { ast };
@@ -546,10 +542,8 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
             rawCtx: RawPluginContext,
             rawArgs: RawGenerateArgs,
         ): Promise<RawCodeOutput> => {
-            const ast: Program = JSON.parse(rawArgs.astJson) as Program;
-
             const args: GenerateArgs = {
-                ast,
+                ast: rawArgs.ast,
                 options: toGeneratorOptions(rawArgs.options),
             };
 
@@ -564,10 +558,8 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
             const output: RawCodeOutput = { code: result.code };
 
-            const map: string | void = serializeSourceMap(result.map);
-
-            if (map !== void 0) {
-                output.map = map;
+            if (result.map !== void 0 && result.map !== null) {
+                output.map = result.map;
             }
 
             return output;

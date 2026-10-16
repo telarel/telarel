@@ -1,5 +1,5 @@
 import type {
-    CompileResult,
+    CodeResult,
     PluginContext,
     TransformArgs,
     TransformResult,
@@ -14,10 +14,9 @@ import { renameRootIdentifier } from "#/functions/ast";
 
 describe("sourcemap", (): void => {
     it("emits a v3 codegen map with observed exact fields", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [],
         });
 
@@ -35,10 +34,9 @@ describe("sourcemap", (): void => {
     });
 
     it("keeps the map stable after a transform mutation", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "renamer",
@@ -65,10 +63,9 @@ describe("sourcemap", (): void => {
 
     it("compiles empty code to empty code and an empty codegen map", async (): Promise<void> => {
         // Codegen over an empty program emits no mappings at all.
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("", {
             cwd: "/repo",
             file: "index.ts",
-            code: "",
         });
 
         expect(result.code).toBe("");
@@ -76,10 +73,9 @@ describe("sourcemap", (): void => {
     });
 
     it("round-trips BOM and non-ASCII code", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile('\uFEFFconst µ = "日本語";', {
             cwd: "/repo",
             file: "index.ts",
-            code: '\uFEFFconst µ = "日本語";',
         });
 
         // Codegen prints the program, so the leading BOM is dropped from the
@@ -101,10 +97,9 @@ describe("sourcemap", (): void => {
     });
 
     it("emits mappings for non-ASCII code through the transform path", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile('const µ = "日本語";', {
             cwd: "/repo",
             file: "index.ts",
-            code: 'const µ = "日本語";',
             plugins: [
                 {
                     name: "pass-through",
@@ -118,10 +113,9 @@ describe("sourcemap", (): void => {
     });
 
     it("pins mappings across multiple lines", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;\nconst b = 2;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;\nconst b = 2;",
         });
 
         expect(result.code).toBe("const a = 1;\nconst b = 2;");
@@ -132,11 +126,13 @@ describe("sourcemap", (): void => {
     });
 
     it("normalizes CRLF in code but keeps it in sourcesContent", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.ts",
-            code: "const a = 1;\r\nconst b = 2;",
-        });
+        const result: CodeResult = await compile(
+            "const a = 1;\r\nconst b = 2;",
+            {
+                cwd: "/repo",
+                file: "index.ts",
+            },
+        );
 
         // Codegen prints the program, so CRLF line endings are normalized to
         // LF in the output; `sourcesContent` keeps the original text.
@@ -149,10 +145,9 @@ describe("sourcemap", (): void => {
     });
 
     it("strips a trailing CRLF from code and emits codegen mappings", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;\r\n", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;\r\n",
         });
 
         // The trailing `\r\n` terminator is stripped by codegen, and the map
@@ -163,10 +158,9 @@ describe("sourcemap", (): void => {
     });
 
     it("uses the given file name as the single source", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "entry.tsx",
-            code: "const a = 1;",
         });
 
         expect(result.map?.sources).toEqual(["entry.tsx"]);
@@ -174,10 +168,9 @@ describe("sourcemap", (): void => {
     });
 
     it("keeps mappings identical after a pass-through transform", async (): Promise<void> => {
-        const baseline: CompileResult = await compile({
+        const baseline: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "baseline-pass-through",
@@ -186,10 +179,9 @@ describe("sourcemap", (): void => {
             ],
         });
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "pass-through",
@@ -203,17 +195,15 @@ describe("sourcemap", (): void => {
     });
 
     it("shifts mappings after a length-changing transform", async (): Promise<void> => {
-        const baseline: CompileResult = await compile({
+        const baseline: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [],
         });
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "renamer",
@@ -245,11 +235,13 @@ describe("sourcemap", (): void => {
     });
 
     it("pins exact mappings across three lines", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.ts",
-            code: "const a = 1;\nconst b = 2;\nconst c = 3;",
-        });
+        const result: CodeResult = await compile(
+            "const a = 1;\nconst b = 2;\nconst c = 3;",
+            {
+                cwd: "/repo",
+                file: "index.ts",
+            },
+        );
 
         expect(result.code).toBe("const a = 1;\nconst b = 2;\nconst c = 3;");
         expect(result.map?.version).toBe(3);

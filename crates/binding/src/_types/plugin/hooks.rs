@@ -3,9 +3,11 @@ use napi::sys;
 
 use telarel_common::{
     GeneratorOptions, InputSourceMap, InputSourceMapMode, OutputSourceMap,
-    OutputSourceMapMode, ParserOptions, SourceMapOptions,
+    OutputSourceMapMode, ParserOptions, ResolvedOptions, SourceMapOptions,
 };
 
+use crate::_types::ast::JsAst;
+use crate::_types::sourcemap::JsSourceMap;
 use crate::plugin::options::{language_label, source_type_label};
 
 /// Args for the `transform`, `prepare` and `finalize` hooks: the current AST
@@ -76,17 +78,14 @@ pub struct JsResolvedOptions {
     pub cwd: String,
     /// The file being compiled.
     pub file: String,
-    /// The code being compiled.
-    ///
-    /// TEMPORARY ADAPTER (Task-4 deletion target): the source text is not part
-    /// of the Rust `ResolvedOptions`; it is threaded through the compile's
-    /// per-compile state so the pre-reshape JS-observable payload keeps it.
-    pub code: String,
     /// The grammar of the code, resolved.
     pub language: String,
     /// The module system of the code, resolved.
     #[napi(js_name = "sourceType")]
     pub source_type: String,
+    /// The source-map inputs and outputs requested for the run.
+    #[napi(js_name = "sourceMap")]
+    pub source_map: serde_json::Value,
     /// The settled plugin-name list, after the options fixpoint.
     pub plugins: Vec<String>,
 }
@@ -149,9 +148,33 @@ fn source_map_options_to_js(options: &SourceMapOptions) -> serde_json::Value {
     })
 }
 
+impl From<&ResolvedOptions> for JsResolvedOptions {
+    fn from(options: &ResolvedOptions) -> Self {
+        Self {
+            cwd: options.cwd.clone(),
+            file: options.file.clone(),
+            language: language_label(Some(options.language)).to_owned(),
+            source_type: source_type_label(Some(options.source_type))
+                .to_owned(),
+            source_map: source_map_options_to_js(&options.source_map),
+            plugins: options.plugins.clone(),
+        }
+    }
+}
+
+/// Convert an optional source-map request into its JS union value.
+///
+/// An unspecified request (`None`) stays `None` and is omitted from the wire;
+/// a present request (even an empty `{}`) is transmitted.
+pub fn optional_source_map_options_to_js(
+    options: Option<&SourceMapOptions>
+) -> Option<serde_json::Value> {
+    options.map(source_map_options_to_js)
+}
+
 /// JS-facing parser options, as presented to the `parse` hook.
 #[napi_derive::napi(object)]
-pub struct JsParserOptions {
+pub struct JsParserHookOptions {
     /// Current working directory.
     pub cwd: String,
     /// The file being parsed.
@@ -166,7 +189,7 @@ pub struct JsParserOptions {
     pub source_map: serde_json::Value,
 }
 
-impl From<&ParserOptions> for JsParserOptions {
+impl From<&ParserOptions> for JsParserHookOptions {
     fn from(options: &ParserOptions) -> Self {
         Self {
             cwd: options.cwd.clone(),
@@ -181,7 +204,7 @@ impl From<&ParserOptions> for JsParserOptions {
 
 /// JS-facing generator options, as presented to the `generate` hook.
 #[napi_derive::napi(object)]
-pub struct JsGeneratorOptions {
+pub struct JsGeneratorHookOptions {
     /// Current working directory (reserved).
     pub cwd: String,
     /// The file being generated.
@@ -191,7 +214,7 @@ pub struct JsGeneratorOptions {
     pub source_map: serde_json::Value,
 }
 
-impl From<&GeneratorOptions> for JsGeneratorOptions {
+impl From<&GeneratorOptions> for JsGeneratorHookOptions {
     fn from(options: &GeneratorOptions) -> Self {
         Self {
             cwd: options.cwd.clone(),
@@ -208,47 +231,34 @@ pub struct JsParseArgs {
     /// The code to parse.
     pub code: String,
     /// The resolved parser options.
-    pub options: JsParserOptions,
-}
-
-/// The AST a `parse` hook returns: the ESTree program, its source text, and an
-/// optional incremental source map as a JSON string.
-#[napi_derive::napi(object)]
-pub struct JsAstOutput {
-    /// The ESTree program.
-    pub program: serde_json::Value,
-    /// The source text the program spans anchor to.
-    pub code: String,
-    /// The incremental source map JSON, when the hook returned one.
-    pub map: Option<String>,
+    pub options: JsParserHookOptions,
 }
 
 /// Return of the `parse` hook: the replacement AST, `null`/`void` (defer).
 #[napi_derive::napi(object)]
 pub struct JsParseOutput {
     /// The replacement AST.
-    pub ast: JsAstOutput,
+    pub ast: JsAst,
 }
 
 /// Args for the `generate` hook: the AST to generate from and the resolved
 /// generator options.
 #[napi_derive::napi(object)]
 pub struct JsGenerateArgs {
-    /// The current AST as a JSON string.
-    #[napi(js_name = "astJson")]
-    pub ast_json: String,
+    /// The current AST as a normalized object.
+    pub ast: JsAst,
     /// The resolved generator options.
-    pub options: JsGeneratorOptions,
+    pub options: JsGeneratorHookOptions,
 }
 
 /// Return of the `generate` hook: the generated code with an optional source
-/// map JSON string.
+/// map object.
 #[napi_derive::napi(object)]
 pub struct JsCodeOutput {
     /// The generated code.
     pub code: String,
-    /// The incremental source map JSON, when the hook returned one.
-    pub map: Option<String>,
+    /// The incremental source map, when the hook returned one.
+    pub map: Option<JsSourceMap>,
 }
 
 /// Args for the `end` hook: the rendered compile error, or `null` on success.
@@ -274,6 +284,19 @@ mod tests {
             source_map_options_to_js(&SourceMapOptions::default());
 
         assert_eq!(value, serde_json::json!({ "input": null, "output": null }));
+    }
+
+    #[test]
+    fn test_optional_source_map_options_to_js_omits_unspecified() {
+        assert_eq!(optional_source_map_options_to_js(None), None);
+
+        assert_eq!(
+            optional_source_map_options_to_js(Some(&SourceMapOptions {
+                input: Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
+                output: None,
+            })),
+            Some(serde_json::json!({ "input": "auto", "output": null }))
+        );
     }
 
     #[test]
@@ -324,7 +347,7 @@ mod tests {
             },
         };
 
-        let js: JsParserOptions = JsParserOptions::from(&options);
+        let js: JsParserHookOptions = JsParserHookOptions::from(&options);
 
         assert_eq!(js.cwd, "/repo");
         assert_eq!(js.file, "a.tsx");
@@ -349,13 +372,59 @@ mod tests {
             },
         };
 
-        let js: JsGeneratorOptions = JsGeneratorOptions::from(&options);
+        let js: JsGeneratorHookOptions = JsGeneratorHookOptions::from(&options);
 
         assert_eq!(js.cwd, "/repo");
         assert_eq!(js.file, "out.js");
         assert_eq!(
             js.source_map,
             serde_json::json!({ "input": null, "output": "inline" })
+        );
+    }
+
+    #[test]
+    fn test_resolved_options_to_js_carries_source_map() {
+        let options: ResolvedOptions = ResolvedOptions {
+            cwd: String::from("/repo"),
+            file: String::from("index.ts"),
+            language: Language::TS,
+            source_type: SourceType::Module,
+            source_map: SourceMapOptions {
+                input: Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
+                output: Some(OutputSourceMap::Mode(OutputSourceMapMode::Both)),
+            },
+            plugins: vec![String::from("observe")],
+        };
+
+        let js: JsResolvedOptions = JsResolvedOptions::from(&options);
+
+        assert_eq!(js.cwd, "/repo");
+        assert_eq!(js.file, "index.ts");
+        assert_eq!(js.language, "ts");
+        assert_eq!(js.source_type, "module");
+        assert_eq!(
+            js.source_map,
+            serde_json::json!({ "input": "auto", "output": "both" })
+        );
+        assert_eq!(js.plugins, vec![String::from("observe")]);
+    }
+
+    #[test]
+    fn test_resolved_options_to_js_default_source_map_is_off() {
+        let options: ResolvedOptions = ResolvedOptions {
+            cwd: String::from("/repo"),
+            file: String::from("index.ts"),
+            language: Language::TS,
+            source_type: SourceType::Module,
+            source_map: SourceMapOptions::default(),
+            plugins: Vec::new(),
+        };
+
+        let js: JsResolvedOptions = JsResolvedOptions::from(&options);
+
+        assert_eq!(
+            js.source_map,
+            serde_json::json!({ "input": null, "output": null })
         );
     }
 }
