@@ -6,7 +6,7 @@ This is a architecture documentation of the compiler.
 
 Telarel is an extensible JavaScript compiler written in Rust, powered by [oxc](https://oxc.rs) and built around plugin hooks.
 
-The [`compile`](./crates/core/src/lib.rs#L186) function takes compile options (`cwd`, `file`, `code` etc) plus a list of plugins, and returns a `CompileOutput` which generated code with a source map.
+The [`core`](./crates/core/src/lib.rs) crate exposes five entry points over one shared pipeline — [`parse`](./crates/core/src/functions/parse.rs#L13), [`rewrite`](./crates/core/src/functions/rewrite.rs#L13), [`generate`](./crates/core/src/functions/generate.rs#L13), [`compile_from_ast`](./crates/core/src/functions/compile_from_ast.rs#L12), and [`compile`](./crates/core/src/functions/compile.rs#L13). Each takes its source (source text or an owned AST) as a function argument, an options struct, and a list of plugins, and returns either an [`AstResult`](./crates/common/src/ast/result.rs#L6) (an owned AST) or a [`CodeResult`](./crates/common/src/ast/result.rs#L13) (generated code with an optional source map).
 
 ## Dependencies
 
@@ -53,16 +53,16 @@ The plugin implements different hooks (all with no operation by default). Every 
 
 Hooks receive a context: `options` gets the [`CommonPluginContext`](./crates/plugin/src/_types/context.rs#L5), while later hooks get the flat [`PluginContext`](./crates/plugin/src/_types/context.rs#L20) with `cwd` and `module` info.
 
-| Hook      | Arguments           | Return          | Semantics        |
-| --------- | ------------------- | --------------- | ---------------- |
-| options   | options             | options         | Fixpoint replace |
-| start     | resolved options    | ()              | Notify           |
-| parse     | code, parser opts   | ast, code, map? | First-win        |
-| prepare   | ast                 | ()              | Observer         |
-| transform | ast                 | ast             | Carried fold     |
-| finalize  | ast                 | ()              | Observer         |
-| generate  | ast, generator opts | code, map?      | First-win        |
-| end       | error?              | ()              | Notify           |
+| Hook      | Arguments           | Return     | Semantics        |
+| --------- | ------------------- | ---------- | ---------------- |
+| options   | options             | options    | Fixpoint replace |
+| start     | resolved options    | ()         | Notify           |
+| parse     | code, parser opts   | ast, map?  | First-win        |
+| prepare   | ast                 | ()         | Observer         |
+| transform | ast                 | ast        | Carried fold     |
+| finalize  | ast                 | ()         | Observer         |
+| generate  | ast, generator opts | code, map? | First-win        |
+| end       | error?              | ()         | Notify           |
 
 Semantics:
 
@@ -139,6 +139,85 @@ impl Plugin for MyPlugin {
 }
 ```
 
+### Entry Points
+
+The pipeline is exposed as five functions:
+
+```rust
+pub async fn parse(
+    code: String,
+    options: ParseOptions,
+    plugins: Vec<SharedPluginable>,
+) -> Result<AstResult, CompileError>;
+
+pub async fn rewrite(
+    ast: Ast,
+    options: RewriteOptions,
+    plugins: Vec<SharedPluginable>,
+) -> Result<AstResult, CompileError>;
+
+pub async fn generate(
+    ast: Ast,
+    options: GenerateOptions,
+    plugins: Vec<SharedPluginable>,
+) -> Result<CodeResult, CompileError>;
+
+pub async fn compile_from_ast(
+    ast: Ast,
+    options: CompileFromAstOptions,
+    plugins: Vec<SharedPluginable>,
+) -> Result<CodeResult, CompileError>;
+
+pub async fn compile(
+    code: String,
+    options: CompileOptions,
+    plugins: Vec<SharedPluginable>,
+) -> Result<CodeResult, CompileError>;
+```
+
+All five share one pipline ([`crates/core/src/common/pipeline.rs`](./crates/core/src/common/pipeline.rs)): convert the options to [`ResolvableOptions`](./crates/common/src/_types/options/resolvable.rs#L12), run the `options` fixpoint, resolve to [`ResolvedOptions`](./crates/common/src/_types/options/resolved.rs#L7), build the driver, run `start`, run the entry point's stages inline, then run `end`. Stages are never run by re-entering another entry point, so `options`, `start`, and `end` fire exactly once per invocation. A `start` failure still runs `end`; the only path that skips `end` is a failed `options` fixpoint, where no driver exists yet.
+
+Each entry point runs only its own stages:
+
+| Hook      | parse | rewrite | generate | compile_from_ast | compile |
+| --------- | ----- | ------- | -------- | ---------------- | ------- |
+| options   | ✓     | ✓       | ✓        | ✓                | ✓       |
+| start     | ✓     | ✓       | ✓        | ✓                | ✓       |
+| parse     | ✓     |         |          |                  | ✓       |
+| prepare   |       | ✓       |          | ✓                | ✓       |
+| transform |       | ✓       |          | ✓                | ✓       |
+| finalize  |       | ✓       |          | ✓                | ✓       |
+| generate  |       |         | ✓        | ✓                | ✓       |
+| end       | ✓     | ✓       | ✓        | ✓                | ✓       |
+
+Each entry point has its own options struct (`ParseOptions`, `RewriteOptions`, `GenerateOptions`, `CompileFromAstOptions`, `CompileOptions`); they all convert to `ResolvableOptions`.
+
+### Source Maps
+
+Source maps are configured through [`SourceMapOptions`](./crates/common/src/_types/options/source_map/mod.rs#L9) (`input` and `output`), carried by every options struct and resolved into the run.
+
+**Input.** An omitted `input` is off — no input map is looked up. Opting in selects an [`InputSourceMapMode`](./crates/common/src/_types/options/source_map/input.rs#L7):
+
+| Mode       | Resolves to                                                                             |
+| ---------- | --------------------------------------------------------------------------------------- |
+| `Value`    | The given map                                                                           |
+| `Path`     | Map file at the path, relative paths against `cwd`                                      |
+| `Inline`   | `//# sourceMappingURL=data:...` comment in the code                                     |
+| `External` | `<cwd>/<file>.map`                                                                      |
+| `Auto`     | The inline comment first, then `<cwd>/<file>.map`; best effort, absent maps are ignored |
+
+The code-entry functions (`parse`, `compile`) resolve the input map inside the builtin [`Parser`](./crates/common/src/ast/parser.rs#L11). The AST-entry functions (`rewrite`, `generate`, `compile_from_ast`) attach the resolved map only when the incoming AST carries none — the AST's own map always wins.
+
+**Output.** After the winning `generate` hook (builtin or custom), the resolved output mode is applied uniformly by [`apply_output_source_map_mode`](./crates/common/src/sourcemap/mode.rs#L8), per [`OutputSourceMapMode`](./crates/common/src/_types/options/source_map/output.rs#L3):
+
+| Mode                 | Result                                                     |
+| -------------------- | ---------------------------------------------------------- |
+| `External` (default) | Code unchanged, map returned separately                    |
+| `Inline`             | The map is appended as an inline comment; `map` is dropped |
+| `Both`               | The inline comment is appended and `map` is kept           |
+
+When the winning hook produced no map, the code is returned byte-identical in every mode — no identity map is ever fabricated.
+
 ## JS Plugin Bridge
 
 The [binding](./crates/binding/src/plugin/pluginable.rs#L341) wraps JS plugin objects in `Pluginable` implementations that call JS through thread-safe function calls (TSFNs). The AST crosses the boundary as a JSON-serialized ESTree string via `oxc_estree_codec`:
@@ -197,7 +276,9 @@ The [binding](./crates/binding/src/plugin/build.rs) routes a plugin to its Rust 
 
 ## Execution Model
 
-Every hook future is `Send` (`HookFuture`); the transform future crosses threads carrying only a read-only `&Ast`, because the AST is an owned value that bundles its own arena. On native, each `compile` call runs on a libuv worker thread and `block_on`s a per-thread, reused current-thread Tokio runtime ([`block_on_compile`](./crates/binding/src/tasks/mod.rs), used by [`CompileTask`](./crates/binding/src/tasks/compile.rs#L12)).
+Every hook future is `Send` (`HookFuture`); the transform future crosses threads carrying only a read-only `&Ast`, because the AST is an owned value that bundles its own arena. On native, each `compile` call runs on a libuv worker thread and `block_on`s a per-thread, reused current-thread Tokio runtime ([`block_on_compile`](./crates/binding/src/tasks/mod.rs), used by [`CompileTask`](./crates/binding/src/tasks/compile.rs#L15)).
+
+The binding keeps the old JS-visible `compile(options)` surface alive through a temporary adapter, marked `TEMPORARY ADAPTER (Task-4 deletion target)`: the source text is lifted out of the options bag and passed as `core::compile`'s first argument. Task 4 deletes the adapter and lands the real JS surface.
 
 The same TSFN-based binding also works with `wasm32-wasip1-threads`, and the JS test suite runs against both backends.
 

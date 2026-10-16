@@ -753,9 +753,9 @@ mod tests {
             options: telarel_common::ResolvedOptions {
                 cwd: String::from("/repo"),
                 file: String::from("a.ts"),
-                code: String::from("console.log(1);"),
                 language: Language::TS,
                 source_type: SourceType::Module,
+                source_map: SourceMapOptions::default(),
                 plugins: vec![],
             },
         }

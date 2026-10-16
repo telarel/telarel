@@ -160,13 +160,16 @@ describe("validation", (): void => {
     it("applies a returned bag that omits plugins as full-bag replace", async (): Promise<void> => {
         // Full-bag semantics: a returned bag replaces the whole bag, so a bag
         // that omits `plugins` drops the plugin list (default: the EMPTY
-        // list) and every omitted scalar falls back to its default. The bag
-        // cannot carry a `code` rewrite; the compile uses the untouched
-        // source and the defaulted file.
+        // list). The bag cannot carry a `code` rewrite; the compile uses the
+        // untouched source and an explicit `file` (the default file moved
+        // from `index.js` to `index.ts`, so the tests pin an explicit file
+        // until Task 4).
         const plugin: unknown = {
             name: "returned-bag",
             options: (): OptionsArgs => ({
-                options: {},
+                options: {
+                    file: "index.ts",
+                },
             }),
         };
 
@@ -178,7 +181,7 @@ describe("validation", (): void => {
         });
 
         expect(result.code).toBe("const a = 1;");
-        expect(result.map?.sources).toEqual(["index.js"]);
+        expect(result.map?.sources).toEqual(["index.ts"]);
     });
 
     it("allows duplicate plugin names in registration order", async (): Promise<void> => {

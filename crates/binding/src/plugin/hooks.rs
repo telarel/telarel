@@ -234,6 +234,14 @@ pub struct RefList {
     refs: Mutex<Vec<SharedRef>>,
     /// The current bag's descriptor view; see the type's docs.
     bag_descriptors: Mutex<Vec<SharedRef>>,
+    /// The compile's source text.
+    ///
+    /// TEMPORARY ADAPTER (Task-4 deletion target): the reshape removed `code`
+    /// from `ResolvedOptions`, so the adapter records the compile input here
+    /// (the one per-compile handle every bridged `JsPlugin` already shares)
+    /// and the `start` payload reads it back. Task 4 deletes this slot with
+    /// the rest of the adapter.
+    source_code: Mutex<Option<SharedStr>>,
 }
 
 unsafe impl Send for RefList {}
@@ -268,6 +276,26 @@ impl RefList {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
+    }
+
+    /// Record the compile's source text for the `start` hook payload.
+    ///
+    /// TEMPORARY ADAPTER (Task-4 deletion target); see the `source_code` field.
+    pub fn set_source_code(
+        &self,
+        code: SharedStr,
+    ) {
+        let mut slot: MutexGuard<'_, Option<SharedStr>> =
+            self.source_code.lock().unwrap_or_else(PoisonError::into_inner);
+
+        *slot = Some(code);
+    }
+
+    /// The compile's source text, when recorded.
+    ///
+    /// TEMPORARY ADAPTER (Task-4 deletion target); see the `source_code` field.
+    pub fn source_code(&self) -> Option<SharedStr> {
+        self.source_code.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
     /// Root a JS object and push its reference onto the release list.
@@ -428,7 +456,11 @@ pub struct StartCall {
     pub cwd: SharedStr,
     /// The file being compiled.
     pub file: SharedStr,
-    /// The code being compiled.
+    /// The compile's source text.
+    ///
+    /// TEMPORARY ADAPTER (Task-4 deletion target): the reshape removed `code`
+    /// from `ResolvedOptions`, so the adapter threads the compile's input here
+    /// from the per-compile state to keep the JS-observable payload unchanged.
     pub code: SharedStr,
     /// The grammar of the code, resolved.
     pub language: SharedStr,
@@ -836,5 +868,36 @@ mod tests {
     fn test_shared_str_debug() {
         let shared: SharedStr = SharedStr::new("x");
         assert_eq!(format!("{shared:?}"), r#"SharedStr("x")"#);
+    }
+
+    #[test]
+    fn test_ref_list_source_code_round_trips() {
+        let refs: RefList = RefList::new();
+
+        assert!(refs.source_code().is_none());
+
+        refs.set_source_code(SharedStr::new("const a = 1;"));
+
+        assert_eq!(
+            refs.source_code().expect("recorded").as_str(),
+            "const a = 1;"
+        );
+    }
+
+    #[test]
+    fn test_start_call_payload_carries_code() {
+        let call: StartCall = StartCall {
+            cwd: SharedStr::new("/repo"),
+            file: SharedStr::new("index.ts"),
+            code: SharedStr::new("const a = 1;"),
+            language: SharedStr::new("ts"),
+            source_type: SharedStr::new("unambiguous"),
+            plugins: vec![String::from("observe")],
+        };
+
+        let (_context, payload) = call.into_payload().expect("payload builds");
+
+        assert_eq!(payload.options.code, "const a = 1;");
+        assert_eq!(payload.options.file, "index.ts");
     }
 }

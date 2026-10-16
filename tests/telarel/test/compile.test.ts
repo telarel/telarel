@@ -245,10 +245,12 @@ describe("compile", (): void => {
     });
 
     it("applies a returned bag as full-bag replace with defaults", async (): Promise<void> => {
-        // Fields the returned bag omits fall back to their defaults (the file
-        // defaults to `index.js`). The returned bag explicitly carries the
-        // current plugin list: omitting `plugins` would wholesale-replace the
-        // list to `[]` (the documented `plugins` default) and drop the plugin.
+        // Fields the returned bag omits fall back to their defaults. The bag
+        // explicitly carries the current `file` (the default file moved from
+        // `index.js` to `index.ts`, so the tests pin an explicit file until
+        // Task 4). The returned bag explicitly carries the current plugin
+        // list too: omitting `plugins` would wholesale-replace the list to
+        // `[]` (the documented `plugins` default) and drop the plugin.
         const seen: Array<string> = [];
 
         const result: CompileResult = await compile({
@@ -267,6 +269,7 @@ describe("compile", (): void => {
 
                         return {
                             options: {
+                                file: args.options.file,
                                 plugins: args.options.plugins,
                             },
                         };
@@ -278,8 +281,8 @@ describe("compile", (): void => {
             ],
         });
 
-        expect(seen).toEqual(["has-context", "index.ts", "index.js"]);
-        expect(result.map?.sources).toEqual(["index.js"]);
+        expect(seen).toEqual(["has-context", "index.ts", "index.ts"]);
+        expect(result.map?.sources).toEqual(["index.ts"]);
         expect(result.code).toBe("const a = 1;");
     });
 

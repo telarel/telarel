@@ -47,10 +47,11 @@ pub use crate::contexts::compile::CompileContext;
 pub use crate::errors::compile::CompileError;
 pub use crate::helpers::resolve::{
     from_oxc_language, from_oxc_module_kind, infer_language, resolve_grammar,
-    resolve_source_type, source_type_for_module_id,
+    resolve_options, resolve_source_type, source_type_for_module_id,
 };
 pub use crate::sourcemap::inline::{
     append_inline_source_map, extract_inline_source_map,
 };
+pub use crate::sourcemap::mode::apply_output_source_map_mode;
 pub use crate::sourcemap::resolve::resolve_input_source_map;
 pub use crate::sourcemap::{SourceMap, compose::compose_maps};

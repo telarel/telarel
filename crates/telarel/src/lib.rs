@@ -22,7 +22,7 @@ pub use telarel_plugin::{
     TransformOutput, TransformReturn,
 };
 
-pub use telarel_core::{CompileOutput, compile};
+pub use telarel_core::{compile, compile_from_ast, generate, parse, rewrite};
 
 pub mod allocator {
     pub use oxc::allocator::*;

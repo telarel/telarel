@@ -509,9 +509,9 @@ mod tests {
             options: telarel_common::ResolvedOptions {
                 cwd: String::from("/resolved"),
                 file: String::from("a.ts"),
-                code: String::from("let a;"),
                 language: Language::TS,
                 source_type: SourceType::Module,
+                source_map: SourceMapOptions::default(),
                 plugins: vec![String::from("probe")],
             },
         }

@@ -7,7 +7,9 @@ pub struct StartArgs {
 
 #[cfg(test)]
 mod tests {
-    use telarel_common::{Language, ResolvedOptions, SourceType};
+    use telarel_common::{
+        Language, ResolvedOptions, SourceMapOptions, SourceType,
+    };
 
     use super::*;
 
@@ -17,9 +19,9 @@ mod tests {
             options: ResolvedOptions {
                 cwd: String::from("/repo"),
                 file: String::from("a.ts"),
-                code: String::from("let a;"),
                 language: Language::TS,
                 source_type: SourceType::Module,
+                source_map: SourceMapOptions::default(),
                 plugins: vec![],
             },
         };

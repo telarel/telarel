@@ -58,6 +58,12 @@ pub struct JsOptionsOutput {
     /// The module system of the code after the hook.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
+    /// The source-map inputs and outputs after the hook.
+    ///
+    /// The union exists on the wire; the JS wrapper does not advertise it
+    /// until Task 4 but must not choke on it.
+    #[napi(js_name = "sourceMap")]
+    pub source_map: Option<serde_json::Value>,
     /// The bag's plugins after the hook, as raw descriptor objects; missing
     /// means the default (empty) list.
     pub plugins: Option<Vec<napi::bindgen_prelude::ObjectRef<false>>>,
@@ -71,6 +77,10 @@ pub struct JsResolvedOptions {
     /// The file being compiled.
     pub file: String,
     /// The code being compiled.
+    ///
+    /// TEMPORARY ADAPTER (Task-4 deletion target): the source text is not part
+    /// of the Rust `ResolvedOptions`; it is threaded through the compile's
+    /// per-compile state so the pre-reshape JS-observable payload keeps it.
     pub code: String,
     /// The grammar of the code, resolved.
     pub language: String,
@@ -308,7 +318,10 @@ mod tests {
             file: String::from("a.tsx"),
             language: Language::TSX,
             source_type: SourceType::Module,
-            source_map: SourceMapOptions::default(),
+            source_map: SourceMapOptions {
+                input: Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
+                output: Some(OutputSourceMap::Mode(OutputSourceMapMode::Both)),
+            },
         };
 
         let js: JsParserOptions = JsParserOptions::from(&options);
@@ -317,6 +330,10 @@ mod tests {
         assert_eq!(js.file, "a.tsx");
         assert_eq!(js.language, "tsx");
         assert_eq!(js.source_type, "module");
+        assert_eq!(
+            js.source_map,
+            serde_json::json!({ "input": "auto", "output": "both" })
+        );
     }
 
     #[test]
@@ -324,12 +341,21 @@ mod tests {
         let options: GeneratorOptions = GeneratorOptions {
             cwd: String::from("/repo"),
             file: String::from("out.js"),
-            source_map: SourceMapOptions::default(),
+            source_map: SourceMapOptions {
+                input: None,
+                output: Some(OutputSourceMap::Mode(
+                    OutputSourceMapMode::Inline,
+                )),
+            },
         };
 
         let js: JsGeneratorOptions = JsGeneratorOptions::from(&options);
 
         assert_eq!(js.cwd, "/repo");
         assert_eq!(js.file, "out.js");
+        assert_eq!(
+            js.source_map,
+            serde_json::json!({ "input": null, "output": "inline" })
+        );
     }
 }

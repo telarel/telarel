@@ -26,8 +26,8 @@ fn read_fixture(name: &str) -> String {
         .unwrap_or_else(|error| panic!("read fixture {name}: {error}"))
 }
 
-fn options(code: String) -> CompileOptions {
-    CompileOptions { file: "index.tsx".to_string(), code, ..Default::default() }
+fn options() -> CompileOptions {
+    CompileOptions { file: Some("index.tsx".to_string()), ..Default::default() }
 }
 
 fn bench_case(
@@ -54,8 +54,8 @@ fn bench_case(
                     let plugins: Vec<SharedPluginable> = plugins.clone();
 
                     async {
-                        let output: telarel::CompileOutput =
-                            compile(options(code), plugins).await.unwrap();
+                        let output: telarel::CodeResult =
+                            compile(code, options(), plugins).await.unwrap();
 
                         black_box(output.code.len());
                     }

@@ -1801,6 +1801,7 @@ dependencies = [
  "oxc_sourcemap",
  "telarel_common",
  "telarel_plugin",
+ "tempfile",
  "tokio",
 ]
 

@@ -249,6 +249,15 @@ fn unmarshal_options(
             | None => None,
         };
 
+    let source_map: Option<telarel_common::SourceMapOptions> =
+        match &output.source_map {
+            | Some(value) => Some(
+                crate::_types::options::parse_source_map_options(value)
+                    .map_err(hook_error)?,
+            ),
+            | None => None,
+        };
+
     // The returned bag REPLACES the whole plugin list (the wrapper echoes
     // the payload's `plugins` array): an omitted field means the default
     // EMPTY list (see `JsOptionsOutput`'s docs). `to_plugins` bridges the
@@ -264,7 +273,7 @@ fn unmarshal_options(
             file: output.file,
             language,
             source_type,
-            source_map: None,
+            source_map,
         },
         plugins,
     };
@@ -512,10 +521,17 @@ impl Pluginable for JsPlugin {
                 return Ok(());
             };
 
+            // TEMPORARY ADAPTER (Task-4 deletion target): `ResolvedOptions` no
+            // longer carries `code`; read the compile input back from the
+            // shared per-compile state so the JS-observable `start` payload is
+            // unchanged from before the reshape.
+            let code: SharedStr =
+                self.refs.source_code().unwrap_or_else(|| SharedStr::new(""));
+
             let call: StartCall = StartCall {
                 cwd: SharedStr::new(&args.options.cwd),
                 file: SharedStr::new(&args.options.file),
-                code: SharedStr::new(&args.options.code),
+                code,
                 language: SharedStr::new(language_label(Some(
                     args.options.language,
                 ))),
@@ -913,7 +929,14 @@ mod tests {
         language: Option<String>,
         source_type: Option<String>,
     ) -> JsOptionsOutput {
-        JsOptionsOutput { cwd, file, language, source_type, plugins: None }
+        JsOptionsOutput {
+            cwd,
+            file,
+            language,
+            source_type,
+            source_map: None,
+            plugins: None,
+        }
     }
 
     fn fixture_ast(code: &str) -> Ast {
@@ -973,6 +996,60 @@ mod tests {
         assert_eq!(outcome.options.source_type, None);
         assert!(outcome.options.source_map.is_none());
         assert!(outcome.plugins.is_empty());
+    }
+
+    #[test]
+    fn test_unmarshal_options_bag_parses_source_map() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.source_map = Some(serde_json::json!({
+            "input": "inline",
+            "output": { "mode": "both" },
+        }));
+
+        let outcome = unmarshal_options(Some(bag), &env, &refs)
+            .unwrap()
+            .expect("a returned bag is Some");
+
+        let source_map =
+            outcome.options.source_map.expect("the bag's sourceMap is carried");
+
+        assert!(matches!(
+            source_map.input,
+            Some(telarel_common::InputSourceMap::Mode(
+                telarel_common::InputSourceMapMode::Inline
+            ))
+        ));
+
+        assert!(matches!(
+            source_map.output,
+            Some(telarel_common::OutputSourceMap::Options(
+                telarel_common::OutputSourceMapOptions {
+                    mode: telarel_common::OutputSourceMapMode::Both,
+                }
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_unmarshal_options_bag_invalid_source_map_errors() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.source_map = Some(serde_json::json!({ "output": "sideways" }));
+
+        let error: anyhow::Error = unmarshal_options(Some(bag), &env, &refs)
+            .expect_err("an invalid sourceMap is the hook error");
+
+        assert!(
+            error.to_string().contains("invalid sourceMap.output"),
+            "{error}"
+        );
     }
 
     #[test]

@@ -12,13 +12,22 @@ use crate::plugin::hooks::RefList;
 use crate::tasks::compile::CompileTask;
 
 /// Compile a file with plugins, in memory.
+///
+/// TEMPORARY ADAPTER (Task-4 deletion target): keeps the old
+/// `compile(options)` JS shape; the source text is lifted out of `options` and
+/// travels beside the code-free `CompileOptions`.
 #[napi_derive::napi(ts_return_type = "Promise<JsCompileResult>")]
 pub fn compile(
     env: Env,
     options: JsOptions,
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<CompileTask>> {
+    // The adapter's copy of the source text: `core::compile` takes it as its
+    // first argument, so it no longer rides inside `CompileOptions`.
+    let code: String = options.code.clone();
+
     // Convert the options before rooting anything: a validation failure
-    // (for example, an invalid `sourceType`) must not leak rooted references.
+    // (for example, an invalid `sourceType` or `sourceMap`) must not leak
+    // rooted references.
     let options_rust: CompileOptions = to_compile_options(&options)?;
 
     // The dynamic release list of this compile: seeded with every ENTRY
@@ -34,6 +43,7 @@ pub fn compile(
         to_plugins(&env, options.plugins, &refs)?;
 
     Ok(napi::bindgen_prelude::AsyncTask::new(CompileTask::new(
+        code,
         options_rust,
         plugins,
         refs,
