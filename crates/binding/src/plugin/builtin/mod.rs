@@ -68,6 +68,6 @@ mod tests {
         )
         .expect("builtin:transform dispatches");
 
-        assert_eq!(plugin.call_name(), telarel_plugin_transform::NAME);
+        assert_eq!(plugin.call_name(), TRANSFORM_NAME);
     }
 }

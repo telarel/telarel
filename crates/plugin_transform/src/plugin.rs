@@ -12,8 +12,8 @@ use telarel_plugin::{Plugin, PluginContext, TransformArgs, TransformOutput};
 use crate::options::TransformOptions;
 use crate::options::helper_loader::ResolvedHelpers;
 
-/// The builtin transform plugin name.
-pub const NAME: &str = "builtin:transform";
+/// The transform plugin name used on the Rust side.
+pub const NAME: &str = "telarel_plugin_transform";
 
 /// The resolved, cached plugin state.
 #[derive(Debug, Clone)]
@@ -40,9 +40,11 @@ fn render_diagnostics(
     anyhow::anyhow!("{rendered}")
 }
 
-/// The builtin transform plugin, wrapping the oxc transformer.
+/// The transform plugin, wrapping the oxc transformer.
 #[derive(Debug)]
 pub struct TransformPlugin {
+    /// The name reported to the plugin pipeline.
+    name: Cow<'static, str>,
     /// Transform options.
     options: TransformOptions,
     /// Lazily resolved oxc options and plugin configs;
@@ -53,12 +55,21 @@ pub struct TransformPlugin {
 impl TransformPlugin {
     /// Create a plugin with default options.
     pub fn new() -> Self {
-        Self { options: TransformOptions::default(), resolved: OnceLock::new() }
+        Self::with_options(TransformOptions::default())
     }
 
     /// Create a plugin with `options`.
     pub fn with_options(options: TransformOptions) -> Self {
-        Self { options, resolved: OnceLock::new() }
+        Self { name: Cow::Borrowed(NAME), options, resolved: OnceLock::new() }
+    }
+
+    /// Override the name reported to the plugin pipeline.
+    pub fn with_name(
+        mut self,
+        name: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        self.name = name.into();
+        self
     }
 }
 
@@ -70,7 +81,7 @@ impl Default for TransformPlugin {
 
 impl Plugin for TransformPlugin {
     fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed(NAME)
+        self.name.clone()
     }
 
     fn register_hook_usage(&self) -> HookUsage {
@@ -701,6 +712,14 @@ mod tests {
     }
 
     #[test]
+    fn test_with_name_overrides_plugin_name() {
+        let plugin: TransformPlugin =
+            TransformPlugin::new().with_name("custom:transform");
+
+        assert_eq!(plugin.name(), "custom:transform");
+    }
+
+    #[test]
     fn test_plugin_register_hook_usage() {
         let plugin: TransformPlugin = TransformPlugin::new();
 
@@ -741,8 +760,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_unchanged_returns_none() {
-        // EsNext targets leave the already-clean tree untouched; the builtin
-        // plugin must report the no-op as `None`.
+        // EsNext targets leave the already-clean tree untouched; the plugin
+        // must report the no-op as `None`.
         let plugin: TransformPlugin =
             TransformPlugin::with_options(TransformOptions {
                 targets: vec![TransformTarget::EsNext],
