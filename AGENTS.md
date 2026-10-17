@@ -2,7 +2,12 @@
 
 Telarel is an extensible JavaScript compiler written in Rust.
 
-For more details, refer to `./ARCHITECTURE.md`.
+## Documentation Map
+
+- `docs/content` — public, published docs. Source of truth for user-facing API and behavior.
+- `crates/<crate>/AGENTS.md` — crate-local architecture, invariants, and where things live.
+
+Read the one for the crate you are changing.
 
 ## Architecture
 
@@ -91,7 +96,31 @@ When modifying code:
 - always ask before changing public API semantics
 - if uncertain about intended behavior, ask directly, do not guess
 - prefer reading tests as source of truth
-- if behavior changes, update tests and docs (like `./ARCHITECTURE.md`) accordingly
+
+### Documentation
+
+- if public behavior changes, update the tests and `docs/content`
+- if internal architecture or invariants change, update the affected crate `AGENTS.md`
+
+`docs/content` documents public behavior only. `crates/<crate>/AGENTS.md` documents internal architecture only. Do not duplicate public API semantics into agent docs; link to `docs/content` instead.
+
+Update `docs/content` only when a change alters what users can observe:
+
+- exported functions, types, options, defaults, or result shapes
+- the plugin contract, hook semantics, ordering, or lifecycle
+- user-triggerable errors or failure behavior
+- installation, package entry points, or usage examples
+
+Do not update `docs/content` for:
+
+- internal refactors, private renames, or module moves
+- performance-only changes
+- test-only changes or dependency bumps
+- internal invariants or file layout
+
+Update the affected `crates/<crate>/AGENTS.md` when a change alters internal architecture, invariants, file layout, or test commands a future contributor needs.
+
+If unsure whether behavior is public, check existing docs and tests and ask instead of guessing. When code and docs conflict, tests are the source of truth for behavior; fix the docs to match the intended public contract.
 
 ## Testing Rules
 
