@@ -18,9 +18,10 @@ overrides:
     emnapi: 2.0.0-alpha.5
 
 catalogs:
+    dep:
+        vite: ^8.3.4
     test:
-        vite: ^8
-        vitest: ^5
+        vitest: ^5.0.5
 
 minimumReleaseAge: 1440
 

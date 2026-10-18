@@ -9,6 +9,6 @@
         "vitest": "catalog:test"
     },
     "devDependencies": {
-        "vite": "catalog:test"
+        "vite": "catalog:dep"
     }
 }
