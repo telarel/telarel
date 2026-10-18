@@ -136,6 +136,18 @@ Update the affected `crates/<crate>/AGENTS.md` when a change alters internal arc
 
 If unsure whether behavior is public, check existing docs and tests and ask instead of guessing. When code and docs conflict, tests are the source of truth for behavior; fix the docs to match the intended public contract.
 
+### Changelog
+
+Add user-visible changes under `## Next` in `CHANGELOG.md`, grouped by the crate or package they affect. Do not add internal refactors, test-only changes.
+
+Within each group, order entries by reader priority:
+
+1. Breaking changes: removals, renames, signature and contract changes
+2. Additions
+3. Behavior changes and fixes
+
+Within a tier, order by public API surface: entry points, then options and types, then hooks and internals. Start each entry with `add`, `change`, `remove`, `rename`, or `replace`.
+
 ## Testing Rules
 
 - add tests when adding new behavior
