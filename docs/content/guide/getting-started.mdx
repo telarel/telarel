@@ -1,0 +1,74 @@
+---
+title: Getting Started
+description: Install Telarel and run your first compile.
+---
+
+## Installation
+
+### JavaScript
+
+```npm
+npm install telarel
+```
+
+### Rust
+
+```sh
+cargo add telarel
+```
+
+To use the transform plugin, add its crate as well:
+
+```sh
+cargo add telarel_plugin_transform
+```
+
+The package ships prebuilt native bindings for the common platforms, so no Rust toolchain is required.
+
+## First Compile
+
+Telarel takes a source text, an options object, and a list of plugins, and returns generated code and an optional source map.
+
+### JavaScript
+
+```ts
+import type { CodeResult } from "telarel";
+
+import { compile } from "telarel";
+import { transform } from "telarel/plugins/transform";
+
+const result: CodeResult = await compile("const x: number = 1;", {
+    plugins: [
+        transform({
+            targets: ["es2015"],
+        }),
+    ],
+});
+
+console.log(result.code); // const x = 1;
+```
+
+### Rust
+
+```rust
+use telarel::{CodeResult, CompileOptions, Plugin, compile};
+use telarel_plugin_transform::{TransformOptions, TransformPlugin, TransformTarget};
+
+let transform_plugin: TransformPlugin = TransformPlugin::with_options(
+    TransformOptions {
+        targets: vec![TransformTarget::Es2015],
+        ..TransformOptions::default()
+    },
+);
+
+let result: CodeResult = compile(
+    String::from("const x: number = 1;"),
+    CompileOptions::default(),
+    vec![Plugin::new_shared(transform_plugin)],
+)
+.await?;
+
+println!("{}", result.code); // const x = 1;
+```
+
+Without the transform plugin, `compile` still parses and re-generates the code — it just leaves the syntax as written. Plugins are what change it.

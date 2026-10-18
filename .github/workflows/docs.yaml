@@ -1,0 +1,85 @@
+name: Docs
+
+on:
+    workflow_dispatch:
+    pull_request:
+        branches:
+            - main
+        paths:
+            - ".github/workflows/docs.yaml"
+            - "docs/**"
+            - "justfile"
+            - "package.json"
+            - "pnpm-lock.yaml"
+            - "pnpm-workspace.yaml"
+    push:
+        branches:
+            - main
+        paths:
+            - ".github/workflows/docs.yaml"
+            - "docs/**"
+            - "justfile"
+            - "package.json"
+            - "pnpm-lock.yaml"
+            - "pnpm-workspace.yaml"
+
+permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    # Build
+    build:
+        name: Build
+
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v7
+              with:
+                  fetch-depth: 0
+
+            - name: Install just
+              uses: extractions/setup-just@v4
+
+            - name: Setup Node
+              uses: alpheusci/setup-node@v1
+              with:
+                  node-version: "24"
+                  auto-install: false
+
+            - name: Install
+              run: just i
+
+            - name: Build docs
+              run: just build-docs
+
+            - name: Upload artifact
+              if: github.event_name != 'pull_request'
+              uses: actions/upload-pages-artifact@v5
+              with:
+                  path: docs/dist/public
+
+    # Deploy
+    deploy:
+        name: Deploy
+
+        if: github.event_name != 'pull_request'
+        needs: build
+
+        runs-on: ubuntu-latest
+
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+
+        steps:
+            - name: Deploy to GitHub Pages
+              id: deployment
+              uses: actions/deploy-pages@v5

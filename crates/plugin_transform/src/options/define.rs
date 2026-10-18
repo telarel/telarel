@@ -6,6 +6,7 @@ use oxc_transformer_plugins::ReplaceGlobalDefinesConfig;
 /// Entries are ordered pairs; the first entry for a duplicate key wins.
 #[derive(Debug, Clone, Default)]
 pub struct DefineOptions {
+    /// Global replacement entries as `(key, value)` expression sources; the first duplicate key wins.
     pub entries: Vec<(String, String)>,
 }
 

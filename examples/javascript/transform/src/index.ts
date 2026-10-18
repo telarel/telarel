@@ -1,16 +1,17 @@
-import type { CompileResult } from "telarel";
+import type { CodeResult } from "telarel";
 
 import { compile } from "telarel";
 import { transform } from "telarel/plugins/transform";
 
-const result: CompileResult = await compile({
-    file: "index.ts",
-    code: "const value: number = 1;\nasync function run(): Promise<void> { await work(); }\n",
-    plugins: [
-        transform({
-            targets: ["es2015"],
-        }),
-    ],
-});
+const result: CodeResult = await compile(
+    "const value: number = 1;\nasync function run(): Promise<void> { await work(); }\n",
+    {
+        plugins: [
+            transform({
+                targets: ["es2015"],
+            }),
+        ],
+    },
+);
 
 console.log(`\n${result.code}\n`);

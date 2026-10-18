@@ -2,10 +2,10 @@
 
 An extensible JavaScript compiler.
 
-## Architecture
+## Documentation
 
-For more details about the repository,
-please refer to the [architecture documentation](./ARCHITECTURE.md).
+For the documentation,
+please refer to [telarel.github.io](https://telarel.github.io).
 
 ## Contributing
 

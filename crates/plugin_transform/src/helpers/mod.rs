@@ -96,8 +96,6 @@ pub fn run<'a>(
         rewriter.visit_program(program);
     }
 
-    // Remove the usage statements and insert the inlined statements at the
-    // top of the body (after directives, which live in `Program::directives`).
     let usage_indexes: HashSet<usize> = usages
         .iter()
         .map(|usage: &HelperUsage| usage.statement_index)
@@ -130,7 +128,7 @@ mod tests {
     use oxc::parser::ParserReturn;
     use oxc::span::SourceType;
 
-    use telarel_common::{CodegenOptions, codegen};
+    use telarel_common::generate_program;
 
     use crate::helpers::sources::{DEPENDENCY_HELPERS, HELPERS, HelperSource};
     use crate::options::helper_loader::DEFAULT_HELPER_MODULE_NAME;
@@ -160,7 +158,7 @@ mod tests {
     }
 
     fn codegen_program(program: &Program<'_>) -> String {
-        codegen(CodegenOptions { file: "index.mjs", program }).code
+        generate_program(program, "index.mjs").0
     }
 
     #[test]

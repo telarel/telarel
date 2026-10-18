@@ -1,27 +1,15 @@
-import type { SourceMap } from "#/@types/sourcemap";
+import type { Program } from "@oxc-project/types";
 
 /**
  * Arguments for the `finalize` hook.
+ *
+ * The `finalize` hook observes the final AST: its return value is ignored.
  */
 type FinalizeArgs = {
     /**
-     * The code entering the stage.
+     * Read-only.
      */
-    code: string;
+    ast: Program;
 };
 
-/**
- * Result of the `finalize` hook.
- */
-type FinalizeResult = {
-    /**
-     * The replacement code.
-     */
-    code: string;
-    /**
-     * An optional map accompanying the replacement code.
-     */
-    map?: SourceMap | null;
-};
-
-export type { FinalizeArgs, FinalizeResult };
+export type { FinalizeArgs };

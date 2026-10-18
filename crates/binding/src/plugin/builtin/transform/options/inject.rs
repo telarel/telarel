@@ -51,7 +51,6 @@ fn parse_inject_pair(
     Ok(pair)
 }
 
-/// Parse the inject object form into its source and specifier.
 fn parse_inject_object(
     local: &str,
     object: serde_json::Map<String, serde_json::Value>,

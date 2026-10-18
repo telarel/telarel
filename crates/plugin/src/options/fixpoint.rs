@@ -26,18 +26,9 @@ fn structurally_same(
 
 /// Run the `options` hook as a fixpoint over the plugin list.
 ///
-/// Plain sequential fold, NO driver: the processing list starts as
-/// `args.plugins`; for each plugin, `Some` replaces the whole set and `None`
-/// keeps it. Each pass ranks the current list by `options_meta`
-/// (`[pre, normal, post]`, stable) and calls `options` on every listed plugin
-/// not yet processed, in that order; later plugins observe earlier plugins'
-/// changes (last-wins fold).
-///
-/// A returned list replaces the settled list WHOLESALE: same-length swaps,
-/// reorders and truncations take effect, not just appended entries. A plugin
-/// already run is never re-run (tracked by identity), so the loop ends once a
-/// pass introduces nothing new. Exceeding [`MAX_OPTIONS_DEPTH`] aborts with
-/// the offending plugin chain (the names that most recently GREW the list).
+/// `Some` replaces the entire settled list and `None` keeps it; each plugin
+/// runs once, in per-pass `options_meta` order. The loop ends when a pass adds
+/// nothing, and [`MAX_OPTIONS_DEPTH`] guards cycles.
 pub async fn options_fixpoint(
     ctx: &CommonPluginContext,
     args: &OptionsArgs,
@@ -141,10 +132,9 @@ mod tests {
 
     fn make_args(plugins: Vec<SharedPluginable>) -> OptionsArgs {
         OptionsArgs {
-            options: telarel_common::CompileOptions {
-                file: "a.ts".to_string(),
-                code: "console.log(1);".to_string(),
-                ..telarel_common::CompileOptions::default()
+            options: telarel_common::ResolvableOptions {
+                file: Some("a.ts".to_string()),
+                ..telarel_common::ResolvableOptions::default()
             },
             plugins,
         }
@@ -193,11 +183,11 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct RewriteCodeOptionsPlugin;
+    struct RewriteFileOptionsPlugin;
 
-    impl Plugin for RewriteCodeOptionsPlugin {
+    impl Plugin for RewriteFileOptionsPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "rewrite-code-options".into()
+            "rewrite-file-options".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
@@ -212,7 +202,7 @@ mod tests {
             async move {
                 let mut next: OptionsArgs = args.clone();
 
-                next.options.code = "const rewritten = 7;".to_string();
+                next.options.file = Some("rewritten.ts".to_string());
 
                 Ok(Some(next))
             }
@@ -231,12 +221,12 @@ mod tests {
 
         fn record(
             &self,
-            code: &str,
+            file: Option<&str>,
         ) {
             let mut observed: MutexGuard<'_, Vec<String>> =
                 self.observed.lock().unwrap();
 
-            observed.push(code.to_string());
+            observed.push(file.unwrap_or_default().to_string());
         }
     }
 
@@ -255,7 +245,7 @@ mod tests {
             args: &'a OptionsArgs,
         ) -> impl Future<Output = OptionsReturn> + Send {
             async move {
-                self.record(&args.options.code);
+                self.record(args.options.file.as_deref());
 
                 Ok(None)
             }
@@ -346,9 +336,9 @@ mod tests {
         ) -> impl Future<Output = OptionsReturn> + Send {
             async {
                 Ok(Some(OptionsArgs {
-                    options: telarel_common::CompileOptions {
+                    options: telarel_common::ResolvableOptions {
                         cwd: Some("/only".to_string()),
-                        ..telarel_common::CompileOptions::default()
+                        ..telarel_common::ResolvableOptions::default()
                     },
                     plugins: Vec::new(),
                 }))
@@ -430,7 +420,7 @@ mod tests {
             Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
-            Plugin::new_shared(RewriteCodeOptionsPlugin),
+            Plugin::new_shared(RewriteFileOptionsPlugin),
             Plugin::new_shared(ObserveOptionsPlugin::new(Arc::clone(
                 &observed,
             ))),
@@ -441,11 +431,11 @@ mod tests {
         let (settled, _list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        assert_eq!(settled.options.code, "const rewritten = 7;");
+        assert_eq!(settled.options.file.as_deref(), Some("rewritten.ts"));
 
         let recorded: Vec<String> = observed.lock().unwrap().clone();
 
-        assert_eq!(recorded, vec!["const rewritten = 7;".to_string()]);
+        assert_eq!(recorded, vec!["rewritten.ts".to_string()]);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -497,7 +487,7 @@ mod tests {
 
         let recorded: Vec<String> = observed.lock().unwrap().clone();
 
-        assert_eq!(recorded, vec!["console.log(1);".to_string()]);
+        assert_eq!(recorded, vec!["a.ts".to_string()]);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -506,7 +496,7 @@ mod tests {
         // `options` hook must run in the pass after it joins the list, so
         // its rewrite is visible in the settled args.
         let appended: SharedPluginable =
-            Plugin::new_shared(RewriteCodeOptionsPlugin);
+            Plugin::new_shared(RewriteFileOptionsPlugin);
 
         let root: SharedPluginable =
             Plugin::new_shared(AppendingOptionsPlugin {
@@ -522,7 +512,7 @@ mod tests {
         let (settled, list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        assert_eq!(settled.options.code, "const rewritten = 7;");
+        assert_eq!(settled.options.file.as_deref(), Some("rewritten.ts"));
 
         let names: Vec<String> =
             list.iter().map(|p| p.call_name().into_owned()).collect();
@@ -531,7 +521,7 @@ mod tests {
             names,
             vec![
                 "append-rewrite".to_string(),
-                "rewrite-code-options".to_string()
+                "rewrite-file-options".to_string()
             ]
         );
     }
@@ -602,7 +592,6 @@ mod tests {
         let (settled, list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        // No dedup: the list keeps every entry in final array order.
         assert_eq!(list.len(), 3);
 
         assert!(Arc::ptr_eq(&list[0], &plugins[0]));
@@ -617,8 +606,9 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_options_some_replaces_whole_args_drops_fields() {
         // Struct-level replace: returned args REPLACE the whole set, so
-        // every field they do not carry falls back to `CompileOptions`'s
-        // own defaults (the input args' `file: "a.ts"` is NOT preserved).
+        // every field they do not carry falls back to `ResolvableOptions`'s
+        // own defaults (`None`); the input args' `file: Some("a.ts")` is
+        // NOT preserved.
         let plugins: Vec<SharedPluginable> =
             vec![Plugin::new_shared(ReplaceArgsDroppingFieldsOptionsPlugin)];
 
@@ -629,9 +619,12 @@ mod tests {
 
         assert_eq!(settled.options.cwd.as_deref(), Some("/only"));
 
-        assert_eq!(settled.options.file, "index.js");
+        assert!(
+            settled.options.file.is_none(),
+            "file must be dropped by the whole-struct replace"
+        );
 
-        assert_eq!(settled.options.code, "");
+        assert!(settled.options.language.is_none());
     }
 
     #[derive(Debug)]
@@ -920,14 +913,11 @@ mod tests {
         let (_settled, list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        // A same-length returned list (swap `probe-a` for `probe-b`) is
-        // adopted wholesale: the settled list drops `probe-a`.
         let names: Vec<String> =
             list.iter().map(|plugin| plugin.call_name().into_owned()).collect();
 
         assert_eq!(names, vec!["replacer".to_string(), "probe-b".to_string()],);
 
-        // The newly appeared `probe-b` gets its options hook run next pass.
         assert_eq!(
             log.lock().unwrap().clone(),
             vec![

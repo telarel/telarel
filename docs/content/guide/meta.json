@@ -1,0 +1,6 @@
+{
+    "title": "Guide",
+    "icon": "Signpost",
+    "root": true,
+    "pages": ["index", "getting-started"]
+}

@@ -2,7 +2,12 @@
 
 Telarel is an extensible JavaScript compiler written in Rust.
 
-For more details, refer to `./ARCHITECTURE.md`.
+## Documentation Map
+
+- `docs/content` — public, published docs. Source of truth for user-facing API and behavior.
+- `crates/<crate>/AGENTS.md` — crate-local architecture, invariants, and where things live.
+
+Read the one for the crate you are changing.
 
 ## Architecture
 
@@ -79,10 +84,24 @@ This repository contains Rust and TypeScript/JavaScript code.
 
 ### Comments
 
-- prefer clearer names and smaller functions over explanatory comments
-- avoid comments that restate what the code does, especially on private functions
-- reserve comments for non-obvious intent the code cannot express
-- document public APIs where behavior is not self-evident
+- comments explain **why**, not **what**. The code already says what it does
+- if the `why` cannot be stated briefly, the code may need refactoring, not a longer comment
+- delete comments that only translate code into prose:
+    - restated names
+    - obvious control flow
+    - per-line walkthroughs
+- if a comment can be shortened to 1–2 lines without losing intent, shorten it
+- keep comments only for non-obvious intent:
+    - invariants
+    - trade-offs
+    - workarounds
+    - external constraints
+    - surprising behavior
+    - or reasons a simpler approach was rejected
+- public API doc comments state the contract only, never a step-by-step narration
+- document every public struct, field, and function with at least one line stating its purpose or contract; a restated name or implementation narration is not documentation
+
+> For this rule, "public" means reachable from the crate or package entry point; `pub(crate)`, `pub(super)`, `pub(in ...)`, and `pub` items inside private modules are private
 
 ## Editing Rules
 
@@ -91,7 +110,51 @@ When modifying code:
 - always ask before changing public API semantics
 - if uncertain about intended behavior, ask directly, do not guess
 - prefer reading tests as source of truth
-- if behavior changes, update tests and docs (like `./ARCHITECTURE.md`) accordingly
+
+### Documentation
+
+- if public behavior changes, update the tests and `docs/content`
+- if internal architecture or invariants change, update the affected crate `AGENTS.md`
+
+`docs/content` documents public behavior only. `crates/<crate>/AGENTS.md` documents internal architecture only. Do not duplicate public API semantics into agent docs; link to `docs/content` instead.
+
+Update `docs/content` only when a change alters what users can observe:
+
+- exported functions, types, options, defaults, or result shapes
+- the plugin contract, hook semantics, ordering, or lifecycle
+- user-triggerable errors or failure behavior
+- installation, package entry points, or usage examples
+
+Do not update `docs/content` for:
+
+- internal refactors, private renames, or module moves
+- performance-only changes
+- test-only changes or dependency bumps
+- internal invariants or file layout
+
+Update the affected `crates/<crate>/AGENTS.md` when a change alters internal architecture, invariants, file layout, or test commands a future contributor needs.
+
+If unsure whether behavior is public, check existing docs and tests and ask instead of guessing. When code and docs conflict, tests are the source of truth for behavior; fix the docs to match the intended public contract.
+
+### Changelog
+
+Add user-visible changes under `## Next` in `CHANGELOG.md`, grouped by the crate or package they affect. Do not add internal refactors, test-only changes.
+
+Within each group, order entries by reader priority:
+
+1. Breaking changes: removals, renames, signature and contract changes
+2. Additions
+3. Behavior changes and fixes
+
+Within a tier, order by public API surface: entry points, then options and types, then hooks and internals. Start each entry with `add`, `change`, `remove`, `rename`, or `replace`.
+
+Cross-cutting dependency upgrades go in a `### Dependencies` group placed first under `## Next`. Within that group, order by upgrade impact:
+
+1. Runtime and compiler dependencies that can change emitted code or runtime behavior
+2. Public type dependencies
+3. Build, test, and tooling dependencies
+
+Within a tier, list Rust workspace dependencies before JavaScript packages, then sort alphabetically. Keep crates that must move together in one entry.
 
 ## Testing Rules
 
@@ -144,6 +207,8 @@ Therefore, the artifact distribution runs. Avoid invoke `napi build` directly.
 - add unnecessary dependencies
 - refactor unrelated code during a focused change
 - modify generated artifacts directly when a generation workflow exists
+- write comments that restate what the code does or paraphrase function names
+- leave multi-paragraph comments narrating implementation steps
 - introduce unnecessary mutation
 - migrate tooling without an explicit requirement
 - introduce a second package manager

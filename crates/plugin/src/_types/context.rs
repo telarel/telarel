@@ -9,8 +9,6 @@ pub struct CommonPluginContext {}
 pub struct ModuleInfo<'a> {
     /// The file to be compiled.
     pub file: &'a str,
-    /// The code to be compiled.
-    pub code: &'a str,
     /// The grammar of the code, inferred from the file extension.
     pub language: Language,
     /// The module system of the code, resolved from the grammar.
@@ -53,7 +51,6 @@ mod tests {
     fn test_context_carries_cwd_and_module() {
         let module: ModuleInfo<'_> = ModuleInfo {
             file: "a.ts",
-            code: "let a;",
             language: Language::TS,
             source_type: SourceType::Module,
         };
@@ -62,7 +59,6 @@ mod tests {
 
         assert_eq!(ctx.cwd, "/repo");
         assert_eq!(ctx.module.file, "a.ts");
-        assert_eq!(ctx.module.code, "let a;");
         assert_eq!(ctx.module.language, Language::TS);
         assert_eq!(ctx.module.source_type, SourceType::Module);
     }

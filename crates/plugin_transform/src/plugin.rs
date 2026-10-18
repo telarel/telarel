@@ -6,14 +6,14 @@ use oxc::semantic::SemanticBuilder;
 use oxc::transformer::{TransformOptions as OxcTransformOptions, Transformer};
 use oxc_transformer_plugins::{InjectGlobalVariables, ReplaceGlobalDefines};
 
-use telarel_common::{Ast, CodegenOptions, HookUsage, codegen};
+use telarel_common::{Ast, HookUsage, generate_program};
 use telarel_plugin::{Plugin, PluginContext, TransformArgs, TransformOutput};
 
 use crate::options::TransformOptions;
 use crate::options::helper_loader::ResolvedHelpers;
 
-/// The builtin transform plugin name.
-pub const NAME: &str = "builtin:transform";
+/// The transform plugin name used on the Rust side.
+pub const NAME: &str = "telarel_plugin_transform";
 
 /// The resolved, cached plugin state.
 #[derive(Debug, Clone)]
@@ -40,9 +40,11 @@ fn render_diagnostics(
     anyhow::anyhow!("{rendered}")
 }
 
-/// The builtin transform plugin, wrapping the oxc transformer.
+/// The transform plugin, wrapping the oxc transformer.
 #[derive(Debug)]
 pub struct TransformPlugin {
+    /// The name reported to the plugin pipeline.
+    name: Cow<'static, str>,
     /// Transform options.
     options: TransformOptions,
     /// Lazily resolved oxc options and plugin configs;
@@ -53,12 +55,21 @@ pub struct TransformPlugin {
 impl TransformPlugin {
     /// Create a plugin with default options.
     pub fn new() -> Self {
-        Self { options: TransformOptions::default(), resolved: OnceLock::new() }
+        Self::with_options(TransformOptions::default())
     }
 
     /// Create a plugin with `options`.
     pub fn with_options(options: TransformOptions) -> Self {
-        Self { options, resolved: OnceLock::new() }
+        Self { name: Cow::Borrowed(NAME), options, resolved: OnceLock::new() }
+    }
+
+    /// Override the name reported to the plugin pipeline.
+    pub fn with_name(
+        mut self,
+        name: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        self.name = name.into();
+        self
     }
 }
 
@@ -70,7 +81,7 @@ impl Default for TransformPlugin {
 
 impl Plugin for TransformPlugin {
     fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed(NAME)
+        self.name.clone()
     }
 
     fn register_hook_usage(&self) -> HookUsage {
@@ -131,11 +142,8 @@ impl Plugin for TransformPlugin {
         // before and after the pass; the inject and define passes report
         // their own `changed`; the helpers pass reports whether it edited
         // the program.
-        let before: String = codegen(CodegenOptions {
-            file: ctx.module.file,
-            program: args.ast.program(),
-        })
-        .code;
+        let before: String =
+            generate_program(args.ast.program(), ctx.module.file).0;
 
         let mut changed: bool = false;
 
@@ -163,12 +171,7 @@ impl Plugin for TransformPlugin {
             }
 
             changed = changed
-                || codegen(CodegenOptions {
-                    file: ctx.module.file,
-                    program,
-                })
-                .code
-                    != before;
+                || generate_program(program, ctx.module.file).0 != before;
 
             // Replace oxc's runtime helper imports with the vendored bodies
             // before inject/define run.
@@ -230,9 +233,7 @@ mod tests {
     use oxc::transformer::DecoratorOptions;
     use oxc::transformer::PluginsOptions;
 
-    use telarel_common::{
-        Ast, CompileContext, Language, ParseOwnedOptions, parse_owned,
-    };
+    use telarel_common::{Ast, Language, ParseAstOptions, parse_ast};
     use telarel_plugin::{ModuleInfo, Plugin, PluginContext, TransformOutput};
 
     use crate::helpers::sources::{DEPENDENCY_HELPERS, HELPERS, HelperSource};
@@ -263,22 +264,22 @@ mod tests {
         file: &str,
         code: &str,
     ) -> Ast {
-        let ctx: CompileContext<'_> = CompileContext::new(CWD, file, code);
-
-        parse_owned(ParseOwnedOptions {
-            context: &ctx,
-            file,
-            code,
-            language: None,
-            source_type: None,
-        })
+        parse_ast(
+            code.to_string(),
+            ParseAstOptions {
+                cwd: CWD.to_string(),
+                file: file.to_string(),
+                language: None,
+                source_type: None,
+                input_map: None,
+            },
+        )
         .expect("valid source parses")
     }
 
     fn make_context<'a>(file: &'a str) -> PluginContext<'a> {
         let module: ModuleInfo<'a> = ModuleInfo {
             file,
-            code: "",
             language: Language::JS,
             source_type: telarel_common::SourceType::Module,
         };
@@ -309,19 +310,9 @@ mod tests {
         // program; `None` means the read-only input stands.
         match run_hook(&plugin, file, &ast).await.expect("transform succeeds") {
             | Some(output) => {
-                telarel_common::codegen(telarel_common::CodegenOptions {
-                    file,
-                    program: output.ast.program(),
-                })
-                .code
+                telarel_common::generate_program(output.ast.program(), file).0
             },
-            | None => {
-                telarel_common::codegen(telarel_common::CodegenOptions {
-                    file,
-                    program: ast.program(),
-                })
-                .code
-            },
+            | None => telarel_common::generate_program(ast.program(), file).0,
         }
     }
 
@@ -332,19 +323,9 @@ mod tests {
     ) -> String {
         match &output {
             | Some(output) => {
-                telarel_common::codegen(telarel_common::CodegenOptions {
-                    file,
-                    program: output.ast.program(),
-                })
-                .code
+                telarel_common::generate_program(output.ast.program(), file).0
             },
-            | None => {
-                telarel_common::codegen(telarel_common::CodegenOptions {
-                    file,
-                    program: ast.program(),
-                })
-                .code
-            },
+            | None => telarel_common::generate_program(ast.program(), file).0,
         }
     }
 
@@ -731,6 +712,14 @@ mod tests {
     }
 
     #[test]
+    fn test_with_name_overrides_plugin_name() {
+        let plugin: TransformPlugin =
+            TransformPlugin::new().with_name("custom:transform");
+
+        assert_eq!(plugin.name(), "custom:transform");
+    }
+
+    #[test]
     fn test_plugin_register_hook_usage() {
         let plugin: TransformPlugin = TransformPlugin::new();
 
@@ -754,23 +743,14 @@ mod tests {
         let output: TransformOutput =
             output.expect("changed program must return Some");
 
-        // The transformed program is a distinct allocation; the input
-        // program stays untouched.
         let input_code: String =
-            telarel_common::codegen(telarel_common::CodegenOptions {
-                file: "index.js",
-                program: ast.program(),
-            })
-            .code;
+            telarel_common::generate_program(ast.program(), "index.js").0;
 
         assert!(input_code.contains("async function"), "{input_code}");
 
         let code: String =
-            telarel_common::codegen(telarel_common::CodegenOptions {
-                file: "index.js",
-                program: output.ast.program(),
-            })
-            .code;
+            telarel_common::generate_program(output.ast.program(), "index.js")
+                .0;
 
         assert!(!code.contains("async function"), "{code}");
         assert!(code.contains("asyncToGenerator"), "{code}");
@@ -778,8 +758,6 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_unchanged_returns_none() {
-        // EsNext targets leave the already-clean tree untouched; the builtin
-        // plugin must report the no-op as `None`.
         let plugin: TransformPlugin =
             TransformPlugin::with_options(TransformOptions {
                 targets: vec![TransformTarget::EsNext],
@@ -800,11 +778,7 @@ mod tests {
         assert!(output.is_none(), "unchanged program must return None");
 
         let code: String =
-            telarel_common::codegen(telarel_common::CodegenOptions {
-                file: "index.js",
-                program: ast.program(),
-            })
-            .code;
+            telarel_common::generate_program(ast.program(), "index.js").0;
 
         assert!(code.contains("main"), "{code}");
     }
@@ -861,9 +835,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_bare_default_inlines_helpers() {
-        // The unconfigured helper state defaults to inline mode; the bare
-        // default options must lower, emit runtime imports, and then inline
-        // the helper bodies in the post-transform pass.
+        // Unconfigured helper loading defaults to inline mode.
         let plugin: TransformPlugin =
             TransformPlugin::with_options(TransformOptions {
                 targets: vec![TransformTarget::Es2015],
@@ -921,11 +893,8 @@ mod tests {
             output.expect("the inline helper pass must change the program");
 
         let code: String =
-            telarel_common::codegen(telarel_common::CodegenOptions {
-                file: "index.js",
-                program: output.ast.program(),
-            })
-            .code;
+            telarel_common::generate_program(output.ast.program(), "index.js")
+                .0;
 
         assert!(!code.contains("@oxc-project/runtime"), "{}", code);
         assert!(
@@ -1046,7 +1015,6 @@ mod tests {
 
         let module: ModuleInfo<'_> = ModuleInfo {
             file: "index.js",
-            code: "",
             language: Language::JS,
             source_type: telarel_common::SourceType::Module,
         };
@@ -1353,11 +1321,7 @@ mod tests {
         assert!(error.to_string().contains("bad key"), "{}", error);
 
         let code: String =
-            telarel_common::codegen(telarel_common::CodegenOptions {
-                file: "index.js",
-                program: ast.program(),
-            })
-            .code;
+            telarel_common::generate_program(ast.program(), "index.js").0;
 
         assert!(
             code.contains("main"),
@@ -1392,8 +1356,6 @@ mod tests {
         )
         .await;
 
-        // The runtime import is replaced by the inlined helper body; the
-        // helper-internal `asyncGeneratorStep` is inlined under a fresh uid.
         assert!(
             !code.contains("@oxc-project/runtime"),
             "runtime import must be removed: {code}"
@@ -1444,9 +1406,6 @@ mod tests {
             "runtime imports must be removed: {code}"
         );
 
-        // The full dependency closure of `objectSpread2` is inlined once each,
-        // dependencies before dependents: objectSpread2 -> defineProperty ->
-        // toPropertyKey -> { typeof, toPrimitive } -> typeof.
         for name in [
             "_objectSpread",
             "_defineProperty",
@@ -1514,8 +1473,6 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_inline_helpers_noop_when_mode_is_explicit_runtime()
     {
-        // With an explicit runtime mode the oxc runtime import must be
-        // emitted unchanged; the inline pass must not touch the program.
         let plugin: TransformPlugin =
             TransformPlugin::with_options(TransformOptions {
                 targets: vec![TransformTarget::Es2015],
@@ -1602,9 +1559,6 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_inline_helpers_keep_user_code_and_directives() {
-        // The inlined statements land at the top of the body (directives live
-        // in `Program::directives`), and user code other than the helper
-        // imports is untouched.
         let plugin: TransformPlugin = inline_helper_plugin();
 
         let code: String = codegen_after(
@@ -1670,17 +1624,12 @@ mod tests {
                     );
                 },
                 | None => {
-                    // Direct helper: the snippet must make the plugin emit
-                    // the runtime import for this helper...
                     assert!(
                         runtime_code.contains(&specifier),
                         "snippet must trigger helper `{}` ({specifier}): {runtime_code}",
                         trigger.helper
                     );
 
-                    // ...and the inline pass must bind the helper's body under
-                    // the very local name oxc chose for that import, proving
-                    // the emitted import was replaced by the inlined function.
                     let local: String =
                         runtime_import_local(&runtime_code, &specifier)
                             .unwrap_or_else(|| {
@@ -1698,7 +1647,6 @@ mod tests {
                 },
             }
 
-            // ...and the inline pass must consume every runtime import.
             assert!(
                 !inline_code.contains(module_name),
                 "helper `{}` runtime import must be inlined: {inline_code}",

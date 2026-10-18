@@ -1,0 +1,63 @@
+---
+title: generate
+description: Generate code from an AST.
+---
+
+```ts
+function generate(ast: Ast, options?: GenerateOptions): Promise<CodeResult>;
+
+function generate(
+    program: Program,
+    code: string,
+    options?: GenerateOptions,
+): Promise<CodeResult>;
+```
+
+Generates code from an AST with plugins, in memory.
+
+The builtin generator is the terminal fallback after every `generate` plugin hook defers, and the resolved output source-map mode is applied to the winning result.
+
+## Parameters
+
+The function accepts either a normalized `Ast`, or a bare ESTree `Program` together with its source text.
+
+| Name      | Type              | Description                                   |
+| --------- | ----------------- | --------------------------------------------- |
+| `ast`     | `Ast`             | A normalized AST, carrying a `program` field. |
+| `options` | `GenerateOptions` | Optional generate options.                    |
+
+| Name      | Type              | Description                                                             |
+| --------- | ----------------- | ----------------------------------------------------------------------- |
+| `program` | `Program`         | A bare ESTree program.                                                  |
+| `code`    | `string`          | The source text the program's spans anchor to. Required with `program`. |
+| `options` | `GenerateOptions` | Optional generate options.                                              |
+
+### `GenerateOptions`
+
+| Field       | Type               | Default         | Description                                                            |
+| ----------- | ------------------ | --------------- | ---------------------------------------------------------------------- |
+| `cwd`       | `string`           | `process.cwd()` | Current working directory.                                             |
+| `file`      | `string`           | `index.ts`      | The file being generated. The language is inferred from its extension. |
+| `sourceMap` | `SourceMapOptions` | off             | The source-map inputs and outputs requested for the step.              |
+| `plugins`   | `PluginOption[]`   | `[]`            | The plugins to run.                                                    |
+
+## Returns
+
+`Promise<CodeResult>`:
+
+| Field  | Type                | Description                                                   |
+| ------ | ------------------- | ------------------------------------------------------------- |
+| `code` | `string`            | The generated code.                                           |
+| `map`  | `SourceMap \| null` | The source map for the generated code, when one was produced. |
+
+## Example
+
+```ts
+import type { AstResult, CodeResult } from "telarel";
+
+import { parse, generate } from "telarel";
+
+const { ast }: AstResult = await parse("const x: number = 1;");
+
+const result: CodeResult = await generate(ast);
+```

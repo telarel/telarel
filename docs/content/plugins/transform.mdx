@@ -1,0 +1,92 @@
+---
+title: Transform plugin
+description: Lower TypeScript, JSX, and modern syntax with the built-in transform plugin.
+---
+
+## Introduction
+
+The transform plugin wraps the [oxc](https://oxc.rs) transformer and lowers TypeScript, JSX, and modern JavaScript syntax to a set of compilation targets. It also applies compile-time `define` replacements and `inject`ed imports.
+
+## Installation
+
+The JS package exposes it as the builtin `builtin:transform`. In Rust it is a regular plugin named `telarel_plugin_transform`; add the crate as a dependency. Error messages use the name from the side that registered the plugin.
+
+```sh
+cargo add telarel_plugin_transform
+```
+
+## Usage
+
+### JavaScript
+
+```ts
+import type { CodeResult } from "telarel";
+
+import { compile } from "telarel";
+import { transform } from "telarel/plugins/transform";
+
+const result: CodeResult = await compile("const x: number = 1;", {
+    plugins: [
+        transform({
+            targets: ["es2015"],
+        }),
+    ],
+});
+```
+
+### Rust
+
+```rust
+use telarel::{CodeResult, CompileOptions, Plugin, compile};
+use telarel_plugin_transform::{TransformOptions, TransformPlugin, TransformTarget};
+
+let transform_plugin: TransformPlugin = TransformPlugin::with_options(
+    TransformOptions {
+        targets: vec![TransformTarget::Es2015],
+        ..TransformOptions::default()
+    },
+);
+
+let result: CodeResult = compile(
+    String::from("const x: number = 1;"),
+    CompileOptions::default(),
+    vec![Plugin::new_shared(transform_plugin)],
+)
+.await?;
+```
+
+`TransformPlugin::new()` uses the default options.
+
+## Options
+
+| Option       | Type                          | Description                                                               |
+| ------------ | ----------------------------- | ------------------------------------------------------------------------- |
+| `targets`    | `TransformTarget[]`           | Compilation targets. Empty means the ES-next default.                     |
+| `typescript` | `TypeScriptOptions`           | TypeScript-specific transform options.                                    |
+| `jsx`        | `JsxOptions`                  | JSX runtime and pragma options.                                           |
+| `inject`     | `Record<string, ...>`         | Imports injected for otherwise-free identifiers, keyed by the local name. |
+| `define`     | `Record<string, DefineValue>` | Compile-time replacements for free identifiers and member chains.         |
+| `oxc`        | `OxcTransformOptions`         | Escape hatch for the raw oxc transform options.                           |
+
+The Rust `TransformOptions` additionally exposes `helper_loader` for controlling how runtime helpers are emitted.
+
+### Define
+
+`define` replaces free identifiers and member chains with expression source strings. Quote string literals yourself, while scalars are stringified:
+
+```ts
+transform({
+    define: {
+        __DEV__: "false",
+        "process.env.NODE_ENV": '"production"',
+    },
+});
+```
+
+Replacements run last, after `inject` and every transform.
+
+### Inject
+
+`inject` adds imports for identifiers that would otherwise be free, keyed by the local binding name. A string value is a module source imported as a named specifier; a `[source, imported]` pair imports `imported` from `source`; the object form selects the specifier explicitly. Dotted keys such as `"Object.assign"` are replaced as member chains.
+
+Injected imports run after all transforms, before `define`.

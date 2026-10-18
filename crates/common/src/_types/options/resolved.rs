@@ -1,27 +1,28 @@
-use crate::_types::options::language::Language;
-use crate::_types::options::source_type::SourceType;
+use crate::_types::grammar::language::Language;
+use crate::_types::grammar::source_type::SourceType;
+use crate::_types::options::source_map::SourceMapOptions;
 
-/// Resolved options, as seen by `compile_start` and later hooks.
+/// Resolved options, as seen by `start` and later hooks.
 #[derive(Debug, Clone)]
 pub struct ResolvedOptions {
-    /// Current working directory, resolved.
+    /// Working directory used to resolve relative paths.
     pub cwd: String,
-    /// The file to be compiled.
+    /// Path of the file being compiled.
     pub file: String,
-    /// The code to be compiled.
-    pub code: String,
     /// The grammar of the code, defaulted from the file extension.
     pub language: Language,
     /// The module system of the code, resolved from the grammar.
     pub source_type: SourceType,
+    /// The source-map inputs and outputs requested for the run.
+    pub source_map: SourceMapOptions,
     /// The settled plugin-name list, after the options fixpoint.
     pub plugins: Vec<String>,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::_types::options::language::Language;
-    use crate::_types::options::source_type::SourceType;
+    use crate::_types::grammar::language::Language;
+    use crate::_types::grammar::source_type::SourceType;
 
     use super::*;
 
@@ -30,17 +31,18 @@ mod tests {
         let options: ResolvedOptions = ResolvedOptions {
             cwd: String::from("/repo"),
             file: String::from("src/app.ts"),
-            code: String::from("let a = 1;"),
             language: Language::TS,
             source_type: SourceType::Module,
+            source_map: SourceMapOptions::default(),
             plugins: vec![String::from("probe")],
         };
 
         assert_eq!(options.cwd, "/repo");
         assert_eq!(options.file, "src/app.ts");
-        assert_eq!(options.code, "let a = 1;");
         assert_eq!(options.language, Language::TS);
         assert_eq!(options.source_type, SourceType::Module);
+        assert!(options.source_map.input.is_none());
+        assert!(options.source_map.output.is_none());
         assert_eq!(options.plugins, vec![String::from("probe")]);
     }
 }

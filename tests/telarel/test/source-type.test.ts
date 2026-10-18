@@ -1,4 +1,4 @@
-import type { CompileOptions, CompileResult } from "telarel";
+import type { CompileOptions, CodeResult } from "telarel";
 
 import { compile } from "telarel";
 import { describe, expect, it } from "vitest";
@@ -9,9 +9,8 @@ describe("language", (): void => {
         // `language: "ts"` the ts grammar applies despite the `.js`
         // file, so the annotated declaration parses and compiles to
         // itself.
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a: number = 1;", {
             file: "index.js",
-            code: "const a: number = 1;",
             language: "ts",
             plugins: [
                 {
@@ -22,8 +21,8 @@ describe("language", (): void => {
         });
 
         expect(result.code).toBe("const a: number = 1;");
-        expect(result.map.version).toBe(3);
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.version).toBe(3);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("rejects ts syntax on a ts file with an explicit js language", async (): Promise<void> => {
@@ -33,9 +32,8 @@ describe("language", (): void => {
         // Pinned observed message: the native parser renders a code-frame
         // style diagnostic including the file name and caret position.
         await expect(
-            compile({
+            compile("const a: number = 1;", {
                 file: "index.ts",
-                code: "const a: number = 1;",
                 language: "js",
                 plugins: [
                     {
@@ -47,9 +45,8 @@ describe("language", (): void => {
         ).rejects.toThrow("index.ts");
 
         await expect(
-            compile({
+            compile("const a: number = 1;", {
                 file: "index.ts",
-                code: "const a: number = 1;",
                 language: "js",
                 plugins: [
                     {
@@ -62,9 +59,8 @@ describe("language", (): void => {
     });
 
     it("infers the ts grammar from the ts extension when language is omitted", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a: number = 1;", {
             file: "index.ts",
-            code: "const a: number = 1;",
             plugins: [
                 {
                     name: "force-parse",
@@ -80,9 +76,8 @@ describe("language", (): void => {
         // Pinned observed behavior: without an extension the default es
         // module js grammar applies, so plain js parses while ts-only
         // syntax is rejected.
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             file: "index",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "force-parse",
@@ -94,9 +89,8 @@ describe("language", (): void => {
         expect(result.code).toBe("const a = 1;");
 
         await expect(
-            compile({
+            compile("const a: number = 1;", {
                 file: "index",
-                code: "const a: number = 1;",
                 plugins: [
                     {
                         name: "force-parse",
@@ -107,9 +101,8 @@ describe("language", (): void => {
         ).rejects.toThrow("index");
 
         await expect(
-            compile({
+            compile("const a: number = 1;", {
                 file: "index",
-                code: "const a: number = 1;",
                 plugins: [
                     {
                         name: "force-parse",
@@ -123,9 +116,8 @@ describe("language", (): void => {
     it("parses declaration syntax with an explicit dts language", async (): Promise<void> => {
         // The dts grammar is the `.d.ts` declaration grammar, so ambient
         // declarations parse even on a `.js` file.
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("declare const a: number;", {
             file: "index.js",
-            code: "declare const a: number;",
             language: "dts",
             plugins: [
                 {
@@ -136,7 +128,7 @@ describe("language", (): void => {
         });
 
         expect(result.code).toBe("declare const a: number;");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("rejects a language that is not js, ts, dts, jsx, or tsx", async (): Promise<void> => {
@@ -145,57 +137,63 @@ describe("language", (): void => {
         // target parser.
         const json: unknown = {
             file: "index.js",
-            code: "const a = 1;",
             language: "json",
         };
 
         const banana: unknown = {
             file: "index.js",
-            code: "const a = 1;",
             language: "banana",
         };
 
-        await expect(compile(json as CompileOptions)).rejects.toThrow(
+        await expect(
+            compile("const a = 1;", json as CompileOptions),
+        ).rejects.toThrow(
             'invalid language "json": expected "js", "ts", "dts", "jsx" or "tsx"',
         );
 
-        await expect(compile(banana as CompileOptions)).rejects.toThrow(
+        await expect(
+            compile("const a = 1;", banana as CompileOptions),
+        ).rejects.toThrow(
             'invalid language "banana": expected "js", "ts", "dts", "jsx" or "tsx"',
         );
     });
 
     it("compiles jsx syntax on a js file with an explicit jsx language", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            file: "index.js",
-            code: "const a = <Button>hi</Button>;",
-            language: "jsx",
-            plugins: [
-                {
-                    name: "force-parse",
-                    transform: (): void => void 0,
-                },
-            ],
-        });
+        const result: CodeResult = await compile(
+            "const a = <Button>hi</Button>;",
+            {
+                file: "index.js",
+                language: "jsx",
+                plugins: [
+                    {
+                        name: "force-parse",
+                        transform: (): void => void 0,
+                    },
+                ],
+            },
+        );
 
         expect(result.code).toBe("const a = <Button>hi</Button>;");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("compiles tsx syntax on a js file with an explicit tsx language", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            file: "index.js",
-            code: "const a: number = <Button>hi</Button>;",
-            language: "tsx",
-            plugins: [
-                {
-                    name: "force-parse",
-                    transform: (): void => void 0,
-                },
-            ],
-        });
+        const result: CodeResult = await compile(
+            "const a: number = <Button>hi</Button>;",
+            {
+                file: "index.js",
+                language: "tsx",
+                plugins: [
+                    {
+                        name: "force-parse",
+                        transform: (): void => void 0,
+                    },
+                ],
+            },
+        );
 
         expect(result.code).toBe("const a: number = <Button>hi</Button>;");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 });
 
@@ -204,9 +202,8 @@ describe("source type", (): void => {
         // Pinned observed message: the native parser renders a code-frame
         // style diagnostic including the file name and caret position.
         await expect(
-            compile({
+            compile("await Promise.resolve();", {
                 file: "index.js",
-                code: "await Promise.resolve();",
                 sourceType: "script",
                 plugins: [
                     {
@@ -218,9 +215,8 @@ describe("source type", (): void => {
         ).rejects.toThrow("index.js");
 
         await expect(
-            compile({
+            compile("await Promise.resolve();", {
                 file: "index.js",
-                code: "await Promise.resolve();",
                 sourceType: "script",
                 plugins: [
                     {
@@ -233,9 +229,8 @@ describe("source type", (): void => {
     });
 
     it("allows top-level await with an explicit module source type", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("await Promise.resolve();", {
             file: "index.js",
-            code: "await Promise.resolve();",
             sourceType: "module",
             plugins: [
                 {
@@ -246,7 +241,7 @@ describe("source type", (): void => {
         });
 
         expect(result.code).toBe("await Promise.resolve();");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("auto-detects the module goal with an unambiguous source type", async (): Promise<void> => {
@@ -254,9 +249,8 @@ describe("source type", (): void => {
         // the file to the module goal when it sees unambiguously-module
         // syntax (here the top-level await), so the script-only error is
         // deferred away and the code compiles.
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("await Promise.resolve();", {
             file: "index.js",
-            code: "await Promise.resolve();",
             sourceType: "unambiguous",
             plugins: [
                 {
@@ -268,9 +262,8 @@ describe("source type", (): void => {
 
         expect(result.code).toBe("await Promise.resolve();");
 
-        const withEsmSyntax: CompileResult = await compile({
+        const withEsmSyntax: CodeResult = await compile("export const a = 1;", {
             file: "index.js",
-            code: "export const a = 1;",
             sourceType: "unambiguous",
             plugins: [
                 {
@@ -288,9 +281,8 @@ describe("source type", (): void => {
         // failing pins that the unambiguous resolution of plain code is
         // script, not commonjs.
         await expect(
-            compile({
+            compile("if (true) { return; }", {
                 file: "index.js",
-                code: "if (true) { return; }",
                 sourceType: "unambiguous",
                 plugins: [
                     {
@@ -309,9 +301,8 @@ describe("source type", (): void => {
         // parses the file as if wrapped in a function body, so a top-level
         // `return` (and `new.target`) is valid, while `import.meta` and
         // top-level await are not.
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("if (true) { return; }", {
             file: "index.js",
-            code: "if (true) { return; }",
             sourceType: "commonjs",
             plugins: [
                 {
@@ -322,16 +313,15 @@ describe("source type", (): void => {
         });
 
         expect(result.code).toBe("if (true) {\n\treturn;\n}");
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("rejects import.meta with a commonjs source type", async (): Promise<void> => {
         // Pins that `commonjs` is not the module goal: `import.meta` is
         // rejected the same way as in script mode.
         await expect(
-            compile({
+            compile("const url = import.meta.url;", {
                 file: "index.js",
-                code: "const url = import.meta.url;",
                 sourceType: "commonjs",
                 plugins: [
                     {
@@ -349,9 +339,8 @@ describe("source type", (): void => {
         // `sourceType`, so top-level await is rejected where the default
         // unambiguous resolution would have accepted it.
         await expect(
-            compile({
+            compile("await Promise.resolve();", {
                 file: "index.ts",
-                code: "await Promise.resolve();",
                 sourceType: "script",
                 plugins: [
                     {
@@ -362,9 +351,8 @@ describe("source type", (): void => {
             }),
         ).rejects.toThrow("`await` is only allowed within async functions");
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("await Promise.resolve();", {
             file: "index.ts",
-            code: "await Promise.resolve();",
             plugins: [
                 {
                     name: "force-parse",
@@ -381,9 +369,8 @@ describe("source type", (): void => {
         // / `export` when the file is declared a script, since module
         // declarations can only be used at the top level of a module.
         await expect(
-            compile({
+            compile("import a from 'mod';\nexport const b = a;", {
                 file: "index.js",
-                code: "import a from 'mod';\nexport const b = a;",
                 sourceType: "script",
                 plugins: [
                     {
@@ -402,21 +389,23 @@ describe("source type", (): void => {
         // valid source types.
         const js: unknown = {
             file: "index.js",
-            code: "const a = 1;",
             sourceType: "js",
         };
 
         const banana: unknown = {
             file: "index.js",
-            code: "const a = 1;",
             sourceType: "banana",
         };
 
-        await expect(compile(js as CompileOptions)).rejects.toThrow(
+        await expect(
+            compile("const a = 1;", js as CompileOptions),
+        ).rejects.toThrow(
             'invalid source type "js": expected "script", "commonjs", "module" or "unambiguous"',
         );
 
-        await expect(compile(banana as CompileOptions)).rejects.toThrow(
+        await expect(
+            compile("const a = 1;", banana as CompileOptions),
+        ).rejects.toThrow(
             'invalid source type "banana": expected "script", "commonjs", "module" or "unambiguous"',
         );
     });

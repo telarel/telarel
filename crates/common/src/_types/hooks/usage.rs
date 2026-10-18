@@ -3,21 +3,25 @@ use bitflags::bitflags;
 bitflags! {
     /// Which plugin hooks a plugin implements.
     ///
-    /// The bit positions should follow pipeline execution order.
+    /// The bit positions follow pipeline execution order.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-    pub struct HookUsage: u8 {
+    pub struct HookUsage: u32 {
         /// The `options` hook.
         const Options = 1 << 0;
-        /// The `compile_start` hook.
-        const CompileStart = 1 << 1;
+        /// The `start` hook.
+        const Start = 1 << 1;
+        /// The `parse` hook.
+        const Parse = 1 << 2;
         /// The `prepare` hook.
-        const Prepare = 1 << 2;
+        const Prepare = 1 << 3;
         /// The `transform` hook.
-        const Transform = 1 << 3;
+        const Transform = 1 << 4;
         /// The `finalize` hook.
-        const Finalize = 1 << 4;
-        /// The `compile_end` hook.
-        const CompileEnd = 1 << 5;
+        const Finalize = 1 << 5;
+        /// The `generate` hook.
+        const Generate = 1 << 6;
+        /// The `end` hook.
+        const End = 1 << 7;
     }
 }
 
@@ -27,20 +31,24 @@ mod tests {
 
     #[test]
     fn test_hook_usage_bits_are_distinct() {
-        assert_ne!(HookUsage::Options, HookUsage::Prepare);
+        assert_ne!(HookUsage::Options, HookUsage::Start);
+        assert_ne!(HookUsage::Start, HookUsage::Parse);
+        assert_ne!(HookUsage::Parse, HookUsage::Prepare);
         assert_ne!(HookUsage::Prepare, HookUsage::Transform);
         assert_ne!(HookUsage::Transform, HookUsage::Finalize);
-        assert_ne!(HookUsage::Finalize, HookUsage::CompileStart);
-        assert_ne!(HookUsage::CompileStart, HookUsage::CompileEnd);
+        assert_ne!(HookUsage::Finalize, HookUsage::Generate);
+        assert_ne!(HookUsage::Generate, HookUsage::End);
     }
 
     #[test]
     fn test_hook_usage_bits_follow_execution_order() {
-        assert!(HookUsage::Options.bits() < HookUsage::CompileStart.bits());
-        assert!(HookUsage::CompileStart.bits() < HookUsage::Prepare.bits());
+        assert!(HookUsage::Options.bits() < HookUsage::Start.bits());
+        assert!(HookUsage::Start.bits() < HookUsage::Parse.bits());
+        assert!(HookUsage::Parse.bits() < HookUsage::Prepare.bits());
         assert!(HookUsage::Prepare.bits() < HookUsage::Transform.bits());
         assert!(HookUsage::Transform.bits() < HookUsage::Finalize.bits());
-        assert!(HookUsage::Finalize.bits() < HookUsage::CompileEnd.bits());
+        assert!(HookUsage::Finalize.bits() < HookUsage::Generate.bits());
+        assert!(HookUsage::Generate.bits() < HookUsage::End.bits());
     }
 
     #[test]

@@ -1,0 +1,17 @@
+{
+    "extends": "@apst/tsconfig",
+    "compilerOptions": {
+        "jsx": "react-jsx",
+        "noEmit": true,
+        "types": ["*", "vite/client"],
+        "paths": {
+            "#/*": ["./src/*"]
+        }
+    },
+    "include": [
+        "src/**/*",
+        "content/**/*",
+        "press.config.tsx",
+        "vite.config.ts"
+    ]
+}

@@ -10,10 +10,12 @@ use crate::plugin::builtin::transform::options::{
     BindingTransformPluginOptions, to_transform_options,
 };
 
-/// The builtin transform plugin's name.
+/// The transform plugin's JS builtin name.
+///
+/// The Rust plugin itself is named [`telarel_plugin_transform::NAME`].
 pub const TRANSFORM_NAME: &str = "builtin:transform";
 
-/// Deserialize the marker's raw `options` JSON and construct the plugin.
+/// Build the builtin transform plugin from its JSON options.
 pub fn to_transform_plugin(
     options: Option<serde_json::Value>
 ) -> Result<SharedPluginable> {
@@ -28,7 +30,8 @@ pub fn to_transform_plugin(
     };
 
     let plugin: SharedPluginable = telarel_plugin::Plugin::new_shared(
-        telarel_plugin_transform::TransformPlugin::with_options(plugin_options),
+        telarel_plugin_transform::TransformPlugin::with_options(plugin_options)
+            .with_name(TRANSFORM_NAME),
     );
 
     Ok(plugin)
@@ -43,8 +46,8 @@ mod tests {
     use super::{TRANSFORM_NAME, to_transform_plugin};
 
     #[test]
-    fn test_binding_transform_name_matches_crate_constant() {
-        assert_eq!(TRANSFORM_NAME, NAME);
+    fn test_builtin_and_rust_names_are_distinct() {
+        assert_ne!(TRANSFORM_NAME, NAME);
     }
 
     #[test]
@@ -52,7 +55,7 @@ mod tests {
         let plugin: telarel_plugin::SharedPluginable =
             to_transform_plugin(None).expect("transform dispatches");
 
-        assert_eq!(plugin.call_name(), NAME);
+        assert_eq!(plugin.call_name(), TRANSFORM_NAME);
         assert!(
             plugin
                 .call_register_hook_usage()
@@ -66,7 +69,7 @@ mod tests {
             to_transform_plugin(Some(json!({ "targets": ["es2016"] })))
                 .expect("transform dispatches");
 
-        assert_eq!(plugin.call_name(), NAME);
+        assert_eq!(plugin.call_name(), TRANSFORM_NAME);
     }
 
     #[test]
@@ -87,6 +90,6 @@ mod tests {
         )
         .expect("transform dispatches");
 
-        assert_eq!(plugin.call_name(), NAME);
+        assert_eq!(plugin.call_name(), TRANSFORM_NAME);
     }
 }

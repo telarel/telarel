@@ -1,0 +1,9 @@
+---
+title: Plugins
+description: Extend the Telarel pipeline with plugins.
+---
+
+Telarel is built around plugin hooks. A plugin receives the source, the options, and the current pipeline state, and contributes to the stages it declares. Plugins are passed to every entry point alongside the options.
+
+- [Plugin API](/apis/plugin) — the hook contract shared by both languages, with the [JavaScript](/apis/plugin/javascript) and [Rust](/apis/plugin/rust) surfaces.
+- [Transform plugin](/plugins/transform) — the builtin plugin that lowers TypeScript, JSX, and modern syntax, with `define` and `inject`.

@@ -5,14 +5,19 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TypeScriptOptions {
+    /// Only removes type-only imports, leaving unused value imports in place.
     #[serde(default)]
     pub only_remove_type_imports: Option<bool>,
+    /// Allows TypeScript `namespace` declarations to be compiled.
     #[serde(default)]
     pub allow_namespaces: Option<bool>,
+    /// Factory treated as a value when pruning JSX imports; defaults to `React.createElement`.
     #[serde(default)]
     pub jsx_pragma: Option<String>,
+    /// Fragment treated as a value when pruning JSX imports; defaults to `React.Fragment`.
     #[serde(default)]
     pub jsx_pragma_frag: Option<String>,
+    /// Inlines statically known enum members and drops unused non-exported enums.
     #[serde(default)]
     pub optimize_enums: Option<bool>,
 }

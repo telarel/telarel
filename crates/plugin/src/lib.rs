@@ -15,14 +15,14 @@ pub use telarel_common::HookUsage;
 pub use crate::_types::context::{
     CommonPluginContext, ModuleInfo, PluginContext,
 };
-pub use crate::_types::hooks::compile_end::CompileEndArgs;
-pub use crate::_types::hooks::compile_start::CompileStartArgs;
-pub use crate::_types::hooks::finalize::FinalizeReturn;
-pub use crate::_types::hooks::finalize::{FinalizeArgs, FinalizeOutput};
+pub use crate::_types::hooks::end::EndArgs;
+pub use crate::_types::hooks::finalize::FinalizeArgs;
+pub use crate::_types::hooks::generate::{GenerateArgs, GenerateReturn};
 pub use crate::_types::hooks::notify::NotifyReturn;
 pub use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
-pub use crate::_types::hooks::prepare::PrepareReturn;
-pub use crate::_types::hooks::prepare::{PrepareArgs, PrepareOutput};
+pub use crate::_types::hooks::parse::{ParseArgs, ParseReturn};
+pub use crate::_types::hooks::prepare::PrepareArgs;
+pub use crate::_types::hooks::start::StartArgs;
 pub use crate::_types::hooks::transform::TransformReturn;
 pub use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
 pub use crate::_types::order::{PluginHookMeta, PluginOrder};
@@ -35,6 +35,4 @@ pub use crate::plugin::pluginable::{Pluginable, SharedPluginable};
 pub mod __internal {
     pub use crate::plugin::pluginable::HookFuture;
     pub use crate::plugin_driver::PluginDriver;
-    pub use crate::plugin_driver::hooks::finalize::FinalizeFold;
-    pub use crate::plugin_driver::hooks::prepare::PrepareFold;
 }

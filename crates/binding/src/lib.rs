@@ -1,29 +1,37 @@
 mod _types;
+pub mod ast;
 mod functions;
 mod plugin;
 mod tasks;
 
-pub use crate::_types::options::{JsOptions, to_compile_options};
+pub use crate::_types::ast::{JsAst, JsAstInput, JsAstResult};
+pub use crate::_types::options::{
+    JsCompileFromAstOptions, JsCompileOptions, JsGenerateOptions,
+    JsGeneratorOptions, JsParseOptions, JsParserOptions, JsRewriteOptions,
+};
 pub use crate::_types::plugin::context::JsPluginContext;
 pub use crate::_types::plugin::hooks::{
-    JsCompileEndArgs, JsCompileStartArgs, JsOptionsOutput, JsStageArgs,
-    JsStageOutput, JsTransformArgs, JsTransformOutput,
+    JsAstArgs, JsCodeOutput, JsEndArgs, JsGenerateArgs, JsGeneratorHookOptions,
+    JsOptionsOutput, JsParseArgs, JsParseOutput, JsParserHookOptions,
+    JsResolvedOptions, JsStartArgs, JsTransformOutput,
 };
-pub use crate::_types::results::JsCompileResult;
+pub use crate::_types::results::JsCodeResult;
 pub use crate::_types::sourcemap::JsSourceMap;
-pub use crate::functions::compile::compile;
+pub use crate::functions::{
+    builtin_generate::builtin_generate, builtin_parse::builtin_parse,
+    compile::compile, compile_from_ast::compile_from_ast, generate::generate,
+    parse::parse, rewrite::rewrite,
+};
 pub use crate::plugin::build::{bridge_plugin, to_plugins};
 pub use crate::plugin::hooks::{RefList, SharedRef, SharedStr};
 pub use crate::plugin::pluginable::JsPlugin;
-pub use crate::tasks::compile::CompileTask;
+pub use crate::tasks::function::FunctionTask;
 
-/// The builtin plugins related.
 pub mod builtin {
     pub use crate::plugin::builtin::{
         BindingBuiltinPluginName, to_builtin_plugin,
     };
 
-    /// The transform plugin related.
     pub mod transform {
         pub use crate::plugin::builtin::transform::options::BindingTransformPluginOptions;
         pub use crate::plugin::builtin::transform::options::oxc::{
@@ -59,17 +67,18 @@ pub mod __internal {
     };
     pub use crate::plugin::build::NAME_REQUIRED;
     pub use crate::plugin::hooks::{
-        CompileEndCall, CompileEndTsfn, CompileStartCall, CompileStartTsfn,
-        CtxTsfn, FinalizeTsfn, FnCtx, HookCall, OptionsCall, OptionsTsfn,
-        PrepareTsfn, StageCall, TransformCall, TransformTsfn, Tsfn,
-        compile_end, compile_start, finalize, materialize, options,
-        plugin_context, prepare, release_refs, scan_hook, scan_options,
-        transform,
+        CtxTsfn, EndCall, EndTsfn, FinalizeTsfn, FnCtx, GenerateCall,
+        GenerateTsfn, HookCall, ObserveCall, OptionsCall, OptionsTsfn,
+        ParseCall, ParseTsfn, PrepareTsfn, StartCall, StartTsfn, TransformCall,
+        TransformTsfn, Tsfn, end, finalize, generate, materialize, options,
+        parse, plugin_context, prepare, release_refs, scan_hook, scan_options,
+        start, transform,
     };
     pub use crate::plugin::options::{
         language_label, parse_language, parse_source_type, source_type_label,
     };
     pub use crate::plugin::pluginable::OptionsReturn;
-    pub use crate::tasks::block_on_compile;
-    pub use crate::tasks::error_to_napi;
+    pub use crate::tasks::{
+        anyhow_to_napi, block_on_compile, error_to_napi, run_core,
+    };
 }

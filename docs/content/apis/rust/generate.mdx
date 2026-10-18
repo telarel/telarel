@@ -1,0 +1,54 @@
+---
+title: generate
+description: Generate code from an AST.
+---
+
+```rust
+pub async fn generate(
+    ast: Ast,
+    options: GenerateOptions,
+    plugins: Vec<SharedPluginable>,
+) -> Result<CodeResult, CompileError>
+```
+
+Generates code from `ast`.
+
+The builtin generator is the terminal fallback after every `generate` hook defers, and the resolved output source-map mode is applied to the winning result.
+
+## Parameters
+
+| Name      | Type                    | Description               |
+| --------- | ----------------------- | ------------------------- |
+| `ast`     | `Ast`                   | The AST to generate from. |
+| `options` | `GenerateOptions`       | The generate options.     |
+| `plugins` | `Vec<SharedPluginable>` | The plugins to run.       |
+
+### `GenerateOptions`
+
+Every field is optional and resolved against defaults before use.
+
+| Field        | Type                       | Default             | Description                                                            |
+| ------------ | -------------------------- | ------------------- | ---------------------------------------------------------------------- |
+| `cwd`        | `Option<String>`           | process working dir | Current working directory.                                             |
+| `file`       | `Option<String>`           | `index.ts`          | The file being generated. The language is inferred from its extension. |
+| `source_map` | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the step.              |
+
+## Returns
+
+`Result<CodeResult, CompileError>`, where `CodeResult` is `{ code: String, map: Option<SourceMap> }`.
+
+## Example
+
+```rust
+use telarel::{generate, parse, GenerateOptions, ParseOptions, AstResult, CodeResult};
+
+let parsed: AstResult = parse(
+    String::from("const x: number = 1;"),
+    ParseOptions::default(),
+    vec![],
+).await?;
+
+let result: CodeResult = generate(parsed.ast, GenerateOptions::default(), vec![]).await?;
+
+println!("{}", result.code);
+```

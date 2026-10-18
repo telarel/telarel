@@ -4,10 +4,13 @@ use oxc::allocator::{Allocator, CloneIn};
 use oxc::ast::ast::Program;
 use oxc::span::SourceType;
 
+use crate::sourcemap::SourceMap;
+
 struct AstOwner {
     source: Arc<str>,
     allocator: Allocator,
     source_type: SourceType,
+    map: Option<SourceMap>,
 }
 
 struct AstDependent<'cell> {
@@ -25,6 +28,10 @@ self_cell::self_cell!(
 
 /// An owned, self-referential AST that bundles its own allocator.
 ///
+/// The optional [`Ast::map`] is the **input** source map: it describes how
+/// this AST's source was produced from upstream originals, and nothing about
+/// the code generated from this AST.
+///
 /// `Ast` is `Sync` for driver plumbing: the transform hook's future is `Send`
 /// and borrows `&Ast`, so the AST must cross threads by shared reference.
 ///
@@ -40,16 +47,24 @@ pub struct Ast {
 
 impl Ast {
     /// Build an owned AST whose `Program::source_text` borrows the owner's source.
+    ///
+    /// `input_map` is the map describing how `source` was produced from
+    /// upstream originals, if any (see [`Ast::map`]).
     pub fn from_source<F>(
         source: Arc<str>,
         source_type: SourceType,
+        input_map: Option<SourceMap>,
         build: F,
     ) -> Ast
     where
         F: for<'a> FnOnce(&'a str, &'a Allocator) -> Program<'a>,
     {
-        let owner: AstOwner =
-            AstOwner { source, allocator: Allocator::default(), source_type };
+        let owner: AstOwner = AstOwner {
+            source,
+            allocator: Allocator::default(),
+            source_type,
+            map: input_map,
+        };
 
         let inner: AstInner = AstInner::new(owner, |owner: &AstOwner| {
             AstDependent { program: build(&owner.source, &owner.allocator) }
@@ -62,13 +77,18 @@ impl Ast {
     pub fn try_from_source<F, E>(
         source: Arc<str>,
         source_type: SourceType,
+        input_map: Option<SourceMap>,
         build: F,
     ) -> Result<Ast, E>
     where
         F: for<'a> FnOnce(&'a str, &'a Allocator) -> Result<Program<'a>, E>,
     {
-        let owner: AstOwner =
-            AstOwner { source, allocator: Allocator::default(), source_type };
+        let owner: AstOwner = AstOwner {
+            source,
+            allocator: Allocator::default(),
+            source_type,
+            map: input_map,
+        };
 
         let inner: AstInner = AstInner::try_new(owner, |owner: &AstOwner| {
             let program: Program<'_> = build(&owner.source, &owner.allocator)?;
@@ -94,6 +114,49 @@ impl Ast {
         self.inner.borrow_owner().source_type
     }
 
+    /// The input source map describing how `source` was produced from
+    /// upstream originals, if any.
+    pub fn map(&self) -> Option<&SourceMap> {
+        self.inner.borrow_owner().map.as_ref()
+    }
+
+    /// Deep-rebuild the AST, sharing the source and swapping the input map.
+    fn rebuild(
+        &self,
+        map: Option<SourceMap>,
+    ) -> Ast {
+        let owner: &AstOwner = self.inner.borrow_owner();
+
+        let source: Arc<str> = Arc::clone(&owner.source);
+        let source_type: SourceType = owner.source_type;
+        let capacity: usize = owner.allocator.used_bytes();
+
+        let owner: AstOwner = AstOwner {
+            source,
+            allocator: Allocator::with_capacity(capacity),
+            source_type,
+            map,
+        };
+
+        let inner: AstInner = AstInner::new(owner, |owner: &AstOwner| {
+            AstDependent { program: self.program().clone_in(&owner.allocator) }
+        });
+
+        Ast { inner }
+    }
+
+    /// Rebuild this AST with a different input map.
+    ///
+    /// A deep rebuild, like [`Clone`]: the program is cloned into a fresh
+    /// allocator and the source `Arc` is shared. Only used by the pipeline's
+    /// attach-if-absent path, where the cost of a full clone is acceptable.
+    pub fn with_input_map(
+        &self,
+        map: Option<SourceMap>,
+    ) -> Ast {
+        self.rebuild(map)
+    }
+
     /// The only path to the arena: an exclusive borrow, so the closure
     /// cannot race with another thread.
     pub fn with_mut<R>(
@@ -116,31 +179,17 @@ impl std::fmt::Debug for Ast {
 }
 
 impl Clone for Ast {
-    /// Clone into a fresh allocator, sharing the `Arc<str>` source.
+    /// Clone into a fresh allocator, sharing the `Arc<str>` source and the
+    /// input map.
     fn clone(&self) -> Ast {
-        let owner: &AstOwner = self.inner.borrow_owner();
-
-        let source: Arc<str> = Arc::clone(&owner.source);
-        let source_type: SourceType = owner.source_type;
-        let capacity: usize = owner.allocator.used_bytes();
-
-        let owner: AstOwner = AstOwner {
-            source,
-            allocator: Allocator::with_capacity(capacity),
-            source_type,
-        };
-
-        let inner: AstInner = AstInner::new(owner, |owner: &AstOwner| {
-            AstDependent { program: self.program().clone_in(&owner.allocator) }
-        });
-
-        Ast { inner }
+        self.rebuild(self.inner.borrow_owner().map.clone())
     }
 }
 
 // SAFETY: owner + dependent are heap-boxed together by `self_cell` and move as
-// one; `Allocator` (bumpalo `Bump`) is `Send` and `Arc<str>` is `Send`, so no
-// thread-affine pointer dangles when the `Ast` moves.
+// one; `Allocator` (bumpalo `Bump`), `Arc<str>`, and the owned
+// `Option<SourceMap>` (whose fields are `Cow`/`Vec`/`Box`) are all `Send`, so
+// no thread-affine pointer dangles when the `Ast` moves.
 unsafe impl Send for Ast {}
 
 // SAFETY: two separate guarantees are required, and they are not the same:
@@ -169,6 +218,7 @@ mod tests {
 
     use oxc::parser::Parser;
     use oxc::span::SourceType as OxcSourceType;
+    use oxc_sourcemap::SourceMapBuilder;
 
     use super::*;
 
@@ -182,7 +232,20 @@ mod tests {
     fn owner_from_code(code: &str) -> Ast {
         let source: Arc<str> = Arc::from(code);
 
-        Ast::from_source(source, OxcSourceType::ts(), build_program)
+        Ast::from_source(source, OxcSourceType::ts(), None, build_program)
+    }
+
+    fn sample_map() -> SourceMap {
+        let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
+
+        builder.set_file("upstream.ts");
+
+        let source_id: u32 =
+            builder.add_source_and_content("upstream.ts", "const a = 1;");
+
+        builder.add_token(0, 0, 0, 0, Some(source_id), None);
+
+        builder.into_owned_sourcemap().into_inner()
     }
 
     #[test]
@@ -199,6 +262,7 @@ mod tests {
         let result: Result<Ast, &'static str> = Ast::try_from_source(
             Arc::from("const a = 1;"),
             OxcSourceType::ts(),
+            None,
             |_source: &str, _allocator: &Allocator| Err("boom"),
         );
 
@@ -210,6 +274,7 @@ mod tests {
         let result: Result<Ast, &'static str> = Ast::try_from_source(
             Arc::from("const a = 1;"),
             OxcSourceType::ts(),
+            None,
             |source: &str, allocator: &Allocator| {
                 Ok(build_program(source, allocator))
             },
@@ -256,6 +321,97 @@ mod tests {
         let clone: Ast = ast.clone();
 
         assert!(Arc::ptr_eq(ast.source(), clone.source()));
+    }
+
+    #[test]
+    fn test_map_is_none_without_input_map() {
+        let ast: Ast = owner_from_code("const a = 1;");
+
+        assert!(ast.map().is_none());
+    }
+
+    #[test]
+    fn test_from_source_carries_input_map() {
+        let source: Arc<str> = Arc::from("const a = 1;");
+
+        let map: SourceMap = sample_map();
+
+        let ast: Ast = Ast::from_source(
+            source,
+            OxcSourceType::ts(),
+            Some(map.clone()),
+            build_program,
+        );
+
+        let carried: &SourceMap = ast.map().expect("input map attached");
+
+        assert_eq!(carried.to_json_string(), map.to_json_string());
+    }
+
+    #[test]
+    fn test_clone_carries_input_map() {
+        let source: Arc<str> = Arc::from("const a = 1;");
+
+        let map: SourceMap = sample_map();
+
+        let ast: Ast = Ast::from_source(
+            source,
+            OxcSourceType::ts(),
+            Some(map.clone()),
+            build_program,
+        );
+
+        let clone: Ast = ast.clone();
+
+        let carried: &SourceMap =
+            clone.map().expect("clone carries the input map");
+
+        assert_eq!(carried.to_json_string(), map.to_json_string());
+    }
+
+    #[test]
+    fn test_with_input_map_rebuilds_with_new_map() {
+        let ast: Ast = owner_from_code("const a = 1;");
+
+        let map: SourceMap = sample_map();
+
+        let rebuilt: Ast = ast.with_input_map(Some(map.clone()));
+
+        let carried: &SourceMap =
+            rebuilt.map().expect("rebuilt AST carries the new map");
+
+        assert_eq!(carried.to_json_string(), map.to_json_string());
+    }
+
+    #[test]
+    fn test_with_input_map_preserves_program_and_source() {
+        let ast: Ast = owner_from_code("const a = 1;");
+
+        let rebuilt: Ast = ast.with_input_map(Some(sample_map()));
+
+        assert_eq!(rebuilt.program().body.len(), ast.program().body.len());
+
+        assert_eq!(rebuilt.program().source_text, ast.source().as_ref());
+
+        assert!(Arc::ptr_eq(rebuilt.source(), ast.source()));
+
+        assert_eq!(rebuilt.source_type(), ast.source_type());
+    }
+
+    #[test]
+    fn test_with_input_map_clears_map() {
+        let source: Arc<str> = Arc::from("const a = 1;");
+
+        let ast: Ast = Ast::from_source(
+            source,
+            OxcSourceType::ts(),
+            Some(sample_map()),
+            build_program,
+        );
+
+        let rebuilt: Ast = ast.with_input_map(None);
+
+        assert!(rebuilt.map().is_none());
     }
 
     #[test]

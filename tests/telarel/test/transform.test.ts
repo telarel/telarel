@@ -1,6 +1,8 @@
 import type {
+    AstResult,
     BuiltinPlugin,
-    CompileResult,
+    CodeResult,
+    ParseArgs,
     Plugin,
     PluginContext,
     TransformArgs,
@@ -27,35 +29,35 @@ const myPlugins = (onPrepare: () => void): Array<Plugin> => [
 
 describe("transform", (): void => {
     it("compiles TypeScript to JavaScript with the builtin transform", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a: number = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a: number = 1;",
             plugins: [transform()],
         });
 
         expect(result.code).not.toContain(": number");
         expect(result.code).toContain("const a");
-        expect(result.map.version).toBe(3);
+        expect(result.map?.version).toBe(3);
     });
 
     it("lowers async await with an es2015 target", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.js",
-            code: "async function run() { await work(); }",
-            plugins: [transform({ targets: ["es2015"] })],
-        });
+        const result: CodeResult = await compile(
+            "async function run() { await work(); }",
+            {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [transform({ targets: ["es2015"] })],
+            },
+        );
 
         expect(result.code).toContain("_asyncToGenerator");
         expect(result.code).toContain("function run()");
     });
 
     it("accepts a one-key engine object target", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const value = maybe?.prop;", {
             cwd: "/repo",
             file: "index.js",
-            code: "const value = maybe?.prop;",
             plugins: [transform({ targets: [{ chrome: 58 }] })],
         });
 
@@ -63,60 +65,68 @@ describe("transform", (): void => {
     });
 
     it("transforms jsx with the automatic runtime", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.jsx",
-            code: "const node = <Button>hi</Button>;",
-            plugins: [transform({ jsx: { runtime: "automatic" } })],
-        });
+        const result: CodeResult = await compile(
+            "const node = <Button>hi</Button>;",
+            {
+                cwd: "/repo",
+                file: "index.jsx",
+                plugins: [transform({ jsx: { runtime: "automatic" } })],
+            },
+        );
 
         expect(result.code).not.toContain("<Button>");
         expect(result.code).toContain("jsx");
     });
 
     it("applies typed oxc escape-hatch options", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.tsx",
-            code: "const node = <Button>hi</Button>;",
-            plugins: [
-                transform({
-                    oxc: { jsx: { runtime: "classic", pragma: "h" } },
-                }),
-            ],
-        });
+        const result: CodeResult = await compile(
+            "const node = <Button>hi</Button>;",
+            {
+                cwd: "/repo",
+                file: "index.tsx",
+                plugins: [
+                    transform({
+                        oxc: { jsx: { runtime: "classic", pragma: "h" } },
+                    }),
+                ],
+            },
+        );
 
         expect(result.code).toContain("h(");
     });
 
     it("applies oxc helper loader options", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.js",
-            code: "async function run() { await work(); }",
-            plugins: [
-                transform({
-                    targets: ["es2015"],
-                    oxc: { helperLoader: { mode: "external" } },
-                }),
-            ],
-        });
+        const result: CodeResult = await compile(
+            "async function run() { await work(); }",
+            {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [
+                    transform({
+                        targets: ["es2015"],
+                        oxc: { helperLoader: { mode: "external" } },
+                    }),
+                ],
+            },
+        );
 
         expect(result.code).toContain("babelHelpers.");
     });
 
     it("inlines helper bodies with the inline helper loader mode", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.js",
-            code: "async function run() { await work(); }",
-            plugins: [
-                transform({
-                    targets: ["es2015"],
-                    oxc: { helperLoader: { mode: "inline" } },
-                }),
-            ],
-        });
+        const result: CodeResult = await compile(
+            "async function run() { await work(); }",
+            {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [
+                    transform({
+                        targets: ["es2015"],
+                        oxc: { helperLoader: { mode: "inline" } },
+                    }),
+                ],
+            },
+        );
 
         expect(result.code).toContain("function _asyncToGenerator(");
         expect(result.code).toContain("_asyncToGenerator(function* ()");
@@ -124,12 +134,14 @@ describe("transform", (): void => {
     });
 
     it("inlines helper bodies for the default helper loader mode", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.js",
-            code: "async function run() { await work(); }",
-            plugins: [transform({ targets: ["es2015"] })],
-        });
+        const result: CodeResult = await compile(
+            "async function run() { await work(); }",
+            {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [transform({ targets: ["es2015"] })],
+            },
+        );
 
         expect(result.code).toContain("function _asyncToGenerator(");
         expect(result.code).toContain("_asyncToGenerator(function* ()");
@@ -137,17 +149,19 @@ describe("transform", (): void => {
     });
 
     it("keeps the runtime helper import with the explicit runtime helper loader mode", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.js",
-            code: "async function run() { await work(); }",
-            plugins: [
-                transform({
-                    targets: ["es2015"],
-                    oxc: { helperLoader: { mode: "runtime" } },
-                }),
-            ],
-        });
+        const result: CodeResult = await compile(
+            "async function run() { await work(); }",
+            {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [
+                    transform({
+                        targets: ["es2015"],
+                        oxc: { helperLoader: { mode: "runtime" } },
+                    }),
+                ],
+            },
+        );
 
         expect(result.code).toContain(
             "@oxc-project/runtime/helpers/asyncToGenerator",
@@ -156,10 +170,9 @@ describe("transform", (): void => {
     });
 
     it("replaces a defined identifier with its value", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const flag = __DEV__;", {
             cwd: "/repo",
             file: "index.js",
-            code: "const flag = __DEV__;",
             plugins: [transform({ define: { __DEV__: "false" } })],
         });
 
@@ -168,33 +181,37 @@ describe("transform", (): void => {
     });
 
     it("replaces a defined member chain with a folded literal", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.js",
-            code: "const mode = process.env.NODE_ENV;",
-            plugins: [
-                transform({
-                    define: { "process.env.NODE_ENV": '"production"' },
-                }),
-            ],
-        });
+        const result: CodeResult = await compile(
+            "const mode = process.env.NODE_ENV;",
+            {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [
+                    transform({
+                        define: { "process.env.NODE_ENV": '"production"' },
+                    }),
+                ],
+            },
+        );
 
         expect(result.code).toContain('"production"');
         expect(result.code).not.toContain("process.env");
     });
 
     it("combines define with target lowering", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.js",
-            code: "async function run() { await work(); } const flag = __DEV__;",
-            plugins: [
-                transform({
-                    targets: ["es2015"],
-                    define: { __DEV__: "true" },
-                }),
-            ],
-        });
+        const result: CodeResult = await compile(
+            "async function run() { await work(); } const flag = __DEV__;",
+            {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [
+                    transform({
+                        targets: ["es2015"],
+                        define: { __DEV__: "true" },
+                    }),
+                ],
+            },
+        );
 
         expect(result.code).toContain("_asyncToGenerator");
         expect(result.code).toContain("true");
@@ -202,10 +219,9 @@ describe("transform", (): void => {
     });
 
     it("injects an import for a used shorthand identifier", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const node = $('#root');", {
             cwd: "/repo",
             file: "index.js",
-            code: "const node = $('#root');",
             plugins: [transform({ inject: { $: "jquery" } })],
         });
 
@@ -214,49 +230,55 @@ describe("transform", (): void => {
     });
 
     it("injects no import for an unused shorthand identifier", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.js",
-            code: "const node = query('#root');",
-            plugins: [transform({ inject: { $: "jquery" } })],
-        });
+        const result: CodeResult = await compile(
+            "const node = query('#root');",
+            {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [transform({ inject: { $: "jquery" } })],
+            },
+        );
 
         expect(result.code).not.toContain("jquery");
         expect(result.code).not.toContain("import");
     });
 
     it("injects a namespace import in object form", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.js",
-            code: "const node = React.createElement('div');",
-            plugins: [
-                transform({
-                    inject: {
-                        React: {
-                            source: "react",
-                            mode: "namespace",
-                            local: "React",
+        const result: CodeResult = await compile(
+            "const node = React.createElement('div');",
+            {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [
+                    transform({
+                        inject: {
+                            React: {
+                                source: "react",
+                                mode: "namespace",
+                                local: "React",
+                            },
                         },
-                    },
-                }),
-            ],
-        });
+                    }),
+                ],
+            },
+        );
 
         expect(result.code).toContain("import * as React");
     });
 
     it("injects a named import from the pair form", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.js",
-            code: "const merged = assign({}, source);",
-            plugins: [
-                transform({
-                    inject: { assign: ["es-object-assign", "assign"] },
-                }),
-            ],
-        });
+        const result: CodeResult = await compile(
+            "const merged = assign({}, source);",
+            {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [
+                    transform({
+                        inject: { assign: ["es-object-assign", "assign"] },
+                    }),
+                ],
+            },
+        );
 
         expect(result.code).toContain("es-object-assign");
         expect(result.code).toContain("import");
@@ -265,25 +287,24 @@ describe("transform", (): void => {
     it("rejects an invalid define key", async (): Promise<void> => {
         const options: TransformOptions = { define: { "1bad": "1" } };
 
-        const build = async (): Promise<CompileResult> =>
-            await compile({
+        const build = async (): Promise<CodeResult> =>
+            await compile("const a = 1;", {
                 cwd: "/repo",
                 file: "index.js",
-                code: "const a = 1;",
                 plugins: [transform(options)],
             });
 
-        const promise: Promise<CompileResult> = build();
+        const promise: Promise<CodeResult> = build();
 
         await expect(promise).rejects.toThrow(/define/);
         await expect(promise).rejects.toThrow("1bad");
+        await expect(promise).rejects.toThrow("builtin:transform");
     });
 
     it("folds a scalar define value into the output", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const enabled = ENABLED;", {
             cwd: "/repo",
             file: "index.js",
-            code: "const enabled = ENABLED;",
             plugins: [transform({ define: { ENABLED: true } })],
         });
 
@@ -294,10 +315,9 @@ describe("transform", (): void => {
     it("treats an unbranded plugin named builtin:* as a js plugin", async (): Promise<void> => {
         const plugin: unknown = { name: "builtin:custom" };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [plugin as BuiltinPlugin],
         });
 
@@ -322,10 +342,9 @@ describe("transform", (): void => {
             },
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a: number = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a: number = 1;",
             plugins: [writer, transform(), jsPlugin],
         });
 
@@ -344,10 +363,9 @@ describe("transform", (): void => {
             },
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a: number = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a: number = 1;",
             plugins: [
                 myPlugins((): void => {
                     marker = "from-array";
@@ -379,10 +397,9 @@ describe("transform", (): void => {
             },
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a: number = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a: number = 1;",
             plugins: [transform(), jsPlugin],
         });
 
@@ -397,11 +414,10 @@ describe("transform", (): void => {
             options: { targets: ["nonsense"] },
         };
 
-        const build = async (): Promise<CompileResult> =>
-            await compile({
+        const build = async (): Promise<CodeResult> =>
+            await compile("const a = 1;", {
                 cwd: "/repo",
                 file: "index.ts",
-                code: "const a = 1;",
                 plugins: [marker as BuiltinPlugin],
             });
 
@@ -414,15 +430,14 @@ describe("transform", (): void => {
             name: "builtin:nope",
         };
 
-        const build = async (): Promise<CompileResult> =>
-            await compile({
+        const build = async (): Promise<CodeResult> =>
+            await compile("const a = 1;", {
                 cwd: "/repo",
                 file: "index.ts",
-                code: "const a = 1;",
                 plugins: [marker as BuiltinPlugin],
             });
 
-        const promise: Promise<CompileResult> = build();
+        const promise: Promise<CodeResult> = build();
 
         await expect(promise).rejects.toThrow(/builtin/);
         await expect(promise).rejects.toThrow("builtin:nope");
@@ -442,10 +457,9 @@ describe("transform", (): void => {
             },
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [plugin],
         });
 
@@ -471,10 +485,9 @@ describe("transform", (): void => {
             },
         };
 
-        await compile({
+        await compile(source, {
             cwd: "/repo",
             file: "index.js",
-            code: source,
             plugins: [plugin],
         });
 
@@ -482,18 +495,43 @@ describe("transform", (): void => {
         expect(end - start).toBe("const b = 2;".length);
     });
 
-    it("anchors UTF-16 spans to prepare-rewritten code", async (): Promise<void> => {
+    it("anchors UTF-16 spans to the parse-hook-returned source", async (): Promise<void> => {
+        // A `parse` hook supplies the AST; its spans anchor to the `code` the
+        // hook returns, not to the compile call's source. Capture a real AST
+        // for the rewritten source from a first compile, then hand it back.
         const rewritten: string = "const µ = 1; const b = 2;";
+
+        let snapshot: unknown;
+
+        await compile(rewritten, {
+            cwd: "/repo",
+            file: "index.js",
+            plugins: [
+                {
+                    name: "snapshotter",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): void => {
+                        snapshot = structuredClone(args.ast);
+                    },
+                },
+            ],
+        });
+
         let start: number = -1;
         let end: number = -1;
 
         const plugin: Plugin = {
-            name: "prepare-rewriter",
-            prepare: (): { code: string } => {
-                return { code: rewritten };
-            },
+            name: "parse-supplier",
+            parse: (_ctx: PluginContext, _args: ParseArgs): AstResult => ({
+                ast: {
+                    program: snapshot as AstResult["ast"]["program"],
+                    code: rewritten,
+                },
+            }),
             transform: (_ctx: PluginContext, args: TransformArgs): void => {
-                const statement = args.ast.body[1] as {
+                const statement = args.ast.body[1] as unknown as {
                     start: number;
                     end: number;
                 };
@@ -503,10 +541,9 @@ describe("transform", (): void => {
             },
         };
 
-        await compile({
+        await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.js",
-            code: "const a = 1;",
             plugins: [plugin],
         });
 
@@ -532,10 +569,9 @@ describe("transform", (): void => {
             },
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile(code, {
             cwd: "/repo",
             file: "index.js",
-            code,
             plugins: [plugin],
         });
 
@@ -553,10 +589,9 @@ describe("transform", (): void => {
             },
         };
 
-        await compile({
+        await compile("// keep me\nconst a = 1;", {
             cwd: "/repo",
             file: "index.js",
-            code: "// keep me\nconst a = 1;",
             plugins: [plugin],
         });
 
@@ -583,10 +618,9 @@ describe("transform", (): void => {
             },
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile(code, {
             cwd: "/repo",
             file: "index.js",
-            code,
             plugins: [plugin],
         });
 
@@ -607,10 +641,9 @@ describe("transform", (): void => {
             },
         };
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile(code, {
             cwd: "/repo",
             file: "index.js",
-            code,
             plugins: [plugin],
         });
 

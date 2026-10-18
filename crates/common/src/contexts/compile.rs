@@ -1,11 +1,11 @@
 /// Context carried through a compile run; holds the ORIGINAL inputs.
 #[derive(Debug)]
 pub struct CompileContext<'a> {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: &'a str,
-    /// The original file.
+    /// Path of the original file being compiled.
     pub file: &'a str,
-    /// The original code.
+    /// Original source code text.
     pub code: &'a str,
 }
 

@@ -6,21 +6,23 @@
 //! the plugin system, and the shared types.
 
 pub use telarel_common::{
-    Ast, CodegenOptions, CodegenResult, CompileContext, CompileError,
-    CompileOptions, HookUsage, Language, ParseOptions, ParseOwnedOptions,
-    ParseResult, ResolvedOptions, SourceMap, SourceType, compose_maps,
-    parse_owned,
+    Ast, AstResult, CodeResult, CompileContext, CompileError,
+    CompileFromAstOptions, CompileOptions, GenerateOptions, Generator,
+    GeneratorOptions, HookUsage, InputSourceMap, InputSourceMapMode, Language,
+    OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions, ParseOptions,
+    Parser, ParserOptions, ResolvableOptions, ResolvedOptions, RewriteOptions,
+    SourceMap, SourceMapOptions, SourceType,
 };
 
 pub use telarel_plugin::{
-    CommonPluginContext, CompileEndArgs, CompileStartArgs, FinalizeArgs,
-    FinalizeOutput, FinalizeReturn, ModuleInfo, NotifyReturn, OptionsArgs,
-    OptionsReturn, Plugin, PluginContext, PluginHookMeta, PluginOrder,
-    Pluginable, PrepareArgs, PrepareOutput, PrepareReturn, SharedPluginable,
-    TransformArgs, TransformOutput, TransformReturn,
+    CommonPluginContext, EndArgs, FinalizeArgs, GenerateArgs, GenerateReturn,
+    ModuleInfo, NotifyReturn, OptionsArgs, OptionsReturn, ParseArgs,
+    ParseReturn, Plugin, PluginContext, PluginHookMeta, PluginOrder,
+    Pluginable, PrepareArgs, SharedPluginable, StartArgs, TransformArgs,
+    TransformOutput, TransformReturn,
 };
 
-pub use telarel_core::{CompileOutput, compile};
+pub use telarel_core::{compile, compile_from_ast, generate, parse, rewrite};
 
 pub mod allocator {
     pub use oxc::allocator::*;

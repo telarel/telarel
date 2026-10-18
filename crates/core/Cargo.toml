@@ -28,4 +28,5 @@ oxc_sourcemap = { workspace = true }
 
 [dev-dependencies]
 oxc = { workspace = true, features = ["ast_visit"] }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

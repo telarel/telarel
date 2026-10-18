@@ -1,4 +1,7 @@
 pub mod compose;
+pub mod inline;
+pub mod mode;
+pub mod resolve;
 
 use oxc_sourcemap::SourceMap as OxcSourceMap;
 

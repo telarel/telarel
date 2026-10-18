@@ -9,10 +9,11 @@ use napi::sys;
 use napi::threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunction};
 use napi::{Env, Error, Result, Status};
 
+use crate::_types::ast::JsAst;
 use crate::_types::plugin::context::JsPluginContext;
 use crate::_types::plugin::hooks::{
-    JsCompileEndArgs, JsCompileStartArgs, JsStageArgs, JsTransformArgs,
-    JsTransformOutput,
+    JsAstArgs, JsCodeOutput, JsEndArgs, JsGenerateArgs, JsParseArgs,
+    JsParseOutput, JsResolvedOptions, JsStartArgs, JsTransformOutput,
 };
 
 /// A TSFN bridging one JS hook.
@@ -40,13 +41,12 @@ pub type Tsfn<Data, Payload, Return> =
 pub struct SharedStr(Arc<str>);
 
 impl SharedStr {
-    /// Allocate a new shared string.
+    /// Create a shared string from a borrowed value.
     pub fn new(value: &str) -> Self {
         Self(Arc::from(value))
     }
 
-    /// Borrow the underlying string.
-    #[allow(dead_code)] // exercised by the unit tests below
+    /// Borrow the shared string's contents.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -72,12 +72,14 @@ macro_rules! for_each_hook_slot {
         $macro_name! {
             $($extra,)*
             {
-                (options, Options, crate::_types::options::JsOptions, Option<crate::_types::plugin::hooks::JsOptionsOutput>, 0),
-                (compile_start, CompileStart, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsCompileStartArgs>, napi::bindgen_prelude::Undefined, 1),
-                (prepare, Prepare, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsStageArgs>, Option<crate::_types::plugin::hooks::JsStageOutput>, 2),
-                (transform, Transform, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsTransformArgs>, Option<crate::_types::plugin::hooks::JsTransformOutput>, 3),
-                (finalize, Finalize, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsStageArgs>, Option<crate::_types::plugin::hooks::JsStageOutput>, 4),
-                (compile_end, CompileEnd, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsCompileEndArgs>, napi::bindgen_prelude::Undefined, 5),
+                (options, Options, crate::plugin::hooks::OptionsCall, Option<crate::_types::plugin::hooks::JsOptionsOutput>, 0),
+                (start, Start, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsStartArgs>, napi::bindgen_prelude::Undefined, 1),
+                (parse, Parse, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsParseArgs>, Option<crate::_types::plugin::hooks::JsParseOutput>, 2),
+                (prepare, Prepare, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsAstArgs>, napi::bindgen_prelude::Undefined, 3),
+                (transform, Transform, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsAstArgs>, Option<crate::_types::plugin::hooks::JsTransformOutput>, 4),
+                (finalize, Finalize, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsAstArgs>, napi::bindgen_prelude::Undefined, 5),
+                (generate, Generate, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsGenerateArgs>, Option<crate::_types::plugin::hooks::JsCodeOutput>, 6),
+                (end, End, crate::plugin::hooks::FnCtx<crate::_types::plugin::hooks::JsEndArgs>, napi::bindgen_prelude::Undefined, 7),
             }
         }
     };
@@ -92,16 +94,13 @@ macro_rules! hook_slots {
 macro_rules! hook_slots_rows {
     ({ $(($name:ident, $Name:ident, $args:ty, $ret:ty, $slot:literal)),* $(,)? }) => {
         $( // Declarative slot metadata; the `options` hook's `Args` is the
-           // `JsOptions` shape emitted by `OptionsCall`.
+           // `OptionsCall` payload producer.
             #[allow(dead_code)]
             pub mod $name {
-            /// Slot index of the hook in the plugin slot table.
             pub const SLOT: usize = $slot;
 
-            /// JS payload type of the hook.
             pub type Args = $args;
 
-            /// JS return type of the hook (before the sync/async `Either`).
             pub type Return = $ret;
         } )*
     };
@@ -136,13 +135,13 @@ unsafe impl Send for SharedRef {}
 unsafe impl Sync for SharedRef {}
 
 impl SharedRef {
-    /// Root a JS object.
+    /// Root a JS object and wrap its reference.
     #[allow(clippy::arc_with_non_send_sync)] // see the type's docs
     pub fn new(object: &Object<'static>) -> Result<Self> {
         Ok(Self(Arc::new(Mutex::new(Some(object.create_ref()?)))))
     }
 
-    /// Wrap an already-rooted reference.
+    /// Wrap an already-rooted object reference.
     #[allow(clippy::arc_with_non_send_sync)] // see the type's docs
     pub fn from_ref(reference: ObjectRef<false>) -> Self {
         Self(Arc::new(Mutex::new(Some(reference))))
@@ -155,7 +154,7 @@ impl SharedRef {
         Self(Arc::new(Mutex::new(None)))
     }
 
-    /// Materialize the rooted object.
+    /// Materialize the rooted object for use on the JS thread.
     pub fn get(
         &self,
         env: &Env,
@@ -220,8 +219,8 @@ pub fn release_refs(
 ///   array, each plugin object). The `options` hook APPENDS late plugins'
 ///   references — plugins injected by the fixpoint — as they are wrapped and
 ///   registered, BEFORE the driver is built;
-///   [`crate::tasks::compile::CompileTask::finally`] drains the list once the
-///   compile settles, so mid-compile additions are still released.
+///   [`crate::tasks::function::FunctionTask::finally`] drains the list once
+///   the call settles, so mid-call additions are still released.
 /// - `bag_descriptors` — a VIEW of the CURRENT bag's plugin descriptors, one
 ///   per plugin in the `OptionsArgs` being folded. Entries are
 ///   `SharedRef` clones that SHARE the same roots as the release list (the
@@ -229,7 +228,7 @@ pub fn release_refs(
 ///   [`RefList::set_bag`] (entry seed, then each returned bag).
 #[derive(Default)]
 pub struct RefList {
-    /// Rooted references drained in `CompileTask::finally`.
+    /// Rooted references drained in `FunctionTask::finally`.
     refs: Mutex<Vec<SharedRef>>,
     /// The current bag's descriptor view; see the type's docs.
     bag_descriptors: Mutex<Vec<SharedRef>>,
@@ -240,7 +239,7 @@ unsafe impl Send for RefList {}
 unsafe impl Sync for RefList {}
 
 impl RefList {
-    /// Create an empty list.
+    /// Create an empty reference list.
     pub fn new() -> Self {
         Self::default()
     }
@@ -250,12 +249,12 @@ impl RefList {
         self.refs.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
-    /// Whether the release list holds no rooted references.
+    /// Whether the release list has no references.
     pub fn is_empty(&self) -> bool {
         self.refs.lock().unwrap_or_else(PoisonError::into_inner).is_empty()
     }
 
-    /// The number of rooted references on the release list.
+    /// Number of references on the release list.
     pub fn len(&self) -> usize {
         self.refs.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
@@ -327,16 +326,17 @@ impl RefList {
 
 /// Worker-side call data for the `options` hook.
 pub struct OptionsCall {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being compiled.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The code being compiled.
-    pub code: SharedStr,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
+    /// The source-map inputs and outputs requested so far, as the JS union;
+    /// `None` (unspecified) is omitted from the payload.
+    pub source_map: Option<serde_json::Value>,
     /// The CURRENT bag's plugin descriptors, snapshotted at call time; the
     /// JS-thread payload materializes the ARRAY from this exact list (NOT
     /// the accumulating release list — see the binding contract).
@@ -354,9 +354,14 @@ impl ToNapiValue for OptionsCall {
 
         object.set("cwd", val.cwd)?;
         object.set("file", val.file)?;
-        object.set("code", val.code)?;
         object.set("language", val.language)?;
         object.set("sourceType", val.source_type)?;
+
+        // An omitted `sourceMap` means "unspecified" on the wire; only a
+        // requested map is transmitted.
+        if let Some(source_map) = val.source_map {
+            object.set("sourceMap", source_map)?;
+        }
 
         let descriptors: Vec<Object<'static>> = val
             .plugins
@@ -376,7 +381,7 @@ impl ToNapiValue for OptionsCall {
 }
 
 /// TSFN bridging the `options` hook. Its payload is emitted by
-/// [`OptionsCall`] in the `JsOptions` shape (the slot table's `Args`); the
+/// [`OptionsCall`] (the slot table's `Args`); the
 /// `plugins` property is the CURRENT bag's plugin descriptors.
 /// The RAW `options` hook is async: it returns a promise carrying
 /// `Option<JsOptionsOutput>`, delivered RAW (see
@@ -400,15 +405,19 @@ pub trait HookCall: 'static {
 pub fn plugin_context(
     cwd: SharedStr,
     file: SharedStr,
-    code: SharedStr,
     language: SharedStr,
     source_type: SharedStr,
 ) -> Result<JsPluginContext> {
-    Ok(JsPluginContext { cwd, file, code, language, source_type })
+    Ok(JsPluginContext { cwd, file, language, source_type })
 }
 
 /// A hook payload: the plugin context followed by the hook args.
-pub struct FnCtx<A>(pub JsPluginContext, pub A);
+pub struct FnCtx<A>(
+    /// Plugin context passed as the first hook argument.
+    pub JsPluginContext,
+    /// Hook args passed as the second hook argument.
+    pub A,
+);
 
 impl<A: ToNapiValue> JsValuesTupleIntoVec for FnCtx<A> {
     // `env` is a raw napi handle owned by the JS thread; the trait method is
@@ -424,94 +433,110 @@ impl<A: ToNapiValue> JsValuesTupleIntoVec for FnCtx<A> {
     }
 }
 
-/// Worker-side call data for the `compileStart` hook: resolved, read-only
-/// options with the settled plugin-name list.
-pub struct CompileStartCall {
-    /// Current working directory, resolved.
+/// Worker-side call data for the `start` hook: resolved, read-only options
+/// with the settled plugin-name list.
+pub struct StartCall {
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being compiled.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The code being compiled.
-    pub code: SharedStr,
-    /// The grammar of the code, resolved.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code, resolved.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
-    /// The settled plugin-name list, after the options fixpoint.
-    pub plugins: Vec<String>,
+    /// Options resolved for the hook/stage.
+    pub options: JsResolvedOptions,
 }
 
-impl HookCall for CompileStartCall {
-    type Payload = JsCompileStartArgs;
+impl HookCall for StartCall {
+    type Payload = JsStartArgs;
     type Return = Undefined;
-
-    fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
-        let cwd: SharedStr = self.cwd;
-
-        let file: SharedStr = self.file;
-
-        let code: SharedStr = self.code;
-
-        let language: SharedStr = self.language;
-
-        let source_type: SharedStr = self.source_type;
-
-        let context: JsPluginContext = plugin_context(
-            cwd.clone(),
-            file.clone(),
-            code.clone(),
-            language.clone(),
-            source_type.clone(),
-        )?;
-
-        let payload: JsCompileStartArgs = JsCompileStartArgs {
-            cwd,
-            file,
-            code,
-            language,
-            source_type,
-            plugins: self.plugins,
-        };
-
-        Ok((context, payload))
-    }
-}
-
-/// TSFN bridging the `compileStart` hook.
-pub type CompileStartTsfn = Tsfn<
-    CompileStartCall,
-    compile_start::Args,
-    Either<Promise<compile_start::Return>, compile_start::Return>,
->;
-
-/// Worker-side call data for the `prepare` / `finalize` hooks.
-pub struct StageCall {
-    /// Current working directory.
-    pub cwd: SharedStr,
-    /// The file being compiled.
-    pub file: SharedStr,
-    /// The code being compiled.
-    pub code: SharedStr,
-    /// The grammar of the code.
-    pub language: SharedStr,
-    /// The module system of the code.
-    pub source_type: SharedStr,
-}
-
-impl HookCall for StageCall {
-    type Payload = JsStageArgs;
-    type Return = Option<crate::_types::plugin::hooks::JsStageOutput>;
 
     fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
         let context: JsPluginContext = plugin_context(
             self.cwd.clone(),
             self.file.clone(),
-            self.code.clone(),
+            self.language.clone(),
+            self.source_type.clone(),
+        )?;
+
+        let payload: JsStartArgs = JsStartArgs { options: self.options };
+
+        Ok((context, payload))
+    }
+}
+
+/// TSFN bridging the `start` hook.
+pub type StartTsfn =
+    Tsfn<StartCall, start::Args, Either<Promise<start::Return>, start::Return>>;
+
+/// Worker-side call data for the `parse` hook: the code to parse, the resolved
+/// parser options, and their JS-facing form.
+pub struct ParseCall {
+    /// Working directory used to resolve relative paths.
+    pub cwd: SharedStr,
+    /// Path of the file being parsed/generated.
+    pub file: SharedStr,
+    /// Source code text.
+    pub code: String,
+    /// Source language of the file.
+    pub language: SharedStr,
+    /// Module system used for code generation.
+    pub source_type: SharedStr,
+    /// Options resolved for the hook/stage.
+    pub options: crate::_types::plugin::hooks::JsParserHookOptions,
+}
+
+impl HookCall for ParseCall {
+    type Payload = JsParseArgs;
+    type Return = Option<JsParseOutput>;
+
+    fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
+        let context: JsPluginContext = plugin_context(
+            self.cwd,
+            self.file,
             self.language,
             self.source_type,
         )?;
 
-        let payload: JsStageArgs = JsStageArgs { code: self.code };
+        let payload: JsParseArgs =
+            JsParseArgs { code: self.code, options: self.options };
+
+        Ok((context, payload))
+    }
+}
+
+/// TSFN bridging the `parse` hook.
+pub type ParseTsfn =
+    Tsfn<ParseCall, parse::Args, Either<Promise<parse::Return>, parse::Return>>;
+
+/// Worker-side call data for the `prepare` / `finalize` observers.
+pub struct ObserveCall {
+    /// Working directory used to resolve relative paths.
+    pub cwd: SharedStr,
+    /// Path of the file being parsed/generated.
+    pub file: SharedStr,
+    /// Source language of the file.
+    pub language: SharedStr,
+    /// Module system used for code generation.
+    pub source_type: SharedStr,
+    /// The AST as a JSON string.
+    pub ast_json: String,
+}
+
+impl HookCall for ObserveCall {
+    type Payload = JsAstArgs;
+    type Return = Undefined;
+
+    fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
+        let context: JsPluginContext = plugin_context(
+            self.cwd,
+            self.file,
+            self.language,
+            self.source_type,
+        )?;
+
+        let payload: JsAstArgs = JsAstArgs { ast_json: self.ast_json };
 
         Ok((context, payload))
     }
@@ -519,49 +544,45 @@ impl HookCall for StageCall {
 
 /// TSFN bridging the `prepare` hook.
 pub type PrepareTsfn = Tsfn<
-    StageCall,
+    ObserveCall,
     prepare::Args,
     Either<Promise<prepare::Return>, prepare::Return>,
 >;
 
 /// TSFN bridging the `finalize` hook.
 pub type FinalizeTsfn = Tsfn<
-    StageCall,
+    ObserveCall,
     finalize::Args,
     Either<Promise<finalize::Return>, finalize::Return>,
 >;
 
 /// Worker-side call data for the `transform` hook.
 pub struct TransformCall {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being compiled.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The original code, anchoring the read-back AST spans.
-    pub code: SharedStr,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
     /// The AST as a JSON string.
     pub ast_json: String,
 }
 
 impl HookCall for TransformCall {
-    type Payload = JsTransformArgs;
+    type Payload = JsAstArgs;
     type Return = Option<JsTransformOutput>;
 
     fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
         let context: JsPluginContext = plugin_context(
-            self.cwd.clone(),
-            self.file.clone(),
-            self.code.clone(),
+            self.cwd,
+            self.file,
             self.language,
             self.source_type,
         )?;
 
-        let payload: JsTransformArgs =
-            JsTransformArgs { ast_json: self.ast_json };
+        let payload: JsAstArgs = JsAstArgs { ast_json: self.ast_json };
 
         Ok((context, payload))
     }
@@ -574,56 +595,84 @@ pub type TransformTsfn = Tsfn<
     Either<Promise<transform::Return>, transform::Return>,
 >;
 
-/// Worker-side call data for the `compileEnd` hook: the last-good output
-/// (`err` unset on the success path).
-pub struct CompileEndCall {
-    /// Current working directory.
+/// Worker-side call data for the `generate` hook.
+pub struct GenerateCall {
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being compiled.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The original code.
-    pub code: SharedStr,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
-    /// The compiled code, or the last good code on error.
-    pub compiled: SharedStr,
-    /// The source map JSON, or the last good map on error; `None` = no map.
-    pub map: Option<String>,
-    /// The error message, when the compile failed.
-    pub err: Option<String>,
+    /// The AST as a normalized object.
+    pub ast: JsAst,
+    /// Options resolved for the hook/stage.
+    pub options: crate::_types::plugin::hooks::JsGeneratorHookOptions,
 }
 
-impl HookCall for CompileEndCall {
-    type Payload = JsCompileEndArgs;
-    type Return = Undefined;
+impl HookCall for GenerateCall {
+    type Payload = JsGenerateArgs;
+    type Return = Option<JsCodeOutput>;
 
     fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
         let context: JsPluginContext = plugin_context(
-            self.cwd.clone(),
-            self.file.clone(),
-            self.code.clone(),
+            self.cwd,
+            self.file,
             self.language,
             self.source_type,
         )?;
 
-        let payload: JsCompileEndArgs = JsCompileEndArgs {
-            code: self.compiled,
-            map: self.map,
-            err: self.err,
-        };
+        let payload: JsGenerateArgs =
+            JsGenerateArgs { ast: self.ast, options: self.options };
 
         Ok((context, payload))
     }
 }
 
-/// TSFN bridging the `compileEnd` hook.
-pub type CompileEndTsfn = Tsfn<
-    CompileEndCall,
-    compile_end::Args,
-    Either<Promise<compile_end::Return>, compile_end::Return>,
+/// TSFN bridging the `generate` hook.
+pub type GenerateTsfn = Tsfn<
+    GenerateCall,
+    generate::Args,
+    Either<Promise<generate::Return>, generate::Return>,
 >;
+
+/// Worker-side call data for the `end` hook: the rendered compile error, when
+/// the compile failed.
+pub struct EndCall {
+    /// Working directory used to resolve relative paths.
+    pub cwd: SharedStr,
+    /// Path of the file being parsed/generated.
+    pub file: SharedStr,
+    /// Source language of the file.
+    pub language: SharedStr,
+    /// Module system used for code generation.
+    pub source_type: SharedStr,
+    /// Error raised by an earlier hook.
+    pub error: Option<String>,
+}
+
+impl HookCall for EndCall {
+    type Payload = JsEndArgs;
+    type Return = Undefined;
+
+    fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
+        let context: JsPluginContext = plugin_context(
+            self.cwd,
+            self.file,
+            self.language,
+            self.source_type,
+        )?;
+
+        let payload: JsEndArgs = JsEndArgs { error: self.error };
+
+        Ok((context, payload))
+    }
+}
+
+/// TSFN bridging the `end` hook.
+pub type EndTsfn =
+    Tsfn<EndCall, end::Args, Either<Promise<end::Return>, end::Return>>;
 
 /// A TSFN bridging one ctx-bearing JS hook: the worker-side call data `C`,
 /// the `FnCtx<C::Payload>` JS payload, and the sync/async `Either` return.
@@ -665,8 +714,8 @@ where
 
 /// Scan the `options` hook slot on a JS plugin object and bridge its function
 /// into a TSFN. The `options` hook runs before any context exists, so its
-/// payload is the `OptionsCall` data itself (emitted in the `JsOptions` shape,
-/// carrying the rooted plugin array instead of a context).
+/// payload is the `OptionsCall` data itself (carrying the rooted plugin array
+/// instead of a context).
 pub fn scan_options(object: &Object<'static>) -> Result<Option<OptionsTsfn>> {
     let Some(function) = object.get::<Function<
         '_,
@@ -688,20 +737,25 @@ pub fn scan_options(object: &Object<'static>) -> Result<Option<OptionsTsfn>> {
 /// Scan every hook slot of a JS plugin object, bridging present hook
 /// functions into TSFNs.
 ///
-/// Returns `(options, compile_start, prepare, transform, finalize, compile_end)`,
-/// in pipeline execution order.
+/// Returns `(options, start, parse, prepare, transform, finalize, generate,
+/// end)`, in pipeline execution order.
 macro_rules! hook_scan {
     ($object:expr) => {{
         let options: Option<crate::plugin::hooks::OptionsTsfn> =
             crate::plugin::hooks::scan_options($object)?;
 
-        let compile_start: Option<crate::plugin::hooks::CompileStartTsfn> =
-            crate::plugin::hooks::scan_hook::<
-                crate::plugin::hooks::CompileStartCall,
-            >($object, "compileStart")?;
+        let start: Option<crate::plugin::hooks::StartTsfn> =
+            crate::plugin::hooks::scan_hook::<crate::plugin::hooks::StartCall>(
+                $object, "start",
+            )?;
+
+        let parse: Option<crate::plugin::hooks::ParseTsfn> =
+            crate::plugin::hooks::scan_hook::<crate::plugin::hooks::ParseCall>(
+                $object, "parse",
+            )?;
 
         let prepare: Option<crate::plugin::hooks::PrepareTsfn> =
-            crate::plugin::hooks::scan_hook::<crate::plugin::hooks::StageCall>(
+            crate::plugin::hooks::scan_hook::<crate::plugin::hooks::ObserveCall>(
                 $object, "prepare",
             )?;
 
@@ -711,16 +765,21 @@ macro_rules! hook_scan {
             >($object, "transform")?;
 
         let finalize: Option<crate::plugin::hooks::FinalizeTsfn> =
-            crate::plugin::hooks::scan_hook::<crate::plugin::hooks::StageCall>(
+            crate::plugin::hooks::scan_hook::<crate::plugin::hooks::ObserveCall>(
                 $object, "finalize",
             )?;
 
-        let compile_end: Option<crate::plugin::hooks::CompileEndTsfn> =
+        let generate: Option<crate::plugin::hooks::GenerateTsfn> =
             crate::plugin::hooks::scan_hook::<
-                crate::plugin::hooks::CompileEndCall,
-            >($object, "compileEnd")?;
+                crate::plugin::hooks::GenerateCall,
+            >($object, "generate")?;
 
-        (options, compile_start, prepare, transform, finalize, compile_end)
+        let end: Option<crate::plugin::hooks::EndTsfn> =
+            crate::plugin::hooks::scan_hook::<crate::plugin::hooks::EndCall>(
+                $object, "end",
+            )?;
+
+        (options, start, parse, prepare, transform, finalize, generate, end)
     }};
 }
 
@@ -729,16 +788,17 @@ pub(crate) use hook_scan;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin::hooks::SharedStr;
 
     #[test]
     fn test_hook_slots_are_sequential() {
         assert_eq!(options::SLOT, 0);
-        assert_eq!(compile_start::SLOT, 1);
-        assert_eq!(prepare::SLOT, 2);
-        assert_eq!(transform::SLOT, 3);
-        assert_eq!(finalize::SLOT, 4);
-        assert_eq!(compile_end::SLOT, 5);
+        assert_eq!(start::SLOT, 1);
+        assert_eq!(parse::SLOT, 2);
+        assert_eq!(prepare::SLOT, 3);
+        assert_eq!(transform::SLOT, 4);
+        assert_eq!(finalize::SLOT, 5);
+        assert_eq!(generate::SLOT, 6);
+        assert_eq!(end::SLOT, 7);
     }
 
     #[test]
@@ -753,8 +813,6 @@ mod tests {
 
         let clone: SharedStr = shared.clone();
 
-        // Clones share the same Arc allocation: both see the same data, and
-        // dropping the original does not affect the clone.
         assert_eq!(clone.as_str(), "const a = 1;");
 
         let original: SharedStr = shared;
@@ -776,5 +834,36 @@ mod tests {
     fn test_shared_str_debug() {
         let shared: SharedStr = SharedStr::new("x");
         assert_eq!(format!("{shared:?}"), r#"SharedStr("x")"#);
+    }
+
+    #[test]
+    fn test_start_call_payload_carries_resolved_options() {
+        let call: StartCall = StartCall {
+            cwd: SharedStr::new("/repo"),
+            file: SharedStr::new("index.ts"),
+            language: SharedStr::new("ts"),
+            source_type: SharedStr::new("module"),
+            options: JsResolvedOptions {
+                cwd: String::from("/repo"),
+                file: String::from("index.ts"),
+                language: String::from("ts"),
+                source_type: String::from("module"),
+                source_map: serde_json::json!({
+                    "input": "auto",
+                    "output": "both",
+                }),
+                plugins: vec![String::from("observe")],
+            },
+        };
+
+        let (_context, payload) = call.into_payload().expect("payload builds");
+
+        assert_eq!(payload.options.file, "index.ts");
+        assert_eq!(payload.options.cwd, "/repo");
+        assert_eq!(payload.options.plugins, vec![String::from("observe")]);
+        assert_eq!(
+            payload.options.source_map,
+            serde_json::json!({ "input": "auto", "output": "both" })
+        );
     }
 }

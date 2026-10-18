@@ -30,14 +30,11 @@ impl From<BindingHelperLoaderMode> for TelarelHelperLoaderMode {
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct BindingHelperLoaderOptions {
-    /// The module name to import helper functions from.
     module_name: Option<String>,
-    /// Strategy used to resolve helper calls.
     mode: Option<BindingHelperLoaderMode>,
 }
 
 impl BindingHelperLoaderOptions {
-    /// Convert into the telarel-owned helper loader options.
     fn into_helper_loader_options(self) -> TelarelHelperLoaderOptions {
         TelarelHelperLoaderOptions {
             module_name: self.module_name,
@@ -65,7 +62,7 @@ pub struct OxcPassthrough {
 }
 
 impl OxcPassthrough {
-    /// Convert into the raw oxc base layer plus the telarel helper options.
+    /// Split the passthrough into oxc options and telarel helper-loader options.
     pub fn into_parts(
         self
     ) -> (oxc::transformer::TransformOptions, Option<TelarelHelperLoaderOptions>)
@@ -89,8 +86,6 @@ impl OxcPassthrough {
     }
 }
 
-/// Convert the optional passthrough layer into the oxc base and helper options.
-///
 /// Defined here because the `oxc` module name shadows the oxc crate inside the parent `options` module.
 pub fn to_oxc_parts(
     passthrough: Option<OxcPassthrough>

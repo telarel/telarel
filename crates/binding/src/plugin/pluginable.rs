@@ -2,39 +2,46 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
-use napi::bindgen_prelude::{Either, Object, Promise, ToNapiValue, Unknown};
+use napi::bindgen_prelude::{
+    Either, Object, Promise, ToNapiValue, Undefined, Unknown,
+};
 use napi::sys;
 use napi::threadsafe_function::ThreadsafeFunctionCallMode;
 use napi::{Env, Result, Status};
 use oxc::span::SourceType;
 
-use telarel_common::{Ast, CompileOptions, HookUsage};
+use telarel_common::{
+    Ast, AstResult, CodeResult, HookUsage, ResolvableOptions, SourceMap,
+};
 use telarel_plugin::__internal::HookFuture;
 use telarel_plugin::{
-    CommonPluginContext, CompileEndArgs, CompileStartArgs, FinalizeArgs,
-    FinalizeOutput, FinalizeReturn, NotifyReturn, OptionsArgs, PluginContext,
-    PluginHookMeta, Pluginable, PrepareArgs, PrepareOutput, PrepareReturn,
-    TransformArgs, TransformOutput, TransformReturn,
+    CommonPluginContext, EndArgs, FinalizeArgs, GenerateArgs, GenerateReturn,
+    NotifyReturn, OptionsArgs, ParseArgs, ParseReturn, PluginContext,
+    PluginHookMeta, Pluginable, PrepareArgs, StartArgs, TransformArgs,
+    TransformOutput, TransformReturn,
 };
 
+use crate::_types::ast::JsAst;
+use crate::_types::plugin::hooks::{
+    JsCodeOutput, JsGeneratorHookOptions, JsOptionsOutput, JsParseOutput,
+    JsParserHookOptions, JsResolvedOptions, JsTransformOutput,
+    optional_source_map_options_to_js,
+};
 use crate::_types::plugin::order::read_hook_meta;
+use crate::ast::{
+    ast_from_json, ast_from_program, ast_to_estree_json,
+    js_source_map_to_owned, source_type_for_options,
+};
 use crate::plugin::build::NAME_REQUIRED;
 use crate::plugin::build::to_plugins;
 use crate::plugin::hooks::{
-    CompileEndCall, CompileEndTsfn, CompileStartCall, CompileStartTsfn,
-    FinalizeTsfn, OptionsCall, OptionsTsfn, PrepareTsfn, RefList, SharedStr,
-    StageCall, TransformCall, TransformTsfn, hook_scan,
+    EndCall, EndTsfn, FinalizeTsfn, GenerateCall, GenerateTsfn, ObserveCall,
+    OptionsCall, OptionsTsfn, ParseCall, ParseTsfn, PrepareTsfn, RefList,
+    SharedStr, StartCall, StartTsfn, TransformCall, TransformTsfn, hook_scan,
 };
 use crate::plugin::options::{
     language_label, parse_language, parse_source_type, source_type_label,
 };
-use crate::plugin::spans::{SpanMap, spans_to_bytes, spans_to_utf16};
-
-/// The default file when an options-hook bag omits the `file` field.
-const DEFAULT_FILE: &str = "index.js";
-
-/// The default code when an options-hook bag omits the `code` field.
-const DEFAULT_CODE: &str = "";
 
 /// A JS plugin object bridged into the Rust plugin layer.
 ///
@@ -44,17 +51,21 @@ const DEFAULT_CODE: &str = "";
 pub struct JsPlugin {
     name: String,
     tsfn_options: Option<OptionsTsfn>,
-    tsfn_compile_start: Option<CompileStartTsfn>,
+    tsfn_start: Option<StartTsfn>,
+    tsfn_parse: Option<ParseTsfn>,
     tsfn_prepare: Option<PrepareTsfn>,
     tsfn_transform: Option<TransformTsfn>,
     tsfn_finalize: Option<FinalizeTsfn>,
-    tsfn_compile_end: Option<CompileEndTsfn>,
+    tsfn_generate: Option<GenerateTsfn>,
+    tsfn_end: Option<EndTsfn>,
     hook_meta_options: Option<PluginHookMeta>,
-    hook_meta_compile_start: Option<PluginHookMeta>,
+    hook_meta_start: Option<PluginHookMeta>,
+    hook_meta_parse: Option<PluginHookMeta>,
     hook_meta_prepare: Option<PluginHookMeta>,
     hook_meta_transform: Option<PluginHookMeta>,
     hook_meta_finalize: Option<PluginHookMeta>,
-    hook_meta_compile_end: Option<PluginHookMeta>,
+    hook_meta_generate: Option<PluginHookMeta>,
+    hook_meta_end: Option<PluginHookMeta>,
     /// The compile's dynamic release list, shared with every JS plugin and
     /// with the compile task's `finally`.
     refs: Arc<RefList>,
@@ -73,18 +84,23 @@ impl JsPlugin {
 
         let (
             tsfn_options,
-            tsfn_compile_start,
+            tsfn_start,
+            tsfn_parse,
             tsfn_prepare,
             tsfn_transform,
             tsfn_finalize,
-            tsfn_compile_end,
+            tsfn_generate,
+            tsfn_end,
         ) = hook_scan!(object);
 
         let hook_meta_options: Option<PluginHookMeta> =
             read_hook_meta(object, "options")?;
 
-        let hook_meta_compile_start: Option<PluginHookMeta> =
-            read_hook_meta(object, "compileStart")?;
+        let hook_meta_start: Option<PluginHookMeta> =
+            read_hook_meta(object, "start")?;
+
+        let hook_meta_parse: Option<PluginHookMeta> =
+            read_hook_meta(object, "parse")?;
 
         let hook_meta_prepare: Option<PluginHookMeta> =
             read_hook_meta(object, "prepare")?;
@@ -95,23 +111,30 @@ impl JsPlugin {
         let hook_meta_finalize: Option<PluginHookMeta> =
             read_hook_meta(object, "finalize")?;
 
-        let hook_meta_compile_end: Option<PluginHookMeta> =
-            read_hook_meta(object, "compileEnd")?;
+        let hook_meta_generate: Option<PluginHookMeta> =
+            read_hook_meta(object, "generate")?;
+
+        let hook_meta_end: Option<PluginHookMeta> =
+            read_hook_meta(object, "end")?;
 
         Ok(Self {
             name,
             tsfn_options,
-            tsfn_compile_start,
+            tsfn_start,
+            tsfn_parse,
             tsfn_prepare,
             tsfn_transform,
             tsfn_finalize,
-            tsfn_compile_end,
+            tsfn_generate,
+            tsfn_end,
             hook_meta_options,
-            hook_meta_compile_start,
+            hook_meta_start,
+            hook_meta_parse,
             hook_meta_prepare,
             hook_meta_transform,
             hook_meta_finalize,
-            hook_meta_compile_end,
+            hook_meta_generate,
+            hook_meta_end,
             refs: Arc::clone(refs),
         })
     }
@@ -122,18 +145,13 @@ fn hook_error(error: napi::Error) -> anyhow::Error {
     anyhow::Error::from(error)
 }
 
-/// The JS-thread unmarshalling of an `options` hook return value into the
-/// pipeline bag.
-///
-/// Runs ON the JS thread (inside the TSFN callback, which provides the
-/// `Env`): the returned plugin descriptors must be bridged where JS objects
-/// are reachable. `null`/`undefined` = no change. A returned object is the
-/// FULL bag: the scalar fields fall back to their defaults, and every entry
-/// of the `plugins` array is bridged (builtins dispatch by name; JS plugin
-/// objects are wrapped into fresh `JsPlugin` adapters whose rooted
-/// descriptors join the compile's release list).
+/// Unmarshal an `options` hook return into the pipeline bag ON the JS thread,
+/// where the returned plugin descriptors are reachable. `null`/`undefined` is
+/// no change; a returned object is the FULL bag: omitted scalars stay
+/// unspecified and every `plugins` entry is bridged (rooted descriptors join
+/// the compile's release list).
 fn unmarshal_options(
-    output: Option<crate::_types::plugin::hooks::JsOptionsOutput>,
+    output: Option<JsOptionsOutput>,
     env: &Env,
     refs: &Arc<RefList>,
 ) -> anyhow::Result<Option<OptionsArgs>> {
@@ -167,6 +185,15 @@ fn unmarshal_options(
             | None => None,
         };
 
+    let source_map: Option<telarel_common::SourceMapOptions> =
+        match &output.source_map {
+            | Some(value) => Some(
+                crate::_types::options::parse_source_map_options(value)
+                    .map_err(hook_error)?,
+            ),
+            | None => None,
+        };
+
     // The returned bag REPLACES the whole plugin list (the wrapper echoes
     // the payload's `plugins` array): an omitted field means the default
     // EMPTY list (see `JsOptionsOutput`'s docs). `to_plugins` bridges the
@@ -177,12 +204,12 @@ fn unmarshal_options(
             .map_err(hook_error)?;
 
     let args: OptionsArgs = OptionsArgs {
-        options: CompileOptions {
+        options: ResolvableOptions {
             cwd: output.cwd,
-            file: output.file.unwrap_or_else(|| String::from(DEFAULT_FILE)),
-            code: output.code.unwrap_or_else(|| String::from(DEFAULT_CODE)),
+            file: output.file,
             language,
             source_type,
+            source_map,
         },
         plugins,
     };
@@ -197,23 +224,8 @@ fn unmarshal_options(
 /// object to the JS-thread callback, which wires the resolution bridging.
 pub type OptionsReturn = Unknown<'static>;
 
-/// Bridge a promise's resolution ON the JS thread, forwarding the outcome.
-///
-/// Takes over the promise machinery: `PromiseRaw::then` registers a Rust
-/// callback invoked on the JS thread with the resolved, CONVERTED
-/// `Option<JsOptionsOutput>` (the bag's plugin refs are rooted there);
-/// `unmarshal_options` bridges the late plugins and the outcome is sent to
-/// the waiting worker. Rejections surface the original napi error.
-///
-/// The raw hook's return is validated with `napi_is_promise` BEFORE the
-/// wiring: [`napi::bindgen_prelude::PromiseRaw::new`] wraps the raw
-/// `napi_value` UNCHECKED, and calling `then` on a non-promise (a plain
-/// value the (unwrapped) raw hook returned directly, or an object without a
-/// callable `then`) would fail — leaving the worker blocked on the outcome
-/// channel and the returned error a FATAL exception in napi's TSFN callback
-/// (a process abort). Every failure below therefore sends the error on the
-/// outcome channel FIRST (so the worker's `recv` always settles) and
-/// returns `Ok(())` (so napi does not fatal).
+/// Bridge a promise's resolution on the JS thread. Every failure settles the
+/// outcome channel first; an escaping napi error here aborts the process.
 fn await_options_promise(
     value: Unknown,
     env: Env,
@@ -247,18 +259,14 @@ fn await_options_promise(
         return Ok(());
     }
 
-    let raw: PromiseRaw<
-        '_,
-        Option<crate::_types::plugin::hooks::JsOptionsOutput>,
-    > = PromiseRaw::new(env.raw(), raw_value);
+    let raw: PromiseRaw<'_, Option<JsOptionsOutput>> =
+        PromiseRaw::new(env.raw(), raw_value);
 
     let resolve_sender = sender.clone();
 
     let reject_sender = sender.clone();
 
-    let resolve = move |ctx: CallbackContext<
-        Option<crate::_types::plugin::hooks::JsOptionsOutput>,
-    >| {
+    let resolve = move |ctx: CallbackContext<Option<JsOptionsOutput>>| {
         let outcome = unmarshal_options(ctx.value, &ctx.env, &refs);
 
         let _ = resolve_sender
@@ -286,23 +294,9 @@ fn await_options_promise(
     Ok(())
 }
 
-/// The `options` hook call: unmarshal the resolution ON the JS thread.
-///
-/// `call_async_catch` awaits the TSFN on the WORKER and returns the RAW
-/// converted return, but a returned bag's plugin descriptors must be
-/// bridged where JS objects are reachable (the JS thread). This hook uses
-/// `call_with_return_value` instead: its callback runs ON the JS thread
-/// with an `Env`, wires the PROMISE resolution bridging, and the outcome
-/// travels back through a channel.
-///
-/// The RAW `options` hook is an ASYNC function: it returns a
-/// `Promise<Option<JsOptionsOutput>>` (the wrapper awaits the user hook).
-/// [`napi::bindgen_prelude::PromiseRaw::then`] registers a RUST callback
-/// invoked ON the JS thread with the RESOLVED, CONVERTED value (the bag's
-/// plugin descriptor refs are rooted there) and an `Env`.
-///
-/// A JS throw inside the hook rejects the promise; captured as the compile
-/// error via the rejection callback.
+/// The `options` hook call. It resolves on the JS thread because a returned
+/// bag's plugin descriptors must be bridged where JS objects are reachable;
+/// the outcome travels back to the worker through a channel.
 async fn call_options_tsfn(
     tsfn: &OptionsTsfn,
     call: OptionsCall,
@@ -363,8 +357,12 @@ impl Pluginable for JsPlugin {
             usage.insert(HookUsage::Options);
         }
 
-        if self.tsfn_compile_start.is_some() {
-            usage.insert(HookUsage::CompileStart);
+        if self.tsfn_start.is_some() {
+            usage.insert(HookUsage::Start);
+        }
+
+        if self.tsfn_parse.is_some() {
+            usage.insert(HookUsage::Parse);
         }
 
         if self.tsfn_prepare.is_some() {
@@ -379,8 +377,12 @@ impl Pluginable for JsPlugin {
             usage.insert(HookUsage::Finalize);
         }
 
-        if self.tsfn_compile_end.is_some() {
-            usage.insert(HookUsage::CompileEnd);
+        if self.tsfn_generate.is_some() {
+            usage.insert(HookUsage::Generate);
+        }
+
+        if self.tsfn_end.is_some() {
+            usage.insert(HookUsage::End);
         }
 
         usage
@@ -398,12 +400,16 @@ impl Pluginable for JsPlugin {
 
             let call: OptionsCall = OptionsCall {
                 cwd: SharedStr::new(args.options.cwd.as_deref().unwrap_or("")),
-                file: SharedStr::new(&args.options.file),
-                code: SharedStr::new(&args.options.code),
+                file: SharedStr::new(
+                    args.options.file.as_deref().unwrap_or(""),
+                ),
                 language: SharedStr::new(language_label(args.options.language)),
                 source_type: SharedStr::new(source_type_label(
                     args.options.source_type,
                 )),
+                source_map: optional_source_map_options_to_js(
+                    args.options.source_map.as_ref(),
+                ),
                 plugins: self.refs.bag_snapshot(),
             };
 
@@ -415,30 +421,29 @@ impl Pluginable for JsPlugin {
         self.hook_meta_options
     }
 
-    fn call_compile_start<'a>(
+    fn call_start<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        args: &'a CompileStartArgs,
+        args: &'a StartArgs,
     ) -> HookFuture<'a, NotifyReturn> {
         Box::pin(async move {
-            let Some(tsfn) = self.tsfn_compile_start.as_ref() else {
+            let Some(tsfn) = self.tsfn_start.as_ref() else {
                 return Ok(());
             };
 
-            let call: CompileStartCall = CompileStartCall {
+            let call: StartCall = StartCall {
                 cwd: SharedStr::new(&args.options.cwd),
                 file: SharedStr::new(&args.options.file),
-                code: SharedStr::new(&args.options.code),
                 language: SharedStr::new(language_label(Some(
                     args.options.language,
                 ))),
                 source_type: SharedStr::new(source_type_label(Some(
                     args.options.source_type,
                 ))),
-                plugins: args.options.plugins.clone(),
+                options: JsResolvedOptions::from(&args.options),
             };
 
-            let output: Either<Promise<()>, ()> =
+            let output: Either<Promise<Undefined>, Undefined> =
                 tsfn.call_async_catch(call).await.map_err(hook_error)?;
 
             if let Either::A(promise) = output {
@@ -449,59 +454,104 @@ impl Pluginable for JsPlugin {
         })
     }
 
-    fn call_compile_start_meta(&self) -> Option<PluginHookMeta> {
-        self.hook_meta_compile_start
+    fn call_start_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_start
     }
 
-    fn call_prepare<'a>(
+    fn call_parse<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a PrepareArgs<'_>,
-    ) -> HookFuture<'a, PrepareReturn> {
+        args: ParseArgs<'a>,
+    ) -> HookFuture<'a, ParseReturn> {
         Box::pin(async move {
-            let Some(tsfn) = self.tsfn_prepare.as_ref() else {
+            let Some(tsfn) = self.tsfn_parse.as_ref() else {
                 return Ok(None);
             };
 
-            let call: StageCall = StageCall {
+            let call: ParseCall = ParseCall {
                 cwd: SharedStr::new(ctx.cwd),
                 file: SharedStr::new(ctx.module.file),
-                code: SharedStr::new(args.code),
+                code: args.code.to_owned(),
                 language: SharedStr::new(language_label(Some(
                     ctx.module.language,
                 ))),
                 source_type: SharedStr::new(source_type_label(Some(
                     ctx.module.source_type,
                 ))),
+                options: JsParserHookOptions::from(args.options),
             };
 
             let output: Either<
-                Promise<Option<crate::_types::plugin::hooks::JsStageOutput>>,
-                Option<crate::_types::plugin::hooks::JsStageOutput>,
+                Promise<Option<JsParseOutput>>,
+                Option<JsParseOutput>,
             > = tsfn.call_async_catch(call).await.map_err(hook_error)?;
 
-            let replaced: Option<crate::_types::plugin::hooks::JsStageOutput> =
-                match output {
-                    | Either::A(promise) => {
-                        promise.await.map_err(hook_error)?
-                    },
-                    | Either::B(value) => value,
-                };
+            let replaced: Option<JsParseOutput> = match output {
+                | Either::A(promise) => promise.await.map_err(hook_error)?,
+                | Either::B(value) => value,
+            };
 
-            let Some(output) = replaced else {
+            let Some(replaced) = replaced else {
                 return Ok(None);
             };
 
-            let map: Option<telarel_plugin::SourceMap> = match output.map {
-                | Some(json) => Some(
-                    oxc_sourcemap::OwnedSourceMap::from_json_string(&json)
-                        .map_err(anyhow::Error::msg)?
-                        .into_inner(),
-                ),
+            // The returned AST's spans anchor to its own `code`, so resolve the
+            // grammar from the hook's parser options (the same resolution the
+            // builtin parser applies) and rebuild the tree against it.
+            let source_type: SourceType = source_type_for_options(
+                &args.options.file,
+                Some(args.options.language),
+                args.options.source_type,
+            );
+
+            let JsAst { program, code, map } = replaced.ast;
+
+            let input_map: Option<SourceMap> = match map {
+                | Some(map) => Some(js_source_map_to_owned(&map)?),
                 | None => None,
             };
 
-            Ok(Some(PrepareOutput { code: output.code, map }))
+            let ast: Ast =
+                ast_from_program(&program, code, input_map, source_type)?;
+
+            Ok(Some(AstResult { ast }))
+        })
+    }
+
+    fn call_parse_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_parse
+    }
+
+    fn call_prepare<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: PrepareArgs<'a>,
+    ) -> HookFuture<'a, NotifyReturn> {
+        Box::pin(async move {
+            let Some(tsfn) = self.tsfn_prepare.as_ref() else {
+                return Ok(());
+            };
+
+            let call: ObserveCall = ObserveCall {
+                cwd: SharedStr::new(ctx.cwd),
+                file: SharedStr::new(ctx.module.file),
+                language: SharedStr::new(language_label(Some(
+                    ctx.module.language,
+                ))),
+                source_type: SharedStr::new(source_type_label(Some(
+                    ctx.module.source_type,
+                ))),
+                ast_json: ast_to_estree_json(args.ast),
+            };
+
+            let output: Either<Promise<Undefined>, Undefined> =
+                tsfn.call_async_catch(call).await.map_err(hook_error)?;
+
+            if let Either::A(promise) = output {
+                promise.await.map_err(hook_error)?;
+            }
+
+            Ok(())
         })
     }
 
@@ -523,28 +573,20 @@ impl Pluginable for JsPlugin {
             // it to anchor the JSON tree.
             let source_type: SourceType = args.ast.source_type();
 
-            // The UTF-16 map is anchored to the AST's own source (the
-            // `prepare`-fold parse input), NOT `ctx.module.code`, so it matches
-            // the byte spans the codec emits below.
-            let ast_json: String = oxc_estree_codec::program_to_json(
-                args.ast.program(),
-                oxc_estree_codec::ProgramToJsonOptions::new(),
-            );
-
-            let spans: SpanMap = SpanMap::new(args.ast.source());
-
-            let ast_json_utf16: String = spans_to_utf16(&spans, &ast_json);
+            // The UTF-16 map is anchored to the AST's own source (the parse
+            // input), NOT the module's original code, so it matches the byte
+            // spans the codec emits.
+            let ast_json_utf16: String = ast_to_estree_json(args.ast);
 
             // The ESTree codec skips `Program.comments`; keep the parser-owned
             // comments to reattach them to the rebuilt program (a JS plugin
             // cannot supply its own).
             let comments: Vec<oxc::ast::ast::Comment> =
-                args.ast.program().comments.iter().copied().collect();
+                args.ast.program().comments.iter().cloned().collect();
 
             let call: TransformCall = TransformCall {
                 cwd: SharedStr::new(ctx.cwd),
                 file: SharedStr::new(ctx.module.file),
-                code: SharedStr::new(ctx.module.code),
                 language: SharedStr::new(language_label(Some(
                     ctx.module.language,
                 ))),
@@ -555,21 +597,16 @@ impl Pluginable for JsPlugin {
             };
 
             let output: Either<
-                Promise<
-                    Option<crate::_types::plugin::hooks::JsTransformOutput>,
-                >,
-                Option<crate::_types::plugin::hooks::JsTransformOutput>,
+                Promise<Option<JsTransformOutput>>,
+                Option<JsTransformOutput>,
             > = tsfn.call_async_catch(call).await.map_err(hook_error)?;
 
-            let unmarshalled: Option<
-                crate::_types::plugin::hooks::JsTransformOutput,
-            > = match output {
+            let unmarshalled: Option<JsTransformOutput> = match output {
                 | Either::A(promise) => promise.await.map_err(hook_error)?,
                 | Either::B(value) => value,
             };
 
             let Some(replaced) = unmarshalled else {
-                // A JS `null`/`void` return: no change.
                 return Ok(None);
             };
 
@@ -580,30 +617,16 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             }
 
-            // The returned spans are UTF-16: map them back to byte offsets
-            // through the same anchored map before the codec reads them.
-            let replaced_bytes: String =
-                spans_to_bytes(&spans, &replaced.ast_json);
-
             // Rebuild the returned tree into a fresh owned AST: the read-back
             // allocates into the new AST's arena and anchors spans against its
             // shared source, so the replacement travels as `Some` exactly like
             // a Rust plugin's replacement.
-            let mut ast: Ast = Ast::try_from_source(
+            let mut ast: Ast = ast_from_json(
+                &replaced.ast_json,
                 args.ast.source().clone(),
+                args.ast.map().cloned(),
                 source_type,
-                |source_text: &str, allocator: &oxc::allocator::Allocator| {
-                    oxc_estree_codec::json_to_program(
-                        &replaced_bytes,
-                        oxc_estree_codec::JsonToProgramOptions {
-                            allocator,
-                            source_type,
-                            source_text,
-                        },
-                    )
-                },
-            )
-            .map_err(anyhow::Error::from)?;
+            )?;
 
             // The rebuilt program's comments are empty: reattach the original
             // set so codegen still emits them.
@@ -616,7 +639,7 @@ impl Pluginable for JsPlugin {
                             oxc::ast::ast::Comment,
                         > = oxc::allocator::Vec::new_in(&allocator);
 
-                        rebuilt.extend(comments.iter().copied());
+                        rebuilt.extend(comments.iter().cloned());
 
                         program.comments = rebuilt;
                     },
@@ -634,85 +657,26 @@ impl Pluginable for JsPlugin {
     fn call_finalize<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a FinalizeArgs<'_>,
-    ) -> HookFuture<'a, FinalizeReturn> {
-        Box::pin(async move {
-            let Some(tsfn) = self.tsfn_finalize.as_ref() else {
-                return Ok(None);
-            };
-
-            let call: StageCall = StageCall {
-                cwd: SharedStr::new(ctx.cwd),
-                file: SharedStr::new(ctx.module.file),
-                code: SharedStr::new(args.code),
-                language: SharedStr::new(language_label(Some(
-                    ctx.module.language,
-                ))),
-                source_type: SharedStr::new(source_type_label(Some(
-                    ctx.module.source_type,
-                ))),
-            };
-
-            let output: Either<
-                Promise<Option<crate::_types::plugin::hooks::JsStageOutput>>,
-                Option<crate::_types::plugin::hooks::JsStageOutput>,
-            > = tsfn.call_async_catch(call).await.map_err(hook_error)?;
-
-            let replaced: Option<crate::_types::plugin::hooks::JsStageOutput> =
-                match output {
-                    | Either::A(promise) => {
-                        promise.await.map_err(hook_error)?
-                    },
-                    | Either::B(value) => value,
-                };
-
-            let Some(output) = replaced else {
-                return Ok(None);
-            };
-
-            let map: Option<telarel_plugin::SourceMap> = match output.map {
-                | Some(json) => Some(
-                    oxc_sourcemap::OwnedSourceMap::from_json_string(&json)
-                        .map_err(anyhow::Error::msg)?
-                        .into_inner(),
-                ),
-                | None => None,
-            };
-
-            Ok(Some(FinalizeOutput { code: output.code, map }))
-        })
-    }
-
-    fn call_finalize_meta(&self) -> Option<PluginHookMeta> {
-        self.hook_meta_finalize
-    }
-
-    fn call_compile_end<'a>(
-        &'a self,
-        ctx: &'a PluginContext<'_>,
-        args: &'a CompileEndArgs,
+        args: FinalizeArgs<'a>,
     ) -> HookFuture<'a, NotifyReturn> {
         Box::pin(async move {
-            let Some(tsfn) = self.tsfn_compile_end.as_ref() else {
+            let Some(tsfn) = self.tsfn_finalize.as_ref() else {
                 return Ok(());
             };
 
-            let call: CompileEndCall = CompileEndCall {
+            let call: ObserveCall = ObserveCall {
                 cwd: SharedStr::new(ctx.cwd),
                 file: SharedStr::new(ctx.module.file),
-                code: SharedStr::new(ctx.module.code),
                 language: SharedStr::new(language_label(Some(
                     ctx.module.language,
                 ))),
                 source_type: SharedStr::new(source_type_label(Some(
                     ctx.module.source_type,
                 ))),
-                compiled: SharedStr::new(&args.code),
-                map: args.map.as_ref().map(|map| map.to_json_string()),
-                err: args.err.clone(),
+                ast_json: ast_to_estree_json(args.ast),
             };
 
-            let output: Either<Promise<()>, ()> =
+            let output: Either<Promise<Undefined>, Undefined> =
                 tsfn.call_async_catch(call).await.map_err(hook_error)?;
 
             if let Either::A(promise) = output {
@@ -723,21 +687,110 @@ impl Pluginable for JsPlugin {
         })
     }
 
-    fn call_compile_end_meta(&self) -> Option<PluginHookMeta> {
-        self.hook_meta_compile_end
+    fn call_finalize_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_finalize
+    }
+
+    fn call_generate<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: GenerateArgs<'a>,
+    ) -> HookFuture<'a, GenerateReturn> {
+        Box::pin(async move {
+            let Some(tsfn) = self.tsfn_generate.as_ref() else {
+                return Ok(None);
+            };
+
+            let call: GenerateCall = GenerateCall {
+                cwd: SharedStr::new(ctx.cwd),
+                file: SharedStr::new(ctx.module.file),
+                language: SharedStr::new(language_label(Some(
+                    ctx.module.language,
+                ))),
+                source_type: SharedStr::new(source_type_label(Some(
+                    ctx.module.source_type,
+                ))),
+                ast: JsAst::from_ast(args.ast)?,
+                options: JsGeneratorHookOptions::from(args.options),
+            };
+
+            let output: Either<
+                Promise<Option<JsCodeOutput>>,
+                Option<JsCodeOutput>,
+            > = tsfn.call_async_catch(call).await.map_err(hook_error)?;
+
+            let replaced: Option<JsCodeOutput> = match output {
+                | Either::A(promise) => promise.await.map_err(hook_error)?,
+                | Either::B(value) => value,
+            };
+
+            let Some(replaced) = replaced else {
+                return Ok(None);
+            };
+
+            let map: Option<SourceMap> = match replaced.map {
+                | Some(map) => Some(js_source_map_to_owned(&map)?),
+                | None => None,
+            };
+
+            Ok(Some(CodeResult { code: replaced.code, map }))
+        })
+    }
+
+    fn call_generate_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_generate
+    }
+
+    fn call_end<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: &'a EndArgs,
+    ) -> HookFuture<'a, NotifyReturn> {
+        Box::pin(async move {
+            let Some(tsfn) = self.tsfn_end.as_ref() else {
+                return Ok(());
+            };
+
+            let call: EndCall = EndCall {
+                cwd: SharedStr::new(ctx.cwd),
+                file: SharedStr::new(ctx.module.file),
+                language: SharedStr::new(language_label(Some(
+                    ctx.module.language,
+                ))),
+                source_type: SharedStr::new(source_type_label(Some(
+                    ctx.module.source_type,
+                ))),
+                error: args.error.as_ref().map(ToString::to_string),
+            };
+
+            let output: Either<Promise<Undefined>, Undefined> =
+                tsfn.call_async_catch(call).await.map_err(hook_error)?;
+
+            if let Either::A(promise) = output {
+                promise.await.map_err(hook_error)?;
+            }
+
+            Ok(())
+        })
+    }
+
+    fn call_end_meta(&self) -> Option<PluginHookMeta> {
+        self.hook_meta_end
     }
 }
 
-/// Tests for the ENV-FREE parts of the `options` unmarshalling: the
-/// full-bag scalar defaulting and the omitted-`plugins` = empty-list rule.
-/// The descriptor-loop / promise-wiring paths touch napi FFI (reference
-/// rooting, `napi_is_promise`) and are only observable through a JS runtime —
-/// that surface is exercised by the options-injection tests in
-/// `tests/telarel/test/compile.test.ts`.
+/// Tests for the ENV-FREE parts of the hook marshaling: the options
+/// unmarshalling (no full-bag scalar defaulting; omitted-`plugins` = empty
+/// list) and the bag/release-list bookkeeping. The ESTree serialization and
+/// map parsing live in `crate::ast` and are tested there. The descriptor-loop /
+/// promise-wiring paths touch napi FFI (reference rooting, `napi_is_promise`)
+/// and are only observable through a JS runtime — that surface is exercised by
+/// the options-injection tests in `tests/telarel/test/compile.test.ts`.
 #[cfg(test)]
 mod tests {
-    use crate::plugin::hooks::RefList;
     use telarel_common::{Language, SourceType};
+
+    use crate::plugin::hooks::RefList;
 
     use super::*;
 
@@ -751,16 +804,15 @@ mod tests {
     fn output(
         cwd: Option<String>,
         file: Option<String>,
-        code: Option<String>,
         language: Option<String>,
         source_type: Option<String>,
-    ) -> crate::_types::plugin::hooks::JsOptionsOutput {
-        crate::_types::plugin::hooks::JsOptionsOutput {
+    ) -> JsOptionsOutput {
+        JsOptionsOutput {
             cwd,
             file,
-            code,
             language,
             source_type,
+            source_map: None,
             plugins: None,
         }
     }
@@ -776,12 +828,12 @@ mod tests {
     }
 
     #[test]
-    fn test_unmarshal_options_bag_defaults() {
+    fn test_unmarshal_options_bag_keeps_omitted_fields_none() {
         let env: Env = env();
         let refs: Arc<RefList> = Arc::new(RefList::new());
 
         let outcome = unmarshal_options(
-            Some(output(None, None, None, None, None)),
+            Some(output(None, None, None, None)),
             &env,
             &refs,
         )
@@ -789,11 +841,65 @@ mod tests {
         .expect("a returned bag is Some");
 
         assert_eq!(outcome.options.cwd, None);
-        assert_eq!(outcome.options.file, "index.js");
-        assert_eq!(outcome.options.code, "");
+        assert_eq!(outcome.options.file, None);
         assert_eq!(outcome.options.language, None);
         assert_eq!(outcome.options.source_type, None);
+        assert!(outcome.options.source_map.is_none());
         assert!(outcome.plugins.is_empty());
+    }
+
+    #[test]
+    fn test_unmarshal_options_bag_parses_source_map() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.source_map = Some(serde_json::json!({
+            "input": "inline",
+            "output": { "mode": "both" },
+        }));
+
+        let outcome = unmarshal_options(Some(bag), &env, &refs)
+            .unwrap()
+            .expect("a returned bag is Some");
+
+        let source_map =
+            outcome.options.source_map.expect("the bag's sourceMap is carried");
+
+        assert!(matches!(
+            source_map.input,
+            Some(telarel_common::InputSourceMap::Mode(
+                telarel_common::InputSourceMapMode::Inline
+            ))
+        ));
+
+        assert!(matches!(
+            source_map.output,
+            Some(telarel_common::OutputSourceMap::Options(
+                telarel_common::OutputSourceMapOptions {
+                    mode: telarel_common::OutputSourceMapMode::Both,
+                }
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_unmarshal_options_bag_invalid_source_map_errors() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.source_map = Some(serde_json::json!({ "output": "sideways" }));
+
+        let error: anyhow::Error = unmarshal_options(Some(bag), &env, &refs)
+            .expect_err("an invalid sourceMap is the hook error");
+
+        assert!(
+            error.to_string().contains("invalid sourceMap.output"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -805,7 +911,6 @@ mod tests {
             Some(output(
                 Some("/tmp".to_owned()),
                 Some("app.ts".to_owned()),
-                Some("const a = 1;".to_owned()),
                 Some("ts".to_owned()),
                 Some("module".to_owned()),
             )),
@@ -816,8 +921,7 @@ mod tests {
         .expect("a returned bag is Some");
 
         assert_eq!(outcome.options.cwd.as_deref(), Some("/tmp"));
-        assert_eq!(outcome.options.file, "app.ts");
-        assert_eq!(outcome.options.code, "const a = 1;");
+        assert_eq!(outcome.options.file.as_deref(), Some("app.ts"));
         assert_eq!(outcome.options.language, Some(Language::TS));
         assert_eq!(outcome.options.source_type, Some(SourceType::Module));
         assert!(outcome.plugins.is_empty());
@@ -835,21 +939,17 @@ mod tests {
 
         assert_eq!(refs.bag_snapshot().len(), 2);
 
-        unmarshal_options(
-            Some(output(None, None, None, None, None)),
-            &env,
-            &refs,
-        )
-        .unwrap()
-        .expect("a returned bag is Some");
+        unmarshal_options(Some(output(None, None, None, None)), &env, &refs)
+            .unwrap()
+            .expect("a returned bag is Some");
 
         assert_eq!(refs.bag_snapshot().len(), 0);
     }
 
-    /// The contract this fix pins: the `options` payload is the CURRENT
-    /// bag's descriptor list, NOT the accumulating release list. Two fixpoint
-    /// passes echo the SAME two descriptors; the release list grows every
-    /// pass, but the bag snapshot stays at two.
+    /// The contract: the `options` payload is the CURRENT bag's descriptor
+    /// list, NOT the accumulating release list. Two fixpoint passes echo the
+    /// SAME two descriptors; the release list grows every pass, but the bag
+    /// snapshot stays at two.
     ///
     /// Limitation: the descriptor-loop half of `unmarshal_options` touches
     /// napi FFI (`materialize` → `get_value`) and cannot run without a JS
@@ -891,7 +991,7 @@ mod tests {
         let refs: Arc<RefList> = Arc::new(RefList::new());
 
         let outcome = unmarshal_options(
-            Some(output(None, None, None, Some("json".to_owned()), None)),
+            Some(output(None, None, Some("json".to_owned()), None)),
             &env,
             &refs,
         );
@@ -900,5 +1000,22 @@ mod tests {
             outcome.expect_err("an invalid language is the hook error");
 
         assert!(error.to_string().contains("invalid language"), "{error}");
+    }
+
+    #[test]
+    fn test_unmarshal_options_invalid_source_type_errors() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let outcome = unmarshal_options(
+            Some(output(None, None, None, Some("json".to_owned()))),
+            &env,
+            &refs,
+        );
+
+        let error: anyhow::Error =
+            outcome.expect_err("an invalid source type is the hook error");
+
+        assert!(error.to_string().contains("invalid source type"), "{error}");
     }
 }

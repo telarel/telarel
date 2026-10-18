@@ -30,6 +30,9 @@ type OxcTransformOptions = {
      * binding's serde rejects the `boolean` member npm's type allows.
      */
     jsx?: Omit<OxcJsxOptions, "refresh"> & {
+        /**
+         * The React Refresh options; only the object form is accepted.
+         */
         refresh?: OxcReactRefreshOptions;
     };
     /**

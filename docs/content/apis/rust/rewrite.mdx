@@ -1,0 +1,60 @@
+---
+title: rewrite
+description: Rewrite an AST with plugins.
+---
+
+```rust
+pub async fn rewrite(
+    ast: Ast,
+    options: RewriteOptions,
+    plugins: Vec<SharedPluginable>,
+) -> Result<AstResult, CompileError>
+```
+
+Rewrites `ast` through the plugin chain. An empty plugin list runs no transform hooks, so the AST is returned without modification.
+
+The AST's own input map wins; otherwise the resolved input source map is attached before the stages run.
+
+## Parameters
+
+| Name      | Type                    | Description          |
+| --------- | ----------------------- | -------------------- |
+| `ast`     | `Ast`                   | The AST to rewrite.  |
+| `options` | `RewriteOptions`        | The rewrite options. |
+| `plugins` | `Vec<SharedPluginable>` | The plugins to run.  |
+
+### `RewriteOptions`
+
+Every field is optional and resolved against defaults before use.
+
+| Field         | Type                       | Default             | Description                                                            |
+| ------------- | -------------------------- | ------------------- | ---------------------------------------------------------------------- |
+| `cwd`         | `Option<String>`           | process working dir | Current working directory.                                             |
+| `file`        | `Option<String>`           | `index.ts`          | The file being rewritten. The language is inferred from its extension. |
+| `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.            |
+| `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind.    |
+| `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the step.              |
+
+## Returns
+
+`Result<AstResult, CompileError>`, where `AstResult` is `{ ast: Ast }`.
+
+## Example
+
+```rust
+use telarel::{
+    parse,
+    rewrite,
+    ParseOptions,
+    RewriteOptions,
+    AstResult,
+};
+
+let parsed: AstResult = parse(
+    String::from("const x: number = 1;"),
+    ParseOptions::default(),
+    vec![],
+).await?;
+
+let rewritten: AstResult = rewrite(parsed.ast, RewriteOptions::default(), vec![]).await?;
+```

@@ -1,5 +1,5 @@
 import type {
-    CompileResult,
+    CodeResult,
     PluginContext,
     TransformArgs,
     TransformResult,
@@ -13,33 +13,30 @@ import { describe, expect, it } from "vitest";
 import { renameRootIdentifier } from "#/functions/ast";
 
 describe("sourcemap", (): void => {
-    it("emits a v3 map with observed exact fields", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+    it("emits a v3 codegen map with observed exact fields", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [],
         });
 
         expect(typeof result.map).toBe("object");
-        expect(result.map.version).toBe(3);
-        // No plugin declares `transform`, so the compile takes the skip
-        // path: verbatim code with a per-line identity map that names the
-        // input file.
-        expect(result.map.file).toBe("index.ts");
-        expect(result.map.sourceRoot).toBe(void 0);
-        expect(result.map.ignoreList).toBe(void 0);
-        expect(result.map.sources).toEqual(["index.ts"]);
-        expect(result.map.sourcesContent).toEqual(["const a = 1;"]);
-        expect(result.map.names).toEqual([]);
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.version).toBe(3);
+        // Parse always runs, so the map is the real codegen map: it names the
+        // input file as its single source and carries the encoded mappings.
+        expect(result.map?.file).toBe(void 0);
+        expect(result.map?.sourceRoot).toBe(void 0);
+        expect(result.map?.ignoreList).toBe(void 0);
+        expect(result.map?.sources).toEqual(["index.ts"]);
+        expect(result.map?.sourcesContent).toEqual(["const a = 1;"]);
+        expect(result.map?.names).toEqual([]);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("keeps the map stable after a transform mutation", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "renamer",
@@ -58,57 +55,50 @@ describe("sourcemap", (): void => {
         });
 
         expect(result.code).toBe("const renamed = 1;");
-        expect(result.map.version).toBe(3);
-        expect(result.map.file).toBe(void 0);
-        expect(result.map.sources).toEqual(["index.ts"]);
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.version).toBe(3);
+        expect(result.map?.file).toBe(void 0);
+        expect(result.map?.sources).toEqual(["index.ts"]);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
-    it("compiles empty code to empty code and a minimal identity map", async (): Promise<void> => {
-        // Skip path: the identity map emits one per-line token even for
-        // empty source (`max(1)` line count).
-        const result: CompileResult = await compile({
+    it("compiles empty code to empty code and an empty codegen map", async (): Promise<void> => {
+        const result: CodeResult = await compile("", {
             cwd: "/repo",
             file: "index.ts",
-            code: "",
         });
 
         expect(result.code).toBe("");
-        expect(result.map.mappings).toBe("AAAA");
+        expect(result.map?.mappings).toBe("");
     });
 
     it("round-trips BOM and non-ASCII code", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile('\uFEFFconst µ = "日本語";', {
             cwd: "/repo",
             file: "index.ts",
-            code: '\uFEFFconst µ = "日本語";',
         });
 
-        // Skip path: output is verbatim, so the leading BOM survives in the
-        // code wherever the runtime preserved it in the input (the WASI
-        // TextDecoder strips a leading U+FEFF while the native binding
-        // preserves it) — pin only the runtime-independent remainder.
+        // Codegen prints the program, so the leading BOM is dropped from the
+        // output; the WASI code path also strips a leading U+FEFF.
         expect(result.code.replace(/^\uFEFF/gu, "")).toBe(
             'const µ = "日本語";',
         );
-        expect(result.map.version).toBe(3);
-        expect(result.map.sources).toEqual(["index.ts"]);
-        expect(result.map.mappings).toBe("AAAA");
+        expect(result.map?.version).toBe(3);
+        expect(result.map?.sources).toEqual(["index.ts"]);
+        expect(result.map?.mappings).toBe("AAAC,MAAM,IAAI");
         // `sourcesContent` mirrors the original text, but the leading BOM's
         // survival is runtime-dependent (the WASI TextDecoder strips a
         // leading U+FEFF while the native binding preserves it) — pin only
         // the runtime-independent remainder.
-        expect(result.map.sourcesContent).not.toBe(void 0);
-        expect(result.map.sourcesContent?.[0]?.replace(/^\uFEFF/gu, "")).toBe(
+        expect(result.map?.sourcesContent).not.toBe(void 0);
+        expect(result.map?.sourcesContent?.[0]?.replace(/^\uFEFF/gu, "")).toBe(
             'const µ = "日本語";',
         );
     });
 
     it("emits mappings for non-ASCII code through the transform path", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile('const µ = "日本語";', {
             cwd: "/repo",
             file: "index.ts",
-            code: 'const µ = "日本語";',
             plugins: [
                 {
                     name: "pass-through",
@@ -117,74 +107,69 @@ describe("sourcemap", (): void => {
             ],
         });
 
-        expect(result.map.version).toBe(3);
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.version).toBe(3);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
     it("pins mappings across multiple lines", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;\nconst b = 2;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;\nconst b = 2;",
         });
 
         expect(result.code).toBe("const a = 1;\nconst b = 2;");
-        expect(result.map.version).toBe(3);
-        // Skip path: identity mappings — one column-0 token per line.
-        expect(result.map.mappings).toBe("AAAA;AACA");
+        expect(result.map?.version).toBe(3);
+        // Codegen mappings: one statement per generated line, each naming the
+        // identifier, the literal, and the end of the statement.
+        expect(result.map?.mappings).toBe("AAAA,MAAM,IAAI;AACV,MAAM,IAAI");
     });
 
-    it("keeps CRLF in code and sourcesContent on the skip path", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.ts",
-            code: "const a = 1;\r\nconst b = 2;",
-        });
+    it("normalizes CRLF in code but keeps it in sourcesContent", async (): Promise<void> => {
+        const result: CodeResult = await compile(
+            "const a = 1;\r\nconst b = 2;",
+            {
+                cwd: "/repo",
+                file: "index.ts",
+            },
+        );
 
-        // Skip path: output code is verbatim, so CRLF line endings are
-        // preserved instead of being normalized by codegen.
-        expect(result.code).toBe("const a = 1;\r\nconst b = 2;");
-        expect(result.map.version).toBe(3);
-        expect(result.map.sourcesContent).toEqual([
+        // Codegen prints the program, so CRLF line endings are normalized to
+        // LF in the output; `sourcesContent` keeps the original text.
+        expect(result.code).toBe("const a = 1;\nconst b = 2;");
+        expect(result.map?.version).toBe(3);
+        expect(result.map?.sourcesContent).toEqual([
             "const a = 1;\r\nconst b = 2;",
         ]);
-        expect(result.map.mappings).toBe("AAAA;AACA");
+        expect(result.map?.mappings).toBe("AAAA,MAAM,IAAI;AACV,MAAM,IAAI");
     });
 
-    it("strips a trailing CRLF from code on the skip path", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+    it("strips a trailing CRLF from code and emits codegen mappings", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;\r\n", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;\r\n",
         });
 
-        // Skip path: the trailing `\r\n` terminator is stripped, but the
-        // identity map still names the file and covers the line.
+        // The trailing `\r\n` terminator is stripped by codegen, and the map
+        // still covers the single statement.
         expect(result.code).toBe("const a = 1;");
-        expect(result.map.version).toBe(3);
-        expect(result.map.mappings).toBe("AAAA");
+        expect(result.map?.version).toBe(3);
+        expect(result.map?.mappings).toBe("AAAA,MAAM,IAAI");
     });
 
     it("uses the given file name as the single source", async (): Promise<void> => {
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "entry.tsx",
-            code: "const a = 1;",
         });
 
-        expect(result.map.sources).toEqual(["entry.tsx"]);
-        expect(result.map.mappings).toBe("AAAA");
+        expect(result.map?.sources).toEqual(["entry.tsx"]);
+        expect(result.map?.mappings).toBe("AAAA,MAAM,IAAI");
     });
 
     it("keeps mappings identical after a pass-through transform", async (): Promise<void> => {
-        // A declared `transform` hook forces the codegen path (the skip
-        // path only applies when no plugin uses `transform`), so the
-        // baseline must also carry a transform hook. Both hooks mutate
-        // nothing; their mappings must match exactly.
-        const baseline: CompileResult = await compile({
+        const baseline: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "baseline-pass-through",
@@ -193,10 +178,9 @@ describe("sourcemap", (): void => {
             ],
         });
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "pass-through",
@@ -205,22 +189,20 @@ describe("sourcemap", (): void => {
             ],
         });
 
-        expect(result.map.mappings).toBe(baseline.map.mappings);
-        expect(result.map.sources).toEqual(baseline.map.sources);
+        expect(result.map?.mappings).toBe(baseline.map?.mappings);
+        expect(result.map?.sources).toEqual(baseline.map?.sources);
     });
 
     it("shifts mappings after a length-changing transform", async (): Promise<void> => {
-        const baseline: CompileResult = await compile({
+        const baseline: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [],
         });
 
-        const result: CompileResult = await compile({
+        const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
-            code: "const a = 1;",
             plugins: [
                 {
                     name: "renamer",
@@ -239,27 +221,31 @@ describe("sourcemap", (): void => {
         });
 
         expect(result.code).toBe("const renamed-long = 1;");
-        expect(result.map.version).toBe(3);
-        expect(result.map.sources).toEqual(["index.ts"]);
-        expect(result.map.names.length).toBeGreaterThan(0);
-        expect(result.map.mappings.length).toBeGreaterThan(0);
+        expect(result.map?.version).toBe(3);
+        expect(result.map?.sources).toEqual(["index.ts"]);
+        // Codegen records the source identifier name the renamed output maps
+        // back to; the source text still reads `a`.
+        expect(result.map?.names).toEqual(["a"]);
+        expect(result.map?.mappings.length).toBeGreaterThan(0);
         // A changed AST must not produce byte-identical mappings: the
-        // generated code is longer, so the later segments' column deltas
-        // shift. The no-plugins baseline takes the skip path ("AAAA"),
-        // while the mutated AST goes through codegen and produces
-        // multi-segment mappings.
-        expect(result.map.mappings).not.toBe(baseline.map.mappings);
+        // generated identifier is longer, so the later segments' column deltas
+        // shift.
+        expect(result.map?.mappings).not.toBe(baseline.map?.mappings);
     });
 
     it("pins exact mappings across three lines", async (): Promise<void> => {
-        const result: CompileResult = await compile({
-            cwd: "/repo",
-            file: "index.ts",
-            code: "const a = 1;\nconst b = 2;\nconst c = 3;",
-        });
+        const result: CodeResult = await compile(
+            "const a = 1;\nconst b = 2;\nconst c = 3;",
+            {
+                cwd: "/repo",
+                file: "index.ts",
+            },
+        );
 
         expect(result.code).toBe("const a = 1;\nconst b = 2;\nconst c = 3;");
-        expect(result.map.version).toBe(3);
-        expect(result.map.mappings).toBe("AAAA;AACA;AACA");
+        expect(result.map?.version).toBe(3);
+        expect(result.map?.mappings).toBe(
+            "AAAA,MAAM,IAAI;AACV,MAAM,IAAI;AACV,MAAM,IAAI",
+        );
     });
 });

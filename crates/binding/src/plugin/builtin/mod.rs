@@ -10,15 +10,12 @@ use crate::plugin::builtin::transform::{TRANSFORM_NAME, to_transform_plugin};
 /// The napi-visible names of every supported builtin plugin.
 #[napi_derive::napi(string_enum)]
 pub enum BindingBuiltinPluginName {
-    /// The transform plugin.
     #[napi(value = "builtin:transform")]
     Transform,
 }
 
-/// Every builtin name accepted by [`parse_builtin_name`].
 const SUPPORTED_BUILTIN_NAMES: [&str; 1] = [TRANSFORM_NAME];
 
-/// Parse a `builtin:<id>` name into its enum variant.
 fn parse_builtin_name(name: &str) -> Result<BindingBuiltinPluginName> {
     match name {
         | TRANSFORM_NAME => Ok(BindingBuiltinPluginName::Transform),
@@ -32,7 +29,7 @@ fn parse_builtin_name(name: &str) -> Result<BindingBuiltinPluginName> {
     }
 }
 
-/// Dispatch a plugin marker by name.
+/// Build the builtin plugin selected by its JS name and options.
 pub fn to_builtin_plugin(
     name: &str,
     options: Option<serde_json::Value>,
@@ -68,6 +65,6 @@ mod tests {
         )
         .expect("builtin:transform dispatches");
 
-        assert_eq!(plugin.call_name(), telarel_plugin_transform::NAME);
+        assert_eq!(plugin.call_name(), TRANSFORM_NAME);
     }
 }

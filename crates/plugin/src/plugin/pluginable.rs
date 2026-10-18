@@ -8,12 +8,14 @@ use std::sync::Arc;
 use telarel_common::HookUsage;
 
 use crate::_types::context::{CommonPluginContext, PluginContext};
-use crate::_types::hooks::compile_end::CompileEndArgs;
-use crate::_types::hooks::compile_start::CompileStartArgs;
-use crate::_types::hooks::finalize::{FinalizeArgs, FinalizeReturn};
+use crate::_types::hooks::end::EndArgs;
+use crate::_types::hooks::finalize::FinalizeArgs;
+use crate::_types::hooks::generate::{GenerateArgs, GenerateReturn};
 use crate::_types::hooks::notify::NotifyReturn;
 use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
-use crate::_types::hooks::prepare::{PrepareArgs, PrepareReturn};
+use crate::_types::hooks::parse::{ParseArgs, ParseReturn};
+use crate::_types::hooks::prepare::PrepareArgs;
+use crate::_types::hooks::start::StartArgs;
 use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
 use crate::_types::order::PluginHookMeta;
 use crate::plugin::Plugin;
@@ -47,24 +49,36 @@ pub trait Pluginable: Any + Send + Sync + 'static {
         None
     }
 
-    /// Call the `compile_start` hook; notify-only.
-    fn call_compile_start<'a>(
+    /// Call the `start` hook; notify-only.
+    fn call_start<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a CompileStartArgs,
+        args: &'a StartArgs,
     ) -> HookFuture<'a, NotifyReturn>;
 
-    /// Ordering for the `compile_start` hook.
-    fn call_compile_start_meta(&self) -> Option<PluginHookMeta> {
+    /// Ordering for the `start` hook.
+    fn call_start_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 
-    /// Call the `prepare` hook.
+    /// Call the `parse` hook.
+    fn call_parse<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: ParseArgs<'a>,
+    ) -> HookFuture<'a, ParseReturn>;
+
+    /// Ordering for the `parse` hook.
+    fn call_parse_meta(&self) -> Option<PluginHookMeta> {
+        None
+    }
+
+    /// Call the `prepare` hook; notify-only.
     fn call_prepare<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a PrepareArgs<'_>,
-    ) -> HookFuture<'a, PrepareReturn>;
+        args: PrepareArgs<'a>,
+    ) -> HookFuture<'a, NotifyReturn>;
 
     /// Ordering for the `prepare` hook.
     fn call_prepare_meta(&self) -> Option<PluginHookMeta> {
@@ -83,27 +97,39 @@ pub trait Pluginable: Any + Send + Sync + 'static {
         None
     }
 
-    /// Call the `finalize` hook.
+    /// Call the `finalize` hook; notify-only.
     fn call_finalize<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a FinalizeArgs<'_>,
-    ) -> HookFuture<'a, FinalizeReturn>;
+        args: FinalizeArgs<'a>,
+    ) -> HookFuture<'a, NotifyReturn>;
 
     /// Ordering for the `finalize` hook.
     fn call_finalize_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 
-    /// Call the `compile_end` hook; notify-only.
-    fn call_compile_end<'a>(
+    /// Call the `generate` hook.
+    fn call_generate<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a CompileEndArgs,
+        args: GenerateArgs<'a>,
+    ) -> HookFuture<'a, GenerateReturn>;
+
+    /// Ordering for the `generate` hook.
+    fn call_generate_meta(&self) -> Option<PluginHookMeta> {
+        None
+    }
+
+    /// Call the `end` hook; notify-only.
+    fn call_end<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: &'a EndArgs,
     ) -> HookFuture<'a, NotifyReturn>;
 
-    /// Ordering for the `compile_end` hook.
-    fn call_compile_end_meta(&self) -> Option<PluginHookMeta> {
+    /// Ordering for the `end` hook.
+    fn call_end_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 }
@@ -129,23 +155,35 @@ impl<T: Plugin> Pluginable for T {
         Plugin::options_meta(self)
     }
 
-    fn call_compile_start<'a>(
+    fn call_start<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a CompileStartArgs,
+        args: &'a StartArgs,
     ) -> HookFuture<'a, NotifyReturn> {
-        Box::pin(Plugin::compile_start(self, ctx, args))
+        Box::pin(Plugin::start(self, ctx, args))
     }
 
-    fn call_compile_start_meta(&self) -> Option<PluginHookMeta> {
-        Plugin::compile_start_meta(self)
+    fn call_start_meta(&self) -> Option<PluginHookMeta> {
+        Plugin::start_meta(self)
+    }
+
+    fn call_parse<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: ParseArgs<'a>,
+    ) -> HookFuture<'a, ParseReturn> {
+        Box::pin(Plugin::parse(self, ctx, args))
+    }
+
+    fn call_parse_meta(&self) -> Option<PluginHookMeta> {
+        Plugin::parse_meta(self)
     }
 
     fn call_prepare<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a PrepareArgs<'_>,
-    ) -> HookFuture<'a, PrepareReturn> {
+        args: PrepareArgs<'a>,
+    ) -> HookFuture<'a, NotifyReturn> {
         Box::pin(Plugin::prepare(self, ctx, args))
     }
 
@@ -168,8 +206,8 @@ impl<T: Plugin> Pluginable for T {
     fn call_finalize<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a FinalizeArgs<'_>,
-    ) -> HookFuture<'a, FinalizeReturn> {
+        args: FinalizeArgs<'a>,
+    ) -> HookFuture<'a, NotifyReturn> {
         Box::pin(Plugin::finalize(self, ctx, args))
     }
 
@@ -177,16 +215,28 @@ impl<T: Plugin> Pluginable for T {
         Plugin::finalize_meta(self)
     }
 
-    fn call_compile_end<'a>(
+    fn call_generate<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: &'a CompileEndArgs,
-    ) -> HookFuture<'a, NotifyReturn> {
-        Box::pin(Plugin::compile_end(self, ctx, args))
+        args: GenerateArgs<'a>,
+    ) -> HookFuture<'a, GenerateReturn> {
+        Box::pin(Plugin::generate(self, ctx, args))
     }
 
-    fn call_compile_end_meta(&self) -> Option<PluginHookMeta> {
-        Plugin::compile_end_meta(self)
+    fn call_generate_meta(&self) -> Option<PluginHookMeta> {
+        Plugin::generate_meta(self)
+    }
+
+    fn call_end<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: &'a EndArgs,
+    ) -> HookFuture<'a, NotifyReturn> {
+        Box::pin(Plugin::end(self, ctx, args))
+    }
+
+    fn call_end_meta(&self) -> Option<PluginHookMeta> {
+        Plugin::end_meta(self)
     }
 }
 

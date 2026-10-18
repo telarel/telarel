@@ -12,18 +12,10 @@ use crate::plugin::pluginable::JsPlugin;
 /// The error raised when a JS plugin object carries no `name`.
 pub const NAME_REQUIRED: &str = "plugin `name` is required";
 
-/// Bridge ONE raw plugin object into a shared adapter; its rooted reference
-/// must already be on `refs` (late-plugin descriptors are pushed by the
-/// `options` hook before this call; the entry bridge seeds the list first).
-///
-/// A builtin marker (`{ __builtin: true, name, options }`) is dispatched to
-/// its Rust builtin before any hook scan; a plain JS plugin object is
-/// bridged as a [`JsPlugin`]. The SAME dispatch applies mid-fixpoint, so a
-/// plugin injected by the `options` hook participates like any entry one.
-///
-/// The caller roots the descriptor's reference (the entry bridge seeds the
-/// list first; the `options` hook pushes late descriptors as it wraps) and
-/// the release list drains in `CompileTask::finally`.
+/// Bridge one raw JS plugin descriptor into a shared adapter; the caller has
+/// already rooted its reference. Builtin markers dispatch to Rust before any
+/// hook scan (entry and mid-fixpoint alike); plain JS plugins become
+/// [`JsPlugin`].
 pub fn bridge_plugin(
     object: &napi::bindgen_prelude::Object<'static>,
     refs: &Arc<RefList>,
@@ -54,16 +46,9 @@ pub fn bridge_plugin(
 
 /// Bridge every raw JS plugin descriptor into a shared adapter.
 ///
-/// The whole bag is converted together: each descriptor's already-rooted
-/// reference moves onto `refs` (the compile's release list) and the bridged
-/// adapters are returned in bag order. The returned bag REPLACES the current
-/// descriptor view via [`RefList::set_bag`], so the `options` hook sees
-/// exactly this list.
-///
-/// The caller owns rooting the descriptors; this function owns their
-/// lifecycle from that point on. A materialize or bridging failure mid-list
-/// releases every reference already on `refs` (the compile aborts before any
-/// task exists to drain them) and leaves the bag view untouched.
+/// The returned bag REPLACES the current descriptor view via
+/// [`RefList::set_bag`]; a failure mid-list releases every reference already
+/// on `refs` and leaves the view untouched.
 pub fn to_plugins(
     env: &Env,
     descriptors: Vec<ObjectRef<false>>,

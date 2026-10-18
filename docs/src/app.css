@@ -1,0 +1,79 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+@import "fumapress/css/preset.css";
+
+.mermaid svg {
+    margin: 1.5rem auto 0;
+}
+
+/* Stack the hero code tabs so the container is always as tall as the
+   tallest snippet, instead of resizing to the active tab. Inactive panels
+   stay mounted and are hidden in place (they still occupy the grid cell). */
+.hero-code {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.hero-code [role="tablist"] {
+    grid-row: 1;
+}
+
+.hero-code [role="tabpanel"] {
+    grid-area: 2 / 1;
+}
+
+/* Tailwind's preflight lives in `@layer base` and sets
+   `[hidden] { display: none !important }`. For important declarations the
+   cascade-layer order is reversed, so an unlayered rule loses regardless of
+   specificity. Declaring the override in the same `base` layer lets our more
+   specific selector win. */
+@layer base {
+    .hero-code [role="tabpanel"][hidden] {
+        display: block !important;
+        visibility: hidden;
+    }
+}
+
+/* Stretch the code block to the panel, so the shorter tab keeps the shared
+   height instead of leaving a card-colored gap. */
+.hero-code [role="tabpanel"] > figure {
+    height: 100%;
+}
+
+/* The code viewport scrolls, so it must fill that figure too; otherwise it
+   keeps its content height and its scrollbar sits mid-block. */
+.hero-code [role="tabpanel"] > figure > [role="region"] {
+    height: 100%;
+}
+
+/* The home layout defaults to a 1400px container; narrow it to the docs
+   reading width so the hero and feature grid do not stretch on wide screens. */
+[data-fd-home-layout-container] {
+    max-width: 64rem;
+}
+
+/* An opted-in `<PeekCode>` block is capped to a peek height. Once JavaScript
+   confirms the block really overflows, the scrollbar is removed and the last
+   lines fade out; the `PeekBar` button then expands the block to its full
+   height. Without JavaScript the cap still applies, but the block stays
+   scrollable, so the code is never unreachable. */
+.peek-code > [role="region"] {
+    max-height: 18rem;
+}
+
+.peek-code.peek-detected > [role="region"] {
+    overflow-y: hidden;
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 5rem), transparent);
+    -webkit-mask-image: linear-gradient(
+        to bottom,
+        #000 calc(100% - 5rem),
+        transparent
+    );
+}
+
+.peek-code.peek-expanded > [role="region"] {
+    max-height: none;
+    mask-image: none;
+    -webkit-mask-image: none;
+}

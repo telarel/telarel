@@ -16,7 +16,11 @@ categories.workspace = true
 include = ["src/**", "Cargo.toml", "README.md"]
 
 [dependencies]
+base64 = { workspace = true }
 bitflags = { workspace = true }
 oxc = { workspace = true, features = ["codegen", "regular_expression"] }
 oxc_sourcemap = { workspace = true }
 self_cell = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
