@@ -21,6 +21,12 @@ import {
 
 const tempDirs: Array<string> = [];
 
+// NAPI-RS preopens the drive root as a guest path like `D:\`, and wasi-libc
+// only recognizes `/` separators. Filesystem-backed input maps therefore
+// cannot resolve Windows absolute paths under WASI.
+const isWasiWindows: boolean =
+    process.env.NAPI_RS_FORCE_WASI === "error" && process.platform === "win32";
+
 const tempDir = async (): Promise<string> => {
     const directory: string = await makeTempDir("telarel-parse-");
 
@@ -171,25 +177,28 @@ describe("parse", (): void => {
         expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
     });
 
-    it("attaches an external input map read next to the source", async (): Promise<void> => {
-        const directory: string = await tempDir();
+    it.skipIf(isWasiWindows)(
+        "attaches an external input map read next to the source",
+        async (): Promise<void> => {
+            const directory: string = await tempDir();
 
-        await Fsp.writeFile(
-            Path.join(directory, "index.ts.map"),
-            JSON.stringify(upstreamMap()),
-            "utf-8",
-        );
+            await Fsp.writeFile(
+                Path.join(directory, "index.ts.map"),
+                JSON.stringify(upstreamMap()),
+                "utf-8",
+            );
 
-        const result: AstResult = await parse("const a = 1;", {
-            cwd: directory,
-            file: "index.ts",
-            sourceMap: { input: "external" },
-        });
+            const result: AstResult = await parse("const a = 1;", {
+                cwd: directory,
+                file: "index.ts",
+                sourceMap: { input: "external" },
+            });
 
-        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
-    });
+            expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+        },
+    );
 
-    it("prefers the inline map in auto mode and falls back to external", async (): Promise<void> => {
+    it("prefers the inline map in auto mode", async (): Promise<void> => {
         const directory: string = await tempDir();
 
         await Fsp.writeFile(
@@ -214,15 +223,28 @@ describe("parse", (): void => {
         );
 
         expect(fromInline.ast.map?.sources).toEqual(["inline.ts"]);
-
-        const fromExternal: AstResult = await parse("const a = 1;", {
-            cwd: directory,
-            file: "index.ts",
-            sourceMap: { input: "auto" },
-        });
-
-        expect(fromExternal.ast.map?.sources).toEqual(["upstream.ts"]);
     });
+
+    it.skipIf(isWasiWindows)(
+        "falls back to the external map in auto mode",
+        async (): Promise<void> => {
+            const directory: string = await tempDir();
+
+            await Fsp.writeFile(
+                Path.join(directory, "index.ts.map"),
+                JSON.stringify(upstreamMap()),
+                "utf-8",
+            );
+
+            const fromExternal: AstResult = await parse("const a = 1;", {
+                cwd: directory,
+                file: "index.ts",
+                sourceMap: { input: "auto" },
+            });
+
+            expect(fromExternal.ast.map?.sources).toEqual(["upstream.ts"]);
+        },
+    );
 
     it("attaches no map in auto mode when none is available", async (): Promise<void> => {
         const directory: string = await tempDir();
