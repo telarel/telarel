@@ -25,8 +25,6 @@ on:
 
 permissions:
     contents: read
-    pages: write
-    id-token: write
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
@@ -36,6 +34,7 @@ jobs:
     # Build
     build:
         name: Build
+        if: github.event_name != "push"
 
         runs-on: ubuntu-latest
 
@@ -60,26 +59,15 @@ jobs:
             - name: Build docs
               run: just build-docs
 
-            - name: Upload artifact
-              if: github.event_name != 'pull_request'
-              uses: actions/upload-pages-artifact@v5
-              with:
-                  path: docs/dist/public
-
-    # Deploy
-    deploy:
-        name: Deploy
-
-        if: github.event_name != 'pull_request'
-        needs: build
+    # Dispatch
+    dispatch:
+        name: Dispatch
+        if: github.event_name == "push"
 
         runs-on: ubuntu-latest
 
-        environment:
-            name: github-pages
-            url: ${{ steps.deployment.outputs.page_url }}
-
         steps:
-            - name: Deploy to GitHub Pages
-              id: deployment
-              uses: actions/deploy-pages@v5
+            - name: Trigger docs deployment
+              env:
+                  GH_TOKEN: ${{ secrets.DOCS_DISPATCH_TOKEN }}
+              run: gh api repos/telarel/telarel.github.io/dispatches -f event_type=docs
