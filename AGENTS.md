@@ -148,6 +148,14 @@ Within each group, order entries by reader priority:
 
 Within a tier, order by public API surface: entry points, then options and types, then hooks and internals. Start each entry with `add`, `change`, `remove`, `rename`, or `replace`.
 
+Cross-cutting dependency upgrades go in a `### Dependencies` group placed first under `## Next`. Within that group, order by upgrade impact:
+
+1. Runtime and compiler dependencies that can change emitted code or runtime behavior
+2. Public type dependencies
+3. Build, test, and tooling dependencies
+
+Within a tier, list Rust workspace dependencies before JavaScript packages, then sort alphabetically. Keep crates that must move together in one entry.
+
 ## Testing Rules
 
 - add tests when adding new behavior

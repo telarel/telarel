@@ -582,7 +582,7 @@ impl Pluginable for JsPlugin {
             // comments to reattach them to the rebuilt program (a JS plugin
             // cannot supply its own).
             let comments: Vec<oxc::ast::ast::Comment> =
-                args.ast.program().comments.iter().copied().collect();
+                args.ast.program().comments.iter().cloned().collect();
 
             let call: TransformCall = TransformCall {
                 cwd: SharedStr::new(ctx.cwd),
@@ -639,7 +639,7 @@ impl Pluginable for JsPlugin {
                             oxc::ast::ast::Comment,
                         > = oxc::allocator::Vec::new_in(&allocator);
 
-                        rebuilt.extend(comments.iter().copied());
+                        rebuilt.extend(comments.iter().cloned());
 
                         program.comments = rebuilt;
                     },

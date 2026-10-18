@@ -1,5 +1,13 @@
 ## Next
 
+### Dependencies
+
+- change the `oxc`, `oxc_compat`, `oxc_traverse`, and `oxc_transformer_plugins` ranges to `~0.154.0`
+- change the `oxc_estree_codec` range to `~0.2.1`
+- change the `base64` range to `~0.23.0`
+- change `@oxc-project/types` and `oxc-transform` to `~0.154.0`
+- change `@oxc-project/runtime` to `0.154.0`
+
 ### Common
 
 - remove `code` from `CompileOptions`; the source is now a call argument
