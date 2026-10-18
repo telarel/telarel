@@ -37,14 +37,15 @@ const result: CodeResult = await compile("const x: number = 1;", {
 ### Rust
 
 ```rust
-use telarel::{CodeResult, CompileOptions, Plugin, SharedPluginable, compile};
+use telarel::{CodeResult, CompileOptions, Plugin, compile};
 use telarel_plugin_transform::{TransformOptions, TransformPlugin, TransformTarget};
 
-let transform_plugin: TransformPlugin =
-    TransformPlugin::with_options(TransformOptions {
+let transform_plugin: TransformPlugin = TransformPlugin::with_options(
+    TransformOptions {
         targets: vec![TransformTarget::Es2015],
         ..TransformOptions::default()
-    });
+    },
+);
 
 let result: CodeResult = compile(
     String::from("const x: number = 1;"),

@@ -42,9 +42,6 @@ Compiles `code` from source to generated output, with plugins, in memory.
 import type { CodeResult } from "telarel";
 
 import { compile } from "telarel";
-import { transform } from "telarel/plugins/transform";
 
-const result: CodeResult = await compile("const x: number = 1;", {
-    plugins: [transform({ targets: ["es2015"] })],
-});
+const result: CodeResult = await compile("const x: number = 1;");
 ```

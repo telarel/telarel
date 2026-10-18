@@ -43,31 +43,24 @@ Every field is optional and resolved against defaults before use.
 
 ```rust
 use telarel::{
-    compile_from_ast, parse, CompileFromAstOptions, ParseOptions, Plugin,
-    SharedPluginable,
-};
-use telarel_plugin_transform::{
-    TransformOptions, TransformPlugin, TransformTarget,
+    parse,
+    compile_from_ast,
+    ParseOptions,
+    CompileFromAstOptions,
+    AstResult,
+    CodeResult,
 };
 
-let parsed = parse(
+let parsed: AstResult = parse(
     String::from("const x: number = 1;"),
     ParseOptions::default(),
     vec![],
 ).await?;
 
-let plugins: Vec<SharedPluginable> =
-    vec![Plugin::new_shared(TransformPlugin::with_options(
-        TransformOptions {
-            targets: vec![TransformTarget::Es2015],
-            ..TransformOptions::default()
-        },
-    ))];
-
-let result = compile_from_ast(
+let result: CodeResult = compile_from_ast(
     parsed.ast,
     CompileFromAstOptions::default(),
-    plugins,
+    vec![],
 ).await?;
 
 println!("{}", result.code); // const x = 1;

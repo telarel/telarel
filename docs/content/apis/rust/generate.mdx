@@ -40,15 +40,15 @@ Every field is optional and resolved against defaults before use.
 ## Example
 
 ```rust
-use telarel::{generate, parse, GenerateOptions, ParseOptions};
+use telarel::{generate, parse, GenerateOptions, ParseOptions, AstResult, CodeResult};
 
-let parsed = parse(
+let parsed: AstResult = parse(
     String::from("const x: number = 1;"),
     ParseOptions::default(),
     vec![],
 ).await?;
 
-let result = generate(parsed.ast, GenerateOptions::default(), vec![]).await?;
+let result: CodeResult = generate(parsed.ast, GenerateOptions::default(), vec![]).await?;
 
 println!("{}", result.code);
 ```

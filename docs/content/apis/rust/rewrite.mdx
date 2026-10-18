@@ -11,7 +11,7 @@ pub async fn rewrite(
 ) -> Result<AstResult, CompileError>
 ```
 
-Rewrites `ast` through the plugin chain.
+Rewrites `ast` through the plugin chain. An empty plugin list runs no transform hooks, so the AST is returned without modification.
 
 The AST's own input map wins; otherwise the resolved input source map is attached before the stages run.
 
@@ -43,21 +43,18 @@ Every field is optional and resolved against defaults before use.
 
 ```rust
 use telarel::{
-    parse, rewrite, ParseOptions, Plugin, RewriteOptions,
-    SharedPluginable,
+    parse,
+    rewrite,
+    ParseOptions,
+    RewriteOptions,
+    AstResult,
 };
-use telarel_plugin_transform::{TransformOptions, TransformPlugin};
 
-let parsed = parse(
+let parsed: AstResult = parse(
     String::from("const x: number = 1;"),
     ParseOptions::default(),
     vec![],
 ).await?;
 
-let plugins: Vec<SharedPluginable> =
-    vec![Plugin::new_shared(TransformPlugin::with_options(
-        TransformOptions::default(),
-    ))];
-
-let rewritten = rewrite(parsed.ast, RewriteOptions::default(), plugins).await?;
+let rewritten: AstResult = rewrite(parsed.ast, RewriteOptions::default(), vec![]).await?;
 ```

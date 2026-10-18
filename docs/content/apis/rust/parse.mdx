@@ -51,9 +51,9 @@ Every field is optional and resolved against defaults before use.
 ## Example
 
 ```rust
-use telarel::{parse, ParseOptions};
+use telarel::{parse, ParseOptions, AstResult};
 
-let result = parse(
+let result: AstResult = parse(
     String::from("const x: number = 1;"),
     ParseOptions::default(),
     vec![],

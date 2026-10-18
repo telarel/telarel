@@ -42,20 +42,12 @@ Every field is optional and resolved against defaults before use.
 ## Example
 
 ```rust
-use telarel::{compile, CompileOptions, Plugin, SharedPluginable};
-use telarel_plugin_transform::{
-    TransformOptions, TransformPlugin, TransformTarget,
-};
+use telarel::{compile, CompileOptions, CodeResult};
 
-let result = compile(
+let result: CodeResult = compile(
     String::from("const x: number = 1;"),
     CompileOptions::default(),
-    vec![Plugin::new_shared(TransformPlugin::with_options(
-        TransformOptions {
-            targets: vec![TransformTarget::Es2015],
-            ..TransformOptions::default()
-        },
-    ))],
+    vec![],
 ).await?;
 
 println!("{}", result.code); // const x = 1;

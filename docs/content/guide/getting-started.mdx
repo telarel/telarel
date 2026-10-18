@@ -51,20 +51,20 @@ console.log(result.code); // const x = 1;
 ### Rust
 
 ```rust
-use telarel::{CodeResult, CompileOptions, Plugin, SharedPluginable, compile};
-use telarel_plugin_transform::{
-    TransformOptions, TransformPlugin, TransformTarget,
-};
+use telarel::{CodeResult, CompileOptions, Plugin, compile};
+use telarel_plugin_transform::{TransformOptions, TransformPlugin, TransformTarget};
+
+let transform_plugin: TransformPlugin = TransformPlugin::with_options(
+    TransformOptions {
+        targets: vec![TransformTarget::Es2015],
+        ..TransformOptions::default()
+    },
+);
 
 let result: CodeResult = compile(
     String::from("const x: number = 1;"),
     CompileOptions::default(),
-    vec![Plugin::new_shared(TransformPlugin::with_options(
-        TransformOptions {
-            targets: vec![TransformTarget::Es2015],
-            ..TransformOptions::default()
-        },
-    ))],
+    vec![Plugin::new_shared(transform_plugin)],
 )
 .await?;
 

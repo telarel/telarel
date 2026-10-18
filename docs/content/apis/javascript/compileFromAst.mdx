@@ -59,11 +59,8 @@ The function accepts either a normalized `Ast`, or a bare ESTree `Program` toget
 import type { AstResult, CodeResult } from "telarel";
 
 import { compileFromAst, parse } from "telarel";
-import { transform } from "telarel/plugins/transform";
 
 const { ast }: AstResult = await parse("const x: number = 1;");
 
-const result: CodeResult = await compileFromAst(ast, {
-    plugins: [transform({ targets: ["es2015"] })],
-});
+const result: CodeResult = await compileFromAst(ast);
 ```
