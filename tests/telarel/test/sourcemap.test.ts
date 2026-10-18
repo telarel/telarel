@@ -62,7 +62,6 @@ describe("sourcemap", (): void => {
     });
 
     it("compiles empty code to empty code and an empty codegen map", async (): Promise<void> => {
-        // Codegen over an empty program emits no mappings at all.
         const result: CodeResult = await compile("", {
             cwd: "/repo",
             file: "index.ts",

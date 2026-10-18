@@ -5,8 +5,7 @@ use crate::errors::compile::CompileError;
 use crate::sourcemap::SourceMap;
 use crate::sourcemap::resolve::resolve_input_source_map;
 
-/// A builtin parser that resolves its input source map, parses the code, and
-/// attaches the map to the resulting [`AstResult`].
+/// A builtin parser that attaches the requested input source map to its result.
 #[derive(Debug, Clone)]
 pub struct Parser {
     code: String,
@@ -22,8 +21,7 @@ impl Parser {
         Self { code, options }
     }
 
-    /// Resolve the input source map (per `options.source_map.input`), parse
-    /// the code, and attach the map to the returned AST.
+    /// Parse the code and return the AST with the requested input map attached.
     pub fn parse(self) -> Result<AstResult, CompileError> {
         let input_map: Option<SourceMap> = match &self.options.source_map.input
         {

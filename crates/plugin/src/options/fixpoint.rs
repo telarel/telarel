@@ -26,18 +26,9 @@ fn structurally_same(
 
 /// Run the `options` hook as a fixpoint over the plugin list.
 ///
-/// Plain sequential fold, NO driver: the processing list starts as
-/// `args.plugins`; for each plugin, `Some` replaces the whole set and `None`
-/// keeps it. Each pass ranks the current list by `options_meta`
-/// (`[pre, normal, post]`, stable) and calls `options` on every listed plugin
-/// not yet processed, in that order; later plugins observe earlier plugins'
-/// changes (last-wins fold).
-///
-/// A returned list replaces the settled list WHOLESALE: same-length swaps,
-/// reorders and truncations take effect, not just appended entries. A plugin
-/// already run is never re-run (tracked by identity), so the loop ends once a
-/// pass introduces nothing new. Exceeding [`MAX_OPTIONS_DEPTH`] aborts with
-/// the offending plugin chain (the names that most recently GREW the list).
+/// `Some` replaces the entire settled list and `None` keeps it; each plugin
+/// runs once, in per-pass `options_meta` order. The loop ends when a pass adds
+/// nothing, and [`MAX_OPTIONS_DEPTH`] guards cycles.
 pub async fn options_fixpoint(
     ctx: &CommonPluginContext,
     args: &OptionsArgs,
@@ -601,7 +592,6 @@ mod tests {
         let (settled, list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        // No dedup: the list keeps every entry in final array order.
         assert_eq!(list.len(), 3);
 
         assert!(Arc::ptr_eq(&list[0], &plugins[0]));
@@ -923,14 +913,11 @@ mod tests {
         let (_settled, list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        // A same-length returned list (swap `probe-a` for `probe-b`) is
-        // adopted wholesale: the settled list drops `probe-a`.
         let names: Vec<String> =
             list.iter().map(|plugin| plugin.call_name().into_owned()).collect();
 
         assert_eq!(names, vec!["replacer".to_string(), "probe-b".to_string()],);
 
-        // The newly appeared `probe-b` gets its options hook run next pass.
         assert_eq!(
             log.lock().unwrap().clone(),
             vec![

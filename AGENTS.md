@@ -84,10 +84,24 @@ This repository contains Rust and TypeScript/JavaScript code.
 
 ### Comments
 
-- prefer clearer names and smaller functions over explanatory comments
-- avoid comments that restate what the code does, especially on private functions
-- reserve comments for non-obvious intent the code cannot express
-- document public APIs where behavior is not self-evident
+- comments explain **why**, not **what**. The code already says what it does
+- if the `why` cannot be stated briefly, the code may need refactoring, not a longer comment
+- delete comments that only translate code into prose:
+    - restated names
+    - obvious control flow
+    - per-line walkthroughs
+- if a comment can be shortened to 1–2 lines without losing intent, shorten it
+- keep comments only for non-obvious intent:
+    - invariants
+    - trade-offs
+    - workarounds
+    - external constraints
+    - surprising behavior
+    - or reasons a simpler approach was rejected
+- public API doc comments state the contract only, never a step-by-step narration
+- document every public struct, field, and function with at least one line stating its purpose or contract; a restated name or implementation narration is not documentation
+
+> For this rule, "public" means reachable from the crate or package entry point; `pub(crate)`, `pub(super)`, `pub(in ...)`, and `pub` items inside private modules are private
 
 ## Editing Rules
 
@@ -173,6 +187,8 @@ Therefore, the artifact distribution runs. Avoid invoke `napi build` directly.
 - add unnecessary dependencies
 - refactor unrelated code during a focused change
 - modify generated artifacts directly when a generation workflow exists
+- write comments that restate what the code does or paraphrase function names
+- leave multi-paragraph comments narrating implementation steps
 - introduce unnecessary mutation
 - migrate tooling without an explicit requirement
 - introduce a second package manager

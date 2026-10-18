@@ -14,7 +14,7 @@ use crate::plugin::options::{language_label, source_type_label};
 /// as an ESTree JSON string. The JS wrapper parses it before calling the user
 /// hook; all three hooks reuse this exact serialization.
 pub struct JsAstArgs {
-    /// The current AST as a JSON string.
+    /// AST serialized as JSON for the JS bridge.
     pub ast_json: String,
 }
 
@@ -39,7 +39,7 @@ impl ToNapiValue for JsAstArgs {
 /// plugin objects.
 #[napi_derive::napi(object)]
 pub struct JsTransformOutput {
-    /// The replacement AST as a JSON string.
+    /// AST serialized as JSON for the JS bridge.
     #[napi(js_name = "astJson")]
     pub ast_json: String,
 }
@@ -51,19 +51,17 @@ pub struct JsTransformOutput {
 #[derive(Default)]
 #[napi_derive::napi(object)]
 pub struct JsOptionsOutput {
-    /// Current working directory after the hook.
+    /// Working directory used to resolve relative paths.
     pub cwd: Option<String>,
-    /// Current file after the hook.
+    /// Path of the file being parsed/generated.
     pub file: Option<String>,
-    /// The grammar of the code after the hook.
+    /// Source language of the file.
     pub language: Option<String>,
-    /// The module system of the code after the hook.
+    /// Module system used for code generation.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
-    /// The source-map inputs and outputs after the hook.
-    ///
-    /// The union exists on the wire; the JS wrapper does not advertise it
-    /// until Task 4 but must not choke on it.
+    /// The source-map inputs and outputs after the hook; unspecified (`None`)
+    /// is omitted from the wire.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
     /// The bag's plugins after the hook, as raw descriptor objects; missing
@@ -74,13 +72,13 @@ pub struct JsOptionsOutput {
 /// JS-facing resolved options, as presented to the `start` hook.
 #[napi_derive::napi(object)]
 pub struct JsResolvedOptions {
-    /// Current working directory, resolved.
+    /// Working directory used to resolve relative paths.
     pub cwd: String,
-    /// The file being compiled.
+    /// Path of the file being parsed/generated.
     pub file: String,
-    /// The grammar of the code, resolved.
+    /// Source language of the file.
     pub language: String,
-    /// The module system of the code, resolved.
+    /// Module system used for code generation.
     #[napi(js_name = "sourceType")]
     pub source_type: String,
     /// The source-map inputs and outputs requested for the run.
@@ -93,7 +91,7 @@ pub struct JsResolvedOptions {
 /// Args for the `start` hook: the resolved, read-only options.
 #[napi_derive::napi(object)]
 pub struct JsStartArgs {
-    /// The resolved options.
+    /// Options resolved for the hook/stage.
     pub options: JsResolvedOptions,
 }
 
@@ -175,13 +173,13 @@ pub fn optional_source_map_options_to_js(
 /// JS-facing parser options, as presented to the `parse` hook.
 #[napi_derive::napi(object)]
 pub struct JsParserHookOptions {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: String,
-    /// The file being parsed.
+    /// Path of the file being parsed/generated.
     pub file: String,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: String,
-    /// The module system of the code.
+    /// Module system used for code generation.
     #[napi(js_name = "sourceType")]
     pub source_type: String,
     /// The source-map inputs and outputs requested for the step.
@@ -207,7 +205,7 @@ impl From<&ParserOptions> for JsParserHookOptions {
 pub struct JsGeneratorHookOptions {
     /// Current working directory (reserved).
     pub cwd: String,
-    /// The file being generated.
+    /// Path of the file being parsed/generated.
     pub file: String,
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
@@ -228,16 +226,16 @@ impl From<&GeneratorOptions> for JsGeneratorHookOptions {
 /// options.
 #[napi_derive::napi(object)]
 pub struct JsParseArgs {
-    /// The code to parse.
+    /// Source code text.
     pub code: String,
-    /// The resolved parser options.
+    /// Options resolved for the hook/stage.
     pub options: JsParserHookOptions,
 }
 
 /// Return of the `parse` hook: the replacement AST, `null`/`void` (defer).
 #[napi_derive::napi(object)]
 pub struct JsParseOutput {
-    /// The replacement AST.
+    /// Parsed or rewritten AST.
     pub ast: JsAst,
 }
 
@@ -245,9 +243,9 @@ pub struct JsParseOutput {
 /// generator options.
 #[napi_derive::napi(object)]
 pub struct JsGenerateArgs {
-    /// The current AST as a normalized object.
+    /// Parsed or rewritten AST.
     pub ast: JsAst,
-    /// The resolved generator options.
+    /// Options resolved for the hook/stage.
     pub options: JsGeneratorHookOptions,
 }
 
@@ -255,7 +253,7 @@ pub struct JsGenerateArgs {
 /// map object.
 #[napi_derive::napi(object)]
 pub struct JsCodeOutput {
-    /// The generated code.
+    /// Source code text.
     pub code: String,
     /// The incremental source map, when the hook returned one.
     pub map: Option<JsSourceMap>,
@@ -264,7 +262,7 @@ pub struct JsCodeOutput {
 /// Args for the `end` hook: the rendered compile error, or `null` on success.
 #[napi_derive::napi(object)]
 pub struct JsEndArgs {
-    /// The error message, when the compile failed.
+    /// Error raised by an earlier hook.
     pub error: Option<String>,
 }
 

@@ -21,9 +21,7 @@ type CaptureProgramOptions = {
 };
 
 /**
- * Capture a real ESTree program for `code` by running a pass-through compile
- * and cloning the AST the `transform` hook receives. The JS tests have no
- * parser of their own, so a `parse` hook test hands this snapshot back.
+ * JS tests have no parser; capture an AST via a pass-through compile.
  */
 const captureProgram = async ({
     code,
@@ -352,11 +350,8 @@ describe("hooks", (): void => {
     });
 
     it("drives a custom language through parse and generate hooks only", async (): Promise<void> => {
-        // The custom source is not valid JS: the builtin parser rejects it.
-        // A plugin `parse` hook supplies an unrelated program, so the run
-        // never reaches the builtin parser, and a plugin `generate` hook
-        // returns the custom output, so it never reaches the builtin
-        // generator either.
+        // The custom source is invalid JS, so only plugin parse and generate
+        // hooks can avoid both builtins.
         const custom: string = "greet world!";
         const program: Program = (await captureProgram({
             code: "const fromCustom = 1;",
@@ -406,8 +401,6 @@ describe("hooks", (): void => {
                         _ctx: PluginContext,
                         args: ParseArgs,
                     ): Promise<AstResult> => {
-                        // A hook can drive the builtin parser directly and
-                        // return its result unchanged.
                         const parser: Parser = createParser(
                             args.code,
                             args.options,
@@ -421,7 +414,6 @@ describe("hooks", (): void => {
                         _ctx: PluginContext,
                         args: GenerateArgs,
                     ): Promise<CodeResult> => {
-                        // Likewise for the builtin generator.
                         const generator: Generator = createGenerator(
                             args.ast,
                             args.options,

@@ -23,7 +23,18 @@ type PluginOrder = "pre" | "post";
 /**
  * A hook in plain function form, or an object carrying an `order`.
  */
-type ObjectHook<T> = T | { order?: PluginOrder; handler: T };
+type ObjectHook<T> =
+    | T
+    | {
+          /**
+           * The relative order requested for the hook.
+           */
+          order?: PluginOrder;
+          /**
+           * The hook implementation.
+           */
+          handler: T;
+      };
 
 /**
  * Hooks are return-based: return the new value to replace it, or `null`/`void`

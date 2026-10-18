@@ -13,21 +13,16 @@ pub type Run<J> = Box<dyn FnOnce() -> Result<J> + Send + 'static>;
 
 /// A NAPI task running one pipeline function on a libuv worker thread.
 ///
-/// Every NAPI entry point (`parse`, `compile`, `rewrite`, `generate`,
-/// `compileFromAst`, `builtinParse`, `builtinGenerate`) shares this task: the
-/// `run` closure performs the whole call — rebuilding the input `Ast` when
-/// there is one, driving the pipeline or a builtin primitive, and converting
-/// the result into its JS-facing shape — on the worker. The compile's dynamic
-/// release list (when there are bridged plugins) is drained in
-/// [`Task::finally`].
+/// Every NAPI entry point shares it; `run` performs the whole call on the
+/// worker. The compile's dynamic release list (when there are bridged
+/// plugins) is drained in [`Task::finally`].
 pub struct FunctionTask<J> {
     run: Option<Run<J>>,
     refs: Option<Arc<RefList>>,
 }
 
 impl<J> FunctionTask<J> {
-    /// Create a task from the worker closure and, for entry points with
-    /// bridged plugins, the release list to drain once the call settles.
+    /// Create a task from its worker closure and optional release list.
     pub fn new(
         run: Run<J>,
         refs: Option<Arc<RefList>>,

@@ -145,17 +145,11 @@ fn hook_error(error: napi::Error) -> anyhow::Error {
     anyhow::Error::from(error)
 }
 
-/// The JS-thread unmarshalling of an `options` hook return value into the
-/// pipeline bag.
-///
-/// Runs ON the JS thread (inside the TSFN callback, which provides the
-/// `Env`): the returned plugin descriptors must be bridged where JS objects
-/// are reachable. `null`/`undefined` = no change. A returned object is the
-/// FULL bag: omitted scalar fields stay `None` ("leave unspecified", resolved
-/// later by the pipeline), and every entry of the `plugins` array is bridged
-/// (builtins dispatch by name; JS plugin objects are wrapped into fresh
-/// `JsPlugin` adapters whose rooted descriptors join the compile's release
-/// list).
+/// Unmarshal an `options` hook return into the pipeline bag ON the JS thread,
+/// where the returned plugin descriptors are reachable. `null`/`undefined` is
+/// no change; a returned object is the FULL bag: omitted scalars stay
+/// unspecified and every `plugins` entry is bridged (rooted descriptors join
+/// the compile's release list).
 fn unmarshal_options(
     output: Option<JsOptionsOutput>,
     env: &Env,
@@ -230,23 +224,8 @@ fn unmarshal_options(
 /// object to the JS-thread callback, which wires the resolution bridging.
 pub type OptionsReturn = Unknown<'static>;
 
-/// Bridge a promise's resolution ON the JS thread, forwarding the outcome.
-///
-/// Takes over the promise machinery: `PromiseRaw::then` registers a Rust
-/// callback invoked on the JS thread with the resolved, CONVERTED
-/// `Option<JsOptionsOutput>` (the bag's plugin refs are rooted there);
-/// `unmarshal_options` bridges the late plugins and the outcome is sent to
-/// the waiting worker. Rejections surface the original napi error.
-///
-/// The raw hook's return is validated with `napi_is_promise` BEFORE the
-/// wiring: [`napi::bindgen_prelude::PromiseRaw::new`] wraps the raw
-/// `napi_value` UNCHECKED, and calling `then` on a non-promise (a plain
-/// value the (unwrapped) raw hook returned directly, or an object without a
-/// callable `then`) would fail — leaving the worker blocked on the outcome
-/// channel and the returned error a FATAL exception in napi's TSFN callback
-/// (a process abort). Every failure below therefore sends the error on the
-/// outcome channel FIRST (so the worker's `recv` always settles) and
-/// returns `Ok(())` (so napi does not fatal).
+/// Bridge a promise's resolution on the JS thread. Every failure settles the
+/// outcome channel first; an escaping napi error here aborts the process.
 fn await_options_promise(
     value: Unknown,
     env: Env,
@@ -315,23 +294,9 @@ fn await_options_promise(
     Ok(())
 }
 
-/// The `options` hook call: unmarshal the resolution ON the JS thread.
-///
-/// `call_async_catch` awaits the TSFN on the WORKER and returns the RAW
-/// converted return, but a returned bag's plugin descriptors must be
-/// bridged where JS objects are reachable (the JS thread). This hook uses
-/// `call_with_return_value` instead: its callback runs ON the JS thread
-/// with an `Env`, wires the PROMISE resolution bridging, and the outcome
-/// travels back through a channel.
-///
-/// The RAW `options` hook is an ASYNC function: it returns a
-/// `Promise<Option<JsOptionsOutput>>` (the wrapper awaits the user hook).
-/// [`napi::bindgen_prelude::PromiseRaw::then`] registers a RUST callback
-/// invoked ON the JS thread with the RESOLVED, CONVERTED value (the bag's
-/// plugin descriptor refs are rooted there) and an `Env`.
-///
-/// A JS throw inside the hook rejects the promise; captured as the compile
-/// error via the rejection callback.
+/// The `options` hook call. It resolves on the JS thread because a returned
+/// bag's plugin descriptors must be bridged where JS objects are reachable;
+/// the outcome travels back to the worker through a channel.
 async fn call_options_tsfn(
     tsfn: &OptionsTsfn,
     call: OptionsCall,
@@ -527,7 +492,6 @@ impl Pluginable for JsPlugin {
             };
 
             let Some(replaced) = replaced else {
-                // A JS `null`/`void` return: defer to the next hook.
                 return Ok(None);
             };
 
@@ -643,7 +607,6 @@ impl Pluginable for JsPlugin {
             };
 
             let Some(replaced) = unmarshalled else {
-                // A JS `null`/`void` return: no change.
                 return Ok(None);
             };
 
@@ -762,7 +725,6 @@ impl Pluginable for JsPlugin {
             };
 
             let Some(replaced) = replaced else {
-                // A JS `null`/`void` return: defer to the next hook.
                 return Ok(None);
             };
 
@@ -984,10 +946,10 @@ mod tests {
         assert_eq!(refs.bag_snapshot().len(), 0);
     }
 
-    /// The contract this fix pins: the `options` payload is the CURRENT
-    /// bag's descriptor list, NOT the accumulating release list. Two fixpoint
-    /// passes echo the SAME two descriptors; the release list grows every
-    /// pass, but the bag snapshot stays at two.
+    /// The contract: the `options` payload is the CURRENT bag's descriptor
+    /// list, NOT the accumulating release list. Two fixpoint passes echo the
+    /// SAME two descriptors; the release list grows every pass, but the bag
+    /// snapshot stays at two.
     ///
     /// Limitation: the descriptor-loop half of `unmarshal_options` touches
     /// napi FFI (`materialize` → `get_value`) and cannot run without a JS

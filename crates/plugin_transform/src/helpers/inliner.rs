@@ -85,9 +85,8 @@ fn validate_default_export_statement(
     Ok(())
 }
 
-/// The helper inliner: parses vendored sources, resolves the dependency
-/// closure, renames top-level bindings and accumulates the statements to
-/// splice into the program.
+/// Accumulated state for inlining helper sources: claimed names, resolved
+/// bindings, and statements to splice into the program.
 pub struct Inliner<'a, 's> {
     pub allocator: &'a Allocator,
     /// Scoping of the transformed program; used to deconflict fresh uid names.
@@ -185,14 +184,8 @@ impl<'a, 's> Inliner<'a, 's> {
             )
         })?;
 
-        // Drop the dependency imports first (each dependency is inlined
-        // separately); the default-export statement is validated and dropped,
-        // and every other statement is kept.
-        //
-        // Import locals are root bindings too, so this scan must run before
-        // the top-level rename pass below: their bindings are renamed via the
-        // dependency handling (to the dependency's final name), never via
-        // fresh uid names.
+        // Drop dependency imports before renaming: their locals are renamed
+        // through dependency handling, never via fresh uids.
         let helper_body: ArenaVec<'a, Statement<'a>> = std::mem::replace(
             &mut helper_program.body,
             ArenaVec::new_in(&self.allocator),
@@ -234,9 +227,7 @@ impl<'a, 's> Inliner<'a, 's> {
         }
 
         // Rename every remaining top-level binding of the helper: the default
-        // export to `target_name`, all others (helper-internal functions and
-        // vars, e.g. `var id = 0` in classPrivateFieldLooseKey) to fresh uid
-        // names.
+        // export to `target_name`, all others to fresh uid names.
         let mut renamed_default: bool = false;
 
         for (name, symbol_id) in
@@ -284,11 +275,9 @@ impl<'a, 's> Inliner<'a, 's> {
         Ok(())
     }
 
-    /// Resolve one relative dependency import of `helper` (`./<name>.js`),
-    /// inlining the dependency under a fresh uid name and recording the rename
-    /// from the import's local binding to the final dependency name.
-    /// Mutually recursive with [`Self::ensure_inlined`]; `resolved` is filled
-    /// before recursing, so dependency cycles cannot loop forever.
+    /// Inline one relative dependency import of `helper` and record the rename
+    /// to its final name. `resolved` is filled before recursing, so cycles
+    /// terminate.
     fn inline_dependency(
         &mut self,
         helper: &HelperSource,

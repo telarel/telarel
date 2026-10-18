@@ -15,7 +15,7 @@ use crate::plugin::builtin::transform::options::{
 /// The Rust plugin itself is named [`telarel_plugin_transform::NAME`].
 pub const TRANSFORM_NAME: &str = "builtin:transform";
 
-/// Deserialize the marker's raw `options` JSON and construct the plugin.
+/// Build the builtin transform plugin from its JSON options.
 pub fn to_transform_plugin(
     options: Option<serde_json::Value>
 ) -> Result<SharedPluginable> {

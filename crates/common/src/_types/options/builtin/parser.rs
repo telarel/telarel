@@ -6,13 +6,13 @@ use crate::_types::options::source_map::SourceMapOptions;
 /// Resolved options for the builtin [`crate::ast::parser::Parser`].
 #[derive(Debug, Clone)]
 pub struct ParserOptions {
-    /// Current working directory.
+    /// Working directory used to resolve relative input source-map paths.
     pub cwd: String,
-    /// The file being parsed.
+    /// Path of the file being parsed.
     pub file: String,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: Language,
-    /// The module system of the code.
+    /// Module system requested for parsing.
     pub source_type: SourceType,
     /// The source-map inputs and outputs requested for the step.
     pub source_map: SourceMapOptions,

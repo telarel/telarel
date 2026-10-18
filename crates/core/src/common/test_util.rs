@@ -261,7 +261,6 @@ impl Plugin for SpyPlugin {
     }
 }
 
-/// Captures the `ResolvedOptions` seen by `start`.
 #[derive(Debug)]
 pub struct StartObserverPlugin {
     seen: Arc<Mutex<Vec<ResolvedOptions>>>,
@@ -297,7 +296,6 @@ impl Plugin for StartObserverPlugin {
     }
 }
 
-/// Captures the `error` seen by each `end` invocation.
 #[derive(Debug)]
 pub struct EndObserverPlugin {
     ended: Arc<Mutex<Vec<Option<String>>>>,
@@ -334,7 +332,6 @@ impl Plugin for EndObserverPlugin {
     }
 }
 
-/// Fails the one non-`parse`/`generate` stage named by `stage`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailStage {
     Options,
@@ -571,7 +568,6 @@ impl Plugin for GenerateOutcomePlugin {
     }
 }
 
-/// Replaces the AST with a freshly parsed `code`.
 #[derive(Debug)]
 pub struct ReplaceAstPlugin {
     pub code: &'static str,

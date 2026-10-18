@@ -16,13 +16,16 @@ pub enum InjectSpecifier {
 /// local binding is referenced.
 #[derive(Debug, Clone)]
 pub struct InjectEntry {
+    /// Module specifier the injected import is loaded from.
     pub source: String,
+    /// Import form and local binding the injected symbol is bound with.
     pub specifier: InjectSpecifier,
 }
 
 /// The `inject` options: import injection for unresolved globals.
 #[derive(Debug, Clone, Default)]
 pub struct InjectOptions {
+    /// Imports to inject when their local bindings would otherwise be unresolved.
     pub entries: Vec<InjectEntry>,
 }
 

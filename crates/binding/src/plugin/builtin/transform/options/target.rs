@@ -1,6 +1,5 @@
 use telarel_plugin_transform::TransformTarget;
 
-/// Parse a one-key engine object into its target.
 fn parse_engine_target(
     key: &str,
     version: &serde_json::Value,
@@ -61,7 +60,7 @@ pub fn parse_target_str(
     }
 }
 
-/// Parse one target from its JSON value.
+/// Parse a target string or one-key engine object into a transform target.
 pub fn parse_target(
     value: &serde_json::Value
 ) -> std::result::Result<TransformTarget, String> {

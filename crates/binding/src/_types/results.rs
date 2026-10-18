@@ -6,7 +6,7 @@ use crate::_types::sourcemap::JsSourceMap;
 /// `compileFromAst`, `builtinGenerate`) and of a `generate` hook replacement.
 #[napi_derive::napi(object)]
 pub struct JsCodeResult {
-    /// Generated code.
+    /// Source code text.
     pub code: String,
     /// Source map, when a stage produced one.
     pub map: Option<JsSourceMap>,

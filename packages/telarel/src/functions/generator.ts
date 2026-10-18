@@ -12,6 +12,9 @@ const createGenerator = (
     ast: Ast,
     options: GeneratorOptions,
 ): {
+    /**
+     * Generates code from the fixed AST with the builtin generator.
+     */
     generate: () => Promise<CodeResult>;
 } => {
     return {

@@ -10,7 +10,7 @@ use crate::sourcemap::{SourceMap, compose::compose_maps};
 /// Options for [`generate_code`].
 #[derive(Debug, Clone)]
 pub struct GenerateCodeOptions {
-    /// File path.
+    /// Path of the file being generated.
     pub file: String,
 }
 

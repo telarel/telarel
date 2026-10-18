@@ -19,7 +19,7 @@ pub fn parse_options<T: serde::de::DeserializeOwned>(
     })
 }
 
-/// Parse an optional plugin-options JSON layer into `T`.
+/// Parse optional plugin-options JSON into `T`, passing `None` through.
 pub fn parse_optional_options<T: serde::de::DeserializeOwned>(
     value: Option<serde_json::Value>,
     context: &str,

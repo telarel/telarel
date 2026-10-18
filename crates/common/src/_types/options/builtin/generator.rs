@@ -6,7 +6,7 @@ use crate::_types::options::source_map::SourceMapOptions;
 pub struct GeneratorOptions {
     /// Current working directory (reserved; builtin codegen does not use it).
     pub cwd: String,
-    /// The file being generated.
+    /// Path of the file being generated.
     pub file: String,
     /// The source-map inputs and outputs requested for the step.
     pub source_map: SourceMapOptions,

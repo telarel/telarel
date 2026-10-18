@@ -743,8 +743,6 @@ mod tests {
         let output: TransformOutput =
             output.expect("changed program must return Some");
 
-        // The transformed program is a distinct allocation; the input
-        // program stays untouched.
         let input_code: String =
             telarel_common::generate_program(ast.program(), "index.js").0;
 
@@ -760,8 +758,6 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_unchanged_returns_none() {
-        // EsNext targets leave the already-clean tree untouched; the plugin
-        // must report the no-op as `None`.
         let plugin: TransformPlugin =
             TransformPlugin::with_options(TransformOptions {
                 targets: vec![TransformTarget::EsNext],
@@ -839,9 +835,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_bare_default_inlines_helpers() {
-        // The unconfigured helper state defaults to inline mode; the bare
-        // default options must lower, emit runtime imports, and then inline
-        // the helper bodies in the post-transform pass.
+        // Unconfigured helper loading defaults to inline mode.
         let plugin: TransformPlugin =
             TransformPlugin::with_options(TransformOptions {
                 targets: vec![TransformTarget::Es2015],
@@ -1362,8 +1356,6 @@ mod tests {
         )
         .await;
 
-        // The runtime import is replaced by the inlined helper body; the
-        // helper-internal `asyncGeneratorStep` is inlined under a fresh uid.
         assert!(
             !code.contains("@oxc-project/runtime"),
             "runtime import must be removed: {code}"
@@ -1414,9 +1406,6 @@ mod tests {
             "runtime imports must be removed: {code}"
         );
 
-        // The full dependency closure of `objectSpread2` is inlined once each,
-        // dependencies before dependents: objectSpread2 -> defineProperty ->
-        // toPropertyKey -> { typeof, toPrimitive } -> typeof.
         for name in [
             "_objectSpread",
             "_defineProperty",
@@ -1484,8 +1473,6 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_inline_helpers_noop_when_mode_is_explicit_runtime()
     {
-        // With an explicit runtime mode the oxc runtime import must be
-        // emitted unchanged; the inline pass must not touch the program.
         let plugin: TransformPlugin =
             TransformPlugin::with_options(TransformOptions {
                 targets: vec![TransformTarget::Es2015],
@@ -1572,9 +1559,6 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_inline_helpers_keep_user_code_and_directives() {
-        // The inlined statements land at the top of the body (directives live
-        // in `Program::directives`), and user code other than the helper
-        // imports is untouched.
         let plugin: TransformPlugin = inline_helper_plugin();
 
         let code: String = codegen_after(
@@ -1640,17 +1624,12 @@ mod tests {
                     );
                 },
                 | None => {
-                    // Direct helper: the snippet must make the plugin emit
-                    // the runtime import for this helper...
                     assert!(
                         runtime_code.contains(&specifier),
                         "snippet must trigger helper `{}` ({specifier}): {runtime_code}",
                         trigger.helper
                     );
 
-                    // ...and the inline pass must bind the helper's body under
-                    // the very local name oxc chose for that import, proving
-                    // the emitted import was replaced by the inlined function.
                     let local: String =
                         runtime_import_local(&runtime_code, &specifier)
                             .unwrap_or_else(|| {
@@ -1668,7 +1647,6 @@ mod tests {
                 },
             }
 
-            // ...and the inline pass must consume every runtime import.
             assert!(
                 !inline_code.contains(module_name),
                 "helper `{}` runtime import must be inlined: {inline_code}",

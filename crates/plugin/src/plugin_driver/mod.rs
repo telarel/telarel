@@ -55,11 +55,12 @@ pub struct PluginDriver {
 impl PluginDriver {
     /// Create a driver from plugins in registration order.
     ///
-    /// Hooks with a first-win/carried contract (`parse`, `prepare`,
-    /// `transform`, `finalize`, `generate`) are partitioned by their declared
-    /// [`HookUsage`]; `start`/`end` run on every settled plugin. There is no
-    /// `options` partition: the `options` stage is the fixpoint runner
-    /// ([`crate::options_fixpoint`]), not the driver.
+    /// `start`/`end` run on every settled plugin; `parse`, `prepare`,
+    /// `transform`, `finalize`, and `generate` are partitioned by declared
+    /// [`HookUsage`]. `parse` and `generate` are first-win, `transform` carries
+    /// the last `Some`, and `prepare`/`finalize` are notify-only observers.
+    /// `options` is not a driver partition: it is the fixpoint runner
+    /// ([`crate::options_fixpoint`]).
     pub fn new(plugins: Vec<SharedPluginable>) -> Self {
         let mut usage: HookUsage = HookUsage::default();
 
@@ -443,7 +444,6 @@ mod tests {
             HookUsage::Transform
         }
 
-        // Clone the carried AST, append a directive, and return the clone.
         fn transform<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
@@ -1088,7 +1088,6 @@ mod tests {
 
         assert!(err.to_string().contains("boom"), "{err}");
 
-        // the hook after the failing one never ran
         assert_eq!(
             *log.lock().unwrap(),
             vec![String::from("one"), String::from("fail-parse")]
@@ -1623,8 +1622,6 @@ mod tests {
         let output: crate::TransformOutput =
             output.expect("the chain changed the program");
 
-        // the following plugin observed the replaced AST, not the parse
-        // result
         let recorded: usize = seen.lock().unwrap()[0];
 
         assert_eq!(
@@ -1641,8 +1638,6 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_all_none_returns_none() {
-        // An all-`None` chain changes nothing: the fold returns `None` and
-        // the carried AST stays the original.
         let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let ast: Ast = test_ast();
@@ -1676,9 +1671,6 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_last_some_wins() {
-        // Two `Some`-returning plugins: the fold returns the LAST one's
-        // AST, and the earlier replacement is not carried forward into
-        // the output.
         let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let ast: Ast = test_ast();
@@ -1701,8 +1693,6 @@ mod tests {
         let out: String =
             oxc::codegen::Codegen::new().build(output.ast.program()).code;
 
-        // the last Some (MarkPlugin's parse of `"mark";`) wins, replacing
-        // the earlier `"replaced";` root
         assert!(out.contains("mark"), "{out}");
 
         assert!(!out.contains("replaced"), "{out}");
@@ -1710,9 +1700,6 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_some_then_second_some_keeps_both_edits() {
-        // ReplaceRootPlugin then AppendDirectivePlugin: the second clone
-        // starts from the replaced root, so the final output carries both
-        // the replacement and the appended directive.
         let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let ast: Ast = test_ast();
@@ -1933,8 +1920,6 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_end_runs_all_plugins_after_first_error() {
-        // `end` runs for EVERY plugin even after one fails; the first error
-        // is returned only after the loop.
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
@@ -1976,8 +1961,6 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_end_first_error_reported() {
-        // Two failing `end` plugins: the FIRST error (in registration
-        // order) surfaces, and both hooks still run.
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
@@ -2322,8 +2305,6 @@ mod tests {
 
     #[test]
     fn test_sort_plugins_by_hook_meta_buckets_and_stability() {
-        // Scrambled registration: normal, pre, post, pre, normal, post.
-        // Ranking must yield [pre, pre, normal, normal, post, post], stable.
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![

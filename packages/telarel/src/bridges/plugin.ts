@@ -151,11 +151,8 @@ type RawBuiltinPlugin = {
 
 type RawPlugin = RawHookPlugin | RawBuiltinPlugin;
 
-// Marks wrapper-produced descriptors, so a descriptor echoed back through an
-// options bag (the payload's plugin array roots wrapper outputs) is passed
-// through as-is instead of being re-wrapped: re-wrapping would stack the
-// translation a second time and corrupt the hook shapes (raw args re-read as
-// user args).
+// Marks wrapper-produced descriptors so a descriptor echoed back through an
+// options bag is passed through instead of being translated a second time.
 const RAW_PLUGIN_MARKER: unique symbol = Symbol("telarel.bridge.rawPlugin");
 
 const isWrappedPlugin = (plugin: Plugin | BuiltinPlugin): boolean =>
@@ -245,12 +242,6 @@ type GenerateHook = (
 
 type EndHook = (ctx: PluginContext, args: EndArgs) => void | Promise<void>;
 
-/**
- * Flatten a plugin option list into concrete plugins.
- *
- * Nested arrays recurse, promises await, and `false`/`null`/`undefined` entries
- * are skipped. Plugin objects pass through unchanged.
- */
 const flattenPlugins = async (
     options: ReadonlyArray<PluginOption>,
 ): Promise<Array<Plugin | BuiltinPlugin>> => {
@@ -320,9 +311,7 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         raw.options = async (
             rawArgs: RawOptionsArgs,
         ): Promise<RawOptionsOutput | null> => {
-            // The payload's plugin descriptors are the bag's current list as
-            // raw plugin objects (rooted Rust-side): presented to the bag as
-            // `Plugin | BuiltinPlugin` and passed through untouched.
+            // The payload's descriptors are already raw plugin objects.
             const bag: ResolvableOptions = {
                 cwd: rawArgs.cwd,
                 file: rawArgs.file,

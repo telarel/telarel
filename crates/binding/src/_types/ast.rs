@@ -7,9 +7,9 @@ use crate::ast;
 /// anchor to, and an optional input source map.
 #[napi_derive::napi(object)]
 pub struct JsAst {
-    /// The ESTree program.
+    /// The ESTree program produced by parsing or rewriting.
     pub program: serde_json::Value,
-    /// The source text the program spans anchor to.
+    /// Source code text.
     pub code: String,
     /// The input source map, when the AST carries one.
     pub map: Option<JsSourceMap>,
@@ -31,9 +31,9 @@ impl From<ast::JsAst> for JsAst {
 /// The JS-facing normalized AST input, the read side of [`JsAst`].
 #[napi_derive::napi(object)]
 pub struct JsAstInput {
-    /// The ESTree program.
+    /// The ESTree program supplied as input.
     pub program: serde_json::Value,
-    /// The source text the program spans anchor to.
+    /// Source code text.
     pub code: String,
     /// The input source map object, when the caller supplied one.
     pub map: Option<serde_json::Value>,
@@ -49,7 +49,7 @@ impl From<JsAstInput> for ast::JsAstInput {
 /// `parse` hook replacement.
 #[napi_derive::napi(object)]
 pub struct JsAstResult {
-    /// The parsed or rewritten AST.
+    /// Parsed or rewritten AST.
     pub ast: JsAst,
 }
 

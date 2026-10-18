@@ -2,7 +2,7 @@ use crate::_types::context::PluginContext;
 use crate::_types::hooks::end::EndArgs;
 use crate::plugin::pluginable::SharedPluginable;
 
-/// Run the `end` hook on every plugin in registration order.
+/// Run the `end` hook on every settled plugin in meta-ranked order.
 /// Notify-only: results are ignored. Every plugin's hook runs even after one
 /// fails; the FIRST error (context-wrapped) is returned only after the loop.
 pub async fn end(

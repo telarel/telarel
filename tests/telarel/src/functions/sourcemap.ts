@@ -19,9 +19,6 @@ type BuildMapOptions = {
     sourceRoot?: string;
 };
 
-/**
- * Build a standard v3 source map object for upstream-input tests.
- */
 const buildMap = (options: BuildMapOptions): SourceMap => {
     const map: SourceMap = {
         version: 3,
@@ -45,9 +42,6 @@ const buildMap = (options: BuildMapOptions): SourceMap => {
     return map;
 };
 
-/**
- * Append an inline `//# sourceMappingURL=data:...` comment carrying `map`.
- */
 const appendInlineMap = (code: string, map: SourceMap): string => {
     const payload: string = Buffer.from(JSON.stringify(map), "utf-8").toString(
         "base64",

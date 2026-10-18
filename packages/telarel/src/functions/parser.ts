@@ -14,6 +14,9 @@ const createParser = (
     code: string,
     options: ParserOptions,
 ): {
+    /**
+     * Parses the fixed source text with the builtin parser.
+     */
     parse: () => Promise<AstResult>;
 } => {
     return {

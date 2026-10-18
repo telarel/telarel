@@ -24,13 +24,8 @@ impl Carried<'_> {
     }
 }
 
-/// Run the `transform` hook chain.
-///
-/// The chain is a fold over a carried AST: each plugin receives the AST
-/// carried by the previous one and may return a replacement. `Some(output)`
-/// replaces the carried AST; `None` keeps it. The fold returns the LAST
-/// `Some`-returned AST (`None` = no plugin changed anything), so callers can
-/// codegen it directly. The initial AST is borrowed, not cloned.
+/// Run the `transform` hook chain and return the last `Some` output, or
+/// `None` when no plugin changed the AST.
 pub async fn transform<'a>(
     plugins: &'a [SharedPluginable],
     ctx: &'a PluginContext<'_>,

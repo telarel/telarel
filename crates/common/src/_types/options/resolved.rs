@@ -5,9 +5,9 @@ use crate::_types::options::source_map::SourceMapOptions;
 /// Resolved options, as seen by `start` and later hooks.
 #[derive(Debug, Clone)]
 pub struct ResolvedOptions {
-    /// Current working directory, resolved.
+    /// Working directory used to resolve relative paths.
     pub cwd: String,
-    /// The file to be compiled.
+    /// Path of the file being compiled.
     pub file: String,
     /// The grammar of the code, defaulted from the file extension.
     pub language: Language,

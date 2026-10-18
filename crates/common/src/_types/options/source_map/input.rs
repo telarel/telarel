@@ -25,9 +25,7 @@ impl Default for InputSourceMapMode {
     }
 }
 
-/// The input source map request. Currently a bare mode only;
-/// an `Options(InputSourceMapOptions)` variant can be added alongside it later,
-/// mirroring [`OutputSourceMap`](crate::_types::options::source_map::output::OutputSourceMap).
+/// The input source map request: a bare mode.
 #[derive(Debug, Clone)]
 pub enum InputSourceMap {
     /// A bare input mode.

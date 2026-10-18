@@ -4,7 +4,7 @@ use crate::_types::context::PluginContext;
 use crate::_types::hooks::start::StartArgs;
 use crate::plugin::pluginable::SharedPluginable;
 
-/// Run the `start` hook on every plugin in registration order;
+/// Run the `start` hook on every settled plugin in meta-ranked order;
 /// the first error aborts. Notify-only: results are ignored.
 pub async fn start(
     plugins: &[SharedPluginable],

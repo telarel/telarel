@@ -51,7 +51,7 @@ where
     })
 }
 
-/// Convert a compile error into a napi error.
+/// Convert a compile error into a generic napi error.
 pub fn error_to_napi(error: telarel_common::CompileError) -> napi::Error {
     napi::Error::new(napi::Status::GenericFailure, error.to_string())
 }
@@ -62,8 +62,7 @@ pub fn anyhow_to_napi(error: anyhow::Error) -> napi::Error {
     napi::Error::new(napi::Status::GenericFailure, error.to_string())
 }
 
-/// Run a pipeline future to completion on the calling thread, mapping its
-/// compile error to a napi error.
+/// Run a core future to completion and map its compile error to napi.
 pub fn run_core<F, T>(future: F) -> napi::Result<T>
 where
     F: Future<Output = std::result::Result<T, telarel_common::CompileError>>,

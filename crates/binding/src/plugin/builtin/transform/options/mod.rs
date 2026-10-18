@@ -23,15 +23,21 @@ use crate::plugin::builtin::transform::options::target::parse_target;
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BindingTransformPluginOptions {
+    /// Target environments the transform must support.
     pub targets: Option<Vec<serde_json::Value>>,
+    /// TypeScript transform options, when requested.
     pub typescript: Option<serde_json::Value>,
+    /// JSX transform options, when requested.
     pub jsx: Option<serde_json::Value>,
+    /// Module inject options, when requested.
     pub inject: Option<serde_json::Value>,
+    /// Compile-time define replacements, when requested.
     pub define: Option<serde_json::Value>,
+    /// Raw oxc transform options passed through unchanged.
     pub oxc: Option<serde_json::Value>,
 }
 
-/// Deserialize the JS-facing options bag into the telarel transform options.
+/// Convert the JS-facing options bag into transform options.
 pub fn to_transform_options(
     options: BindingTransformPluginOptions
 ) -> Result<TransformOptions> {

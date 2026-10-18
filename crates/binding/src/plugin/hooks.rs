@@ -41,12 +41,12 @@ pub type Tsfn<Data, Payload, Return> =
 pub struct SharedStr(Arc<str>);
 
 impl SharedStr {
-    /// Allocate a new shared string.
+    /// Create a shared string from a borrowed value.
     pub fn new(value: &str) -> Self {
         Self(Arc::from(value))
     }
 
-    /// Borrow the underlying string.
+    /// Borrow the shared string's contents.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -97,13 +97,10 @@ macro_rules! hook_slots_rows {
            // `OptionsCall` payload producer.
             #[allow(dead_code)]
             pub mod $name {
-            /// Slot index of the hook in the plugin slot table.
             pub const SLOT: usize = $slot;
 
-            /// JS payload type of the hook.
             pub type Args = $args;
 
-            /// JS return type of the hook (before the sync/async `Either`).
             pub type Return = $ret;
         } )*
     };
@@ -138,13 +135,13 @@ unsafe impl Send for SharedRef {}
 unsafe impl Sync for SharedRef {}
 
 impl SharedRef {
-    /// Root a JS object.
+    /// Root a JS object and wrap its reference.
     #[allow(clippy::arc_with_non_send_sync)] // see the type's docs
     pub fn new(object: &Object<'static>) -> Result<Self> {
         Ok(Self(Arc::new(Mutex::new(Some(object.create_ref()?)))))
     }
 
-    /// Wrap an already-rooted reference.
+    /// Wrap an already-rooted object reference.
     #[allow(clippy::arc_with_non_send_sync)] // see the type's docs
     pub fn from_ref(reference: ObjectRef<false>) -> Self {
         Self(Arc::new(Mutex::new(Some(reference))))
@@ -157,7 +154,7 @@ impl SharedRef {
         Self(Arc::new(Mutex::new(None)))
     }
 
-    /// Materialize the rooted object.
+    /// Materialize the rooted object for use on the JS thread.
     pub fn get(
         &self,
         env: &Env,
@@ -242,7 +239,7 @@ unsafe impl Send for RefList {}
 unsafe impl Sync for RefList {}
 
 impl RefList {
-    /// Create an empty list.
+    /// Create an empty reference list.
     pub fn new() -> Self {
         Self::default()
     }
@@ -252,12 +249,12 @@ impl RefList {
         self.refs.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
-    /// Whether the release list holds no rooted references.
+    /// Whether the release list has no references.
     pub fn is_empty(&self) -> bool {
         self.refs.lock().unwrap_or_else(PoisonError::into_inner).is_empty()
     }
 
-    /// The number of rooted references on the release list.
+    /// Number of references on the release list.
     pub fn len(&self) -> usize {
         self.refs.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
@@ -329,13 +326,13 @@ impl RefList {
 
 /// Worker-side call data for the `options` hook.
 pub struct OptionsCall {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being compiled, when set.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
     /// The source-map inputs and outputs requested so far, as the JS union;
     /// `None` (unspecified) is omitted from the payload.
@@ -415,7 +412,12 @@ pub fn plugin_context(
 }
 
 /// A hook payload: the plugin context followed by the hook args.
-pub struct FnCtx<A>(pub JsPluginContext, pub A);
+pub struct FnCtx<A>(
+    /// Plugin context passed as the first hook argument.
+    pub JsPluginContext,
+    /// Hook args passed as the second hook argument.
+    pub A,
+);
 
 impl<A: ToNapiValue> JsValuesTupleIntoVec for FnCtx<A> {
     // `env` is a raw napi handle owned by the JS thread; the trait method is
@@ -434,15 +436,15 @@ impl<A: ToNapiValue> JsValuesTupleIntoVec for FnCtx<A> {
 /// Worker-side call data for the `start` hook: resolved, read-only options
 /// with the settled plugin-name list.
 pub struct StartCall {
-    /// Current working directory, resolved.
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being compiled.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The grammar of the code, resolved.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code, resolved.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
-    /// The JS-facing resolved options, including the requested source map.
+    /// Options resolved for the hook/stage.
     pub options: JsResolvedOptions,
 }
 
@@ -471,17 +473,17 @@ pub type StartTsfn =
 /// Worker-side call data for the `parse` hook: the code to parse, the resolved
 /// parser options, and their JS-facing form.
 pub struct ParseCall {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being parsed.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The code to parse.
+    /// Source code text.
     pub code: String,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
-    /// The JS-facing resolved parser options.
+    /// Options resolved for the hook/stage.
     pub options: crate::_types::plugin::hooks::JsParserHookOptions,
 }
 
@@ -510,13 +512,13 @@ pub type ParseTsfn =
 
 /// Worker-side call data for the `prepare` / `finalize` observers.
 pub struct ObserveCall {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being compiled.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
     /// The AST as a JSON string.
     pub ast_json: String,
@@ -556,13 +558,13 @@ pub type FinalizeTsfn = Tsfn<
 
 /// Worker-side call data for the `transform` hook.
 pub struct TransformCall {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being compiled.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
     /// The AST as a JSON string.
     pub ast_json: String,
@@ -595,17 +597,17 @@ pub type TransformTsfn = Tsfn<
 
 /// Worker-side call data for the `generate` hook.
 pub struct GenerateCall {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being generated.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
     /// The AST as a normalized object.
     pub ast: JsAst,
-    /// The JS-facing resolved generator options.
+    /// Options resolved for the hook/stage.
     pub options: crate::_types::plugin::hooks::JsGeneratorHookOptions,
 }
 
@@ -638,15 +640,15 @@ pub type GenerateTsfn = Tsfn<
 /// Worker-side call data for the `end` hook: the rendered compile error, when
 /// the compile failed.
 pub struct EndCall {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being compiled.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
-    /// The error message, when the compile failed.
+    /// Error raised by an earlier hook.
     pub error: Option<String>,
 }
 
@@ -811,8 +813,6 @@ mod tests {
 
         let clone: SharedStr = shared.clone();
 
-        // Clones share the same Arc allocation: both see the same data, and
-        // dropping the original does not affect the clone.
         assert_eq!(clone.as_str(), "const a = 1;");
 
         let original: SharedStr = shared;

@@ -2,11 +2,7 @@
 //!
 //! A transform plugin for the compiler.
 //!
-//! Implements [`telarel_plugin::Plugin`] over the oxc transformer: resolves
-//! telarel-owned options into oxc [`TransformOptions`], clones the read-only
-//! [`telarel_common::Ast`] into a fresh owned AST, and runs the TypeScript,
-//! JSX, and syntax-lowering pipeline over that clone through
-//! [`telarel_common::Ast::with_mut`], returning it when it changed.
+//! Wraps the oxc transformer to apply TypeScript, JSX, and syntax lowering.
 
 mod helpers;
 mod options;

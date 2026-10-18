@@ -21,7 +21,7 @@ pub struct ParseProgramOptions<'ctx, 'a> {
     pub context: &'ctx CompileContext<'ctx>,
     /// Destination allocator for the parsed program.
     pub allocator: &'a Allocator,
-    /// File path.
+    /// Path of the file being parsed.
     pub file: &'a str,
     /// The grammar of the code;
     /// `None` infers the grammar from the file extension.
@@ -34,7 +34,7 @@ pub struct ParseProgramOptions<'ctx, 'a> {
 /// Result of [`parse_program`].
 #[derive(Debug)]
 pub struct ParseProgramResult<'a> {
-    /// The parsed program.
+    /// Parsed program, borrowed from the allocator passed to [`parse_program`].
     pub program: Program<'a>,
 }
 
@@ -43,7 +43,7 @@ pub struct ParseProgramResult<'a> {
 pub struct ParseAstOptions {
     /// Current working directory (for diagnostics).
     pub cwd: String,
-    /// File path.
+    /// Path of the file being parsed.
     pub file: String,
     /// The grammar of the code;
     /// `None` infers the grammar from the file extension.

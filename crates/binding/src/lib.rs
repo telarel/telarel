@@ -27,13 +27,11 @@ pub use crate::plugin::hooks::{RefList, SharedRef, SharedStr};
 pub use crate::plugin::pluginable::JsPlugin;
 pub use crate::tasks::function::FunctionTask;
 
-/// The builtin plugins related.
 pub mod builtin {
     pub use crate::plugin::builtin::{
         BindingBuiltinPluginName, to_builtin_plugin,
     };
 
-    /// The transform plugin related.
     pub mod transform {
         pub use crate::plugin::builtin::transform::options::BindingTransformPluginOptions;
         pub use crate::plugin::builtin::transform::options::oxc::{

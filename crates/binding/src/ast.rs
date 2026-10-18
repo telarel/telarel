@@ -490,12 +490,8 @@ mod tests {
         assert!(source_type.is_module());
     }
 
-    // The generate-path experiment (plan §5): an unambiguous source type lets
-    // the codec resolve the module kind from the program JSON's `sourceType`.
-    //
-    // The resolved kind lands on `Program::source_type` (what codegen reads).
-    // `Ast::source_type()` returns the CALLER-passed type verbatim, so it stays
-    // unambiguous here; the assertions below observe the decoded program.
+    // An unambiguous type lets the codec read `program.sourceType`;
+    // `Ast::source_type()` echoes the caller-passed type verbatim.
 
     #[test]
     fn test_generate_source_type_reads_module_from_program_json() {

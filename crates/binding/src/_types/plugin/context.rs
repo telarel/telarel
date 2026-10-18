@@ -5,13 +5,13 @@ use crate::plugin::hooks::SharedStr;
 
 /// JS-facing plugin context passed to every ctx-bearing hook.
 pub struct JsPluginContext {
-    /// Current working directory.
+    /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The original file.
+    /// Path of the file being parsed/generated.
     pub file: SharedStr,
-    /// The grammar of the code.
+    /// Source language of the file.
     pub language: SharedStr,
-    /// The module system of the code.
+    /// Module system used for code generation.
     pub source_type: SharedStr,
 }
 

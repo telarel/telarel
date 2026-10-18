@@ -386,9 +386,7 @@ describe("transform helpers", (): void => {
             // this helper...
             expect(runtime.code).toContain(specifierFor(trigger.helper));
 
-            // ...and the inline pass must bind the helper's body under the
-            // very local name oxc chose for that import, proving the emitted
-            // import was replaced by the inlined function.
+            // The inline pass reuses the emitted import's local name.
             const local: string | undefined = runtimeImportLocal({
                 code: runtime.code,
                 specifier: specifierFor(trigger.helper),
@@ -397,7 +395,6 @@ describe("transform helpers", (): void => {
             expect(local).toBeDefined();
             expect(inlined.code).toContain(`function ${local}(`);
 
-            // ...and the inline pass must consume it.
             expect(inlined.code).not.toContain(MODULE_NAME);
         });
     }

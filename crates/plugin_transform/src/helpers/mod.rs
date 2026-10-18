@@ -96,8 +96,6 @@ pub fn run<'a>(
         rewriter.visit_program(program);
     }
 
-    // Remove the usage statements and insert the inlined statements at the
-    // top of the body (after directives, which live in `Program::directives`).
     let usage_indexes: HashSet<usize> = usages
         .iter()
         .map(|usage: &HelperUsage| usage.statement_index)

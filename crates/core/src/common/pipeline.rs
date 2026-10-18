@@ -23,7 +23,6 @@ use telarel_plugin::{
 
 /// The stage plan of one public entry point.
 pub trait Stage {
-    /// The entry point's result type.
     type Output;
 
     /// Run this entry point's configured stages over the settled pipeline.
@@ -77,7 +76,6 @@ fn wrap_parse_error(
     CompileError::from_message(&format!("parse hook: {error}"))
 }
 
-/// Wrap a `generate` stage error; see [`wrap_parse_error`].
 fn wrap_generate_error(
     driver: &PluginDriver,
     error: CompileError,
@@ -153,7 +151,6 @@ async fn parse_stage(
     )
 }
 
-/// The carried `prepare` → `transform` → `finalize` fold over `ast`.
 async fn rewrite_stages(
     driver: &PluginDriver,
     ctx: &PluginContext<'_>,
@@ -248,7 +245,6 @@ async fn finish<T>(
     }
 }
 
-/// `parse`: only the `parse` stage.
 pub struct ParseStage {
     pub code: String,
 }
@@ -266,7 +262,6 @@ impl Stage for ParseStage {
     }
 }
 
-/// `rewrite`: input-map attach, then `prepare` → `transform` → `finalize`.
 pub struct RewriteStage {
     pub ast: Ast,
 }
@@ -288,7 +283,6 @@ impl Stage for RewriteStage {
     }
 }
 
-/// `generate`: input-map attach, then the `generate` stage.
 pub struct GenerateStage {
     pub ast: Ast,
 }
@@ -308,8 +302,6 @@ impl Stage for GenerateStage {
     }
 }
 
-/// `compile_from_ast`: input-map attach, `prepare` → `transform` →
-/// `finalize`, then `generate`.
 pub struct CompileFromAstStage {
     pub ast: Ast,
 }
@@ -331,8 +323,6 @@ impl Stage for CompileFromAstStage {
     }
 }
 
-/// `compile`: `parse`, then `prepare` → `transform` → `finalize`, then
-/// `generate`.
 pub struct CompileStage {
     pub code: String,
 }

@@ -34,7 +34,7 @@ type CompleteOptions = {
      */
     cwd: string;
     /**
-     * The file to be compiled. By default, it is `"index.js"`.
+     * The file to be compiled. By default, it is `"index.ts"`.
      */
     file: string;
     /**
@@ -119,6 +119,9 @@ type Options = Format<Partial<CompleteOptions>>;
  */
 type ResolvableOptions = Partial<CompleteOptions>;
 
+/**
+ * Arguments passed to an `options` hook.
+ */
 type OptionsArgs = {
     /**
      * The options bag carried so far.

@@ -47,10 +47,8 @@ describe("validation", (): void => {
     });
 
     it("rejects a non-string source before the pipeline runs", async (): Promise<void> => {
-        // Pinned observed behavior: the bridge validates the source value
-        // before the pipeline runs and rejects with a conversion error naming
-        // the received JavaScript type. The source is a call argument now, so
-        // the equivalent of the old missing-`code` case is a non-string value.
+        // The bridge validates the source before the pipeline and rejects a
+        // non-string value with a conversion error naming its JS type.
         const notAString: unknown = void 0;
 
         await expect(compile(notAString as string)).rejects.toThrow(
@@ -76,8 +74,6 @@ describe("validation", (): void => {
     });
 
     it("leaves options unchanged when an options hook returns undefined", async (): Promise<void> => {
-        // Companion to the `null` case above; `void` = no change either way
-        // and the options bag comes back unchanged.
         const plugin: unknown = {
             name: "void-options",
             options: (): void => void 0,
@@ -134,9 +130,7 @@ describe("validation", (): void => {
         // Full-bag semantics: a returned bag replaces the whole bag, so a bag
         // that omits `plugins` drops the plugin list (default: the EMPTY
         // list). The bag cannot carry a `code` rewrite; the compile uses the
-        // untouched source and an explicit `file` (the default file moved
-        // from `index.js` to `index.ts`, so the tests pin an explicit file
-        // until Task 4).
+        // untouched source and an explicit `file`.
         const plugin: unknown = {
             name: "returned-bag",
             options: (): OptionsArgs => ({

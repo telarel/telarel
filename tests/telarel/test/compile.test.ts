@@ -99,8 +99,6 @@ describe("compile", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): void => {
-                        // Manual structural traversal: cast `args.ast` to a
-                        // narrow type and walk it in place.
                         const program: CallFixture =
                             args.ast as unknown as CallFixture;
                         const statement: CallFixture["body"][number] | void =
@@ -206,9 +204,7 @@ describe("compile", (): void => {
     });
 
     it("propagates returned options bags across plugins", async (): Promise<void> => {
-        // Each plugin returns the bag it wants; the later plugin observes the
-        // first return and rewrites the file. The `prepare` stage then sees
-        // the resolved module file.
+        // Later plugins observe the bag returned by earlier plugins.
         const seen: Array<string> = [];
 
         const result: CodeResult = await compile("const a = 1;", {
@@ -493,11 +489,8 @@ describe("compile", (): void => {
             ],
         });
 
-        // Pass 1 runs the injector, which appends `late`; pass 2 runs the
-        // injector again (before `late`, so `lateRan` is still unset)
-        // and then `late`, whose options hook flips the flag. The
-        // fixpoint then converges: no further pass runs the injector after
-        // `late`, so `in` is never observed as `true`.
+        // The injector runs before `late` on every pass, so it never observes
+        // the flag `late` flips.
         expect(seen).toEqual(["in:false", "in:false", "late.options"]);
     });
 
