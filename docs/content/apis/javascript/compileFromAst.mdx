@@ -1,0 +1,69 @@
+---
+title: compileFromAst
+description: Compile an existing AST through rewrite and generation.
+---
+
+```ts
+function compileFromAst(
+    ast: Ast,
+    options?: CompileFromAstOptions,
+): Promise<CodeResult>;
+
+function compileFromAst(
+    program: Program,
+    code: string,
+    options?: CompileFromAstOptions,
+): Promise<CodeResult>;
+```
+
+Compiles an existing AST through rewrite and generation, with plugins, in memory.
+
+## Parameters
+
+The function accepts either a normalized `Ast`, or a bare ESTree `Program` together with its source text.
+
+| Name      | Type                    | Description                                   |
+| --------- | ----------------------- | --------------------------------------------- |
+| `ast`     | `Ast`                   | A normalized AST, carrying a `program` field. |
+| `options` | `CompileFromAstOptions` | Optional compile options.                     |
+
+| Name      | Type                    | Description                                                             |
+| --------- | ----------------------- | ----------------------------------------------------------------------- |
+| `program` | `Program`               | A bare ESTree program.                                                  |
+| `code`    | `string`                | The source text the program's spans anchor to. Required with `program`. |
+| `options` | `CompileFromAstOptions` | Optional compile options.                                               |
+
+### `CompileFromAstOptions`
+
+| Field        | Type               | Default         | Description                                                           |
+| ------------ | ------------------ | --------------- | --------------------------------------------------------------------- |
+| `cwd`        | `string`           | `process.cwd()` | Current working directory.                                            |
+| `file`       | `string`           | `index.ts`      | The file being compiled. The language is inferred from its extension. |
+| `language`   | `Language`         | inferred        | The grammar of the code. Overrides the extension inference.           |
+| `sourceType` | `SourceType`       | inferred        | The module system of the code. Overrides the grammar's module kind.   |
+| `sourceMap`  | `SourceMapOptions` | off             | The source-map inputs and outputs requested for the run.              |
+| `plugins`    | `PluginOption[]`   | `[]`            | The plugins to run.                                                   |
+
+## Returns
+
+`Promise<CodeResult>`:
+
+| Field  | Type                | Description                                                   |
+| ------ | ------------------- | ------------------------------------------------------------- |
+| `code` | `string`            | The generated code.                                           |
+| `map`  | `SourceMap \| null` | The source map for the generated code, when one was produced. |
+
+## Example
+
+```ts
+import type { AstResult, CodeResult } from "telarel";
+
+import { compileFromAst, parse } from "telarel";
+import { transform } from "telarel/plugins/transform";
+
+const { ast }: AstResult = await parse("const x: number = 1;");
+
+const result: CodeResult = await compileFromAst(ast, {
+    plugins: [transform({ targets: ["es2015"] })],
+});
+```

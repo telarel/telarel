@@ -1,0 +1,213 @@
+---
+title: JavaScript plugin API
+description: Implement plugins as plain objects with the JavaScript Plugin type.
+---
+
+A JavaScript plugin is a plain object with a required `name` and any subset of the eight hooks. The hooks present on the object are the hooks the compiler calls; hooks that are absent are skipped.
+
+For the hook contract shared by both languages, see the [Plugin API](/apis/plugin).
+
+## The `Plugin` type
+
+```ts
+type Plugin = {
+    name: string;
+    options?: ObjectHook<
+        (
+            ctx: CommonPluginContext,
+            args: OptionsArgs,
+        ) => OptionsArgs | null | void | Promise<OptionsArgs | null | void>
+    >;
+    start?: ObjectHook<
+        (ctx: PluginContext, args: StartArgs) => void | Promise<void>
+    >;
+    parse?: ObjectHook<
+        (
+            ctx: PluginContext,
+            args: ParseArgs,
+        ) => AstResult | null | void | Promise<AstResult | null | void>
+    >;
+    prepare?: ObjectHook<
+        (ctx: PluginContext, args: PrepareArgs) => void | Promise<void>
+    >;
+    transform?: ObjectHook<
+        (
+            ctx: PluginContext,
+            args: TransformArgs,
+        ) =>
+            | TransformResult
+            | null
+            | void
+            | Promise<TransformResult | null | void>
+    >;
+    finalize?: ObjectHook<
+        (ctx: PluginContext, args: FinalizeArgs) => void | Promise<void>
+    >;
+    generate?: ObjectHook<
+        (
+            ctx: PluginContext,
+            args: GenerateArgs,
+        ) => CodeResult | null | void | Promise<CodeResult | null | void>
+    >;
+    end?: ObjectHook<
+        (ctx: PluginContext, args: EndArgs) => void | Promise<void>
+    >;
+};
+```
+
+Hooks are return-based: a hook returns the new value to replace it, or `null` / `void` to make no change. The `start`, `prepare`, `finalize`, and `end` hooks are observers; their return values are ignored.
+
+Hooks may be `async`. Each hook is resolved before the pipeline moves on.
+
+## Hooks
+
+| Hook        | Arguments                            | Return            |
+| ----------- | ------------------------------------ | ----------------- |
+| `options`   | `CommonPluginContext`, `OptionsArgs` | `OptionsArgs`     |
+| `start`     | `PluginContext`, `StartArgs`         | `void`            |
+| `parse`     | `PluginContext`, `ParseArgs`         | `AstResult`       |
+| `prepare`   | `PluginContext`, `PrepareArgs`       | `void`            |
+| `transform` | `PluginContext`, `TransformArgs`     | `TransformResult` |
+| `finalize`  | `PluginContext`, `FinalizeArgs`      | `void`            |
+| `generate`  | `PluginContext`, `GenerateArgs`      | `CodeResult`      |
+| `end`       | `PluginContext`, `EndArgs`           | `void`            |
+
+Returning `null` or `void` defers. For `parse` and `generate` a deferral hands off to the next hook and, once every hook defers, to the builtin parser or generator. For `options` and `transform` a deferral keeps the current value.
+
+### Arguments
+
+| Type            | Fields                                   |
+| --------------- | ---------------------------------------- |
+| `OptionsArgs`   | `options: ResolvableOptions`             |
+| `StartArgs`     | `options: ResolvedOptions` (read-only)   |
+| `ParseArgs`     | `code: string`, `options: ParserOptions` |
+| `PrepareArgs`   | `ast: Program` (read-only)               |
+| `TransformArgs` | `ast: Program` (read-only)               |
+| `FinalizeArgs`  | `ast: Program` (read-only)               |
+| `GenerateArgs`  | `ast: Ast`, `options: GeneratorOptions`  |
+| `EndArgs`       | `error: string \| null`                  |
+
+`TransformResult` is the value a `transform` hook returns to replace the carried AST: `{ ast: Program }`. Returning it replaces the AST for the rest of the chain.
+
+## Ordering
+
+`ObjectHook<T>` is either the handler itself or an object carrying the handler plus an `order`. `PluginOrder` is `"pre"` or `"post"`.
+
+```ts
+type ObjectHook<T> = T | { order?: PluginOrder; handler: T };
+
+type PluginOrder = "pre" | "post";
+```
+
+A hook object puts the handler on `handler`:
+
+```ts
+import type { Plugin } from "telarel";
+
+const plugin: Plugin = {
+    name: "my-plugin",
+    transform: {
+        order: "pre",
+        handler: (ctx, args) => {
+            // return { ast } to replace, or null to keep the current AST
+        },
+    },
+};
+```
+
+## Context
+
+Every hook receives a context as its first argument.
+
+- `options` receives `CommonPluginContext`, which carries no fields.
+- Every later hook receives `PluginContext`:
+
+| Field    | Type         | Description                |
+| -------- | ------------ | -------------------------- |
+| `cwd`    | `string`     | Current working directory. |
+| `module` | `ModuleInfo` | The module being compiled. |
+
+`ModuleInfo` holds `file: string`, `language: Language | void`, and `sourceType: SourceType | void`.
+
+## Passing plugins
+
+Plugins are passed through the `plugins` field of the options. A `PluginOption` may be a plugin, a builtin descriptor, a falsy slot, or a nested array; entries may also resolve to a promise.
+
+```ts
+type MaybePromise<T> = T | Promise<T>;
+
+type FalsyPlugin = false | null | undefined;
+
+type PluginOption = MaybePromise<
+    Plugin | BuiltinPlugin | FalsyPlugin | PluginOption[]
+>;
+```
+
+Nested arrays and falsy slots make conditionals easy:
+
+```ts
+import type { CodeResult, PluginOption } from "telarel";
+
+import { compile } from "telarel";
+import { transform } from "telarel/plugins/transform";
+
+const isProduction: boolean = process.env.NODE_ENV === "production";
+
+const plugins: Array<PluginOption> = [
+    transform({ targets: ["es2015"] }),
+    isProduction && {
+        name: "check-env",
+        prepare: () => {
+            console.log("production build");
+        },
+    },
+];
+
+const result: CodeResult = await compile("const x: number = 1;", { plugins });
+```
+
+## Example
+
+A plugin that rewrites the module specifier `react` to `preact/compat` while walking the AST in `transform`:
+
+<PeekCode>
+
+```ts
+import type {
+    Plugin,
+    PluginContext,
+    TransformArgs,
+    TransformResult,
+} from "telarel";
+
+import { compile } from "telarel";
+import { walk } from "telarel/walker";
+
+const FROM: string = "react";
+
+const TO: string = "preact/compat";
+
+const importRewrite: Plugin = {
+    name: "import-rewrite",
+    transform: (_: PluginContext, args: TransformArgs): TransformResult => {
+        walk(args.ast, {
+            enter(node): void {
+                if (
+                    node.type === "ImportDeclaration" &&
+                    node.source.value === FROM
+                ) {
+                    node.source.value = TO;
+                }
+            },
+        });
+
+        return { ast: args.ast };
+    },
+};
+
+await compile('import { useState } from "react";', {
+    plugins: [importRewrite],
+});
+```
+
+</PeekCode>

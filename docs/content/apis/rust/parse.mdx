@@ -1,0 +1,63 @@
+---
+title: parse
+description: Parse source text into an AST.
+---
+
+```rust
+pub async fn parse(
+    code: String,
+    options: ParseOptions,
+    plugins: Vec<SharedPluginable>,
+) -> Result<AstResult, CompileError>
+```
+
+Parses `code` into an AST.
+
+The builtin parser resolves any requested input source map and is the terminal fallback after every `parse` hook defers.
+
+## Parameters
+
+| Name      | Type                    | Description               |
+| --------- | ----------------------- | ------------------------- |
+| `code`    | `String`                | The source text to parse. |
+| `options` | `ParseOptions`          | The parse options.        |
+| `plugins` | `Vec<SharedPluginable>` | The plugins to run.       |
+
+### `ParseOptions`
+
+Every field is optional and resolved against defaults before use.
+
+| Field         | Type                       | Default             | Description                                                         |
+| ------------- | -------------------------- | ------------------- | ------------------------------------------------------------------- |
+| `cwd`         | `Option<String>`           | process working dir | Current working directory.                                          |
+| `file`        | `Option<String>`           | `index.ts`          | The file being parsed. The language is inferred from its extension. |
+| `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.         |
+| `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind. |
+| `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the step.           |
+
+`Language` is one of `Js`, `Ts`, `Dts`, `Jsx`, or `Tsx`. `SourceType` is one of `Script`, `CommonJS`, `Module`, or `Unambiguous`.
+
+## Returns
+
+`Result<AstResult, CompileError>`, where `AstResult` is `{ ast: Ast }`. `Ast` is an owned, self-referential AST with accessors:
+
+| Accessor            | Type                 | Description                                    |
+| ------------------- | -------------------- | ---------------------------------------------- |
+| `ast.program()`     | `&Program<'_>`       | The parsed program.                            |
+| `ast.source()`      | `&Arc<str>`          | The source text the program's spans anchor to. |
+| `ast.source_type()` | `SourceType`         | The resolved oxc source type.                  |
+| `ast.map()`         | `Option<&SourceMap>` | The input source map, if any.                  |
+
+## Example
+
+```rust
+use telarel::{parse, ParseOptions};
+
+let result = parse(
+    String::from("const x: number = 1;"),
+    ParseOptions::default(),
+    vec![],
+).await?;
+
+assert_eq!(result.ast.source().as_ref(), "const x: number = 1;");
+```

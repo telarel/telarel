@@ -31,6 +31,11 @@ ls:
         .dir: kebab-case
         .js: kebab-case
         .ts: kebab-case
+    # JS/TS
+    docs:
+        .dir: kebab-case
+        .js: kebab-case
+        .ts: kebab-case
 
 ignore:
     - .git

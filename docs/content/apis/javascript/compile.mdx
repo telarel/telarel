@@ -1,0 +1,50 @@
+---
+title: compile
+description: Compile source text from parse to generate.
+---
+
+```ts
+function compile(code: string, options?: CompileOptions): Promise<CodeResult>;
+```
+
+Compiles `code` from source to generated output, with plugins, in memory.
+
+## Parameters
+
+| Name      | Type             | Description                 |
+| --------- | ---------------- | --------------------------- |
+| `code`    | `string`         | The source text to compile. |
+| `options` | `CompileOptions` | Optional compile options.   |
+
+### `CompileOptions`
+
+| Field        | Type               | Default         | Description                                                           |
+| ------------ | ------------------ | --------------- | --------------------------------------------------------------------- |
+| `cwd`        | `string`           | `process.cwd()` | Current working directory.                                            |
+| `file`       | `string`           | `index.ts`      | The file being compiled. The language is inferred from its extension. |
+| `language`   | `Language`         | inferred        | The grammar of the code. Overrides the extension inference.           |
+| `sourceType` | `SourceType`       | inferred        | The module system of the code. Overrides the grammar's module kind.   |
+| `sourceMap`  | `SourceMapOptions` | off             | The source-map inputs and outputs requested for the run.              |
+| `plugins`    | `PluginOption[]`   | `[]`            | The plugins to run.                                                   |
+
+## Returns
+
+`Promise<CodeResult>`:
+
+| Field  | Type                | Description                                                   |
+| ------ | ------------------- | ------------------------------------------------------------- |
+| `code` | `string`            | The generated code.                                           |
+| `map`  | `SourceMap \| null` | The source map for the generated code, when one was produced. |
+
+## Example
+
+```ts
+import type { CodeResult } from "telarel";
+
+import { compile } from "telarel";
+import { transform } from "telarel/plugins/transform";
+
+const result: CodeResult = await compile("const x: number = 1;", {
+    plugins: [transform({ targets: ["es2015"] })],
+});
+```

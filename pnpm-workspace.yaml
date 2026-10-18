@@ -4,9 +4,13 @@ packages:
     - tests/*
     - benchmarks/javascript
     - examples/javascript/*
+    - docs
 
 autoInstallPeers: false
 strictPeerDependencies: false
+
+allowBuilds:
+    esbuild: false
 
 overrides:
     "@emnapi/core": 2.0.0-alpha.5

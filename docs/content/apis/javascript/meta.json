@@ -1,0 +1,4 @@
+{
+    "title": "JavaScript API",
+    "pages": ["parse", "rewrite", "generate", "compileFromAst", "compile"]
+}

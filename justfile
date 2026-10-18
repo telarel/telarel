@@ -6,6 +6,7 @@ oxlint := "pnpm exec oxlint"
 napi := "pnpm exec napi"
 tsdown := "pnpm exec tsdown"
 vitest := "pnpm exec vitest"
+fumapress := "pnpm exec fumapress"
 
 publish_js_dev := "pnpm publish --no-git-checks --tag dev --access public"
 publish_js := "pnpm publish --access public"
@@ -153,6 +154,21 @@ examples:
     just example-rs transform
     just example-js common
     just example-js transform
+
+# Run docs site dev server
+dev-docs:
+    cd ./docs && {{fumapress}} dev
+
+# Build docs site
+build-docs:
+    cd ./docs && {{fumapress}} build
+
+# Preview docs site
+preview-docs:
+    cd ./docs && {{fumapress}} start
+
+# Preview docs site
+start-docs: preview-docs
 
 # Check Rust code
 check-rs: fmt-rs lint-rs test-rs

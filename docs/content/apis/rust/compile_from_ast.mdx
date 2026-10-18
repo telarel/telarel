@@ -1,0 +1,74 @@
+---
+title: compile_from_ast
+description: Compile an existing AST through rewrite and generation.
+---
+
+```rust
+pub async fn compile_from_ast(
+    ast: Ast,
+    options: CompileFromAstOptions,
+    plugins: Vec<SharedPluginable>,
+) -> Result<CodeResult, CompileError>
+```
+
+Compiles an existing `ast` through rewrite and generation.
+
+Because the stages run inline, `options`, `start`, and `end` fire exactly once.
+
+## Parameters
+
+| Name      | Type                    | Description          |
+| --------- | ----------------------- | -------------------- |
+| `ast`     | `Ast`                   | The AST to compile.  |
+| `options` | `CompileFromAstOptions` | The compile options. |
+| `plugins` | `Vec<SharedPluginable>` | The plugins to run.  |
+
+### `CompileFromAstOptions`
+
+Every field is optional and resolved against defaults before use.
+
+| Field         | Type                       | Default             | Description                                                           |
+| ------------- | -------------------------- | ------------------- | --------------------------------------------------------------------- |
+| `cwd`         | `Option<String>`           | process working dir | Current working directory.                                            |
+| `file`        | `Option<String>`           | `index.ts`          | The file being compiled. The language is inferred from its extension. |
+| `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.           |
+| `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind.   |
+| `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the run.              |
+
+## Returns
+
+`Result<CodeResult, CompileError>`, where `CodeResult` is `{ code: String, map: Option<SourceMap> }`.
+
+## Example
+
+```rust
+use telarel::{
+    compile_from_ast, parse, CompileFromAstOptions, ParseOptions, Plugin,
+    SharedPluginable,
+};
+use telarel_plugin_transform::{
+    TransformOptions, TransformPlugin, TransformTarget,
+};
+
+let parsed = parse(
+    String::from("const x: number = 1;"),
+    ParseOptions::default(),
+    vec![],
+).await?;
+
+let plugins: Vec<SharedPluginable> =
+    vec![Plugin::new_shared(TransformPlugin::with_options(
+        TransformOptions {
+            targets: vec![TransformTarget::Es2015],
+            ..TransformOptions::default()
+        },
+    ))];
+
+let result = compile_from_ast(
+    parsed.ast,
+    CompileFromAstOptions::default(),
+    plugins,
+).await?;
+
+println!("{}", result.code); // const x = 1;
+```

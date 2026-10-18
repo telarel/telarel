@@ -1,0 +1,54 @@
+---
+title: parse
+description: Parse source text into an AST.
+---
+
+```ts
+function parse(code: string, options?: ParseOptions): Promise<AstResult>;
+```
+
+Parses `code` with plugins, in memory.
+
+The builtin parser is the terminal fallback after every `parse` plugin hook defers, and it resolves any requested input source map.
+
+## Parameters
+
+| Name      | Type           | Description               |
+| --------- | -------------- | ------------------------- |
+| `code`    | `string`       | The source text to parse. |
+| `options` | `ParseOptions` | Optional parse options.   |
+
+### `ParseOptions`
+
+| Field        | Type               | Default         | Description                                                         |
+| ------------ | ------------------ | --------------- | ------------------------------------------------------------------- |
+| `cwd`        | `string`           | `process.cwd()` | Current working directory.                                          |
+| `file`       | `string`           | `index.ts`      | The file being parsed. The language is inferred from its extension. |
+| `language`   | `Language`         | inferred        | The grammar of the code. Overrides the extension inference.         |
+| `sourceType` | `SourceType`       | inferred        | The module system of the code. Overrides the grammar's module kind. |
+| `sourceMap`  | `SourceMapOptions` | off             | The source-map inputs and outputs requested for the step.           |
+| `plugins`    | `PluginOption[]`   | `[]`            | The plugins to run.                                                 |
+
+`Language` is one of `"js"`, `"ts"`, `"dts"`, `"jsx"`, or `"tsx"`.
+
+`SourceType` is one of `"script"`, `"commonjs"`, `"module"`, or `"unambiguous"`.
+
+## Returns
+
+`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }` and `Ast` is:
+
+| Field     | Type         | Description                                    |
+| --------- | ------------ | ---------------------------------------------- |
+| `program` | `Program`    | The ESTree program.                            |
+| `code`    | `string`     | The source text the program's spans anchor to. |
+| `map`     | `SourceMap?` | An optional incremental source map.            |
+
+## Example
+
+```ts
+import type { AstResult } from "telarel";
+
+import { parse } from "telarel";
+
+const result: AstResult = await parse("const x: number = 1;");
+```

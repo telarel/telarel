@@ -1,0 +1,4 @@
+{
+    "title": "Rust API",
+    "pages": ["parse", "rewrite", "generate", "compile_from_ast", "compile"]
+}

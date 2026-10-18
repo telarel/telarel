@@ -1,0 +1,204 @@
+---
+title: Rust plugin API
+description: Implement plugins with the Rust Plugin trait and SharedPluginable.
+---
+
+The `telarel` crate re-exports the plugin interface from `telarel_plugin`. A Rust plugin implements the `Plugin` trait and is wrapped into a shared, object-safe handle with `Plugin::new_shared`.
+
+For the hook contract shared by both languages, see the [Plugin API](/apis/plugin).
+
+## The `Plugin` trait
+
+```rust
+pub trait Plugin: Any + Debug + Send + Sync + 'static {
+    fn new_shared(plugin: Self) -> SharedPluginable
+    where
+        Self: Sized;
+
+    fn name(&self) -> Cow<'static, str>;
+
+    fn register_hook_usage(&self) -> HookUsage;
+
+    // ... one method per hook, each defaulting to a no-op ...
+}
+```
+
+- `name` returns the plugin name, shown in diagnostics.
+- `register_hook_usage` declares which hooks the plugin implements. The partitioned stages — `parse`, `prepare`, `transform`, `finalize`, and `generate` — are only called when declared. `options`, `start`, and `end` run on every settled plugin regardless of usage.
+- `new_shared` wraps a sized plugin into a `SharedPluginable`, which is `Arc<dyn Pluginable>`. `Pluginable` is the object-safe mirror of the trait and is implemented for every `Plugin`.
+
+Every hook has a default implementation that does nothing, so a plugin only writes the hooks it needs.
+
+### `HookUsage`
+
+`HookUsage` is a bit flag set with one flag per hook:
+
+```rust
+use telarel::HookUsage;
+
+let usage: HookUsage = HookUsage::Prepare | HookUsage::End;
+```
+
+The flags are `Options`, `Start`, `Parse`, `Prepare`, `Transform`, `Finalize`, `Generate`, and `End`.
+
+## Hooks
+
+Each hook returns an `impl Future`, so its body can be written as an `async` block. The context borrows the pipeline state, and the hook resolves to its return type.
+
+| Hook        | Arguments                              | Return            |
+| ----------- | -------------------------------------- | ----------------- |
+| `options`   | `&CommonPluginContext`, `&OptionsArgs` | `OptionsReturn`   |
+| `start`     | `&PluginContext`, `&StartArgs`         | `NotifyReturn`    |
+| `parse`     | `&PluginContext`, `ParseArgs`          | `ParseReturn`     |
+| `prepare`   | `&PluginContext`, `PrepareArgs`        | `NotifyReturn`    |
+| `transform` | `&PluginContext`, `TransformArgs`      | `TransformReturn` |
+| `finalize`  | `&PluginContext`, `FinalizeArgs`       | `NotifyReturn`    |
+| `generate`  | `&PluginContext`, `GenerateArgs`       | `GenerateReturn`  |
+| `end`       | `&PluginContext`, `&EndArgs`           | `NotifyReturn`    |
+
+### Arguments
+
+| Type            | Fields                                                         |
+| --------------- | -------------------------------------------------------------- |
+| `OptionsArgs`   | `options: ResolvableOptions`, `plugins: Vec<SharedPluginable>` |
+| `StartArgs`     | `options: ResolvedOptions`                                     |
+| `ParseArgs`     | `code: &str`, `options: &ParserOptions`                        |
+| `PrepareArgs`   | `ast: &Ast`                                                    |
+| `TransformArgs` | `ast: &Ast`                                                    |
+| `FinalizeArgs`  | `ast: &Ast`                                                    |
+| `GenerateArgs`  | `ast: &Ast`, `options: &GeneratorOptions`                      |
+| `EndArgs`       | `error: Option<CompileError>`                                  |
+
+`TransformOutput` is the value a `transform` hook returns to replace the carried AST; it wraps the new owned `ast`.
+
+### Returns
+
+Every fallible hook returns `anyhow::Result`. `NotifyReturn` is `Result<()>`; the stages that hand back a value return `Option` inside the result, where `None` means "no change".
+
+| Type              | Definition                                |
+| ----------------- | ----------------------------------------- |
+| `OptionsReturn`   | `anyhow::Result<Option<OptionsArgs>>`     |
+| `NotifyReturn`    | `anyhow::Result<()>`                      |
+| `ParseReturn`     | `anyhow::Result<Option<AstResult>>`       |
+| `TransformReturn` | `anyhow::Result<Option<TransformOutput>>` |
+| `GenerateReturn`  | `anyhow::Result<Option<CodeResult>>`      |
+
+Returning `Some` from `options` replaces the whole options bag; fields the returned `OptionsArgs` omits are dropped and fall back to their defaults.
+
+## Ordering
+
+Each Rust hook exposes a `<hook>_meta` method returning `Option<PluginHookMeta>`, all defaulting to `None`. `PluginOrder` is `Pre` or `Post`.
+
+```rust
+use telarel::{PluginHookMeta, PluginOrder};
+
+fn transform_meta(&self) -> Option<PluginHookMeta> {
+    Some(PluginHookMeta { order: Some(PluginOrder::Pre) })
+}
+```
+
+## Context
+
+- `options` receives `CommonPluginContext`, which carries no fields.
+- Every later hook receives `PluginContext`:
+
+| Field    | Type         | Description                |
+| -------- | ------------ | -------------------------- |
+| `cwd`    | `&str`       | Current working directory. |
+| `module` | `ModuleInfo` | Module being compiled.     |
+
+`ModuleInfo` holds `file: &str`, `language: Language`, and `source_type: SourceType`.
+
+## Passing plugins
+
+Wrap each plugin in `Plugin::new_shared` and pass the list to any entry point.
+
+```rust
+use telarel::{CodeResult, CompileOptions, Plugin, SharedPluginable, compile};
+
+let plugins: Vec<SharedPluginable> = vec![
+    Plugin::new_shared(TracePlugin),
+    Plugin::new_shared(ReplaceRootPlugin),
+];
+
+let result: CodeResult = compile(
+    String::from("const x: number = 1;"),
+    CompileOptions::default(),
+    plugins,
+)
+.await?;
+```
+
+## Example
+
+A plugin that rewrites the module specifier `react` to `preact/compat` in `transform`. The AST argument is read-only, so the plugin clones it, walks the clone through a `VisitMut`, and returns it as `TransformOutput`:
+
+<PeekCode>
+
+```rust
+use std::borrow::Cow;
+use std::future::Future;
+
+use telarel::allocator::Allocator;
+use telarel::ast::ast::{ImportDeclaration, Program};
+use telarel::ast_visit::VisitMut;
+use telarel::ast_visit::walk_mut;
+use telarel::str::Str;
+use telarel::{
+    Ast, HookUsage, Plugin, PluginContext, TransformArgs, TransformOutput,
+    TransformReturn,
+};
+
+const FROM: &str = "react";
+
+const TO: &str = "preact/compat";
+
+struct ImportRewriter<'x> {
+    allocator: &'x Allocator,
+}
+
+impl<'x> VisitMut<'x> for ImportRewriter<'x> {
+    fn visit_import_declaration(
+        &mut self,
+        declaration: &mut ImportDeclaration<'x>,
+    ) {
+        if declaration.source.value.as_str() == FROM {
+            declaration.source.value = Str::from_str_in(TO, &self.allocator);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ImportRewritePlugin;
+
+impl Plugin for ImportRewritePlugin {
+    fn name(&self) -> Cow<'static, str> {
+        "import-rewrite".into()
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Transform
+    }
+
+    fn transform<'a>(
+        &'a self,
+        _ctx: &'a PluginContext<'_>,
+        args: TransformArgs<'a>,
+    ) -> impl Future<Output = TransformReturn> + Send + 'a {
+        async move {
+            let mut ast: Ast = args.ast.clone();
+
+            ast.with_mut(|allocator: &Allocator, program: &mut Program<'_>| {
+                let mut rewriter: ImportRewriter<'_> =
+                    ImportRewriter { allocator };
+
+                walk_mut::walk_program(&mut rewriter, program);
+            });
+
+            Ok(Some(TransformOutput { ast }))
+        }
+    }
+}
+```
+
+</PeekCode>

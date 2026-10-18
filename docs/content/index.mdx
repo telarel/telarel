@@ -1,0 +1,99 @@
+---
+title: Telarel
+description: An extensible JavaScript compiler written in Rust, and built around plugin hooks.
+---
+
+import { Link } from "fumapress/client";
+import { Blocks, Braces, Cpu, Puzzle, Route, Wand2 } from "lucide-react";
+
+<div className="grid items-center gap-10 py-10 lg:grid-cols-2 lg:gap-16">
+    <div className="flex flex-col items-start gap-4">
+        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Telarel</h1>
+        <p className="max-w-2xl text-lg text-fd-muted-foreground">
+            An extensible JavaScript compiler written in Rust, and built around
+            plugin hooks.
+        </p>
+        <div className="flex flex-wrap gap-3 pt-2">
+            <Link
+                href="/guide"
+                className="rounded-lg bg-fd-primary px-4 py-2 font-medium text-fd-primary-foreground transition-opacity hover:opacity-90"
+            >Get started</Link>
+            <Link
+                href="/apis"
+                className="rounded-lg border px-4 py-2 font-medium transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground"
+            >API reference</Link>
+        </div>
+    </div>
+    <div className="min-w-0">
+        <CodeBlockTabs defaultValue="js" className="hero-code">
+            <CodeBlockTabsList>
+                <CodeBlockTabsTrigger value="js">JavaScript</CodeBlockTabsTrigger>
+                <CodeBlockTabsTrigger value="rust">Rust</CodeBlockTabsTrigger>
+            </CodeBlockTabsList>
+            <CodeBlockTab value="js" keepMounted>
+
+```ts
+import type { CodeResult } from "telarel";
+
+import { compile } from "telarel";
+
+const result: CodeResult = await compile("const x: number = 1;");
+```
+
+            </CodeBlockTab>
+            <CodeBlockTab value="rust" keepMounted>
+
+```rust
+use telarel::{CodeResult, CompileOptions, compile};
+
+let result: CodeResult = compile(
+    String::from("const x: number = 1;"),
+    CompileOptions::default(),
+    vec![],
+)
+.await?;
+```
+
+            </CodeBlockTab>
+        </CodeBlockTabs>
+    </div>
+
+</div>
+
+<b className="text-3xl">Why Telarel</b>
+
+<br />
+<br />
+
+<Cards className="lg:grid-cols-3">
+    <Card
+        icon={<Cpu />}
+        title="Native speed"
+        description="The compiler is written in Rust and built on oxc, so compilation runs in native code. There is no JavaScript reimplementation behind the JavaScript API."
+    />
+    <Card
+        icon={<Puzzle />}
+        title="Hook-based pipeline"
+        description="Different return-based hooks — options, start, parse, prepare, transform, finalize, generate, and end — over one shared pipeline. A plugin implements any subset; the rest are skipped."
+    />
+    <Card
+        icon={<Blocks />}
+        title="Plugins in JavaScript & Rust"
+        description="Extend the pipeline from either side: JavaScript plugin objects bridge to the same Rust contract, and both languages set per-hook pre, normal, or post order."
+    />
+    <Card
+        icon={<Wand2 />}
+        title="Opt-in Transform"
+        description="Lower TypeScript, JSX, and modern syntax with the built-in transform plugin — or leave it out. compile without it still parses and regenerates your source unchanged."
+    />
+    <Card
+        icon={<Braces />}
+        title="JavaScript and Rust APIs"
+        description="The same compiler is exposed as the telarel crate and as the telarel npm package via a NAPI binding, with the same functions and shared types."
+    />
+    <Card
+        icon={<Route />}
+        title="Composable entry points"
+        description="parse, rewrite, generate, compileFromAst, and compile share one pipeline, each running only the stages it owns, so you can stop at an AST and resume later."
+    />
+</Cards>

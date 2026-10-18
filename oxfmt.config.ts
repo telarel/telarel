@@ -10,5 +10,7 @@ export default defineConfig({
         "crates/plugin_transform/src/helpers/runtime/**",
         // Binding
         "packages/telarel/src/binding/**",
+        // Docs Index
+        "docs/content/index.mdx",
     ],
 });

@@ -1,0 +1,66 @@
+---
+title: rewrite
+description: Rewrite an AST with plugins.
+---
+
+```ts
+function rewrite(ast: Ast, options?: RewriteOptions): Promise<AstResult>;
+
+function rewrite(
+    program: Program,
+    code: string,
+    options?: RewriteOptions,
+): Promise<AstResult>;
+```
+
+Rewrites an AST with plugins, in memory.
+
+The AST's own input map wins; otherwise the resolved input source map is attached before the stages run.
+
+## Parameters
+
+The function accepts either a normalized `Ast`, or a bare ESTree `Program` together with its source text.
+
+| Name      | Type             | Description                                   |
+| --------- | ---------------- | --------------------------------------------- |
+| `ast`     | `Ast`            | A normalized AST, carrying a `program` field. |
+| `options` | `RewriteOptions` | Optional rewrite options.                     |
+
+| Name      | Type             | Description                                                             |
+| --------- | ---------------- | ----------------------------------------------------------------------- |
+| `program` | `Program`        | A bare ESTree program.                                                  |
+| `code`    | `string`         | The source text the program's spans anchor to. Required with `program`. |
+| `options` | `RewriteOptions` | Optional rewrite options.                                               |
+
+### `RewriteOptions`
+
+| Field        | Type               | Default         | Description                                                            |
+| ------------ | ------------------ | --------------- | ---------------------------------------------------------------------- |
+| `cwd`        | `string`           | `process.cwd()` | Current working directory.                                             |
+| `file`       | `string`           | `index.ts`      | The file being rewritten. The language is inferred from its extension. |
+| `language`   | `Language`         | inferred        | The grammar of the code. Overrides the extension inference.            |
+| `sourceType` | `SourceType`       | inferred        | The module system of the code. Overrides the grammar's module kind.    |
+| `sourceMap`  | `SourceMapOptions` | off             | The source-map inputs and outputs requested for the step.              |
+| `plugins`    | `PluginOption[]`   | `[]`            | The plugins to run.                                                    |
+
+## Returns
+
+`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }`:
+
+| Field     | Type         | Description                                    |
+| --------- | ------------ | ---------------------------------------------- |
+| `program` | `Program`    | The rewritten ESTree program.                  |
+| `code`    | `string`     | The source text the program's spans anchor to. |
+| `map`     | `SourceMap?` | An optional incremental source map.            |
+
+## Example
+
+```ts
+import type { AstResult } from "telarel";
+
+import { parse, rewrite } from "telarel";
+
+const { ast }: AstResult = await parse("const x: number = 1;");
+
+const result: AstResult = await rewrite(ast);
+```

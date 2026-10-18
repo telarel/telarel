@@ -4,12 +4,16 @@ on:
     pull_request:
         branches:
             - main
+        paths-ignore:
+            - "docs/**"
     push:
         branches:
             - main
+        paths-ignore:
+            - "docs/**"
 
 jobs:
-    node:
+    rust:
         name: ${{ matrix.os.name }} / Rust ${{ matrix.rust.name }}
         runs-on: ${{ matrix.os.code }}
 

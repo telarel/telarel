@@ -1,0 +1,62 @@
+---
+title: compile
+description: Compile source text from parse to generate.
+---
+
+```rust
+pub async fn compile(
+    code: String,
+    options: CompileOptions,
+    plugins: Vec<SharedPluginable>,
+) -> Result<CodeResult, CompileError>
+```
+
+Compiles `code` from source to generated output.
+
+Because the stages run inline, `options`, `start`, and `end` fire exactly once. The builtin parser resolves any requested input source map.
+
+## Parameters
+
+| Name      | Type                    | Description                 |
+| --------- | ----------------------- | --------------------------- |
+| `code`    | `String`                | The source text to compile. |
+| `options` | `CompileOptions`        | The compile options.        |
+| `plugins` | `Vec<SharedPluginable>` | The plugins to run.         |
+
+### `CompileOptions`
+
+Every field is optional and resolved against defaults before use.
+
+| Field         | Type                       | Default             | Description                                                           |
+| ------------- | -------------------------- | ------------------- | --------------------------------------------------------------------- |
+| `cwd`         | `Option<String>`           | process working dir | Current working directory.                                            |
+| `file`        | `Option<String>`           | `index.ts`          | The file being compiled. The language is inferred from its extension. |
+| `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.           |
+| `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind.   |
+| `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the run.              |
+
+## Returns
+
+`Result<CodeResult, CompileError>`, where `CodeResult` is `{ code: String, map: Option<SourceMap> }`.
+
+## Example
+
+```rust
+use telarel::{compile, CompileOptions, Plugin, SharedPluginable};
+use telarel_plugin_transform::{
+    TransformOptions, TransformPlugin, TransformTarget,
+};
+
+let result = compile(
+    String::from("const x: number = 1;"),
+    CompileOptions::default(),
+    vec![Plugin::new_shared(TransformPlugin::with_options(
+        TransformOptions {
+            targets: vec![TransformTarget::Es2015],
+            ..TransformOptions::default()
+        },
+    ))],
+).await?;
+
+println!("{}", result.code); // const x = 1;
+```

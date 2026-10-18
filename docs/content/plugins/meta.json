@@ -1,0 +1,6 @@
+{
+    "title": "Plugins",
+    "icon": "Plug",
+    "root": true,
+    "pages": ["index", "transform"]
+}
