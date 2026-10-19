@@ -98,13 +98,14 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         None
     }
 
-    /// Run the `transform` hook; the AST is read-only. A plugin that changes
-    /// the tree builds a new owned AST and returns it as
-    /// `Some(TransformOutput)`; `None` leaves the carried AST untouched.
+    /// Run the `transform` hook. The hook receives an owned cheap AST handle;
+    /// mutating it through `Ast::with_mut` copies on write. Returning
+    /// `Some(TransformOutput)` replaces the carried AST; `None` leaves the
+    /// driver's AST untouched.
     fn transform<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        _args: TransformArgs<'a>,
+        _args: TransformArgs,
     ) -> impl Future<Output = TransformReturn> + Send + 'a {
         async move { Ok(None) }
     }
@@ -350,10 +351,10 @@ mod tests {
         fn transform<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            args: TransformArgs<'a>,
+            args: TransformArgs,
         ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
-                let mut ast: Ast = args.ast.clone();
+                let mut ast: Ast = args.ast;
 
                 ast.with_mut(|allocator, program: &mut Program<'_>| {
                     let builder: AstBuilder<'_> = AstBuilder::new(allocator);
@@ -387,7 +388,7 @@ mod tests {
         fn transform<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: TransformArgs<'a>,
+            _args: TransformArgs,
         ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
                 let code: &str = "\"replaced\";";
@@ -560,7 +561,7 @@ mod tests {
         shared.call_prepare(&ctx, PrepareArgs { ast: &ast }).await.unwrap();
         assert!(
             shared
-                .call_transform(&ctx, TransformArgs { ast: &ast })
+                .call_transform(&ctx, TransformArgs { ast: ast.clone() })
                 .await
                 .unwrap()
                 .is_none()
@@ -694,7 +695,7 @@ mod tests {
 
         let ast: Ast = parse_test_ast("console.log(1);");
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let shared: SharedPluginable = Plugin::new_shared(ProbePlugin);
 
@@ -715,7 +716,7 @@ mod tests {
 
         let ast: Ast = parse_test_ast("console.log(1);");
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let shared: SharedPluginable = Plugin::new_shared(CloneMutatePlugin);
 
@@ -745,7 +746,7 @@ mod tests {
 
         let ast: Ast = parse_test_ast("console.log(1);");
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let shared: SharedPluginable = Plugin::new_shared(ReplaceRootPlugin);
 

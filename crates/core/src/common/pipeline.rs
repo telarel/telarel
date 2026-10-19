@@ -163,7 +163,7 @@ async fn rewrite_stages(
     )?;
 
     let transformed: Option<TransformOutput> = driver
-        .transform(ctx, TransformArgs { ast: &ast })
+        .transform(ctx, TransformArgs { ast: ast.clone() })
         .await
         .map_err(|error: anyhow::Error| {
             CompileError::from_message(&format!("transform hook: {error:#}"))

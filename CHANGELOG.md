@@ -18,6 +18,7 @@
 - add an optional input source map to `Ast`
 - add input source-map resolution and output source-map mode application
 - change the `file` default to `index.ts`
+- change `Ast::clone` to share the arena and `Ast::with_mut` to copy on write
 
 ### Core
 
@@ -31,6 +32,9 @@
 
 - rename the `compile_start` and `compile_end` hooks to `start` and `end`
 - rename `CompileStartArgs` and `CompileEndArgs` to `StartArgs` and `EndArgs`
+- change `TransformArgs` to own a cheap `Ast`; it loses its lifetime and `Copy`
+- change transform hooks to mutate through `Ast::with_mut` and return the AST; `None`
+  still leaves the carried AST untouched
 - change `prepare` and `finalize` from carried code folds to read-only AST observers
 - remove the `PrepareOutput`, `PrepareReturn`, `FinalizeOutput`, and `FinalizeReturn` types
 - add first-win `parse` and `generate` hooks
@@ -52,6 +56,8 @@
 ### Telarel (Crate)
 
 - replace the `parse_owned` and `codegen` re-exports with the new entry points
+- change the re-exported `TransformArgs` to own a cheap `Ast` and drop its lifetime and
+  `Copy` implementation
 - add re-exports of `parse`, `rewrite`, `generate`, `compile_from_ast`, and `compile`
 - add re-exports of the new options, result types, source-map types, and plugin hook types
 

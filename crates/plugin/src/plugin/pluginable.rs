@@ -89,7 +89,7 @@ pub trait Pluginable: Any + Send + Sync + 'static {
     fn call_transform<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: TransformArgs<'a>,
+        args: TransformArgs,
     ) -> HookFuture<'a, TransformReturn>;
 
     /// Ordering for the `transform` hook.
@@ -194,7 +194,7 @@ impl<T: Plugin> Pluginable for T {
     fn call_transform<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: TransformArgs<'a>,
+        args: TransformArgs,
     ) -> HookFuture<'a, TransformReturn> {
         Box::pin(Plugin::transform(self, ctx, args))
     }

@@ -48,6 +48,8 @@ Every field is optional and resolved against defaults before use.
 | `ast.source_type()` | `SourceType`         | The resolved oxc source type.                  |
 | `ast.map()`         | `Option<&SourceMap>` | The input source map, if any.                  |
 
+`Ast::clone` is O(1): clones share the same arena. `Ast::with_mut` copies the arena on write when another clone is still alive, so mutating a clone never mutates the original.
+
 ## Example
 
 ```rust

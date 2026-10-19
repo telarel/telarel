@@ -47,7 +47,7 @@ The public plugin API is documented in `docs/content/apis/plugin/javascript`. In
 
 - Every NAPI entry point runs its whole call on a libuv worker thread through `FunctionTask`.
 - `block_on_compile` reuses a per-thread current-thread Tokio runtime. NAPI tasks run one at a time per worker, so concurrent `block_on` on that runtime is not possible.
-- Hook futures are `Send`; the AST is shared read-only.
+- Hook futures are `Send`. `prepare` / `finalize` / `generate` borrow the AST read-only; `transform` receives an owned cheap `Ast` handle.
 
 ## Testing
 

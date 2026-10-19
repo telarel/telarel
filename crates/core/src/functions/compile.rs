@@ -242,4 +242,15 @@ mod tests {
         assert_eq!(observed[0].language, Language::JS);
         assert_eq!(observed[0].source_type, SourceType::Script);
     }
+
+    #[test]
+    fn test_compile_future_is_send_and_static() {
+        fn assert_send_static<F: Send + 'static>(_: F) {}
+
+        assert_send_static(compile(
+            String::from("const a = 1;"),
+            CompileOptions::default(),
+            vec![],
+        ));
+    }
 }

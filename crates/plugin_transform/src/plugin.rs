@@ -91,7 +91,7 @@ impl Plugin for TransformPlugin {
     async fn transform<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: TransformArgs<'a>,
+        args: TransformArgs,
     ) -> telarel_plugin::TransformReturn {
         // The cached resolution is a pure function of the options; the
         // per-call `cwd` from the plugin context overlays on a clone so
@@ -131,19 +131,16 @@ impl Plugin for TransformPlugin {
 
         TransformOptions::apply_cwd(&mut resolved_oxc, ctx.cwd);
 
-        // The args AST is read-only; clone it once into a fresh owned AST
-        // and run every pass over the clone. The clone is discarded when
-        // the passes report no change (`Ok(None)`), which only wastes arena
-        // memory.
-        let mut ast: Ast = args.ast.clone();
+        // The driver retains the carried AST, so `with_mut` copy-on-writes;
+        // the copy is discarded when the passes report no change.
+        let mut ast: Ast = args.ast;
 
         // Change detection: the main oxc transformer exposes no changed
         // flag, so its effect is probed exactly by printing the program
         // before and after the pass; the inject and define passes report
         // their own `changed`; the helpers pass reports whether it edited
         // the program.
-        let before: String =
-            generate_program(args.ast.program(), ctx.module.file).0;
+        let before: String = generate_program(ast.program(), ctx.module.file).0;
 
         let mut changed: bool = false;
 
@@ -294,7 +291,7 @@ mod tests {
     ) -> anyhow::Result<Option<TransformOutput>> {
         let ctx: PluginContext<'_> = make_context(file);
 
-        let args: TransformArgs<'_> = TransformArgs { ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         plugin.transform(&ctx, args).await
     }
@@ -1021,7 +1018,7 @@ mod tests {
 
         let ctx: PluginContext<'_> = PluginContext::new("/repo", module);
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         plugin.transform(&ctx, args).await.expect("transform succeeds");
 

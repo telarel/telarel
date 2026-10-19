@@ -2,13 +2,13 @@ use telarel_common::Ast;
 
 /// Arguments for the `transform` hook.
 ///
-/// The AST is read-only. A plugin that changes the tree builds a new owned
-/// [`Ast`] and returns it in [`TransformOutput`].
-#[derive(Clone, Copy)]
-pub struct TransformArgs<'a> {
-    /// The current AST, read-only. A plugin that changes the tree must derive
-    /// a new owned AST and return it as [`TransformOutput`].
-    pub ast: &'a Ast,
+/// The AST is an owned cheap handle. A plugin that changes the tree mutates it
+/// through [`Ast::with_mut`] and returns it in [`TransformOutput`].
+#[derive(Clone)]
+pub struct TransformArgs {
+    /// The current AST. The driver keeps its own handle, so mutation copies on
+    /// write; returning it as [`TransformOutput`] replaces the carried AST.
+    pub ast: Ast,
 }
 
 /// Result of the `transform` hook: the AST that replaces the carried one.

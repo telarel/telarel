@@ -44,9 +44,9 @@ impl Plugin for ImportRewritePlugin {
     async fn transform<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        args: TransformArgs<'a>,
+        args: TransformArgs,
     ) -> TransformReturn {
-        let mut ast: Ast = args.ast.clone();
+        let mut ast: Ast = args.ast;
 
         ast.with_mut(|allocator: &Allocator, program: &mut Program<'_>| {
             let mut rewriter: ImportRewriter<'_> = ImportRewriter { allocator };

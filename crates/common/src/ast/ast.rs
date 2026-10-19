@@ -26,14 +26,74 @@ self_cell::self_cell!(
     }
 );
 
+impl AstInner {
+    fn deep_clone(
+        &self,
+        map: Option<SourceMap>,
+    ) -> AstInner {
+        let owner: &AstOwner = self.borrow_owner();
+
+        let source: Arc<str> = Arc::clone(&owner.source);
+        let source_type: SourceType = owner.source_type;
+        let capacity: usize = owner.allocator.used_bytes();
+
+        let owner: AstOwner = AstOwner {
+            source,
+            allocator: Allocator::with_capacity(capacity),
+            source_type,
+            map,
+        };
+
+        AstInner::new(owner, |owner: &AstOwner| AstDependent {
+            program: self.borrow_dependent().program.clone_in(&owner.allocator),
+        })
+    }
+}
+
+impl Clone for AstInner {
+    fn clone(&self) -> AstInner {
+        self.deep_clone(self.borrow_owner().map.clone())
+    }
+}
+
+// SAFETY: owner + dependent are heap-boxed together by `self_cell` and move as
+// one; `Allocator` (bumpalo `Bump`), `Arc<str>`, and the owned
+// `Option<SourceMap>` (whose fields are `Cow`/`Vec`/`Box`) are all `Send`, so
+// no thread-affine pointer dangles when the inner value moves. `Arc` may share
+// it between `Ast` handles.
+unsafe impl Send for AstInner {}
+
+// SAFETY: two separate guarantees are required, and they are not the same:
+//
+// (a) The arena/`Allocator` is safe because it is only reachable through
+//     `with_mut(&mut self, ..)`, an exclusive borrow, and `with_mut` copies the
+//     arena first when the `Arc` is shared. There is intentionally no public
+//     `&Allocator` accessor, so this invariant is not bypassable through safe
+//     code.
+//
+// (b) This justification does NOT cover `Program`'s own interior mutability.
+//     `Program` exposes `pub node_id: Cell<NodeId>` and
+//     `pub scope_id: Cell<Option<ScopeId>>`, which safe code can mutate through
+//     the shared reference returned by `program()`. Because `AstInner` is
+//     `Sync`, `Ast` is `Sync` and `&Ast` is `Send`, so such a mutation from two
+//     threads would be a data race. This impl is therefore sound ONLY under the
+//     additional caller-side contract that the AST is shared across threads
+//     read-only: no one mutates `Program`'s pub `Cell` fields through a shared
+//     `&Ast`.
+unsafe impl Sync for AstInner {}
+
 /// An owned, self-referential AST that bundles its own allocator.
 ///
 /// The optional [`Ast::map`] is the **input** source map: it describes how
 /// this AST's source was produced from upstream originals, and nothing about
 /// the code generated from this AST.
 ///
-/// `Ast` is `Sync` for driver plumbing: the transform hook's future is `Send`
-/// and borrows `&Ast`, so the AST must cross threads by shared reference.
+/// Cloning is O(1): clones share the same arena. [`Ast::with_mut`] copies the
+/// arena into a fresh allocation when another clone is still alive, so
+/// mutating a clone never mutates the original.
+///
+/// `Ast` is `Send + Sync` so plugin futures can move owned handles or borrow
+/// the AST across threads.
 ///
 /// That `Sync` does not make concurrent mutation safe. `Program`
 /// exposes interior-mutable `Cell` fields (`node_id`, `scope_id`) that safe code
@@ -42,7 +102,7 @@ self_cell::self_cell!(
 /// used read-only: no thread may mutate `Program`'s `Cell` fields through a
 /// shared `&Ast`. Doing so is a data race and is forbidden.
 pub struct Ast {
-    inner: AstInner,
+    inner: Arc<AstInner>,
 }
 
 impl Ast {
@@ -70,7 +130,7 @@ impl Ast {
             AstDependent { program: build(&owner.source, &owner.allocator) }
         });
 
-        Ast { inner }
+        Ast { inner: Arc::new(inner) }
     }
 
     /// Fallible variant of [`Ast::from_source`] (parse / ESTree read-back).
@@ -96,7 +156,7 @@ impl Ast {
             Ok(AstDependent { program })
         })?;
 
-        Ok(Ast { inner })
+        Ok(Ast { inner: Arc::new(inner) })
     }
 
     /// Borrow the read-only program.
@@ -120,50 +180,28 @@ impl Ast {
         self.inner.borrow_owner().map.as_ref()
     }
 
-    /// Deep-rebuild the AST, sharing the source and swapping the input map.
-    fn rebuild(
-        &self,
-        map: Option<SourceMap>,
-    ) -> Ast {
-        let owner: &AstOwner = self.inner.borrow_owner();
-
-        let source: Arc<str> = Arc::clone(&owner.source);
-        let source_type: SourceType = owner.source_type;
-        let capacity: usize = owner.allocator.used_bytes();
-
-        let owner: AstOwner = AstOwner {
-            source,
-            allocator: Allocator::with_capacity(capacity),
-            source_type,
-            map,
-        };
-
-        let inner: AstInner = AstInner::new(owner, |owner: &AstOwner| {
-            AstDependent { program: self.program().clone_in(&owner.allocator) }
-        });
-
-        Ast { inner }
-    }
-
     /// Rebuild this AST with a different input map.
     ///
-    /// A deep rebuild, like [`Clone`]: the program is cloned into a fresh
-    /// allocator and the source `Arc` is shared. Only used by the pipeline's
-    /// attach-if-absent path, where the cost of a full clone is acceptable.
+    /// A deep rebuild: the program is cloned into a fresh allocator and the
+    /// source `Arc` is shared.
     pub fn with_input_map(
         &self,
         map: Option<SourceMap>,
     ) -> Ast {
-        self.rebuild(map)
+        Ast { inner: Arc::new(self.inner.deep_clone(map)) }
     }
 
-    /// The only path to the arena: an exclusive borrow, so the closure
-    /// cannot race with another thread.
+    /// The only path to the arena.
+    ///
+    /// The arena is copied first when another [`Ast`] handle is still alive,
+    /// so mutation never affects a shared AST.
     pub fn with_mut<R>(
         &mut self,
         f: impl for<'i> FnOnce(&'i Allocator, &mut Program<'i>) -> R,
     ) -> R {
-        self.inner.with_dependent_mut(|owner, dep| {
+        let inner: &mut AstInner = Arc::make_mut(&mut self.inner);
+
+        inner.with_dependent_mut(|owner, dep| {
             f(&owner.allocator, &mut dep.program)
         })
     }
@@ -179,38 +217,11 @@ impl std::fmt::Debug for Ast {
 }
 
 impl Clone for Ast {
-    /// Clone into a fresh allocator, sharing the `Arc<str>` source and the
-    /// input map.
+    /// Share the arena with the original AST.
     fn clone(&self) -> Ast {
-        self.rebuild(self.inner.borrow_owner().map.clone())
+        Ast { inner: Arc::clone(&self.inner) }
     }
 }
-
-// SAFETY: owner + dependent are heap-boxed together by `self_cell` and move as
-// one; `Allocator` (bumpalo `Bump`), `Arc<str>`, and the owned
-// `Option<SourceMap>` (whose fields are `Cow`/`Vec`/`Box`) are all `Send`, so
-// no thread-affine pointer dangles when the `Ast` moves.
-unsafe impl Send for Ast {}
-
-// SAFETY: two separate guarantees are required, and they are not the same:
-//
-// (a) The arena/`Allocator` is safe because it is only reachable through
-//     `with_mut(&mut self, ..)`, an exclusive borrow, and the driver runs
-//     plugins sequentially. There is intentionally no public `&Allocator`
-//     accessor, so this invariant is not bypassable through safe code.
-//
-// (b) This justification does NOT cover `Program`'s own interior mutability.
-//     `Program` exposes `pub node_id: Cell<NodeId>` and
-//     `pub scope_id: Cell<Option<ScopeId>>`, which safe code can mutate through
-//     the shared reference returned by `program()`. Because `Ast: Sync`, `&Ast`
-//     is `Send`, so such a mutation from two threads would be a data race. This
-//     impl is therefore sound ONLY under the additional caller-side contract
-//     that the AST is shared across threads read-only: no one mutates
-//     `Program`'s pub `Cell` fields through a shared `&Ast`.
-//
-// The plan mandates `Sync` because the transform hook's `Send` future borrows
-// `&Ast` (`TransformArgs<'a> { ast: &'a Ast }`).
-unsafe impl Sync for Ast {}
 
 #[cfg(test)]
 mod tests {
@@ -321,6 +332,30 @@ mod tests {
         let clone: Ast = ast.clone();
 
         assert!(Arc::ptr_eq(ast.source(), clone.source()));
+    }
+
+    #[test]
+    fn test_clone_shares_inner_arena() {
+        let ast: Ast = owner_from_code("const a = 1;");
+
+        let clone: Ast = ast.clone();
+
+        assert!(Arc::ptr_eq(&ast.inner, &clone.inner));
+    }
+
+    #[test]
+    fn test_with_mut_on_clone_copies_on_write() {
+        let ast: Ast = owner_from_code("const a = 1;");
+
+        let mut clone: Ast = ast.clone();
+
+        clone.with_mut(|allocator: &Allocator, program: &mut Program<'_>| {
+            program.source_text = allocator.alloc_str("// changed");
+        });
+
+        assert_eq!(ast.program().source_text, "const a = 1;");
+        assert_eq!(clone.program().source_text, "// changed");
+        assert!(!Arc::ptr_eq(&ast.inner, &clone.inner));
     }
 
     #[test]

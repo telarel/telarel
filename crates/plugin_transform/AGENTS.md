@@ -20,7 +20,7 @@ The transform plugin. It wraps the oxc transformer and applies TypeScript/JSX/sy
 
 The plugin is named `telarel_plugin_transform` by default and declares `HookUsage::Transform` only. The JS builtin wrapper constructs the same plugin with the pipeline name `builtin:transform`; Rust-created instances keep `telarel_plugin_transform`. Internally:
 
-- `args.ast` is read-only. The plugin clones it once, mutates the clone through `Ast::with_mut`, and returns `Some(TransformOutput)` only when the tree changed. An unchanged tree returns `None`.
+- `args.ast` is an owned cheap handle. The plugin moves it into a local, mutates through `Ast::with_mut` (copying on write because the driver retains the carried AST), and returns `Some(TransformOutput)` only when the tree changed. An unchanged tree returns `None`.
 - Option resolution is cached in a `OnceLock`. The cache is cwd-free; the plugin context's `cwd` is overlaid per call.
 - Configuration errors are cached and replay on every call. Resolution happens before mutation, so a config error leaves the input AST untouched.
 

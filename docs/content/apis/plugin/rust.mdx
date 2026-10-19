@@ -64,10 +64,12 @@ Each hook returns an `impl Future`, so its body can be written as an `async` blo
 | `StartArgs`     | `options: ResolvedOptions`                                     |
 | `ParseArgs`     | `code: &str`, `options: &ParserOptions`                        |
 | `PrepareArgs`   | `ast: &Ast`                                                    |
-| `TransformArgs` | `ast: &Ast`                                                    |
+| `TransformArgs` | `ast: Ast` (owned)                                             |
 | `FinalizeArgs`  | `ast: &Ast`                                                    |
 | `GenerateArgs`  | `ast: &Ast`, `options: &GeneratorOptions`                      |
 | `EndArgs`       | `error: Option<CompileError>`                                  |
+
+`TransformArgs` owns a cheap `Ast` handle: `Ast::clone` is O(1), and `Ast::with_mut` copies the arena on write when the driver still holds the carried AST. `TransformArgs` is `Clone`, not `Copy`. Returning `None` leaves the driver's AST untouched.
 
 `TransformOutput` is the value a `transform` hook returns to replace the carried AST; it wraps the new owned `ast`.
 
@@ -131,7 +133,7 @@ let result: CodeResult = compile(
 
 ## Example
 
-A plugin that rewrites the module specifier `react` to `preact/compat` in `transform`. The AST argument is read-only, so the plugin clones it, walks the clone through a `VisitMut`, and returns it as `TransformOutput`:
+A plugin that rewrites the module specifier `react` to `preact/compat` in `transform`. The hook owns a cheap AST handle; mutating it through `Ast::with_mut` copies the arena on write, and the mutated AST is returned as `TransformOutput`:
 
 <PeekCode>
 
@@ -183,10 +185,10 @@ impl Plugin for ImportRewritePlugin {
     fn transform<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        args: TransformArgs<'a>,
+        args: TransformArgs,
     ) -> impl Future<Output = TransformReturn> + Send + 'a {
         async move {
-            let mut ast: Ast = args.ast.clone();
+            let mut ast: Ast = args.ast;
 
             ast.with_mut(|allocator: &Allocator, program: &mut Program<'_>| {
                 let mut rewriter: ImportRewriter<'_> =

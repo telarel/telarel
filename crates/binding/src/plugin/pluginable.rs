@@ -562,7 +562,7 @@ impl Pluginable for JsPlugin {
     fn call_transform<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
-        args: TransformArgs<'a>,
+        args: TransformArgs,
     ) -> HookFuture<'a, TransformReturn> {
         Box::pin(async move {
             let Some(tsfn) = self.tsfn_transform.as_ref() else {
@@ -576,7 +576,7 @@ impl Pluginable for JsPlugin {
             // The UTF-16 map is anchored to the AST's own source (the parse
             // input), NOT the module's original code, so it matches the byte
             // spans the codec emits.
-            let ast_json_utf16: String = ast_to_estree_json(args.ast);
+            let ast_json_utf16: String = ast_to_estree_json(&args.ast);
 
             // The ESTree codec skips `Program.comments`; keep the parser-owned
             // comments to reattach them to the rebuilt program (a JS plugin

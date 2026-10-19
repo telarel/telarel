@@ -42,7 +42,7 @@ Each hook has its own optional `PluginHookMeta { order }`. `sort_plugins_by_hook
 
 ## Transform fold
 
-`src/plugin_driver/hooks/transform.rs` carries a `Borrowed` AST until the first plugin returns `Some`, then switches to `Owned`. This avoids cloning in the common "nothing changed" case. Later plugins observe the replacement, and the fold returns the last `Some` (or `None` if no plugin changed anything).
+`src/plugin_driver/hooks/transform.rs` owns the carried `Ast` and hands each hook an O(1) handle clone. Keeping the fold's handle alive is what forces a mutating hook's `Ast::with_mut` to copy on write, so a `None` return cannot mutate the carried AST. Public hook semantics: [plugin docs](../../docs/content/apis/plugin/index.mdx).
 
 ## Testing
 

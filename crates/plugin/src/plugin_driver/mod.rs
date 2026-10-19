@@ -199,10 +199,10 @@ impl PluginDriver {
 
     /// Run the `transform` hook chain; `Some` carries the last returned AST,
     /// `None` = unchanged.
-    pub async fn transform<'a>(
-        &'a self,
-        ctx: &'a PluginContext<'_>,
-        args: TransformArgs<'a>,
+    pub async fn transform(
+        &self,
+        ctx: &PluginContext<'_>,
+        args: TransformArgs,
     ) -> anyhow::Result<Option<TransformOutput>> {
         hooks::transform::transform(&self.transform_plugins, ctx, args).await
     }
@@ -351,7 +351,7 @@ mod tests {
         fn transform<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: TransformArgs<'a>,
+            _args: TransformArgs,
         ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
                 let ast: Ast = parse_fixture("\"mark\";")?;
@@ -395,10 +395,10 @@ mod tests {
         fn transform<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            args: TransformArgs<'a>,
+            args: TransformArgs,
         ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
-                self.record(args.ast);
+                self.record(&args.ast);
 
                 Ok(None)
             }
@@ -420,7 +420,7 @@ mod tests {
         fn transform<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: TransformArgs<'a>,
+            _args: TransformArgs,
         ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
                 let ast: Ast = parse_fixture("\"replaced\";")?;
@@ -447,10 +447,10 @@ mod tests {
         fn transform<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            args: TransformArgs<'a>,
+            args: TransformArgs,
         ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
-                let mut ast: Ast = args.ast.clone();
+                let mut ast: Ast = args.ast;
 
                 ast.with_mut(|allocator, program: &mut Program<'_>| {
                     let builder: AstBuilder<'_> = AstBuilder::new(allocator);
@@ -492,7 +492,7 @@ mod tests {
         fn transform<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: TransformArgs<'a>,
+            _args: TransformArgs,
         ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move { Err(anyhow::anyhow!("boom")) }
         }
@@ -1526,7 +1526,7 @@ mod tests {
 
         let ast: Ast = test_ast();
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(MarkPlugin),
@@ -1553,7 +1553,7 @@ mod tests {
 
         let ast: Ast = test_ast();
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let plugins: Vec<SharedPluginable> =
             vec![Plugin::new_shared(FailingTransformPlugin)];
@@ -1570,12 +1570,12 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_transform_returns_original_program_by_reference() {
+    async fn test_transform_shares_the_original_arena() {
         let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let ast: Ast = test_ast();
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let seen: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -1591,8 +1591,8 @@ mod tests {
 
         let recorded: Vec<usize> = seen.lock().unwrap().clone();
 
-        // no plugin returned `Some`, so the fold must hand the original
-        // AST to the plugin by reference instead of cloning it
+        // No plugin returned `Some`, so the fold hands the hook an O(1) clone
+        // that shares the original arena instead of rebuilding it.
         assert_eq!(recorded, vec![std::ptr::from_ref(ast.program()) as usize],);
     }
 
@@ -1605,7 +1605,7 @@ mod tests {
 
         let ast: Ast = test_ast();
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let seen: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -1642,7 +1642,7 @@ mod tests {
 
         let ast: Ast = test_ast();
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let first_seen: Arc<Mutex<Vec<usize>>> =
             Arc::new(Mutex::new(Vec::new()));
@@ -1675,7 +1675,7 @@ mod tests {
 
         let ast: Ast = test_ast();
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(ReplaceRootPlugin),
@@ -1704,7 +1704,7 @@ mod tests {
 
         let ast: Ast = test_ast();
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(ReplaceRootPlugin),
@@ -1733,7 +1733,7 @@ mod tests {
 
         let ast: Ast = test_ast();
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -2142,7 +2142,7 @@ mod tests {
         fn transform<'a>(
             &'a self,
             _ctx: &'a PluginContext<'_>,
-            _args: TransformArgs<'a>,
+            _args: TransformArgs,
         ) -> impl Future<Output = TransformReturn> + Send + 'a {
             async move {
                 self.record("transform");
@@ -2438,7 +2438,7 @@ mod tests {
 
         let ast: Ast = test_ast();
 
-        let args: TransformArgs<'_> = TransformArgs { ast: &ast };
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         driver.transform(&ctx, args).await.unwrap();
 

@@ -20,10 +20,11 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 
 ## AST invariants
 
-- `Ast` owns its allocator and source; `program()` borrows a tree whose spans anchor to that source.
-- `with_mut` is the only path to the arena. It takes `&mut self`, so mutation cannot race with shared readers.
-- `Clone` is a deep rebuild into a fresh allocator. It shares the source `Arc` and carries the input map.
-- `Ast` is `Send + Sync` so plugin futures can borrow it across threads, but sharing is read-only by contract: never mutate `Program`'s interior-mutable `Cell` fields through a shared `&Ast`.
+- `Ast` shares ownership of its allocator and source through `Arc`; `program()` borrows a tree whose spans anchor to that source.
+- `Ast` wraps `Arc<AstInner>`; `Clone` is O(1) and shares the arena.
+- `with_mut` is the only path to the arena. It takes `&mut self` and copy-on-writes through `Arc::make_mut` when another handle is alive, so mutating a clone never mutates the original.
+- `with_input_map` is a deep rebuild into a fresh allocator; it shares the source `Arc` and carries the requested input map.
+- `Ast` is `Send + Sync` so plugin futures can move owned handles or borrow it across threads, but sharing is read-only by contract: never mutate `Program`'s interior-mutable `Cell` fields through a shared `&Ast`.
 - `Ast::map` is the **input** map (how the source was produced upstream), never the generated output map.
 
 ## Source maps

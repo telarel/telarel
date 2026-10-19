@@ -215,7 +215,7 @@ impl Plugin for SpyPlugin {
     fn transform<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        _args: TransformArgs<'a>,
+        _args: TransformArgs,
     ) -> impl Future<Output = TransformReturn> + Send + 'a {
         async move {
             self.record("transform");
@@ -422,7 +422,7 @@ impl Plugin for FailPlugin {
     fn transform<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        _args: TransformArgs<'a>,
+        _args: TransformArgs,
     ) -> impl Future<Output = TransformReturn> + Send + 'a {
         async move {
             if self.stage == FailStage::Transform {
@@ -585,7 +585,7 @@ impl Plugin for ReplaceAstPlugin {
     fn transform<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
-        _args: TransformArgs<'a>,
+        _args: TransformArgs,
     ) -> impl Future<Output = TransformReturn> + Send + 'a {
         async move {
             let ast: Ast = parse_fixture(self.code)?;
