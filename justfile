@@ -20,6 +20,8 @@ bench_js := "benchmarks/javascript"
 
 example_js := "examples/javascript"
 
+docs := "docs"
+
 # Default action
 _:
     just --list -u
@@ -244,6 +246,8 @@ publish-js:
 
 # Clean builds (Linux)
 clean-linux:
+    rm -rf ./{{docs}}/dist
+
     rm -rf ./{{telarel}}/dist
     rm -rf ./{{telarel}}/src/binding
     rm -rf ./{{telarel}}/npm
@@ -255,6 +259,8 @@ clean-macos:
 
 # Clean builds (Windows)
 clean-windows:
+    if (Test-Path "./{{docs}}/dist") { Remove-Item -Recurse -Force "./{{docs}}/dist" }
+
     if (Test-Path "./{{telarel}}/dist") { Remove-Item -Recurse -Force "./{{telarel}}/dist" }
     if (Test-Path "./{{telarel}}/src/binding") { Remove-Item -Recurse -Force "./{{telarel}}/src/binding" }
     if (Test-Path "./{{telarel}}/npm") { Remove-Item -Recurse -Force "./{{telarel}}/npm" }
@@ -267,6 +273,8 @@ clean:
 # Clean everything (Linux)
 clean-all-linux:
     just clean
+
+    rm -rf ./{{docs}}/node_modules
 
     rm -rf ./{{example_js}}/transform/node_modules
     rm -rf ./{{example_js}}/common/node_modules
@@ -286,6 +294,8 @@ clean-all-macos:
 # Clean everything (Windows)
 clean-all-windows:
     just clean
+
+    if (Test-Path "./{{docs}}/node_modules") { Remove-Item -Recurse -Force "./{{docs}}/node_modules" }
 
     if (Test-Path "./{{example_js}}/transform/node_modules") { Remove-Item -Recurse -Force "./{{example_js}}/transform/node_modules" }
     if (Test-Path "./{{example_js}}/common/node_modules") { Remove-Item -Recurse -Force "./{{example_js}}/common/node_modules" }
