@@ -10,13 +10,15 @@ Telarel exposes almost same compiler pipeline through a JavaScript package and a
 - **JavaScript API** — the `telarel` package, with TypeScript types. Backed by a NAPI binding to the Rust core.
 - **Rust API** — the `telarel` crate, re-exporting the public facing API.
 
-Both expose the same entry functions. Each call takes the source (text or an owned AST), an options value, and a list of plugins, and returns either an AST result or a code result with an optional source map.
+Both expose the same pipeline entry functions. Each call takes the source (text or an owned AST), an options value, and a list of plugins, and returns either an AST result or a code result with an optional source map.
 
-Both also share the same plugin interface. See the [Plugin API](/apis/plugin) for the hook semantics, and the [JavaScript](/apis/plugin/javascript) and [Rust](/apis/plugin/rust) pages for the language-specific surface.
+Both also expose builtin constructors that bypass the plugin chain: [`createParser`](/apis/javascript/createParser) and [`createGenerator`](/apis/javascript/createGenerator) in JavaScript, and [`Parser`](/apis/rust/Parser) and [`Generator`](/apis/rust/Generator) in Rust. Use them inside hooks to delegate to the builtin stage, or directly when plugins are not needed.
+
+They also share the same plugin interface. See the [Plugin API](/apis/plugin) for the hook semantics, and the [JavaScript](/apis/plugin/javascript) and [Rust](/apis/plugin/rust) pages for the language-specific surface.
 
 ## Options
 
-Every function accepts the options relevant to the stages it runs. The options are optional; omitted values are resolved against defaults before the pipeline starts. See each function page for the exact fields it accepts.
+Every pipeline entry function accepts the options relevant to the stages it runs. Those options are optional; omitted values are resolved against defaults before the pipeline starts. The builtin constructors instead take fully resolved options. See each page for the exact fields it accepts.
 
 ## Results
 

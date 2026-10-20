@@ -1,0 +1,65 @@
+---
+title: Generator
+description: A builtin generator over a borrowed AST and fixed options.
+---
+
+```rust
+pub struct Generator<'a> { /* private fields */ }
+
+impl<'a> Generator<'a> {
+    pub fn new(ast: &'a Ast, options: GeneratorOptions) -> Self;
+
+    pub fn generate(self) -> Result<CodeResult, CompileError>;
+}
+```
+
+`Generator` is the builtin generator used by the pipeline as the terminal fallback after every `generate` hook defers. It never runs the plugin chain. Use [`generate`](/apis/rust/generate) when plugins should be able to replace the generated result.
+
+## `Generator::new`
+
+Creates a generator over `ast` and its resolved `GeneratorOptions`.
+
+The AST is borrowed because hook arguments are read-only.
+
+### `GeneratorOptions`
+
+Every field is required. In a `generate` hook, the stage options are available as `args.options`.
+
+| Field        | Type               | Description                                               |
+| ------------ | ------------------ | --------------------------------------------------------- |
+| `cwd`        | `String`           | Current working directory. Reserved; codegen ignores it.  |
+| `file`       | `String`           | The file being generated.                                 |
+| `source_map` | `SourceMapOptions` | The source-map inputs and outputs requested for the step. |
+
+## `Generator::generate`
+
+Generates code from the fixed AST and composes the AST's input map into the produced map.
+
+The builtin generator always returns a map. Output delivery modes (`Inline` and `Both`) are applied by the pipeline, not by `Generator::generate`.
+
+`CodeResult` is `{ code: String, map: Option<SourceMap> }`.
+
+## Example
+
+```rust
+use telarel::{
+    parse, AstResult, CodeResult, Generator, GeneratorOptions, ParseOptions,
+    SourceMapOptions,
+};
+
+let parsed: AstResult = parse(
+    String::from("const x: number = 1;"),
+    ParseOptions::default(),
+    vec![],
+).await?;
+
+let result: CodeResult = Generator::new(
+    &parsed.ast,
+    GeneratorOptions {
+        cwd: String::from("."),
+        file: String::from("index.ts"),
+        source_map: SourceMapOptions::default(),
+    },
+)
+.generate()?;
+```

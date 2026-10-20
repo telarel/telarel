@@ -1,0 +1,69 @@
+---
+title: createParser
+description: Create a builtin parser over fixed source text and options.
+---
+
+```ts
+function createParser(code: string, options: ParserOptions): Parser;
+
+type Parser = {
+    parse: () => Promise<AstResult>;
+};
+```
+
+Creates a builtin parser over `code` and `options`.
+
+The returned parser calls the builtin parser directly and never runs the plugin chain. Use [parse](/apis/javascript/parse) when plugins should be able to replace the parse result.
+
+## Parameters
+
+| Name      | Type            | Description                           |
+| --------- | --------------- | ------------------------------------- |
+| `code`    | `string`        | The source text to parse.             |
+| `options` | `ParserOptions` | The parser's fixed, resolved options. |
+
+### `ParserOptions`
+
+Every field is required. In a `parse` hook, the stage options are available as `args.options`.
+
+| Field        | Type               | Description                                                       |
+| ------------ | ------------------ | ----------------------------------------------------------------- |
+| `cwd`        | `string`           | Current working directory used to resolve input source-map paths. |
+| `file`       | `string`           | The file being parsed.                                            |
+| `language`   | `Language`         | The grammar of the code.                                          |
+| `sourceType` | `SourceType`       | The module system of the code.                                    |
+| `sourceMap`  | `SourceMapOptions` | The source-map inputs and outputs requested for the step.         |
+
+The parser resolves `sourceMap.input` and attaches it to the returned AST. Output source-map delivery is applied by the pipeline, not by the builtin parser.
+
+## Returns
+
+A `Parser` whose `parse()` method returns `Promise<AstResult>`.
+
+`AstResult` is `{ ast: Ast }`, where `Ast` is:
+
+| Field     | Type         | Description                                    |
+| --------- | ------------ | ---------------------------------------------- |
+| `program` | `Program`    | The ESTree program.                            |
+| `code`    | `string`     | The source text the program's spans anchor to. |
+| `map`     | `SourceMap?` | An optional incremental source map.            |
+
+Parse failures reject with a [CompileError](/apis/javascript/CompileError).
+
+## Example
+
+```ts
+import type { AstResult, Parser } from "telarel";
+
+import { createParser } from "telarel";
+
+const parser: Parser = createParser("const x: number = 1;", {
+    cwd: process.cwd(),
+    file: "index.ts",
+    language: "ts",
+    sourceType: "module",
+    sourceMap: {},
+});
+
+const result: AstResult = await parser.parse();
+```

@@ -1,0 +1,66 @@
+---
+title: Parser
+description: A builtin parser over fixed source text and options.
+---
+
+```rust
+pub struct Parser { /* private fields */ }
+
+impl Parser {
+    pub fn new(code: String, options: ParserOptions) -> Self;
+
+    pub fn parse(self) -> Result<AstResult, CompileError>;
+}
+```
+
+`Parser` is the builtin parser used by the pipeline as the terminal fallback after every `parse` hook defers. It never runs the plugin chain. Use [`parse`](/apis/rust/parse) when plugins should be able to replace the parse result.
+
+## `Parser::new`
+
+Creates a parser over `code` and its resolved `ParserOptions`.
+
+### `ParserOptions`
+
+Every field is required. In a `parse` hook, the stage options are available as `args.options`.
+
+| Field         | Type               | Description                                                       |
+| ------------- | ------------------ | ----------------------------------------------------------------- |
+| `cwd`         | `String`           | Current working directory used to resolve input source-map paths. |
+| `file`        | `String`           | The file being parsed.                                            |
+| `language`    | `Language`         | The grammar of the code.                                          |
+| `source_type` | `SourceType`       | The module system of the code.                                    |
+| `source_map`  | `SourceMapOptions` | The source-map inputs and outputs requested for the step.         |
+
+## `Parser::parse`
+
+Parses the fixed source text and returns the resulting AST. The parser resolves any requested input source map and attaches it to the returned AST; output delivery is applied by the pipeline.
+
+`AstResult` is `{ ast: Ast }`. `Ast` is an owned, self-referential AST with accessors:
+
+| Accessor            | Type                 | Description                                    |
+| ------------------- | -------------------- | ---------------------------------------------- |
+| `ast.program()`     | `&Program<'_>`       | The parsed program.                            |
+| `ast.source()`      | `&Arc<str>`          | The source text the program's spans anchor to. |
+| `ast.source_type()` | `SourceType`         | The resolved oxc source type.                  |
+| `ast.map()`         | `Option<&SourceMap>` | The input source map, if any.                  |
+
+## Example
+
+```rust
+use telarel::{
+    AstResult, Language, Parser, ParserOptions, SourceMapOptions, SourceType,
+};
+
+let parser: Parser = Parser::new(
+    String::from("const x: number = 1;"),
+    ParserOptions {
+        cwd: String::from("."),
+        file: String::from("index.ts"),
+        language: Language::TS,
+        source_type: SourceType::Module,
+        source_map: SourceMapOptions::default(),
+    },
+);
+
+let result: AstResult = parser.parse()?;
+```

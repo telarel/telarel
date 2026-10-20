@@ -6,6 +6,8 @@
         "generate",
         "compile_from_ast",
         "compile",
+        "Parser",
+        "Generator",
         "ErrorSource",
         "PluginError",
         "CompileError"

@@ -6,6 +6,8 @@
         "generate",
         "compileFromAst",
         "compile",
+        "createParser",
+        "createGenerator",
         "ErrorSource",
         "PluginError",
         "CompileError"
