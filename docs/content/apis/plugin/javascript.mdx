@@ -89,6 +89,14 @@ Returning `null` or `void` defers. For `parse` and `generate` a deferral hands o
 
 `TransformResult` is the value a `transform` hook returns to replace the carried AST: `{ ast: Program }`. Returning it replaces the AST for the rest of the chain.
 
+### Errors
+
+A hook reports failure by throwing. Throw a [PluginError](/apis/javascript/PluginError) to attach a message and optional [ErrorSource](/apis/javascript/ErrorSource); the rejection surfaces at the entry point as a [CompileError](/apis/javascript/CompileError).
+
+`EndArgs.error` is the rendered error text as `string | null`, not an error object.
+
+If a stage fails and an `end` hook then fails, the `end` error replaces the stage error in the rejection.
+
 ## Ordering
 
 `ObjectHook<T>` is either the handler itself or an object carrying the handler plus an `order`. `PluginOrder` is `"pre"` or `"post"`.

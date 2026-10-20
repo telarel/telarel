@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use anyhow::Context;
-
 use crate::_types::context::CommonPluginContext;
 use crate::_types::hooks::options::OptionsArgs;
+use crate::PluginError;
 use crate::plugin::pluginable::SharedPluginable;
 use crate::plugin_driver::sort_plugins_by_hook_meta;
 
@@ -32,7 +31,7 @@ fn structurally_same(
 pub async fn options_fixpoint(
     ctx: &CommonPluginContext,
     args: &OptionsArgs,
-) -> anyhow::Result<(OptionsArgs, Vec<SharedPluginable>)> {
+) -> Result<(OptionsArgs, Vec<SharedPluginable>), PluginError> {
     let mut args: OptionsArgs = args.clone();
 
     let mut list: Vec<SharedPluginable> = args.plugins.clone();
@@ -68,10 +67,8 @@ pub async fn options_fixpoint(
 
             let before: usize = args.plugins.len();
 
-            let next: Option<OptionsArgs> = plugin
-                .call_options(ctx, &args)
-                .await
-                .with_context(|| format!("`{}` options", plugin.call_name()))?;
+            let next: Option<OptionsArgs> =
+                plugin.call_options(ctx, &args).await?;
 
             if let Some(replaced) = next {
                 args = replaced;
@@ -98,10 +95,10 @@ pub async fn options_fixpoint(
         // list completes: a converged fixpoint terminates before this; only
         // plugin cycles reach it.
         if iterations == MAX_OPTIONS_DEPTH {
-            return Err(anyhow::anyhow!(
+            return Err(PluginError::new(format!(
                 "plugin depth exceeded (chain: {})",
                 chain.join(" -> ")
-            ));
+            )));
         }
     }
 
@@ -311,7 +308,7 @@ mod tests {
             _ctx: &'a CommonPluginContext,
             _args: &'a OptionsArgs,
         ) -> impl Future<Output = OptionsReturn> + Send {
-            async { Err(anyhow::anyhow!("boom")) }
+            async { Err(PluginError::new("boom")) }
         }
     }
 
@@ -439,7 +436,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_options_error_propagates_with_plugin_name() {
+    async fn test_options_error_propagates_unchanged() {
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(NoopOptionsPlugin),
             Plugin::new_shared(FailingOptionsPlugin),
@@ -447,13 +444,10 @@ mod tests {
 
         let args: OptionsArgs = make_args(plugins);
 
-        let err: anyhow::Error =
+        let err: PluginError =
             options_fixpoint(&common_ctx(), &args).await.unwrap_err();
 
-        assert!(
-            format!("{err:#}").contains("`fail-options` options"),
-            "{err:#}"
-        );
+        assert_eq!(err.message(), "boom");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -537,9 +531,9 @@ mod tests {
         // doubles per pass), so an over-deep run FAILS via the timeout
         // instead of creeping past a minute.
         let (tx, rx): (
-            std::sync::mpsc::Sender<anyhow::Error>,
-            std::sync::mpsc::Receiver<anyhow::Error>,
-        ) = std::sync::mpsc::channel::<anyhow::Error>();
+            std::sync::mpsc::Sender<PluginError>,
+            std::sync::mpsc::Receiver<PluginError>,
+        ) = std::sync::mpsc::channel::<PluginError>();
 
         std::thread::spawn(move || {
             let runtime: tokio::runtime::Runtime =
@@ -555,21 +549,23 @@ mod tests {
 
             let args: OptionsArgs = make_args(plugins);
 
-            let outcome: anyhow::Result<(OptionsArgs, Vec<SharedPluginable>)> =
-                runtime.block_on(async {
-                    options_fixpoint(&common_ctx(), &args).await
-                });
+            let outcome: Result<
+                (OptionsArgs, Vec<SharedPluginable>),
+                PluginError,
+            > = runtime.block_on(async {
+                options_fixpoint(&common_ctx(), &args).await
+            });
 
             if let Some(error) = outcome.err() {
                 let _ = tx.send(error);
             }
         });
 
-        let err: anyhow::Error = rx
+        let err: PluginError = rx
             .recv_timeout(std::time::Duration::from_secs(30))
             .expect("depth guard must abort a self-appending cycle");
 
-        let message: String = format!("{err:#}");
+        let message: &str = err.message();
 
         assert!(
             message.contains("plugin depth exceeded (chain: "),

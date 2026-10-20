@@ -1034,7 +1034,7 @@ describe("compile", (): void => {
 
         // Pinned observed message: the object payload is not propagated —
         // the bridge renders any non-Error throwable as `GenericFailure`,
-        // while the plugin name stays visible in the wrapper prefix.
+        // and the plugin name is no longer added by the wrapper.
         await expect(
             compile("const a = 1;", {
                 cwd: "/repo",
@@ -1049,9 +1049,7 @@ describe("compile", (): void => {
                     },
                 ],
             }),
-        ).rejects.toThrow(
-            "transform hook: `boom-object` transform: GenericFailure",
-        );
+        ).rejects.toThrow("GenericFailure");
     });
 
     it("rejects with the late error after a prior plugin replaced the ast", async (): Promise<void> => {
@@ -1246,11 +1244,10 @@ describe("compile", (): void => {
 
         await expect(build()).rejects.toThrow("kaboom");
 
-        // `end` always runs: on the error path it carries the stage-wrapped
-        // first error, and nothing else.
+        // `end` always runs: on the error path it carries the first stage
+        // error, and nothing else.
         expect(seen).toHaveLength(1);
         expect(seen[0]).toContain("kaboom");
-        expect(seen[0]).toContain("transform hook");
     });
 
     it("observes the parsed AST in prepare", async (): Promise<void> => {

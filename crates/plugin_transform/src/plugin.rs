@@ -7,7 +7,9 @@ use oxc::transformer::{TransformOptions as OxcTransformOptions, Transformer};
 use oxc_transformer_plugins::{InjectGlobalVariables, ReplaceGlobalDefines};
 
 use telarel_common::{Ast, HookUsage, generate_program};
-use telarel_plugin::{Plugin, PluginContext, TransformArgs, TransformOutput};
+use telarel_plugin::{
+    Plugin, PluginContext, PluginError, TransformArgs, TransformOutput,
+};
 
 use crate::options::TransformOptions;
 use crate::options::helper_loader::ResolvedHelpers;
@@ -30,14 +32,14 @@ struct Resolved {
 
 fn render_diagnostics(
     diagnostics: &oxc::diagnostics::Diagnostics
-) -> anyhow::Error {
+) -> PluginError {
     let rendered: String = diagnostics
         .errors()
         .map(oxc::diagnostics::OxcDiagnostic::render)
         .collect::<Vec<String>>()
         .join("\n");
 
-    anyhow::anyhow!("{rendered}")
+    PluginError::new(rendered)
 }
 
 /// The transform plugin, wrapping the oxc transformer.
@@ -49,7 +51,7 @@ pub struct TransformPlugin {
     options: TransformOptions,
     /// Lazily resolved oxc options and plugin configs;
     /// an `Err` caches the config resolution failure so it replays on every call.
-    resolved: OnceLock<Result<Resolved, anyhow::Error>>,
+    resolved: OnceLock<Result<Resolved, PluginError>>,
 }
 
 impl TransformPlugin {
@@ -58,45 +60,16 @@ impl TransformPlugin {
         Self::with_options(TransformOptions::default())
     }
 
-    /// Create a plugin with `options`.
-    pub fn with_options(options: TransformOptions) -> Self {
-        Self { name: Cow::Borrowed(NAME), options, resolved: OnceLock::new() }
-    }
-
-    /// Override the name reported to the plugin pipeline.
-    pub fn with_name(
-        mut self,
-        name: impl Into<Cow<'static, str>>,
-    ) -> Self {
-        self.name = name.into();
-        self
-    }
-}
-
-impl Default for TransformPlugin {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Plugin for TransformPlugin {
-    fn name(&self) -> Cow<'static, str> {
-        self.name.clone()
-    }
-
-    fn register_hook_usage(&self) -> HookUsage {
-        HookUsage::Transform
-    }
-
-    async fn transform<'a>(
+    /// Run the transform pipeline.
+    async fn transform_inner<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
         args: TransformArgs,
-    ) -> telarel_plugin::TransformReturn {
+    ) -> Result<Option<TransformOutput>, PluginError> {
         // The cached resolution is a pure function of the options; the
         // per-call `cwd` from the plugin context overlays on a clone so
         // the cache itself stays cwd-free.
-        let resolved: &Result<Resolved, anyhow::Error> =
+        let resolved: &Result<Resolved, PluginError> =
             self.resolved.get_or_init(|| {
                 let define: Result<
                     Option<oxc_transformer_plugins::ReplaceGlobalDefinesConfig>,
@@ -124,7 +97,7 @@ impl Plugin for TransformPlugin {
         // not been mutated because resolution precedes the transformer.
         let resolved: &Resolved = match resolved {
             | Ok(resolved) => resolved,
-            | Err(error) => return Err(anyhow::anyhow!("{error}")),
+            | Err(error) => return Err(error.clone()),
         };
 
         let mut resolved_oxc: OxcTransformOptions = resolved.oxc.clone();
@@ -144,7 +117,7 @@ impl Plugin for TransformPlugin {
 
         let mut changed: bool = false;
 
-        ast.with_mut(|allocator, program| -> anyhow::Result<()> {
+        ast.with_mut(|allocator, program| -> Result<(), PluginError> {
             let scoping: oxc::semantic::Scoping = SemanticBuilder::new()
                 .with_excess_capacity(2.0)
                 .with_enum_eval(true)
@@ -222,6 +195,44 @@ impl Plugin for TransformPlugin {
 
         Ok(Some(TransformOutput { ast }))
     }
+
+    /// Create a plugin with `options`.
+    pub fn with_options(options: TransformOptions) -> Self {
+        Self { name: Cow::Borrowed(NAME), options, resolved: OnceLock::new() }
+    }
+
+    /// Override the name reported to the plugin pipeline.
+    pub fn with_name(
+        mut self,
+        name: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        self.name = name.into();
+        self
+    }
+}
+
+impl Default for TransformPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Plugin for TransformPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        self.name.clone()
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Transform
+    }
+
+    async fn transform<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: TransformArgs,
+    ) -> telarel_plugin::TransformReturn {
+        self.transform_inner(ctx, args).await
+    }
 }
 
 #[cfg(test)]
@@ -231,7 +242,9 @@ mod tests {
     use oxc::transformer::PluginsOptions;
 
     use telarel_common::{Ast, Language, ParseAstOptions, parse_ast};
-    use telarel_plugin::{ModuleInfo, Plugin, PluginContext, TransformOutput};
+    use telarel_plugin::{
+        ModuleInfo, Plugin, PluginContext, PluginError, TransformOutput,
+    };
 
     use crate::helpers::sources::{DEPENDENCY_HELPERS, HELPERS, HelperSource};
     use crate::options::TransformOptions;
@@ -288,7 +301,7 @@ mod tests {
         plugin: &TransformPlugin,
         file: &str,
         ast: &Ast,
-    ) -> anyhow::Result<Option<TransformOutput>> {
+    ) -> Result<Option<TransformOutput>, PluginError> {
         let ctx: PluginContext<'_> = make_context(file);
 
         let args: TransformArgs = TransformArgs { ast: ast.clone() };
@@ -964,10 +977,10 @@ mod tests {
 
         let ast: Ast = parse("index.js", SOURCE_REGEX);
 
-        let result: anyhow::Result<Option<TransformOutput>> =
+        let result: Result<Option<TransformOutput>, PluginError> =
             run_hook(&plugin, "index.js", &ast).await;
 
-        let error: anyhow::Error =
+        let error: PluginError =
             result.expect_err("malformed regexp must error");
 
         assert!(error.to_string().contains("regular expression"), "{}", error);
@@ -983,7 +996,7 @@ mod tests {
 
         let ast: Ast = parse("index.js", "const value = await promise;");
 
-        let result: anyhow::Result<Option<TransformOutput>> =
+        let result: Result<Option<TransformOutput>, PluginError> =
             run_hook(&plugin, "index.js", &ast).await;
 
         assert!(result.is_ok());
@@ -1309,13 +1322,21 @@ mod tests {
 
         let ast: Ast = parse("index.js", "main();");
 
-        let result: anyhow::Result<Option<TransformOutput>> =
+        let result: Result<Option<TransformOutput>, PluginError> =
             run_hook(&plugin, "index.js", &ast).await;
 
-        let error: anyhow::Error =
+        let error: PluginError =
             result.expect_err("invalid define config must error");
 
         assert!(error.to_string().contains("bad key"), "{}", error);
+
+        let replay: Result<Option<TransformOutput>, PluginError> =
+            run_hook(&plugin, "index.js", &ast).await;
+
+        let replay_error: PluginError =
+            replay.expect_err("cached config error must replay");
+
+        assert_eq!(replay_error.to_string(), error.to_string());
 
         let code: String =
             telarel_common::generate_program(ast.program(), "index.js").0;

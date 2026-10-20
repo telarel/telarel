@@ -6,7 +6,6 @@ pub mod usage;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use anyhow::anyhow;
 use oxc::allocator::Allocator;
 use oxc::allocator::Vec as ArenaVec;
 use oxc::ast::ast::Program;
@@ -15,6 +14,7 @@ use oxc::ast_visit::VisitMut;
 use oxc::semantic::Scoping;
 use oxc::semantic::SemanticBuilder;
 use oxc::syntax::symbol::SymbolId;
+use telarel_plugin::PluginError;
 
 use crate::helpers::inliner::Inliner;
 use crate::helpers::rewriter::Rewriter;
@@ -32,7 +32,7 @@ pub fn run<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
     module_name: &str,
-) -> anyhow::Result<bool> {
+) -> Result<bool, PluginError> {
     // Match the usage statements syntactically first: files without helper
     // usages return before paying for the semantic rebuild below.
     let usages: Vec<HelperUsage> = collect_usages(program, module_name);
@@ -73,11 +73,11 @@ pub fn run<'a>(
         if final_name != usage.binding_name {
             let symbol_id: SymbolId = usage.binding_symbol_id.ok_or_else(
                 || {
-                    anyhow!(
+                    PluginError::new(format!(
                         "duplicate usage of helper `{}` binds `{}` without a symbol; its references cannot be renamed",
                         usage.helper.name,
                         usage.binding_name
-                    )
+                    ))
                 },
             )?;
 

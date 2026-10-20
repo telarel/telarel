@@ -23,7 +23,7 @@ The public hook contract is documented in `docs/content/apis/plugin`. Internally
 - `options` is not run by the driver. It is a sequential fixpoint over the plugin list (`options_fixpoint`).
 - `PluginDriver::new` partitions the other hooks by declared `HookUsage`. `start` / `end` are collected from every settled plugin; the partitioned stages only from plugins that declare them.
 - Each driver-run hook implementation lives in `src/plugin_driver/hooks/`; the `options` hook is implemented by `options_fixpoint` in `src/options/fixpoint.rs`. Value stages return `Option`; observers and notify hooks ignore their return value. The core owns all state and applies the returned value.
-- Plugin-hook errors are wrapped with `` `{name}` {hook} `` context; when every plugin defers, the builtin parse/generate error is returned unwrapped.
+- Plugin-hook errors are propagated unchanged, with the plugin's original message and `ErrorSource`; when every plugin defers, the builtin parse/generate error is returned unchanged.
 
 ## Ordering
 
@@ -38,7 +38,7 @@ Each hook has its own optional `PluginHookMeta { order }`. `sort_plugins_by_hook
 - A plugin already run is never re-run (tracked by identity).
 - Each pass re-ranks a copy of the current list by `options_meta` to drive execution order only; the persisted/returned list keeps append/registration order.
 - `MAX_OPTIONS_DEPTH` (10) guards cycles and reports the growing chain.
-- Errors are named with the plugin: `` `{name}` options ``.
+- Errors are propagated unchanged.
 
 ## Transform fold
 

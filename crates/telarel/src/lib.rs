@@ -7,19 +7,19 @@
 
 pub use telarel_common::{
     Ast, AstResult, CodeResult, CompileContext, CompileError,
-    CompileFromAstOptions, CompileOptions, GenerateOptions, Generator,
-    GeneratorOptions, HookUsage, InputSourceMap, InputSourceMapMode, Language,
-    OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions, ParseOptions,
-    Parser, ParserOptions, ResolvableOptions, ResolvedOptions, RewriteOptions,
-    SourceMap, SourceMapOptions, SourceType,
+    CompileFromAstOptions, CompileOptions, ErrorSource, GenerateOptions,
+    Generator, GeneratorOptions, HookUsage, InputSourceMap, InputSourceMapMode,
+    Language, OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
+    ParseOptions, Parser, ParserOptions, ResolvableOptions, ResolvedOptions,
+    RewriteOptions, SourceMap, SourceMapOptions, SourceType,
 };
 
 pub use telarel_plugin::{
     CommonPluginContext, EndArgs, FinalizeArgs, GenerateArgs, GenerateReturn,
     ModuleInfo, NotifyReturn, OptionsArgs, OptionsReturn, ParseArgs,
-    ParseReturn, Plugin, PluginContext, PluginHookMeta, PluginOrder,
-    Pluginable, PrepareArgs, SharedPluginable, StartArgs, TransformArgs,
-    TransformOutput, TransformReturn,
+    ParseReturn, Plugin, PluginContext, PluginError, PluginHookMeta,
+    PluginOrder, Pluginable, PrepareArgs, SharedPluginable, StartArgs,
+    TransformArgs, TransformOutput, TransformReturn,
 };
 
 pub use telarel_core::{compile, compile_from_ast, generate, parse, rewrite};

@@ -1,0 +1,38 @@
+---
+title: CompileError
+description: The error rejected by every JavaScript entry point.
+---
+
+Every entry point rejects with a `CompileError`.
+
+```ts
+import { ErrorSource, CompileError } from "telarel";
+```
+
+## `CompileError`
+
+```ts
+class CompileError extends Error {
+    constructor(message: string, options?: { source?: ErrorSource });
+
+    static from(error: unknown): CompileError;
+
+    name: "CompileError";
+    message: string;
+    source: ErrorSource | undefined;
+
+    render(): string;
+}
+```
+
+| Member    | Description                                                      |
+| --------- | ---------------------------------------------------------------- |
+| `from`    | Coerces any thrown value into a `CompileError`.                  |
+| `name`    | Always `"CompileError"`.                                         |
+| `message` | The bare message.                                                |
+| `source`  | The attached `ErrorSource`, if any.                              |
+| `render`  | Renders the message with a code frame when a source is attached. |
+
+The file, code, and span of the error live on `source`. `render` returns the bare message when no source is attached.
+
+Only malformed plugin values fail before the pipeline runs. Those validation errors remain `TypeError`s rather than becoming `CompileError`s.

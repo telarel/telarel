@@ -219,20 +219,11 @@ mod tests {
                 .await
                 .expect_err("generate failure fails the invocation");
 
-        assert!(error.to_string().contains("generate hook:"), "{error}");
-        assert!(
-            error.to_string().contains("`fail-generate` generate"),
-            "{error}"
-        );
+        assert_eq!(error.message(), "boom");
 
         let observed: Vec<Option<String>> = ended.lock().unwrap().clone();
 
-        assert!(
-            observed[0]
-                .as_deref()
-                .expect("end saw error")
-                .contains("generate hook:",)
-        );
+        assert_eq!(observed[0].as_deref(), Some("boom"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -296,10 +287,7 @@ mod tests {
                 .await
                 .expect_err("a generate hook error aborts");
 
-        assert!(
-            error.to_string().contains("`fail-generate` generate"),
-            "{error}"
-        );
+        assert_eq!(error.message(), "boom");
 
         assert_eq!(
             *log.lock().unwrap(),

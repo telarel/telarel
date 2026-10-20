@@ -1,6 +1,6 @@
 import type { CompileOptions, CodeResult } from "telarel";
 
-import { compile } from "telarel";
+import { CompileError, compile } from "telarel";
 import { describe, expect, it } from "vitest";
 
 describe("language", (): void => {
@@ -29,8 +29,9 @@ describe("language", (): void => {
         // Explicit `language` wins over extension inference: the js
         // grammar cannot parse the annotation, so the parse fails despite
         // the `.ts` file.
-        // Pinned observed message: the native parser renders a code-frame
-        // style diagnostic including the file name and caret position.
+        // The error keeps the bare parser message; render() adds the
+        // code-frame style diagnostic including the file name and caret
+        // position.
         await expect(
             compile("const a: number = 1;", {
                 file: "index.ts",
@@ -42,7 +43,11 @@ describe("language", (): void => {
                     },
                 ],
             }),
-        ).rejects.toThrow("index.ts");
+        ).rejects.toSatisfy(
+            (error: unknown): boolean =>
+                error instanceof CompileError &&
+                error.render().includes("index.ts"),
+        );
 
         await expect(
             compile("const a: number = 1;", {
@@ -98,7 +103,11 @@ describe("language", (): void => {
                     },
                 ],
             }),
-        ).rejects.toThrow("index");
+        ).rejects.toSatisfy(
+            (error: unknown): boolean =>
+                error instanceof CompileError &&
+                error.render().includes("index"),
+        );
 
         await expect(
             compile("const a: number = 1;", {
@@ -199,8 +208,9 @@ describe("language", (): void => {
 
 describe("source type", (): void => {
     it("rejects top-level await with an explicit script source type", async (): Promise<void> => {
-        // Pinned observed message: the native parser renders a code-frame
-        // style diagnostic including the file name and caret position.
+        // The error keeps the bare parser message; render() adds the
+        // code-frame style diagnostic including the file name and caret
+        // position.
         await expect(
             compile("await Promise.resolve();", {
                 file: "index.js",
@@ -212,7 +222,11 @@ describe("source type", (): void => {
                     },
                 ],
             }),
-        ).rejects.toThrow("index.js");
+        ).rejects.toSatisfy(
+            (error: unknown): boolean =>
+                error instanceof CompileError &&
+                error.render().includes("index.js"),
+        );
 
         await expect(
             compile("await Promise.resolve();", {

@@ -6,13 +6,13 @@ import type {
     PluginContext,
 } from "telarel";
 
-import { compile } from "telarel";
+import { CompileError, compile } from "telarel";
 import { describe, expect, it } from "vitest";
 
 describe("validation", (): void => {
     it("rejects on a parse error with file context", async (): Promise<void> => {
         // A plugin declaring `transform` is irrelevant here: parse always
-        // runs. Pinned observed message: the builtin parser renders a
+        // runs. The error keeps the bare parser message; render() adds the
         // code-frame style diagnostic including the file name and caret
         // position.
         const options = {
@@ -26,7 +26,11 @@ describe("validation", (): void => {
             ],
         };
 
-        await expect(compile("const = ;", options)).rejects.toThrow("index.ts");
+        await expect(compile("const = ;", options)).rejects.toSatisfy(
+            (error: unknown): boolean =>
+                error instanceof CompileError &&
+                error.render().includes("index.ts"),
+        );
 
         await expect(compile("const = ;", options)).rejects.toThrow(
             /expected|Unexpected token/i,
@@ -39,7 +43,11 @@ describe("validation", (): void => {
         // through verbatim.
         await expect(
             compile("const = ;", { cwd: "/repo", file: "index.ts" }),
-        ).rejects.toThrow("index.ts");
+        ).rejects.toSatisfy(
+            (error: unknown): boolean =>
+                error instanceof CompileError &&
+                error.render().includes("index.ts"),
+        );
 
         await expect(
             compile("const = ;", { cwd: "/repo", file: "index.ts" }),

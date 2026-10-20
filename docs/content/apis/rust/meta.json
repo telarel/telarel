@@ -1,4 +1,13 @@
 {
     "title": "Rust API",
-    "pages": ["parse", "rewrite", "generate", "compile_from_ast", "compile"]
+    "pages": [
+        "parse",
+        "rewrite",
+        "generate",
+        "compile_from_ast",
+        "compile",
+        "ErrorSource",
+        "PluginError",
+        "CompileError"
+    ]
 }

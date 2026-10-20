@@ -25,8 +25,7 @@ mod tests {
 
     #[test]
     fn test_end_args_on_error() {
-        let args: EndArgs =
-            EndArgs { error: Some(CompileError::from_message("boom")) };
+        let args: EndArgs = EndArgs { error: Some(CompileError::new("boom")) };
 
         assert_eq!(
             args.error.as_ref().map(ToString::to_string).as_deref(),

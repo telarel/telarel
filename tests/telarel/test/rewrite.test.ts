@@ -205,7 +205,7 @@ describe("rewrite", (): void => {
         expect(result.ast.map?.mappings).toBe("AAAA");
     });
 
-    it("rejects on a transform hook error with the stage prefix", async (): Promise<void> => {
+    it("rejects on a transform hook error", async (): Promise<void> => {
         const parsed: AstResult = await parse("const a = 1;", {
             file: "index.ts",
         });

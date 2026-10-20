@@ -113,19 +113,13 @@ mod tests {
         .await
         .expect_err("start failure fails the invocation");
 
-        let rendered: String = error.to_string();
-
-        assert!(rendered.contains("start hook:"), "{rendered}");
-        assert!(rendered.contains("`fail-start` start"), "{rendered}");
+        assert_eq!(error.message(), "fail-start");
 
         let observed: Vec<Option<String>> = ended.lock().unwrap().clone();
 
         assert_eq!(observed.len(), 1);
 
-        let reported: &str = observed[0].as_deref().expect("end saw the error");
-
-        assert!(reported.contains("start hook:"), "{reported}");
-        assert!(reported.contains("`fail-start` start"), "{reported}");
+        assert_eq!(observed[0].as_deref(), Some("fail-start"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -152,17 +146,13 @@ mod tests {
         .await
         .expect_err("parse failure fails the invocation");
 
-        assert!(error.to_string().contains("parse hook:"), "{error}");
-        assert!(error.to_string().contains("`fail-parse` parse"), "{error}");
+        assert_eq!(error.message(), "boom");
 
         let observed: Vec<Option<String>> = ended.lock().unwrap().clone();
 
         assert_eq!(observed.len(), 1);
 
-        let reported: &str = observed[0].as_deref().expect("end saw the error");
-
-        assert!(reported.contains("parse hook:"), "{reported}");
-        assert!(reported.contains("`fail-parse` parse"), "{reported}");
+        assert_eq!(observed[0].as_deref(), Some("boom"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -258,7 +248,7 @@ mod tests {
         .await
         .expect_err("a parse hook error aborts");
 
-        assert!(error.to_string().contains("`fail-parse` parse"), "{error}");
+        assert_eq!(error.message(), "boom");
 
         assert_eq!(
             *log.lock().unwrap(),

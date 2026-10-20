@@ -1,0 +1,85 @@
+---
+title: CompileError
+description: The error returned by every fallible Rust entry point.
+---
+
+Every fallible entry point returns `Result<_, CompileError>`.
+
+```rust
+pub struct CompileError { /* private fields */ }
+```
+
+## Constructors
+
+```rust
+impl CompileError {
+    pub fn new(
+        message: impl Into<String>,
+    ) -> Self;
+
+    pub fn with_source(
+        self,
+        source: ErrorSource,
+    ) -> Self;
+
+    pub fn with_source_code(
+        self,
+        file: impl Into<Arc<str>>,
+        code: impl Into<Arc<str>>,
+        span: Span,
+    ) -> Self;
+
+    pub fn with_source_ast(
+        self,
+        file: impl Into<Arc<str>>,
+        ast: &Ast,
+        span: Span,
+    ) -> Self;
+}
+```
+
+| Method             | Description                                                        |
+| ------------------ | ------------------------------------------------------------------ |
+| `new`              | Creates a source-less error from a message.                        |
+| `with_source`      | Attaches an [ErrorSource](/apis/rust/ErrorSource).                 |
+| `with_source_code` | Attaches a source from a file name, its code, and a span.          |
+| `with_source_ast`  | Attaches a source that shares the AST's code and a span within it. |
+
+Attaching a source replaces any source already present.
+
+## Accessors
+
+```rust
+impl CompileError {
+    pub fn message(&self) -> &str;
+    pub fn source(&self) -> Option<&ErrorSource>;
+}
+```
+
+| Method    | Description                                  |
+| --------- | -------------------------------------------- |
+| `message` | The message without the rendered code frame. |
+| `source`  | The attached source location, if any.        |
+
+## Rendering
+
+`Display` writes the bare message when no source is attached. With a source, it writes a graphical code frame containing the file, the message, and the marked span. `message()` always returns the bare message; `Display` is the code-frame rendering path.
+
+`Debug` shows the error's message, file, and span. It never prints the source text.
+
+## Example
+
+```rust
+use telarel::span::Span;
+use telarel::{CompileError, ErrorSource};
+
+let span: Span = Span::new(4, 5);
+
+let source: ErrorSource =
+    ErrorSource::from_code("src/app.js", "let 1 = x;", span);
+
+let error: CompileError = CompileError::new("expected an identifier").with_source(source);
+
+assert_eq!(error.message(), "expected an identifier");
+assert_eq!(error.source().map(ErrorSource::file), Some("src/app.js"));
+```

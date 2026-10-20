@@ -4,6 +4,7 @@ import type { Ast, AstResult } from "#/@types/ast";
 import type { ParserOptions } from "#/@types/parser";
 
 import { builtinParse } from "#/binding";
+import { CompileError } from "#/errors/compile";
 
 /**
  * Creates a builtin parser over a fixed source text and options.
@@ -21,20 +22,26 @@ const createParser = (
 } => {
     return {
         parse: async (): Promise<AstResult> => {
-            const result: Awaited<ReturnType<typeof builtinParse>> =
-                await builtinParse(code, {
-                    cwd: options.cwd,
-                    file: options.file,
-                    language: options.language,
-                    sourceType: options.sourceType,
-                    sourceMap: options.sourceMap,
-                });
+            let ast: Ast;
 
-            const ast: Ast = {
-                program: result.ast.program as Program,
-                code: result.ast.code,
-                map: result.ast.map,
-            };
+            try {
+                const result: Awaited<ReturnType<typeof builtinParse>> =
+                    await builtinParse(code, {
+                        cwd: options.cwd,
+                        file: options.file,
+                        language: options.language,
+                        sourceType: options.sourceType,
+                        sourceMap: options.sourceMap,
+                    });
+
+                ast = {
+                    program: result.ast.program as Program,
+                    code: result.ast.code,
+                    map: result.ast.map,
+                };
+            } catch (error: unknown) {
+                throw CompileError.from(error);
+            }
 
             return { ast };
         },

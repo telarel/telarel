@@ -1,0 +1,42 @@
+---
+title: ErrorSource
+description: A source location attached to CompileError and PluginError.
+---
+
+`ErrorSource` is the shared source-location type attached to different errors. It carries a file name, the source text, and a `Span`.
+
+```ts
+import type { Span } from "telarel";
+import { ErrorSource } from "telarel";
+```
+
+`Span` is `{ start, end }` in UTF-16 code-unit offsets into the source text.
+
+## `ErrorSource`
+
+```ts
+class ErrorSource {
+    constructor(file: string, code: string, span: Span);
+
+    static fromCode(file: string, code: string, span: Span): ErrorSource;
+    static fromAst(file: string, ast: Ast, span: Span): ErrorSource;
+
+    file(): string;
+    code(): string;
+    span(): Span;
+}
+```
+
+Use `fromCode` with a hook's code or `fromAst` with an AST that carries its source text.
+
+| Member     | Description                                                |
+| ---------- | ---------------------------------------------------------- |
+| `fromCode` | Creates a location from a file name, its code, and a span. |
+| `fromAst`  | Creates a location that shares the AST's source text.      |
+| `file`     | The path of the file the span belongs to.                  |
+| `code`     | The source text the span refers to.                        |
+| `span`     | A copy of the span within `code`.                          |
+
+`span()` returns a copy, so mutating the result does not mutate the source.
+
+Use `CompileError.render()` or `PluginError.render()` to turn a source into a code frame.

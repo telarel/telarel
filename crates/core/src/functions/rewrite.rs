@@ -138,16 +138,11 @@ mod tests {
                 .await
                 .expect_err("prepare failure fails the invocation");
 
-        assert!(error.to_string().contains("prepare hook:"), "{error}");
+        assert_eq!(error.message(), "fail-prepare");
 
         let observed: Vec<Option<String>> = ended.lock().unwrap().clone();
 
-        assert!(
-            observed[0]
-                .as_deref()
-                .expect("end saw error")
-                .contains("`fail-prepare` prepare",)
-        );
+        assert_eq!(observed[0].as_deref(), Some("fail-prepare"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -170,16 +165,11 @@ mod tests {
                 .await
                 .expect_err("transform failure fails the invocation");
 
-        assert!(error.to_string().contains("transform hook:"), "{error}");
+        assert_eq!(error.message(), "fail-transform");
 
         let observed: Vec<Option<String>> = ended.lock().unwrap().clone();
 
-        assert!(
-            observed[0]
-                .as_deref()
-                .expect("end saw error")
-                .contains("`fail-transform` transform",)
-        );
+        assert_eq!(observed[0].as_deref(), Some("fail-transform"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -202,16 +192,11 @@ mod tests {
                 .await
                 .expect_err("finalize failure fails the invocation");
 
-        assert!(error.to_string().contains("finalize hook:"), "{error}");
+        assert_eq!(error.message(), "fail-finalize");
 
         let observed: Vec<Option<String>> = ended.lock().unwrap().clone();
 
-        assert!(
-            observed[0]
-                .as_deref()
-                .expect("end saw error")
-                .contains("`fail-finalize` finalize",)
-        );
+        assert_eq!(observed[0].as_deref(), Some("fail-finalize"));
     }
 
     #[tokio::test(flavor = "current_thread")]

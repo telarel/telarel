@@ -1,5 +1,6 @@
 use telarel_common::ResolvableOptions;
 
+use crate::PluginError;
 use crate::plugin::pluginable::SharedPluginable;
 
 /// Arguments for the `options` hook: resolvable options plus the plugin list.
@@ -15,7 +16,7 @@ pub struct OptionsArgs {
 }
 
 /// The `options` hook return: replacement args, `None`, or an error.
-pub type OptionsReturn = anyhow::Result<Option<OptionsArgs>>;
+pub type OptionsReturn = Result<Option<OptionsArgs>, PluginError>;
 
 #[cfg(test)]
 mod tests {

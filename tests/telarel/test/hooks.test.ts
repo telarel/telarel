@@ -13,7 +13,7 @@ import type {
     TransformArgs,
 } from "telarel";
 
-import { compile, createGenerator, createParser } from "telarel";
+import { CompileError, compile, createGenerator, createParser } from "telarel";
 import { describe, expect, it } from "vitest";
 
 type CaptureProgramOptions = {
@@ -151,7 +151,7 @@ describe("hooks", (): void => {
         expect(result.map?.version).toBe(3);
     });
 
-    it("parse: wraps a hook error with the stage prefix", async (): Promise<void> => {
+    it("parse: surfaces a parse hook error unchanged", async (): Promise<void> => {
         await expect(
             compile("const a = 1;", {
                 cwd: "/repo",
@@ -165,7 +165,7 @@ describe("hooks", (): void => {
                     },
                 ],
             }),
-        ).rejects.toThrow("parse hook: `boom-parse` parse");
+        ).rejects.toThrow("parse-kaboom");
     });
 
     it("generate: first non-null wins and later hooks are ignored", async (): Promise<void> => {
@@ -250,7 +250,7 @@ describe("hooks", (): void => {
         expect(result.map?.sources).toEqual(["index.ts"]);
     });
 
-    it("generate: wraps a hook error with the stage prefix", async (): Promise<void> => {
+    it("generate: surfaces a generate hook error unchanged", async (): Promise<void> => {
         await expect(
             compile("const a = 1;", {
                 cwd: "/repo",
@@ -264,7 +264,7 @@ describe("hooks", (): void => {
                     },
                 ],
             }),
-        ).rejects.toThrow("generate hook: `boom-generate` generate");
+        ).rejects.toThrow("generate-kaboom");
     });
 
     it("prepare and finalize observe only the ast key", async (): Promise<void> => {
@@ -346,7 +346,6 @@ describe("hooks", (): void => {
 
         expect(seen).toHaveLength(1);
         expect(seen[0]).toContain("kaboom");
-        expect(seen[0]).toContain("transform hook");
     });
 
     it("drives a custom language through parse and generate hooks only", async (): Promise<void> => {
@@ -359,7 +358,11 @@ describe("hooks", (): void => {
 
         await expect(
             compile(custom, { cwd: "/repo", file: "index.ts" }),
-        ).rejects.toThrow("index.ts");
+        ).rejects.toSatisfy(
+            (error: unknown): boolean =>
+                error instanceof CompileError &&
+                error.render().includes("index.ts"),
+        );
 
         const result: CodeResult = await compile(custom, {
             cwd: "/repo",

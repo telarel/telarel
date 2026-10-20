@@ -1,5 +1,7 @@
 use telarel_common::{Ast, CodeResult, GeneratorOptions};
 
+use crate::PluginError;
+
 /// Arguments for the `generate` hook.
 #[derive(Debug, Clone, Copy)]
 pub struct GenerateArgs<'a> {
@@ -10,7 +12,7 @@ pub struct GenerateArgs<'a> {
 }
 
 /// The `generate` hook return: generated code, `None` (defer), or an error.
-pub type GenerateReturn = anyhow::Result<Option<CodeResult>>;
+pub type GenerateReturn = Result<Option<CodeResult>, PluginError>;
 
 #[cfg(test)]
 mod tests {
@@ -56,7 +58,7 @@ mod tests {
     fn test_generate_return_defers_with_none() {
         let result: GenerateReturn = Ok(None);
 
-        assert!(result.unwrap().is_none());
+        assert!(matches!(result, Ok(None)));
     }
 
     #[test]
@@ -64,6 +66,10 @@ mod tests {
         let result: GenerateReturn =
             Ok(Some(CodeResult { code: String::from("let a;"), map: None }));
 
-        assert_eq!(result.unwrap().unwrap().code, "let a;");
+        if let Ok(Some(output)) = result {
+            assert_eq!(output.code, "let a;");
+        } else {
+            panic!("expected Ok(Some(CodeResult))");
+        }
     }
 }

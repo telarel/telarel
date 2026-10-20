@@ -22,7 +22,6 @@ telarel_common = { workspace = true }
 telarel_plugin = { workspace = true }
 
 # Crates
-anyhow = { workspace = true }
 oxc = { workspace = true, features = ["transformer", "semantic", "ast_visit"] }
 oxc_compat = { workspace = true }
 oxc_transformer_plugins = { workspace = true }

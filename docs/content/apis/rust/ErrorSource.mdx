@@ -1,0 +1,46 @@
+---
+title: ErrorSource
+description: A source location attached to CompileError and PluginError.
+---
+
+`ErrorSource` is the shared source-location type attached to different errors. Both error types and `ErrorSource` are re-exported from the `telarel` crate.
+
+```rust
+pub struct ErrorSource { /* private fields */ }
+```
+
+## Constructors and accessors
+
+```rust
+impl ErrorSource {
+    pub fn from_code(
+        file: impl Into<Arc<str>>,
+        code: impl Into<Arc<str>>,
+        span: Span,
+    ) -> Self;
+
+    pub fn from_ast(
+        file: impl Into<Arc<str>>,
+        ast: &Ast,
+        span: Span,
+    ) -> Self;
+
+    pub fn file(&self) -> &str;
+
+    pub fn code(&self) -> &str;
+
+    pub fn span(&self) -> Span;
+}
+```
+
+| Method      | Description                                                |
+| ----------- | ---------------------------------------------------------- |
+| `from_code` | Creates a location from a file name, its code, and a span. |
+| `from_ast`  | Creates a location that shares the AST's source text.      |
+| `file`      | The path of the file the span belongs to.                  |
+| `code`      | The source text the span refers to.                        |
+| `span`      | The span within `code`.                                    |
+
+`ErrorSource` shares its source text, so attaching it to many errors does not copy the code.
+
+Rust spans are UTF-8 byte offsets into the source text, matching `oxc::span::Span`.

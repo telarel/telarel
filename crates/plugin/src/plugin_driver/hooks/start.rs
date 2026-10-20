@@ -1,7 +1,6 @@
-use anyhow::Context;
-
 use crate::_types::context::PluginContext;
 use crate::_types::hooks::start::StartArgs;
+use crate::PluginError;
 use crate::plugin::pluginable::SharedPluginable;
 
 /// Run the `start` hook on every settled plugin in meta-ranked order;
@@ -10,12 +9,9 @@ pub async fn start(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,
     args: &StartArgs,
-) -> anyhow::Result<()> {
+) -> Result<(), PluginError> {
     for plugin in plugins {
-        plugin
-            .call_start(ctx, args)
-            .await
-            .with_context(|| format!("`{}` start", plugin.call_name()))?;
+        plugin.call_start(ctx, args).await?;
     }
 
     Ok(())

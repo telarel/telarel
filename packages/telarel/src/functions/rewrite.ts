@@ -6,6 +6,7 @@ import type { RawPlugin } from "#/bridges/plugin";
 
 import { rewrite as bindingRewrite } from "#/binding";
 import { toRawPlugins } from "#/bridges/plugin";
+import { CompileError } from "#/errors/compile";
 import { normalizeAstInput } from "#/functions/ast-input";
 
 /**
@@ -39,23 +40,29 @@ async function rewrite(
         plugins: options?.plugins ?? [],
     });
 
-    const result: Awaited<ReturnType<typeof bindingRewrite>> =
-        await bindingRewrite(ast, {
-            cwd: options?.cwd,
-            file: options?.file,
-            language: options?.language,
-            sourceType: options?.sourceType,
-            sourceMap: options?.sourceMap,
-            plugins,
-        });
+    let next: Ast;
 
-    return {
-        ast: {
+    try {
+        const result: Awaited<ReturnType<typeof bindingRewrite>> =
+            await bindingRewrite(ast, {
+                cwd: options?.cwd,
+                file: options?.file,
+                language: options?.language,
+                sourceType: options?.sourceType,
+                sourceMap: options?.sourceMap,
+                plugins,
+            });
+
+        next = {
             program: result.ast.program as Program,
             code: result.ast.code,
             map: result.ast.map,
-        },
-    };
+        };
+    } catch (error: unknown) {
+        throw CompileError.from(error);
+    }
+
+    return { ast: next };
 }
 
 export { rewrite };

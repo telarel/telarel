@@ -29,7 +29,7 @@ Every invocation runs:
 
 `options`, `start`, and `end` fire exactly once per invocation. No entry point re-enters another.
 
-`end` runs on every path after the options fixpoint settles, including stage and `start` failures. The only path that skips `end` is an options-fixpoint failure, because no driver exists yet. An `end` failure is appended to the original stage error; on a success path it is the error.
+`end` runs on every path after the options fixpoint settles, including stage and `start` failures. The only path that skips `end` is an options-fixpoint failure, because no driver exists yet. On a stage failure, a failing `end` returns its own error instead of the stage error; on a success path it is the error.
 
 ## Stage plans
 
@@ -39,11 +39,11 @@ Which hooks each entry point runs is public behavior: see `docs/content/apis/plu
 
 Shared input/output invariants: [common source maps](../common/AGENTS.md#source-maps).
 
-## Error wrapping
+## Error propagation
 
-- `parse` / `generate` hook failures gain a `parse hook:` / `generate hook:` prefix unless re-running the builtin reproduces the same error.
-- `prepare`, `transform`, `finalize`, `end`, `start`, and `options` failures are prefixed with their hook name.
-- The driver already names the plugin in its error context; do not re-wrap plugin errors in a way that hides the name.
+- Hook errors cross the pipeline unchanged; the pipeline adds no stage prefixes, so the message and `ErrorSource` are exactly what the plugin or builtin produced.
+- The original stage error is passed to `end` as-is.
+- A failing `end` returns its own error instead of the stage error; a succeeding `end` leaves the stage error untouched.
 
 ## Testing
 

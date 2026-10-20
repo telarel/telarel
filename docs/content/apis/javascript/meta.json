@@ -1,4 +1,13 @@
 {
     "title": "JavaScript API",
-    "pages": ["parse", "rewrite", "generate", "compileFromAst", "compile"]
+    "pages": [
+        "parse",
+        "rewrite",
+        "generate",
+        "compileFromAst",
+        "compile",
+        "ErrorSource",
+        "PluginError",
+        "CompileError"
+    ]
 }

@@ -30,6 +30,8 @@ import type { SourceMap } from "#/@types/sourcemap";
 import type { NormalizedHook } from "#/bridges/normalize-hook";
 
 import { normalizeHook } from "#/bridges/normalize-hook";
+import { getPluginErrorMessage, PluginError } from "#/errors/plugin";
+import { encodePluginError } from "#/errors/transport/plugin-error";
 
 /**
  * Raw plugin context, as carried by every ctx-bearing hook payload: scalar
@@ -242,6 +244,23 @@ type GenerateHook = (
 
 type EndHook = (ctx: PluginContext, args: EndArgs) => void | Promise<void>;
 
+const runHook = async <Result>(
+    body: () => Promise<Result>,
+): Promise<Result> => {
+    try {
+        return await body();
+    } catch (error: unknown) {
+        if (error instanceof PluginError) {
+            throw encodePluginError({
+                message: getPluginErrorMessage(error),
+                source: error.source,
+            });
+        }
+
+        throw error;
+    }
+};
+
 const flattenPlugins = async (
     options: ReadonlyArray<PluginOption>,
 ): Promise<Array<Plugin | BuiltinPlugin>> => {
@@ -310,69 +329,70 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
         raw.options = async (
             rawArgs: RawOptionsArgs,
-        ): Promise<RawOptionsOutput | null> => {
-            // The payload's descriptors are already raw plugin objects.
-            const bag: ResolvableOptions = {
-                cwd: rawArgs.cwd,
-                file: rawArgs.file,
-                plugins: rawArgs.plugins as unknown as Array<PluginOption>,
-            };
+        ): Promise<RawOptionsOutput | null> =>
+            await runHook(async (): Promise<RawOptionsOutput | null> => {
+                // The payload's descriptors are already raw plugin objects.
+                const bag: ResolvableOptions = {
+                    cwd: rawArgs.cwd,
+                    file: rawArgs.file,
+                    plugins: rawArgs.plugins as unknown as Array<PluginOption>,
+                };
 
-            if (rawArgs.language.length > 0) {
-                bag.language = rawArgs.language as Language;
-            }
+                if (rawArgs.language.length > 0) {
+                    bag.language = rawArgs.language as Language;
+                }
 
-            if (rawArgs.sourceType.length > 0) {
-                bag.sourceType = rawArgs.sourceType as SourceType;
-            }
+                if (rawArgs.sourceType.length > 0) {
+                    bag.sourceType = rawArgs.sourceType as SourceType;
+                }
 
-            if (rawArgs.sourceMap !== void 0) {
-                bag.sourceMap = rawArgs.sourceMap;
-            }
+                if (rawArgs.sourceMap !== void 0) {
+                    bag.sourceMap = rawArgs.sourceMap;
+                }
 
-            const ctx: CommonPluginContext = {};
+                const ctx: CommonPluginContext = {};
 
-            const args: OptionsArgs = { options: bag };
+                const args: OptionsArgs = { options: bag };
 
-            const result: OptionsArgs | null | void = await optionsHandler(
-                ctx,
-                args,
-            );
+                const result: OptionsArgs | null | void = await optionsHandler(
+                    ctx,
+                    args,
+                );
 
-            if (result === null || result === void 0) {
-                return null;
-            }
+                if (result === null || result === void 0) {
+                    return null;
+                }
 
-            const next: ResolvableOptions = result.options;
+                const next: ResolvableOptions = result.options;
 
-            const output: RawOptionsOutput = {
-                plugins: await toRawPlugins({
-                    plugins: next.plugins ?? [],
-                }),
-            };
+                const output: RawOptionsOutput = {
+                    plugins: await toRawPlugins({
+                        plugins: next.plugins ?? [],
+                    }),
+                };
 
-            if (typeof next.cwd === "string") {
-                output.cwd = next.cwd;
-            }
+                if (typeof next.cwd === "string") {
+                    output.cwd = next.cwd;
+                }
 
-            if (typeof next.file === "string") {
-                output.file = next.file;
-            }
+                if (typeof next.file === "string") {
+                    output.file = next.file;
+                }
 
-            if (typeof next.language === "string") {
-                output.language = next.language;
-            }
+                if (typeof next.language === "string") {
+                    output.language = next.language;
+                }
 
-            if (typeof next.sourceType === "string") {
-                output.sourceType = next.sourceType;
-            }
+                if (typeof next.sourceType === "string") {
+                    output.sourceType = next.sourceType;
+                }
 
-            if (next.sourceMap !== void 0) {
-                output.sourceMap = next.sourceMap;
-            }
+                if (next.sourceMap !== void 0) {
+                    output.sourceMap = next.sourceMap;
+                }
 
-            return output;
-        };
+                return output;
+            });
 
         if (options.meta.order !== void 0) {
             raw.optionsMeta = { order: options.meta.order };
@@ -389,20 +409,21 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         raw.start = async (
             rawCtx: RawPluginContext,
             rawArgs: RawStartArgs,
-        ): Promise<void> => {
-            const args: StartArgs = {
-                options: {
-                    cwd: rawArgs.options.cwd,
-                    file: rawArgs.options.file,
-                    language: rawArgs.options.language as Language,
-                    sourceType: rawArgs.options.sourceType as SourceType,
-                    sourceMap: rawArgs.options.sourceMap,
-                    plugins: rawArgs.options.plugins,
-                },
-            };
+        ): Promise<void> =>
+            await runHook(async (): Promise<void> => {
+                const args: StartArgs = {
+                    options: {
+                        cwd: rawArgs.options.cwd,
+                        file: rawArgs.options.file,
+                        language: rawArgs.options.language as Language,
+                        sourceType: rawArgs.options.sourceType as SourceType,
+                        sourceMap: rawArgs.options.sourceMap,
+                        plugins: rawArgs.options.plugins,
+                    },
+                };
 
-            await startHandler(toContext(rawCtx), args);
-        };
+                await startHandler(toContext(rawCtx), args);
+            });
 
         if (start.meta.order !== void 0) {
             raw.startMeta = { order: start.meta.order };
@@ -419,32 +440,33 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         raw.parse = async (
             rawCtx: RawPluginContext,
             rawArgs: RawParseArgs,
-        ): Promise<RawParseOutput> => {
-            const args: ParseArgs = {
-                code: rawArgs.code,
-                options: toParserOptions(rawArgs.options),
-            };
+        ): Promise<RawParseOutput> =>
+            await runHook(async (): Promise<RawParseOutput> => {
+                const args: ParseArgs = {
+                    code: rawArgs.code,
+                    options: toParserOptions(rawArgs.options),
+                };
 
-            const result: AstResult | null | void = await parseHandler(
-                toContext(rawCtx),
-                args,
-            );
+                const result: AstResult | null | void = await parseHandler(
+                    toContext(rawCtx),
+                    args,
+                );
 
-            if (result === null || result === void 0) {
-                return null;
-            }
+                if (result === null || result === void 0) {
+                    return null;
+                }
 
-            const ast: RawAstOutput = {
-                program: result.ast.program,
-                code: result.ast.code,
-            };
+                const ast: RawAstOutput = {
+                    program: result.ast.program,
+                    code: result.ast.code,
+                };
 
-            if (result.ast.map !== void 0) {
-                ast.map = result.ast.map;
-            }
+                if (result.ast.map !== void 0) {
+                    ast.map = result.ast.map;
+                }
 
-            return { ast };
-        };
+                return { ast };
+            });
 
         if (parse.meta.order !== void 0) {
             raw.parseMeta = { order: parse.meta.order };
@@ -461,11 +483,12 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         raw.prepare = async (
             rawCtx: RawPluginContext,
             rawArgs: RawAstArgs,
-        ): Promise<void> => {
-            const ast: Program = JSON.parse(rawArgs.astJson) as Program;
+        ): Promise<void> =>
+            await runHook(async (): Promise<void> => {
+                const ast: Program = JSON.parse(rawArgs.astJson) as Program;
 
-            await prepareHandler(toContext(rawCtx), { ast });
-        };
+                await prepareHandler(toContext(rawCtx), { ast });
+            });
 
         if (prepare.meta.order !== void 0) {
             raw.prepareMeta = { order: prepare.meta.order };
@@ -481,18 +504,19 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         raw.transform = async (
             rawCtx: RawPluginContext,
             rawArgs: RawAstArgs,
-        ): Promise<RawTransformOutput | null> => {
-            const ast: Program = JSON.parse(rawArgs.astJson) as Program;
+        ): Promise<RawTransformOutput | null> =>
+            await runHook(async (): Promise<RawTransformOutput | null> => {
+                const ast: Program = JSON.parse(rawArgs.astJson) as Program;
 
-            const result: TransformResult | null | void =
-                await transformHandler(toContext(rawCtx), { ast });
+                const result: TransformResult | null | void =
+                    await transformHandler(toContext(rawCtx), { ast });
 
-            if (result === null || result === void 0) {
-                return null;
-            }
+                if (result === null || result === void 0) {
+                    return null;
+                }
 
-            return { astJson: JSON.stringify(result.ast) };
-        };
+                return { astJson: JSON.stringify(result.ast) };
+            });
 
         if (transform.meta.order !== void 0) {
             raw.transformMeta = { order: transform.meta.order };
@@ -509,11 +533,12 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         raw.finalize = async (
             rawCtx: RawPluginContext,
             rawArgs: RawAstArgs,
-        ): Promise<void> => {
-            const ast: Program = JSON.parse(rawArgs.astJson) as Program;
+        ): Promise<void> =>
+            await runHook(async (): Promise<void> => {
+                const ast: Program = JSON.parse(rawArgs.astJson) as Program;
 
-            await finalizeHandler(toContext(rawCtx), { ast });
-        };
+                await finalizeHandler(toContext(rawCtx), { ast });
+            });
 
         if (finalize.meta.order !== void 0) {
             raw.finalizeMeta = { order: finalize.meta.order };
@@ -530,29 +555,30 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         raw.generate = async (
             rawCtx: RawPluginContext,
             rawArgs: RawGenerateArgs,
-        ): Promise<RawCodeOutput> => {
-            const args: GenerateArgs = {
-                ast: rawArgs.ast,
-                options: toGeneratorOptions(rawArgs.options),
-            };
+        ): Promise<RawCodeOutput> =>
+            await runHook(async (): Promise<RawCodeOutput> => {
+                const args: GenerateArgs = {
+                    ast: rawArgs.ast,
+                    options: toGeneratorOptions(rawArgs.options),
+                };
 
-            const result: CodeResult | null | void = await generateHandler(
-                toContext(rawCtx),
-                args,
-            );
+                const result: CodeResult | null | void = await generateHandler(
+                    toContext(rawCtx),
+                    args,
+                );
 
-            if (result === null || result === void 0) {
-                return null;
-            }
+                if (result === null || result === void 0) {
+                    return null;
+                }
 
-            const output: RawCodeOutput = { code: result.code };
+                const output: RawCodeOutput = { code: result.code };
 
-            if (result.map !== void 0 && result.map !== null) {
-                output.map = result.map;
-            }
+                if (result.map !== void 0 && result.map !== null) {
+                    output.map = result.map;
+                }
 
-            return output;
-        };
+                return output;
+            });
 
         if (generate.meta.order !== void 0) {
             raw.generateMeta = { order: generate.meta.order };
@@ -567,11 +593,12 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         raw.end = async (
             rawCtx: RawPluginContext,
             rawArgs: RawEndArgs,
-        ): Promise<void> => {
-            const args: EndArgs = { error: rawArgs.error ?? null };
+        ): Promise<void> =>
+            await runHook(async (): Promise<void> => {
+                const args: EndArgs = { error: rawArgs.error ?? null };
 
-            await endHandler(toContext(rawCtx), args);
-        };
+                await endHandler(toContext(rawCtx), args);
+            });
 
         if (end.meta.order !== void 0) {
             raw.endMeta = { order: end.meta.order };

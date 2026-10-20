@@ -45,6 +45,8 @@ pub use crate::ast::parser::Parser;
 pub use crate::ast::result::{AstResult, CodeResult};
 pub use crate::contexts::compile::CompileContext;
 pub use crate::errors::compile::CompileError;
+pub use crate::errors::plugin::PluginError;
+pub use crate::errors::source::ErrorSource;
 pub use crate::helpers::resolve::{
     from_oxc_language, from_oxc_module_kind, infer_language, resolve_grammar,
     resolve_options, resolve_source_type, source_type_for_module_id,

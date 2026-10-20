@@ -6,6 +6,7 @@ import type { RawPlugin } from "#/bridges/plugin";
 
 import { generate as bindingGenerate } from "#/binding";
 import { toRawPlugins } from "#/bridges/plugin";
+import { CompileError } from "#/errors/compile";
 import { normalizeAstInput } from "#/functions/ast-input";
 
 /**
@@ -39,13 +40,18 @@ async function generate(
         plugins: options?.plugins ?? [],
     });
 
-    const result: Awaited<ReturnType<typeof bindingGenerate>> =
-        await bindingGenerate(ast, {
+    let result: Awaited<ReturnType<typeof bindingGenerate>>;
+
+    try {
+        result = await bindingGenerate(ast, {
             cwd: options?.cwd,
             file: options?.file,
             sourceMap: options?.sourceMap,
             plugins,
         });
+    } catch (error: unknown) {
+        throw CompileError.from(error);
+    }
 
     return { code: result.code, map: result.map ?? null };
 }

@@ -81,7 +81,7 @@ fn decode_data_uri_payload(url: &str) -> Option<&str> {
 fn decode_payload(payload: &str) -> Result<SourceMap, CompileError> {
     let bytes: Vec<u8> = STANDARD.decode(payload.trim()).map_err(
         |error: base64::DecodeError| {
-            CompileError::from_message(&format!(
+            CompileError::new(format!(
                 "invalid inline source map: invalid base64 payload: {error}"
             ))
         },
@@ -89,7 +89,7 @@ fn decode_payload(payload: &str) -> Result<SourceMap, CompileError> {
 
     let json: &str =
         std::str::from_utf8(&bytes).map_err(|error: std::str::Utf8Error| {
-            CompileError::from_message(&format!(
+            CompileError::new(format!(
                 "invalid inline source map: payload is not UTF-8: {error}"
             ))
         })?;
@@ -97,7 +97,7 @@ fn decode_payload(payload: &str) -> Result<SourceMap, CompileError> {
     let map: oxc_sourcemap::SourceMap<'_> =
         oxc_sourcemap::SourceMap::from_json_string(json).map_err(
             |error: oxc_sourcemap::Error| {
-                CompileError::from_message(&format!(
+                CompileError::new(format!(
                     "invalid inline source map: invalid map JSON: {error}"
                 ))
             },

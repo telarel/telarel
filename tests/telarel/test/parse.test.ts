@@ -9,7 +9,7 @@ import type {
 import * as Fsp from "node:fs/promises";
 import * as Path from "node:path";
 
-import { generate, parse } from "telarel";
+import { CompileError, generate, parse } from "telarel";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -82,7 +82,11 @@ describe("parse", (): void => {
     it("rejects invalid code with a file-context parse error", async (): Promise<void> => {
         await expect(
             parse("const = ;", { cwd: "/repo", file: "index.ts" }),
-        ).rejects.toThrow("index.ts");
+        ).rejects.toSatisfy(
+            (error: unknown): boolean =>
+                error instanceof CompileError &&
+                error.render().includes("index.ts"),
+        );
 
         await expect(
             parse("const = ;", { cwd: "/repo", file: "index.ts" }),

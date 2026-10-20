@@ -73,15 +73,20 @@ fn parse_error(
 
         let message: String = diagnostic.to_string();
 
-        return Some(CompileError::new(context, span, message));
+        return Some(CompileError::new(message).with_source_code(
+            context.file,
+            context.code,
+            span,
+        ));
     }
 
     if parser_return.fatal_error {
         let span: Span = Span::new(0, 0);
-        return Some(CompileError::new(
-            context,
+
+        return Some(CompileError::new("the parser aborted").with_source_code(
+            context.file,
+            context.code,
             span,
-            "the parser aborted".to_string(),
         ));
     }
 

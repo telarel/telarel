@@ -10,15 +10,15 @@
 
 use telarel_common::{
     Ast, AstResult, CodeResult, CompileError, Generator, GeneratorOptions,
-    HookUsage, OutputSourceMap, OutputSourceMapMode, Parser, ParserOptions,
+    OutputSourceMap, OutputSourceMapMode, Parser, ParserOptions,
     ResolvableOptions, ResolvedOptions, apply_output_source_map_mode,
     resolve_input_source_map, resolve_options,
 };
 use telarel_plugin::__internal::PluginDriver;
 use telarel_plugin::{
     CommonPluginContext, EndArgs, FinalizeArgs, ModuleInfo, OptionsArgs,
-    PluginContext, PrepareArgs, SharedPluginable, StartArgs, TransformArgs,
-    TransformOutput, options_fixpoint,
+    PluginContext, PluginError, PrepareArgs, SharedPluginable, StartArgs,
+    TransformArgs, TransformOutput, options_fixpoint,
 };
 
 /// The stage plan of one public entry point.
@@ -32,69 +32,6 @@ pub trait Stage {
         ctx: &PluginContext<'_>,
         resolved: &ResolvedOptions,
     ) -> Result<Self::Output, CompileError>;
-}
-
-/// Whether re-running the builtin reproduces `error` exactly.
-///
-/// The driver wraps a plugin hook error with a ``` `{name}` parse ``` /
-/// ``` `{name}` generate ``` context, so a plugin error always renders with a
-/// leading `` ` ``; a builtin error is either source-bound (its graphical
-/// report starts with whitespace) or a source-less map message that starts
-/// with a word, never a backtick. The renderings can therefore never coincide,
-/// so re-running the builtin and comparing strings never misattributes a
-/// plugin error — no driver-side origin signal is needed.
-fn builtin_reproduces_error(
-    result: Result<(), CompileError>,
-    error: &CompileError,
-) -> bool {
-    match result {
-        | Ok(()) => false,
-        | Err(builtin_error) => builtin_error.to_string() == error.to_string(),
-    }
-}
-
-/// Wrap a `parse` stage error: a plugin-hook error gains the `parse hook: `
-/// prefix, a builtin error passes through raw.
-fn wrap_parse_error(
-    driver: &PluginDriver,
-    error: CompileError,
-    builtin: &Parser,
-) -> CompileError {
-    if !driver.usage().contains(HookUsage::Parse) {
-        return error;
-    }
-
-    let reproduced: bool = builtin_reproduces_error(
-        builtin.clone().parse().map(|_result: AstResult| ()),
-        &error,
-    );
-
-    if reproduced {
-        return error;
-    }
-
-    CompileError::from_message(&format!("parse hook: {error}"))
-}
-
-fn wrap_generate_error(
-    driver: &PluginDriver,
-    error: CompileError,
-    builtin: &Generator<'_>,
-) -> CompileError {
-    if !driver.usage().contains(HookUsage::Generate) {
-        return error;
-    }
-
-    let reproduced: bool = builtin_reproduces_error(
-        builtin.clone().generate().map(|_result: CodeResult| ()),
-        &error,
-    );
-
-    if reproduced {
-        return error;
-    }
-
-    CompileError::from_message(&format!("generate hook: {error}"))
 }
 
 /// The resolved output mode; `None` (and `Options` defaults) fall back to
@@ -146,9 +83,7 @@ async fn parse_stage(
 
     let builtin: Parser = Parser::new(code.to_string(), options.clone());
 
-    driver.parse(ctx, code, &options, &builtin).await.map_err(
-        |error: CompileError| wrap_parse_error(driver, error, &builtin),
-    )
+    driver.parse(ctx, code, &options, &builtin).await
 }
 
 async fn rewrite_stages(
@@ -156,29 +91,25 @@ async fn rewrite_stages(
     ctx: &PluginContext<'_>,
     ast: Ast,
 ) -> Result<Ast, CompileError> {
-    driver.prepare(ctx, PrepareArgs { ast: &ast }).await.map_err(
-        |error: anyhow::Error| {
-            CompileError::from_message(&format!("prepare hook: {error:#}"))
-        },
-    )?;
+    driver
+        .prepare(ctx, PrepareArgs { ast: &ast })
+        .await
+        .map_err(|error: PluginError| error.into_compile_error())?;
 
     let transformed: Option<TransformOutput> = driver
         .transform(ctx, TransformArgs { ast: ast.clone() })
         .await
-        .map_err(|error: anyhow::Error| {
-            CompileError::from_message(&format!("transform hook: {error:#}"))
-        })?;
+        .map_err(|error: PluginError| error.into_compile_error())?;
 
     let ast: Ast = match transformed {
         | Some(output) => output.ast,
         | None => ast,
     };
 
-    driver.finalize(ctx, FinalizeArgs { ast: &ast }).await.map_err(
-        |error: anyhow::Error| {
-            CompileError::from_message(&format!("finalize hook: {error:#}"))
-        },
-    )?;
+    driver
+        .finalize(ctx, FinalizeArgs { ast: &ast })
+        .await
+        .map_err(|error: PluginError| error.into_compile_error())?;
 
     Ok(ast)
 }
@@ -197,9 +128,7 @@ async fn generate_stage(
     let builtin: Generator<'_> = Generator::new(ast, options.clone());
 
     let result: CodeResult =
-        driver.generate(ctx, ast, &options, &builtin).await.map_err(
-            |error: CompileError| wrap_generate_error(driver, error, &builtin),
-        )?;
+        driver.generate(ctx, ast, &options, &builtin).await?;
 
     Ok(apply_output_source_map_mode(
         result,
@@ -209,9 +138,10 @@ async fn generate_stage(
 
 /// Run `end` around a stage result.
 ///
-/// On success `error` is unset; on a stage failure it carries the first stage
-/// error and the ORIGINAL error wins, with an `end` failure appended (never
-/// swallowed). `end` itself runs on every path after the settle.
+/// On success `error` is unset; on a stage failure it carries the original
+/// stage error. A failing `end` replaces the returned error with its own; a
+/// succeeding `end` leaves the stage error untouched. `end` itself runs on
+/// every path after the settle.
 async fn finish<T>(
     driver: &PluginDriver,
     ctx: &PluginContext<'_>,
@@ -219,11 +149,10 @@ async fn finish<T>(
 ) -> Result<T, CompileError> {
     match result {
         | Ok(output) => {
-            driver.end(ctx, &EndArgs { error: None }).await.map_err(
-                |error: anyhow::Error| {
-                    CompileError::from_message(&format!("end hook: {error:#}"))
-                },
-            )?;
+            driver
+                .end(ctx, &EndArgs { error: None })
+                .await
+                .map_err(|error: PluginError| error.into_compile_error())?;
 
             Ok(output)
         },
@@ -231,15 +160,10 @@ async fn finish<T>(
             let mut args: EndArgs = EndArgs { error: Some(error) };
 
             match driver.end(ctx, &args).await {
-                | Ok(()) => Err(args.error.take().expect("end error present")),
-                | Err(end_error) => {
-                    let original: CompileError =
-                        args.error.take().expect("end error present");
-
-                    Err(CompileError::from_message(&format!(
-                        "{original} (end hook failed: {end_error:#})"
-                    )))
+                | Ok(()) => {
+                    Err(args.error.take().expect("stage error present"))
                 },
+                | Err(end_error) => Err(end_error.into_compile_error()),
             }
         },
     }
@@ -358,11 +282,9 @@ pub async fn run<S: Stage>(
     let args: OptionsArgs = OptionsArgs { options, plugins };
 
     let (args, settled): (OptionsArgs, Vec<SharedPluginable>) =
-        options_fixpoint(&common, &args).await.map_err(
-            |error: anyhow::Error| {
-                CompileError::from_message(&format!("options hook: {error:#}"))
-            },
-        )?;
+        options_fixpoint(&common, &args)
+            .await
+            .map_err(|error: PluginError| error.into_compile_error())?;
 
     // The driver is built from the SETTLED list: its usage aggregate covers
     // plugins injected during the `options` stage, and its settled names feed
@@ -385,9 +307,8 @@ pub async fn run<S: Stage>(
     let result: Result<S::Output, CompileError> = match driver
         .start(&ctx, &StartArgs { options: resolved.clone() })
         .await
-        .map_err(|error: anyhow::Error| {
-            CompileError::from_message(&format!("start hook: {error:#}"))
-        }) {
+        .map_err(|error: PluginError| error.into_compile_error())
+    {
         | Ok(()) => stage.run(&driver, &ctx, &resolved).await,
         | Err(error) => Err(error),
     };
@@ -396,24 +317,115 @@ pub async fn run<S: Stage>(
 }
 
 #[cfg(test)]
+#[allow(clippy::manual_async_fn)]
 mod tests {
+    use std::borrow::Cow;
+    use std::future::Future;
     use std::sync::Arc;
     use std::sync::Mutex;
 
+    use oxc::span::Span;
     use telarel_common::{
-        CompileError, CompileOptions, Language, ParseOptions, ResolvedOptions,
-        SourceType,
+        Ast, CompileError, CompileOptions, ErrorSource, Language, ParseOptions,
+        ResolvedOptions, RewriteOptions, SourceType,
     };
-    use telarel_plugin::{Plugin, SharedPluginable};
+    use telarel_plugin::{
+        EndArgs, HookUsage, NotifyReturn, ParseArgs, ParseReturn, Plugin,
+        PluginContext, PluginError, SharedPluginable, TransformArgs,
+        TransformReturn,
+    };
 
     use crate::common::test_util::{
         EndObserverPlugin, FailPlugin, FailStage, StartObserverPlugin,
+        parse_fixture,
     };
     use crate::functions::compile::compile;
     use crate::functions::parse::parse;
+    use crate::functions::rewrite::rewrite;
+
+    #[derive(Debug)]
+    struct SourceFailParsePlugin;
+
+    impl Plugin for SourceFailParsePlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "source-parse".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Parse
+        }
+
+        fn parse<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: ParseArgs<'a>,
+        ) -> impl Future<Output = ParseReturn> + Send + 'a {
+            async move {
+                Err(PluginError::new("boom").with_source_code(
+                    "input.ts",
+                    "const x = 1;",
+                    Span::new(6, 7),
+                ))
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct SourceFailEndPlugin;
+
+    impl Plugin for SourceFailEndPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "source-end".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::End
+        }
+
+        fn end<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a EndArgs,
+        ) -> impl Future<Output = NotifyReturn> + Send {
+            async move {
+                Err(PluginError::new("boom").with_source_code(
+                    "end.ts",
+                    "end();",
+                    Span::new(0, 3),
+                ))
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct SourceFailTransformPlugin;
+
+    impl Plugin for SourceFailTransformPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "source-transform".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Transform
+        }
+
+        fn transform<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: TransformArgs,
+        ) -> impl Future<Output = TransformReturn> + Send + 'a {
+            async move {
+                Err(PluginError::new("boom").with_source_code(
+                    "input.ts",
+                    "const x = 1;",
+                    Span::new(6, 7),
+                ))
+            }
+        }
+    }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_end_failure_is_appended_to_the_stage_error() {
+    async fn test_end_failure_replaces_the_stage_error() {
         let plugins: Vec<SharedPluginable> = vec![
             Plugin::new_shared(FailPlugin::new("fail-start", FailStage::Start)),
             Plugin::new_shared(FailPlugin::new("fail-end", FailStage::End)),
@@ -427,11 +439,12 @@ mod tests {
         .await
         .expect_err("the stage failure fails the invocation");
 
+        assert_eq!(error.message(), "fail-end");
+
         let rendered: String = error.to_string();
 
-        assert!(rendered.contains("start hook:"), "{rendered}");
-        assert!(rendered.contains(" (end hook failed: "), "{rendered}");
-        assert!(rendered.contains("`fail-end` end"), "{rendered}");
+        assert!(!rendered.contains("fail-start"), "{rendered}");
+        assert!(!rendered.contains("end hook failed"), "{rendered}");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -448,10 +461,7 @@ mod tests {
         .await
         .expect_err("an end failure fails the invocation");
 
-        let rendered: String = error.to_string();
-
-        assert!(rendered.starts_with("end hook: "), "{rendered}");
-        assert!(rendered.contains("`fail-end` end"), "{rendered}");
+        assert_eq!(error.message(), "fail-end");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -475,12 +485,86 @@ mod tests {
         .await
         .expect_err("options failure fails the invocation");
 
-        assert!(error.to_string().contains("options hook:"), "{error}");
+        assert_eq!(error.message(), "fail-options");
 
         assert!(
             ended.lock().unwrap().is_empty(),
             "end must not run when the options fixpoint fails"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_parse_error_preserves_source() {
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(SourceFailParsePlugin)];
+
+        let error: CompileError = parse(
+            String::from("const x = 1;"),
+            ParseOptions::default(),
+            plugins,
+        )
+        .await
+        .expect_err("the parse hook failure fails the invocation");
+
+        assert_eq!(error.message(), "boom");
+
+        let source: &ErrorSource =
+            error.source().expect("the source is preserved");
+
+        assert_eq!(source.file(), "input.ts");
+        assert_eq!(source.code(), "const x = 1;");
+        assert_eq!(source.span(), Span::new(6, 7));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_end_failure_source_replaces_the_stage_source() {
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(SourceFailParsePlugin),
+            Plugin::new_shared(SourceFailEndPlugin),
+        ];
+
+        let error: CompileError = parse(
+            String::from("const x = 1;"),
+            ParseOptions::default(),
+            plugins,
+        )
+        .await
+        .expect_err("both the stage and end hook fail");
+
+        assert_eq!(error.message(), "boom");
+
+        let rendered: String = error.to_string();
+
+        assert!(!rendered.contains("end hook failed"), "{rendered}");
+
+        let source: &ErrorSource =
+            error.source().expect("the end failure source is kept");
+
+        assert_eq!(source.file(), "end.ts");
+        assert_eq!(source.code(), "end();");
+        assert_eq!(source.span(), Span::new(0, 3));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_error_preserves_source() {
+        let ast: Ast = parse_fixture("const x = 1;").expect("fixture parses");
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(SourceFailTransformPlugin)];
+
+        let error: CompileError =
+            rewrite(ast, RewriteOptions::default(), plugins)
+                .await
+                .expect_err("the transform hook failure fails the invocation");
+
+        assert_eq!(error.message(), "boom");
+
+        let source: &ErrorSource =
+            error.source().expect("the source is preserved");
+
+        assert_eq!(source.file(), "input.ts");
+        assert_eq!(source.code(), "const x = 1;");
+        assert_eq!(source.span(), Span::new(6, 7));
     }
 
     #[tokio::test(flavor = "current_thread")]

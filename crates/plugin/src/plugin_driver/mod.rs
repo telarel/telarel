@@ -14,6 +14,7 @@ use crate::_types::hooks::prepare::PrepareArgs;
 use crate::_types::hooks::start::StartArgs;
 use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
 use crate::_types::order::{PluginHookMeta, PluginOrder};
+use crate::PluginError;
 use crate::plugin::pluginable::SharedPluginable;
 
 /// Order plugins by their per-hook meta: `[pre, normal, post]`, stable within a
@@ -165,7 +166,7 @@ impl PluginDriver {
         &self,
         ctx: &PluginContext<'_>,
         args: &StartArgs,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PluginError> {
         hooks::start::start(&self.start_plugins, ctx, args).await
     }
 
@@ -193,7 +194,7 @@ impl PluginDriver {
         &'a self,
         ctx: &'a PluginContext<'_>,
         args: PrepareArgs<'a>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PluginError> {
         hooks::prepare::prepare(&self.prepare_plugins, ctx, args).await
     }
 
@@ -203,7 +204,7 @@ impl PluginDriver {
         &self,
         ctx: &PluginContext<'_>,
         args: TransformArgs,
-    ) -> anyhow::Result<Option<TransformOutput>> {
+    ) -> Result<Option<TransformOutput>, PluginError> {
         hooks::transform::transform(&self.transform_plugins, ctx, args).await
     }
 
@@ -214,7 +215,7 @@ impl PluginDriver {
         &'a self,
         ctx: &'a PluginContext<'_>,
         args: FinalizeArgs<'a>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PluginError> {
         hooks::finalize::finalize(&self.finalize_plugins, ctx, args).await
     }
 
@@ -248,7 +249,7 @@ impl PluginDriver {
         &self,
         ctx: &PluginContext<'_>,
         args: &EndArgs,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PluginError> {
         hooks::end::end(&self.end_plugins, ctx, args).await
     }
 }
@@ -296,7 +297,7 @@ mod tests {
         PluginContext::new("/repo", make_module())
     }
 
-    fn parse_fixture(code: &str) -> anyhow::Result<Ast> {
+    fn parse_fixture(code: &str) -> Result<Ast, PluginError> {
         parse_ast(
             code.to_string(),
             ParseAstOptions {
@@ -307,7 +308,7 @@ mod tests {
                 input_map: None,
             },
         )
-        .map_err(anyhow::Error::from)
+        .map_err(|error: CompileError| PluginError::new(error.to_string()))
     }
 
     fn test_ast() -> Ast {
@@ -494,7 +495,34 @@ mod tests {
             _ctx: &'a PluginContext<'_>,
             _args: TransformArgs,
         ) -> impl Future<Output = TransformReturn> + Send + 'a {
-            async move { Err(anyhow::anyhow!("boom")) }
+            async move { Err(PluginError::new("boom")) }
+        }
+    }
+
+    #[derive(Debug)]
+    struct SourcedTransformPlugin;
+
+    impl Plugin for SourcedTransformPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "sourced-transform".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Transform
+        }
+
+        fn transform<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: TransformArgs,
+        ) -> impl Future<Output = TransformReturn> + Send + 'a {
+            async move {
+                Err(PluginError::new("boom").with_source_code(
+                    "index.ts",
+                    "const a = 1;",
+                    oxc::span::Span::new(6, 7),
+                ))
+            }
         }
     }
 
@@ -508,10 +536,10 @@ mod tests {
     }
 
     impl ObserverPlugin {
-        fn record_or_fail(&self) -> anyhow::Result<()> {
+        fn record_or_fail(&self) -> Result<(), PluginError> {
             self.log.lock().unwrap().push(self.name.to_string());
 
-            if self.fail { Err(anyhow::anyhow!("boom")) } else { Ok(()) }
+            if self.fail { Err(PluginError::new(self.name)) } else { Ok(()) }
         }
     }
 
@@ -669,7 +697,11 @@ mod tests {
             async move {
                 self.log.lock().unwrap().push(self.name.to_string());
 
-                if self.fail { Err(anyhow::anyhow!("boom")) } else { Ok(()) }
+                if self.fail {
+                    Err(PluginError::new(self.name))
+                } else {
+                    Ok(())
+                }
             }
         }
     }
@@ -698,7 +730,11 @@ mod tests {
             async move {
                 self.log.lock().unwrap().push(self.name.to_string());
 
-                if self.fail { Err(anyhow::anyhow!("boom")) } else { Ok(()) }
+                if self.fail {
+                    Err(PluginError::new(self.name))
+                } else {
+                    Ok(())
+                }
             }
         }
     }
@@ -817,8 +853,35 @@ mod tests {
 
                         Ok(Some(AstResult { ast }))
                     },
-                    | ParseOutcome::Fail => Err(anyhow::anyhow!("boom")),
+                    | ParseOutcome::Fail => Err(PluginError::new(self.name)),
                 }
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct SourcedParsePlugin;
+
+    impl Plugin for SourcedParsePlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "sourced-parse".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Parse
+        }
+
+        fn parse<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: ParseArgs<'a>,
+        ) -> impl Future<Output = crate::ParseReturn> + Send + 'a {
+            async move {
+                Err(PluginError::new("boom").with_source_code(
+                    "index.ts",
+                    "const a = 1;",
+                    oxc::span::Span::new(6, 7),
+                ))
             }
         }
     }
@@ -935,7 +998,7 @@ mod tests {
                 match self.outcome {
                     | GenerateOutcome::Defer => Ok(None),
                     | GenerateOutcome::Win(code) => Ok(Some(code_result(code))),
-                    | GenerateOutcome::Fail => Err(anyhow::anyhow!("boom")),
+                    | GenerateOutcome::Fail => Err(PluginError::new(self.name)),
                 }
             }
         }
@@ -1049,7 +1112,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_parse_error_aborts_and_names_plugin() {
+    async fn test_parse_error_aborts_and_propagates_plugin_error() {
         let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
@@ -1084,14 +1147,43 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(err.to_string().contains("`fail-parse` parse"), "{err}");
-
-        assert!(err.to_string().contains("boom"), "{err}");
+        assert_eq!(err.message(), "fail-parse");
 
         assert_eq!(
             *log.lock().unwrap(),
             vec![String::from("one"), String::from("fail-parse")]
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_parse_error_preserves_source() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(SourcedParsePlugin)];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let options: ParserOptions = parser_options("index.ts");
+
+        let builtin: Parser = Parser::new(
+            String::from("const a = 1;"),
+            parser_options("index.ts"),
+        );
+
+        let err: CompileError = driver
+            .parse(&ctx, "const a = 1;", &options, &builtin)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.message(), "boom");
+
+        let source: &telarel_common::ErrorSource =
+            err.source().expect("source must survive the boundary");
+
+        assert_eq!(source.file(), "index.ts");
+        assert_eq!(source.code(), "const a = 1;");
+        assert_eq!(source.span(), oxc::span::Span::new(6, 7));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1260,7 +1352,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_generate_error_aborts_and_names_plugin() {
+    async fn test_generate_error_aborts_and_propagates_plugin_error() {
         let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let ast: Ast = test_ast();
@@ -1290,9 +1382,7 @@ mod tests {
         let err: CompileError =
             driver.generate(&ctx, &ast, &options, &builtin).await.unwrap_err();
 
-        assert!(err.to_string().contains("`fail-generate` generate"), "{err}");
-
-        assert!(err.to_string().contains("boom"), "{err}");
+        assert_eq!(err.message(), "fail-generate");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1357,7 +1447,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_prepare_error_aborts_and_names_plugin() {
+    async fn test_prepare_error_aborts_and_propagates_plugin_error() {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
@@ -1387,13 +1477,10 @@ mod tests {
 
         let ast: Ast = test_ast();
 
-        let err: anyhow::Error =
+        let err: PluginError =
             driver.prepare(&ctx, PrepareArgs { ast: &ast }).await.unwrap_err();
 
-        assert!(
-            format!("{err:#}").contains("`fail-prepare` prepare"),
-            "{err:#}"
-        );
+        assert_eq!(err.message(), "fail-prepare");
 
         assert_eq!(
             *log.lock().unwrap(),
@@ -1460,7 +1547,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_finalize_error_names_plugin() {
+    async fn test_finalize_error_propagates_plugin_error() {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![
@@ -1484,15 +1571,12 @@ mod tests {
 
         let ast: Ast = test_ast();
 
-        let err: anyhow::Error = driver
+        let err: PluginError = driver
             .finalize(&ctx, FinalizeArgs { ast: &ast })
             .await
             .unwrap_err();
 
-        assert!(
-            format!("{err:#}").contains("`fail-finalize` finalize"),
-            "{err:#}"
-        );
+        assert_eq!(err.message(), "fail-finalize");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1548,7 +1632,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_transform_error_names_plugin() {
+    async fn test_transform_error_propagates_plugin_error() {
         let ctx: PluginContext<'_> = make_plugin_ctx();
 
         let ast: Ast = test_ast();
@@ -1560,13 +1644,34 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let err: anyhow::Error =
-            driver.transform(&ctx, args).await.unwrap_err();
+        let err: PluginError = driver.transform(&ctx, args).await.unwrap_err();
 
-        assert!(
-            format!("{err:#}").contains("`fail-transform` transform"),
-            "{err:#}"
-        );
+        assert_eq!(err.message(), "boom");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_error_preserves_source() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let ast: Ast = test_ast();
+
+        let args: TransformArgs = TransformArgs { ast: ast.clone() };
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(SourcedTransformPlugin)];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let err: PluginError = driver.transform(&ctx, args).await.unwrap_err();
+
+        assert_eq!(err.message(), "boom");
+
+        let source: &telarel_common::ErrorSource =
+            err.source().expect("source must survive the driver boundary");
+
+        assert_eq!(source.file(), "index.ts");
+        assert_eq!(source.code(), "const a = 1;");
+        assert_eq!(source.span(), oxc::span::Span::new(6, 7));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1849,10 +1954,10 @@ mod tests {
 
         let ctx: PluginContext<'_> = make_plugin_ctx();
 
-        let err: anyhow::Error =
+        let err: PluginError =
             driver.start(&ctx, &make_start_args()).await.unwrap_err();
 
-        assert!(format!("{err:#}").contains("`fail-start` start"), "{err:#}");
+        assert_eq!(err.message(), "fail-start");
 
         assert_eq!(*log.lock().unwrap(), vec![String::from("fail-start")]);
     }
@@ -1904,9 +2009,7 @@ mod tests {
             .end(
                 &ctx,
                 &crate::EndArgs {
-                    error: Some(telarel_common::CompileError::from_message(
-                        "boom",
-                    )),
+                    error: Some(telarel_common::CompileError::new("boom")),
                 },
             )
             .await
@@ -1944,10 +2047,10 @@ mod tests {
 
         let ctx: PluginContext<'_> = make_plugin_ctx();
 
-        let err: anyhow::Error =
+        let err: PluginError =
             driver.end(&ctx, &make_end_args()).await.unwrap_err();
 
-        assert!(format!("{err:#}").contains("`first` end"), "{err:#}");
+        assert_eq!(err.message(), "first");
 
         assert_eq!(
             *log.lock().unwrap(),
@@ -1980,10 +2083,10 @@ mod tests {
 
         let ctx: PluginContext<'_> = make_plugin_ctx();
 
-        let err: anyhow::Error =
+        let err: PluginError =
             driver.end(&ctx, &make_end_args()).await.unwrap_err();
 
-        assert!(format!("{err:#}").contains("`fail-end-1` end"), "{err:#}");
+        assert_eq!(err.message(), "fail-end-1");
 
         assert_eq!(
             *log.lock().unwrap(),

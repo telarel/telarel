@@ -1,8 +1,8 @@
-use anyhow::Context;
 use telarel_common::Ast;
 
 use crate::_types::context::PluginContext;
 use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
+use crate::PluginError;
 use crate::plugin::pluginable::SharedPluginable;
 
 /// Run the `transform` hook chain and return the last `Some` output, or
@@ -16,7 +16,7 @@ pub async fn transform(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,
     args: TransformArgs,
-) -> anyhow::Result<Option<TransformOutput>> {
+) -> Result<Option<TransformOutput>, PluginError> {
     let mut current: Ast = args.ast;
 
     let mut changed: bool = false;
@@ -24,8 +24,7 @@ pub async fn transform(
     for plugin in plugins {
         let next: Option<TransformOutput> = plugin
             .call_transform(ctx, TransformArgs { ast: current.clone() })
-            .await
-            .with_context(|| format!("`{}` transform", plugin.call_name()))?;
+            .await?;
 
         if let Some(output) = next {
             current = output.ast;

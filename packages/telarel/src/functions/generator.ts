@@ -2,6 +2,7 @@ import type { Ast, CodeResult } from "#/@types/ast";
 import type { GeneratorOptions } from "#/@types/generator";
 
 import { builtinGenerate } from "#/binding";
+import { CompileError } from "#/errors/compile";
 
 /**
  * Creates a builtin generator over a fixed AST and options.
@@ -19,12 +20,17 @@ const createGenerator = (
 } => {
     return {
         generate: async (): Promise<CodeResult> => {
-            const result: Awaited<ReturnType<typeof builtinGenerate>> =
-                await builtinGenerate(ast, {
+            let result: Awaited<ReturnType<typeof builtinGenerate>>;
+
+            try {
+                result = await builtinGenerate(ast, {
                     cwd: options.cwd,
                     file: options.file,
                     sourceMap: options.sourceMap,
                 });
+            } catch (error: unknown) {
+                throw CompileError.from(error);
+            }
 
             return { code: result.code, map: result.map ?? null };
         },

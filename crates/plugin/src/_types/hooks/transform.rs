@@ -1,5 +1,7 @@
 use telarel_common::Ast;
 
+use crate::PluginError;
+
 /// Arguments for the `transform` hook.
 ///
 /// The AST is an owned cheap handle. A plugin that changes the tree mutates it
@@ -22,7 +24,7 @@ pub struct TransformOutput {
 }
 
 /// The `transform` hook return: a replacement owned AST, `None`, or an error.
-pub type TransformReturn = anyhow::Result<Option<TransformOutput>>;
+pub type TransformReturn = Result<Option<TransformOutput>, PluginError>;
 
 #[cfg(test)]
 mod tests {

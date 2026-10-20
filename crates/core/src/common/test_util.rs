@@ -13,18 +13,18 @@ use oxc_sourcemap::SourceMapBuilder;
 use tempfile::TempDir;
 
 use telarel_common::{
-    Ast, AstResult, CodeResult, InputSourceMap, InputSourceMapMode,
-    OutputSourceMap, OutputSourceMapMode, ParseAstOptions, ResolvedOptions,
-    SourceMap, SourceMapOptions, parse_ast,
+    Ast, AstResult, CodeResult, CompileError, InputSourceMap,
+    InputSourceMapMode, OutputSourceMap, OutputSourceMapMode, ParseAstOptions,
+    ResolvedOptions, SourceMap, SourceMapOptions, parse_ast,
 };
 use telarel_plugin::{
     CommonPluginContext, EndArgs, FinalizeArgs, GenerateArgs, GenerateReturn,
     HookUsage, NotifyReturn, OptionsArgs, OptionsReturn, ParseArgs,
-    ParseReturn, Plugin, PluginContext, PrepareArgs, StartArgs, TransformArgs,
-    TransformOutput, TransformReturn,
+    ParseReturn, Plugin, PluginContext, PluginError, PrepareArgs, StartArgs,
+    TransformArgs, TransformOutput, TransformReturn,
 };
 
-pub fn parse_fixture(code: &str) -> anyhow::Result<Ast> {
+pub fn parse_fixture(code: &str) -> Result<Ast, CompileError> {
     parse_ast(
         code.to_string(),
         ParseAstOptions {
@@ -35,7 +35,6 @@ pub fn parse_fixture(code: &str) -> anyhow::Result<Ast> {
             input_map: None,
         },
     )
-    .map_err(anyhow::Error::from)
 }
 
 pub fn parse_with_map(
@@ -384,7 +383,7 @@ impl Plugin for FailPlugin {
     ) -> impl Future<Output = OptionsReturn> + Send {
         async move {
             if self.stage == FailStage::Options {
-                Err(anyhow::anyhow!("boom"))
+                Err(PluginError::new(self.name))
             } else {
                 Ok(None)
             }
@@ -398,7 +397,7 @@ impl Plugin for FailPlugin {
     ) -> impl Future<Output = NotifyReturn> + Send {
         async move {
             if self.stage == FailStage::Start {
-                Err(anyhow::anyhow!("boom"))
+                Err(PluginError::new(self.name))
             } else {
                 Ok(())
             }
@@ -412,7 +411,7 @@ impl Plugin for FailPlugin {
     ) -> impl Future<Output = NotifyReturn> + Send + 'a {
         async move {
             if self.stage == FailStage::Prepare {
-                Err(anyhow::anyhow!("boom"))
+                Err(PluginError::new(self.name))
             } else {
                 Ok(())
             }
@@ -426,7 +425,7 @@ impl Plugin for FailPlugin {
     ) -> impl Future<Output = TransformReturn> + Send + 'a {
         async move {
             if self.stage == FailStage::Transform {
-                Err(anyhow::anyhow!("boom"))
+                Err(PluginError::new(self.name))
             } else {
                 Ok(None)
             }
@@ -440,7 +439,7 @@ impl Plugin for FailPlugin {
     ) -> impl Future<Output = NotifyReturn> + Send + 'a {
         async move {
             if self.stage == FailStage::Finalize {
-                Err(anyhow::anyhow!("boom"))
+                Err(PluginError::new(self.name))
             } else {
                 Ok(())
             }
@@ -454,7 +453,7 @@ impl Plugin for FailPlugin {
     ) -> impl Future<Output = NotifyReturn> + Send {
         async move {
             if self.stage == FailStage::End {
-                Err(anyhow::anyhow!("boom"))
+                Err(PluginError::new(self.name))
             } else {
                 Ok(())
             }
@@ -506,11 +505,15 @@ impl Plugin for ParseOutcomePlugin {
             match self.outcome {
                 | ParseOutcome::Defer => Ok(None),
                 | ParseOutcome::Win(code) => {
-                    let ast: Ast = parse_fixture(code)?;
+                    let ast: Ast = parse_fixture(code).map_err(
+                        |error: CompileError| {
+                            PluginError::new(error.to_string())
+                        },
+                    )?;
 
                     Ok(Some(AstResult { ast }))
                 },
-                | ParseOutcome::Fail => Err(anyhow::anyhow!("boom")),
+                | ParseOutcome::Fail => Err(PluginError::new("boom")),
             }
         }
     }
@@ -562,7 +565,7 @@ impl Plugin for GenerateOutcomePlugin {
                 | GenerateOutcome::Win(code) => {
                     Ok(Some(CodeResult { code: code.to_string(), map: None }))
                 },
-                | GenerateOutcome::Fail => Err(anyhow::anyhow!("boom")),
+                | GenerateOutcome::Fail => Err(PluginError::new("boom")),
             }
         }
     }
@@ -588,7 +591,10 @@ impl Plugin for ReplaceAstPlugin {
         _args: TransformArgs,
     ) -> impl Future<Output = TransformReturn> + Send + 'a {
         async move {
-            let ast: Ast = parse_fixture(self.code)?;
+            let ast: Ast =
+                parse_fixture(self.code).map_err(|error: CompileError| {
+                    PluginError::new(error.to_string())
+                })?;
 
             Ok(Some(TransformOutput { ast }))
         }

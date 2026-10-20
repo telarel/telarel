@@ -92,7 +92,7 @@ fn external_map_path(
 fn read_map_file(path: &Path) -> Result<SourceMap, CompileError> {
     let json: String =
         std::fs::read_to_string(path).map_err(|error: std::io::Error| {
-            CompileError::from_message(&format!(
+            CompileError::new(format!(
                 "cannot read source map `{}`: {error}",
                 path.display(),
             ))
@@ -109,7 +109,7 @@ fn parse_map_json(
     let map: oxc_sourcemap::SourceMap<'_> =
         oxc_sourcemap::SourceMap::from_json_string(json).map_err(
             |error: oxc_sourcemap::Error| {
-                CompileError::from_message(&format!(
+                CompileError::new(format!(
                     "invalid source map `{source}`: {error}",
                 ))
             },

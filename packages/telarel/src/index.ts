@@ -41,9 +41,18 @@ export type {
     OutputSourceMapOptions,
     SourceMapOptions,
 } from "#/@types/source-map";
+export type {
+    CompileErrorOptions,
+    CompleteCompileErrorOptions,
+} from "#/errors/compile";
+export type { PluginErrorOptions } from "#/errors/plugin";
+export type { Span } from "#/errors/source/span";
 export type { Generator } from "#/functions/generator";
 export type { Parser } from "#/functions/parser";
 
+export { CompileError } from "#/errors/compile";
+export { PluginError } from "#/errors/plugin";
+export { ErrorSource } from "#/errors/source";
 export { compileFromAst } from "#/functions/compile-from-ast";
 export { compile } from "#/functions/compile";
 export { generate } from "#/functions/generate";

@@ -209,7 +209,7 @@ describe("generate", (): void => {
         expect(result.map).toBeNull();
     });
 
-    it("wraps a generate hook error with the stage prefix", async (): Promise<void> => {
+    it("surfaces a generate hook error unchanged", async (): Promise<void> => {
         await expect(
             generate((await parsed()).ast, {
                 file: "index.ts",
@@ -222,7 +222,7 @@ describe("generate", (): void => {
                     },
                 ],
             }),
-        ).rejects.toThrow("generate hook: `boom-generate` generate");
+        ).rejects.toThrow("generate-kaboom");
     });
 
     it("rejects a malformed output mode", async (): Promise<void> => {

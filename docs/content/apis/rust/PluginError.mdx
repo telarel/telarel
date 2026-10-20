@@ -1,0 +1,91 @@
+---
+title: PluginError
+description: The error returned by fallible plugin hooks.
+---
+
+Every fallible plugin hook returns `Result<_, PluginError>`. The error has the same message and optional source as [CompileError](/apis/rust/CompileError), and converts into one at the hook boundary.
+
+```rust
+pub struct PluginError { /* private fields */ }
+```
+
+## Constructors
+
+```rust
+impl PluginError {
+    pub fn new(
+        message: impl Into<String>,
+    ) -> Self;
+
+    pub fn with_source(
+        self,
+        source: ErrorSource,
+    ) -> Self;
+
+    pub fn with_source_code(
+        self,
+        file: impl Into<Arc<str>>,
+        code: impl Into<Arc<str>>,
+        span: Span,
+    ) -> Self;
+
+    pub fn with_source_ast(
+        self,
+        file: impl Into<Arc<str>>,
+        ast: &Ast,
+        span: Span,
+    ) -> Self;
+}
+```
+
+| Method             | Description                                                        |
+| ------------------ | ------------------------------------------------------------------ |
+| `new`              | Creates a source-less error from a message.                        |
+| `with_source`      | Attaches an [ErrorSource](/apis/rust/ErrorSource).                 |
+| `with_source_code` | Attaches a source from a file name, its code, and a span.          |
+| `with_source_ast`  | Attaches a source that shares the AST's code and a span within it. |
+
+Attaching a source replaces any source already present.
+
+## Accessors
+
+```rust
+impl PluginError {
+    pub fn message(&self) -> &str;
+    pub fn source(&self) -> Option<&ErrorSource>;
+}
+```
+
+| Method    | Description                                  |
+| --------- | -------------------------------------------- |
+| `message` | The message without the rendered code frame. |
+| `source`  | The attached source location, if any.        |
+
+## Conversion
+
+```rust
+impl PluginError {
+    pub fn into_compile_error(self) -> CompileError;
+}
+```
+
+`into_compile_error` moves the message and source into a `CompileError`. Use it when a plugin error crosses into a pipeline or API that returns `CompileError`.
+
+When a hook fails, the error reaches the entry point as a `CompileError` with its message and attached source unchanged.
+
+`PluginError` renders with the same `Display` and `Debug` behavior as `CompileError`.
+
+## Example
+
+```rust
+use telarel::span::Span;
+use telarel::{CompileError, ErrorSource, PluginError};
+
+let error: PluginError = PluginError::new("unexpected node")
+    .with_source_code("src/app.ts", "const a = 1;", Span::new(6, 7));
+
+let compile_error: CompileError = error.into_compile_error();
+
+assert_eq!(compile_error.message(), "unexpected node");
+assert_eq!(compile_error.source().map(ErrorSource::file), Some("src/app.ts"));
+```

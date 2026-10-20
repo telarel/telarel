@@ -3,6 +3,9 @@ use std::sync::Arc;
 use napi::bindgen_prelude::{ToNapiValue, TypeName};
 use napi::{Env, Error, Result, Status, Task};
 
+use crate::errors::compile::{
+    CompileErrorPayload, decode_compile_error, reject_compile_error,
+};
 use crate::plugin::hooks::RefList;
 
 /// The worker closure a [`FunctionTask`] runs.
@@ -55,6 +58,20 @@ where
         output: Self::Output,
     ) -> Result<Self::JsValue> {
         Ok(output)
+    }
+
+    fn reject(
+        &mut self,
+        env: Env,
+        error: Error,
+    ) -> Result<Self::JsValue> {
+        let Some(payload): Option<CompileErrorPayload> =
+            decode_compile_error(&error.reason)
+        else {
+            return Err(error);
+        };
+
+        Err(reject_compile_error(&env, payload)?)
     }
 
     fn finally(

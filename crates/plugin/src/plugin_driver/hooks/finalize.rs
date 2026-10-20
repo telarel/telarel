@@ -1,7 +1,6 @@
-use anyhow::Context;
-
 use crate::_types::context::PluginContext;
 use crate::_types::hooks::finalize::FinalizeArgs;
+use crate::PluginError;
 use crate::plugin::pluginable::SharedPluginable;
 
 /// Run the `finalize` hook on every plugin in meta-ranked order as a
@@ -11,12 +10,9 @@ pub async fn finalize(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,
     args: FinalizeArgs<'_>,
-) -> anyhow::Result<()> {
+) -> Result<(), PluginError> {
     for plugin in plugins {
-        plugin
-            .call_finalize(ctx, FinalizeArgs { ast: args.ast })
-            .await
-            .with_context(|| format!("`{}` finalize", plugin.call_name()))?;
+        plugin.call_finalize(ctx, FinalizeArgs { ast: args.ast }).await?;
     }
 
     Ok(())

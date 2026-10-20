@@ -173,9 +173,9 @@ mod tests {
     use oxc::ast::builder::AstBuilder;
     use oxc::span::SPAN;
     use telarel_common::{
-        Ast, AstResult, CodeResult, HookUsage, Language, ParseAstOptions,
-        ParserOptions, ResolvableOptions, SourceMapOptions, SourceType,
-        parse_ast,
+        Ast, AstResult, CodeResult, CompileError, HookUsage, Language,
+        ParseAstOptions, ParserOptions, ResolvableOptions, SourceMapOptions,
+        SourceType, parse_ast,
     };
 
     use crate::_types::context::{
@@ -183,6 +183,7 @@ mod tests {
     };
     use crate::_types::hooks::start::StartArgs;
     use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
+    use crate::PluginError;
     use crate::plugin::pluginable::SharedPluginable;
 
     use super::*;
@@ -402,7 +403,10 @@ mod tests {
                         source_type: None,
                         input_map: None,
                     },
-                )?;
+                )
+                .map_err(|error: CompileError| {
+                    PluginError::new(error.to_string())
+                })?;
 
                 Ok(Some(TransformOutput { ast }))
             }
@@ -426,7 +430,7 @@ mod tests {
             _ctx: &'a CommonPluginContext,
             _args: &'a OptionsArgs,
         ) -> impl Future<Output = OptionsReturn> + Send {
-            async { Err(anyhow::anyhow!("boom")) }
+            async { Err(PluginError::new("boom")) }
         }
     }
 
@@ -619,10 +623,10 @@ mod tests {
 
         let shared: SharedPluginable = Plugin::new_shared(FailingOptionsPlugin);
 
-        let err: anyhow::Error =
+        let err: PluginError =
             shared.call_options(&common, &args).await.unwrap_err();
 
-        assert!(format!("{err:#}").contains("boom"), "{err:#}");
+        assert!(err.message().contains("boom"), "{err}");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -778,9 +782,7 @@ mod tests {
             .call_end(
                 &ctx,
                 &EndArgs {
-                    error: Some(telarel_common::CompileError::from_message(
-                        "boom",
-                    )),
+                    error: Some(telarel_common::CompileError::new("boom")),
                 },
             )
             .await

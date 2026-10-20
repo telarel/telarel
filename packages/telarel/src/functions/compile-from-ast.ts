@@ -6,6 +6,7 @@ import type { RawPlugin } from "#/bridges/plugin";
 
 import { compileFromAst as bindingCompileFromAst } from "#/binding";
 import { toRawPlugins } from "#/bridges/plugin";
+import { CompileError } from "#/errors/compile";
 import { normalizeAstInput } from "#/functions/ast-input";
 
 /**
@@ -49,8 +50,10 @@ async function compileFromAst(
         plugins: options?.plugins ?? [],
     });
 
-    const result: Awaited<ReturnType<typeof bindingCompileFromAst>> =
-        await bindingCompileFromAst(ast, {
+    let result: Awaited<ReturnType<typeof bindingCompileFromAst>>;
+
+    try {
+        result = await bindingCompileFromAst(ast, {
             cwd: options?.cwd,
             file: options?.file,
             language: options?.language,
@@ -58,6 +61,9 @@ async function compileFromAst(
             sourceMap: options?.sourceMap,
             plugins,
         });
+    } catch (error: unknown) {
+        throw CompileError.from(error);
+    }
 
     return { code: result.code, map: result.map ?? null };
 }

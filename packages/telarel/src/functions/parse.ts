@@ -6,6 +6,7 @@ import type { RawPlugin } from "#/bridges/plugin";
 
 import { parse as bindingParse } from "#/binding";
 import { toRawPlugins } from "#/bridges/plugin";
+import { CompileError } from "#/errors/compile";
 
 /**
  * Parses a source text with plugins, in memory.
@@ -20,23 +21,27 @@ const parse = async (
         plugins: options?.plugins ?? [],
     });
 
-    const result: Awaited<ReturnType<typeof bindingParse>> = await bindingParse(
-        code,
-        {
-            cwd: options?.cwd,
-            file: options?.file,
-            language: options?.language,
-            sourceType: options?.sourceType,
-            sourceMap: options?.sourceMap,
-            plugins,
-        },
-    );
+    let ast: Ast;
 
-    const ast: Ast = {
-        program: result.ast.program as Program,
-        code: result.ast.code,
-        map: result.ast.map,
-    };
+    try {
+        const result: Awaited<ReturnType<typeof bindingParse>> =
+            await bindingParse(code, {
+                cwd: options?.cwd,
+                file: options?.file,
+                language: options?.language,
+                sourceType: options?.sourceType,
+                sourceMap: options?.sourceMap,
+                plugins,
+            });
+
+        ast = {
+            program: result.ast.program as Program,
+            code: result.ast.code,
+            map: result.ast.map,
+        };
+    } catch (error: unknown) {
+        throw CompileError.from(error);
+    }
 
     return { ast };
 };

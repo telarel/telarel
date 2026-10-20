@@ -1790,7 +1790,6 @@ dependencies = [
 name = "telarel_core"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "oxc",
  "oxc_sourcemap",
  "telarel_common",
@@ -1820,7 +1819,6 @@ dependencies = [
 name = "telarel_plugin"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "oxc",
  "oxc_sourcemap",
  "telarel_common",
@@ -1831,7 +1829,6 @@ dependencies = [
 name = "telarel_plugin_transform"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "oxc",
  "oxc_compat",
  "oxc_transformer_plugins",

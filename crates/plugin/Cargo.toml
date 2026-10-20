@@ -21,7 +21,6 @@ include = ["src/**", "Cargo.toml", "README.md"]
 telarel_common = { workspace = true }
 
 # Crates
-anyhow = { workspace = true }
 oxc = { workspace = true }
 oxc_sourcemap = { workspace = true }
 

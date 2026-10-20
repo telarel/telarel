@@ -17,8 +17,8 @@ use telarel_plugin::__internal::HookFuture;
 use telarel_plugin::{
     CommonPluginContext, EndArgs, FinalizeArgs, GenerateArgs, GenerateReturn,
     NotifyReturn, OptionsArgs, ParseArgs, ParseReturn, PluginContext,
-    PluginHookMeta, Pluginable, PrepareArgs, StartArgs, TransformArgs,
-    TransformOutput, TransformReturn,
+    PluginError, PluginHookMeta, Pluginable, PrepareArgs, StartArgs,
+    TransformArgs, TransformOutput, TransformReturn,
 };
 
 use crate::_types::ast::JsAst;
@@ -32,6 +32,7 @@ use crate::ast::{
     ast_from_json, ast_from_program, ast_to_estree_json,
     js_source_map_to_owned, source_type_for_options,
 };
+use crate::errors::plugin::decode_plugin_error;
 use crate::plugin::build::NAME_REQUIRED;
 use crate::plugin::build::to_plugins;
 use crate::plugin::hooks::{
@@ -140,9 +141,21 @@ impl JsPlugin {
     }
 }
 
-/// Convert a napi error raised by a hook call into an anyhow error.
-fn hook_error(error: napi::Error) -> anyhow::Error {
-    anyhow::Error::from(error)
+/// Convert a napi error raised by a hook call into a plugin error.
+///
+/// A JS `PluginError` travels as a private envelope in the message; ordinary
+/// throwables keep their existing `napi::Error` rendering.
+fn hook_error(error: napi::Error) -> PluginError {
+    match decode_plugin_error(&error.reason) {
+        | Some(decoded) => decoded,
+        | None => PluginError::new(error.to_string()),
+    }
+}
+
+/// Convert a read-back failure into a plugin error without an `anyhow`
+/// conversion impl in the plugin crate.
+fn anyhow_to_plugin_error(error: anyhow::Error) -> PluginError {
+    PluginError::new(format!("{error:#}"))
 }
 
 /// Unmarshal an `options` hook return into the pipeline bag ON the JS thread,
@@ -154,7 +167,7 @@ fn unmarshal_options(
     output: Option<JsOptionsOutput>,
     env: &Env,
     refs: &Arc<RefList>,
-) -> anyhow::Result<Option<OptionsArgs>> {
+) -> std::result::Result<Option<OptionsArgs>, PluginError> {
     let Some(output) = output else {
         return Ok(None);
     };
@@ -230,7 +243,7 @@ fn await_options_promise(
     value: Unknown,
     env: Env,
     refs: Arc<RefList>,
-    sender: Sender<anyhow::Result<Option<OptionsArgs>>>,
+    sender: Sender<std::result::Result<Option<OptionsArgs>, PluginError>>,
 ) -> napi::Result<()> {
     use napi::bindgen_prelude::{CallbackContext, JsValue, PromiseRaw};
 
@@ -251,9 +264,9 @@ fn await_options_promise(
     let is_promise: bool = value.is_promise().unwrap_or(false);
 
     if !is_promise {
-        let _ = sender.send(Err(anyhow::anyhow!(
+        let _ = sender.send(Err(PluginError::new(
             "`options` hook must return a Promise (an async function), \
-             got a non-promise value"
+             got a non-promise value",
         )));
 
         return Ok(());
@@ -267,16 +280,17 @@ fn await_options_promise(
     let reject_sender = sender.clone();
 
     let resolve = move |ctx: CallbackContext<Option<JsOptionsOutput>>| {
-        let outcome = unmarshal_options(ctx.value, &ctx.env, &refs);
+        let outcome: std::result::Result<Option<OptionsArgs>, PluginError> =
+            unmarshal_options(ctx.value, &ctx.env, &refs);
 
-        let _ = resolve_sender
-            .send(outcome.map_err(|error| anyhow::anyhow!("{error:#}")));
+        let _ = resolve_sender.send(outcome);
 
         Ok(())
     };
 
     let reject = move |ctx: CallbackContext<Unknown>| {
-        let error: napi::Error = ctx.value.into();
+        let error: napi::Error =
+            napi::Error::from_unknown_without_coercion(ctx.value);
 
         let _ = reject_sender.send(Err(hook_error(error)));
 
@@ -301,10 +315,10 @@ async fn call_options_tsfn(
     tsfn: &OptionsTsfn,
     call: OptionsCall,
     refs: &Arc<RefList>,
-) -> anyhow::Result<Option<OptionsArgs>> {
+) -> std::result::Result<Option<OptionsArgs>, PluginError> {
     // The options outcome channel: multi-producer (the resolve and reject
     // callbacks each hold a sender), single-consumer (the worker).
-    type OptionsOutcome = anyhow::Result<Option<OptionsArgs>>;
+    type OptionsOutcome = std::result::Result<Option<OptionsArgs>, PluginError>;
 
     let (sender, receiver): (Sender<OptionsOutcome>, _) =
         std::sync::mpsc::channel();
@@ -332,8 +346,8 @@ async fn call_options_tsfn(
     );
 
     if status == napi::Status::Closing {
-        return Err(anyhow::anyhow!(
-            "options hook: threadsafe function closed"
+        return Err(PluginError::new(
+            "options hook: threadsafe function closed",
         ));
     }
 
@@ -341,8 +355,9 @@ async fn call_options_tsfn(
     // blocking receive on the worker thread is safe (the SINGLE-task
     // worker's runtime is parked inside `block_on`, and the JS thread is
     // free to drive the promise to resolution).
-    std::sync::mpsc::Receiver::recv(&receiver)
-        .map_err(|_| anyhow::anyhow!("options hook: callback channel closed"))?
+    std::sync::mpsc::Receiver::recv(&receiver).map_err(|_| {
+        PluginError::new("options hook: callback channel closed")
+    })?
 }
 
 impl Pluginable for JsPlugin {
@@ -507,12 +522,16 @@ impl Pluginable for JsPlugin {
             let JsAst { program, code, map } = replaced.ast;
 
             let input_map: Option<SourceMap> = match map {
-                | Some(map) => Some(js_source_map_to_owned(&map)?),
+                | Some(map) => Some(
+                    js_source_map_to_owned(&map)
+                        .map_err(anyhow_to_plugin_error)?,
+                ),
                 | None => None,
             };
 
             let ast: Ast =
-                ast_from_program(&program, code, input_map, source_type)?;
+                ast_from_program(&program, code, input_map, source_type)
+                    .map_err(anyhow_to_plugin_error)?;
 
             Ok(Some(AstResult { ast }))
         })
@@ -626,7 +645,8 @@ impl Pluginable for JsPlugin {
                 args.ast.source().clone(),
                 args.ast.map().cloned(),
                 source_type,
-            )?;
+            )
+            .map_err(anyhow_to_plugin_error)?;
 
             // The rebuilt program's comments are empty: reattach the original
             // set so codegen still emits them.
@@ -710,7 +730,8 @@ impl Pluginable for JsPlugin {
                 source_type: SharedStr::new(source_type_label(Some(
                     ctx.module.source_type,
                 ))),
-                ast: JsAst::from_ast(args.ast)?,
+                ast: JsAst::from_ast(args.ast)
+                    .map_err(anyhow_to_plugin_error)?,
                 options: JsGeneratorHookOptions::from(args.options),
             };
 
@@ -729,7 +750,10 @@ impl Pluginable for JsPlugin {
             };
 
             let map: Option<SourceMap> = match replaced.map {
-                | Some(map) => Some(js_source_map_to_owned(&map)?),
+                | Some(map) => Some(
+                    js_source_map_to_owned(&map)
+                        .map_err(anyhow_to_plugin_error)?,
+                ),
                 | None => None,
             };
 
@@ -818,6 +842,28 @@ mod tests {
     }
 
     #[test]
+    fn test_hook_error_decodes_a_plugin_envelope() {
+        let reason: String =
+            String::from("__TELAREL_PLUGIN_ERROR__:{\"message\":\"boom\"}");
+
+        let error: PluginError =
+            hook_error(napi::Error::new(napi::Status::GenericFailure, reason));
+
+        assert_eq!(error.message(), "boom");
+        assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn test_hook_error_keeps_ordinary_napi_rendering() {
+        let error: PluginError = hook_error(napi::Error::new(
+            napi::Status::GenericFailure,
+            "kaboom",
+        ));
+
+        assert_eq!(error.message(), "GenericFailure, kaboom");
+    }
+
+    #[test]
     fn test_unmarshal_options_null_is_none() {
         let env: Env = env();
         let refs: Arc<RefList> = Arc::new(RefList::new());
@@ -893,7 +939,7 @@ mod tests {
 
         bag.source_map = Some(serde_json::json!({ "output": "sideways" }));
 
-        let error: anyhow::Error = unmarshal_options(Some(bag), &env, &refs)
+        let error: PluginError = unmarshal_options(Some(bag), &env, &refs)
             .expect_err("an invalid sourceMap is the hook error");
 
         assert!(
@@ -996,7 +1042,7 @@ mod tests {
             &refs,
         );
 
-        let error: anyhow::Error =
+        let error: PluginError =
             outcome.expect_err("an invalid language is the hook error");
 
         assert!(error.to_string().contains("invalid language"), "{error}");
@@ -1013,7 +1059,7 @@ mod tests {
             &refs,
         );
 
-        let error: anyhow::Error =
+        let error: PluginError =
             outcome.expect_err("an invalid source type is the hook error");
 
         assert!(error.to_string().contains("invalid source type"), "{error}");

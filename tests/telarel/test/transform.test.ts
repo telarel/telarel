@@ -298,7 +298,6 @@ describe("transform", (): void => {
 
         await expect(promise).rejects.toThrow(/define/);
         await expect(promise).rejects.toThrow("1bad");
-        await expect(promise).rejects.toThrow("builtin:transform");
     });
 
     it("folds a scalar define value into the output", async (): Promise<void> => {

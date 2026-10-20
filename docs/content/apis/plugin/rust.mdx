@@ -23,7 +23,7 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
 }
 ```
 
-- `name` returns the plugin name, shown in diagnostics.
+- `name` returns the plugin name.
 - `register_hook_usage` declares which hooks the plugin implements. The partitioned stages — `parse`, `prepare`, `transform`, `finalize`, and `generate` — are only called when declared. `options`, `start`, and `end` run on every settled plugin regardless of usage.
 - `new_shared` wraps a sized plugin into a `SharedPluginable`, which is `Arc<dyn Pluginable>`. `Pluginable` is the object-safe mirror of the trait and is implemented for every `Plugin`.
 
@@ -75,17 +75,21 @@ Each hook returns an `impl Future`, so its body can be written as an `async` blo
 
 ### Returns
 
-Every fallible hook returns `anyhow::Result`. `NotifyReturn` is `Result<()>`; the stages that hand back a value return `Option` inside the result, where `None` means "no change".
+Every fallible hook returns `Result<_, PluginError>`. `NotifyReturn` is `Result<(), PluginError>`; the stages that hand back a value return `Option` inside the result, where `None` means "no change".
 
-| Type              | Definition                                |
-| ----------------- | ----------------------------------------- |
-| `OptionsReturn`   | `anyhow::Result<Option<OptionsArgs>>`     |
-| `NotifyReturn`    | `anyhow::Result<()>`                      |
-| `ParseReturn`     | `anyhow::Result<Option<AstResult>>`       |
-| `TransformReturn` | `anyhow::Result<Option<TransformOutput>>` |
-| `GenerateReturn`  | `anyhow::Result<Option<CodeResult>>`      |
+| Type              | Definition                                     |
+| ----------------- | ---------------------------------------------- |
+| `OptionsReturn`   | `Result<Option<OptionsArgs>, PluginError>`     |
+| `NotifyReturn`    | `Result<(), PluginError>`                      |
+| `ParseReturn`     | `Result<Option<AstResult>, PluginError>`       |
+| `TransformReturn` | `Result<Option<TransformOutput>, PluginError>` |
+| `GenerateReturn`  | `Result<Option<CodeResult>, PluginError>`      |
 
 Returning `Some` from `options` replaces the whole options bag; fields the returned `OptionsArgs` omits are dropped and fall back to their defaults.
+
+### Errors
+
+A hook reports failure with [PluginError](/apis/rust/PluginError). The error reaches the entry point as a [CompileError](/apis/rust/CompileError) with its message and attached source unchanged.
 
 ## Ordering
 

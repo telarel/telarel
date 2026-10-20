@@ -5,6 +5,8 @@ use std::future::Future;
 
 use tokio::runtime::Runtime;
 
+use crate::errors::compile::encode_compile_error;
+
 // Reused, thread-local current-thread Tokio runtime.
 //
 // NAPI async tasks (`Task::compute`) run on libuv worker threads, one task
@@ -51,9 +53,12 @@ where
     })
 }
 
-/// Convert a compile error into a generic napi error.
+/// Convert a compile error into a napi error carrying the structured payload.
 pub fn error_to_napi(error: telarel_common::CompileError) -> napi::Error {
-    napi::Error::new(napi::Status::GenericFailure, error.to_string())
+    let reason: String = encode_compile_error(&error)
+        .unwrap_or_else(|| error.message().to_owned());
+
+    napi::Error::new(napi::Status::GenericFailure, reason)
 }
 
 /// Convert an arbitrary error, such as a fallible Ast read-back, into a napi

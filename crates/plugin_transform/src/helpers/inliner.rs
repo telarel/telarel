@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use anyhow::anyhow;
 use oxc::allocator::Allocator;
 use oxc::allocator::Vec as ArenaVec;
 use oxc::ast::ast::ExportNamedDeclaration;
@@ -16,6 +15,7 @@ use oxc::semantic::SemanticBuilder;
 use oxc::span::SourceType;
 use oxc::str::Str;
 use oxc::syntax::symbol::SymbolId;
+use telarel_plugin::PluginError;
 
 use crate::helpers::rewriter::Rewriter;
 use crate::helpers::sources::HelperSource;
@@ -63,13 +63,13 @@ fn default_export_local_name(body: &[Statement<'_>]) -> Option<String> {
 /// a vendoring error and fails loudly.
 fn validate_default_export_statement(
     export: &ExportNamedDeclaration<'_>
-) -> anyhow::Result<()> {
+) -> Result<(), PluginError> {
     let mut default_specifiers: usize = 0;
 
     for specifier in &export.specifiers {
         if !is_default_export_name(&specifier.exported) {
-            return Err(anyhow!(
-                "vendored helper default export statement has a non-default specifier"
+            return Err(PluginError::new(
+                "vendored helper default export statement has a non-default specifier",
             ));
         }
 
@@ -77,8 +77,8 @@ fn validate_default_export_statement(
     }
 
     if default_specifiers != 1 {
-        return Err(anyhow!(
-            "vendored helper default export statement must have exactly one specifier"
+        return Err(PluginError::new(
+            "vendored helper default export statement must have exactly one specifier",
         ));
     }
 
@@ -146,7 +146,7 @@ impl<'a, 's> Inliner<'a, 's> {
         &mut self,
         helper: &'static HelperSource,
         target_name: &str,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PluginError> {
         if self.resolved.contains_key(helper.name) {
             return Ok(());
         }
@@ -161,10 +161,10 @@ impl<'a, 's> Inliner<'a, 's> {
                 .parse();
 
         if parsed.fatal_error || parsed.diagnostics.has_errors() {
-            return Err(anyhow!(
+            return Err(PluginError::new(format!(
                 "vendored helper `{}` does not parse",
                 helper.name
-            ));
+            )));
         }
 
         let mut helper_program: Program<'a> = parsed.program;
@@ -178,10 +178,10 @@ impl<'a, 's> Inliner<'a, 's> {
             &helper_program.body,
         )
         .ok_or_else(|| {
-            anyhow!(
+            PluginError::new(format!(
                 "vendored helper `{}` has no `export {{ x as default }}`",
                 helper.name
-            )
+            ))
         })?;
 
         // Drop dependency imports before renaming: their locals are renamed
@@ -215,10 +215,10 @@ impl<'a, 's> Inliner<'a, 's> {
                 | Statement::ExportFromDeclaration(_)
                 | Statement::ExportDefaultDeclaration(_)
                 | Statement::ExportAllDeclaration(_) => {
-                    return Err(anyhow!(
+                    return Err(PluginError::new(format!(
                         "vendored helper `{}` has an unexpected export statement",
                         helper.name
-                    ));
+                    )));
                 },
                 | statement => {
                     kept.push(statement);
@@ -253,10 +253,10 @@ impl<'a, 's> Inliner<'a, 's> {
         }
 
         if !renamed_default {
-            return Err(anyhow!(
+            return Err(PluginError::new(format!(
                 "vendored helper `{}` default export `{default_local_name}` is not a top-level binding",
                 helper.name
-            ));
+            )));
         }
 
         let mut rewriter: Rewriter<'a, '_> = Rewriter {
@@ -285,47 +285,47 @@ impl<'a, 's> Inliner<'a, 's> {
         specifiers: &Option<ArenaVec<'a, ImportDeclarationSpecifier<'a>>>,
         import_symbol_ids: &mut HashSet<SymbolId>,
         renames: &mut HashMap<SymbolId, String>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PluginError> {
         let source_value: &str = source.as_str();
 
         let Some(dep_name) = source_value
             .strip_prefix("./")
             .and_then(|rest| rest.strip_suffix(".js"))
         else {
-            return Err(anyhow!(
+            return Err(PluginError::new(format!(
                 "vendored helper `{}` has a non-relative import `{source_value}`",
                 helper.name
-            ));
+            )));
         };
 
         let Some(dep_helper) = lookup(dep_name) else {
-            return Err(anyhow!(
+            return Err(PluginError::new(format!(
                 "vendored helper `{}` depends on unknown helper `{dep_name}`",
                 helper.name
-            ));
+            )));
         };
 
         let Some(specifiers) = specifiers else {
-            return Err(anyhow!(
+            return Err(PluginError::new(format!(
                 "vendored helper `{}` dependency `{dep_name}` has no import specifiers",
                 helper.name
-            ));
+            )));
         };
 
         let [ImportDeclarationSpecifier::ImportDefaultSpecifier(default)] =
             specifiers.as_slice()
         else {
-            return Err(anyhow!(
+            return Err(PluginError::new(format!(
                 "vendored helper `{}` dependency `{dep_name}` import is not a single default import",
                 helper.name
-            ));
+            )));
         };
 
         let Some(local_symbol_id) = default.local.symbol_id.get() else {
-            return Err(anyhow!(
+            return Err(PluginError::new(format!(
                 "vendored helper `{}` dependency `{dep_name}` import binding has no symbol",
                 helper.name
-            ));
+            )));
         };
 
         let dep_final_name: String = match self.resolved.get(dep_helper.name) {

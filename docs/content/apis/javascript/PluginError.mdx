@@ -1,0 +1,57 @@
+---
+title: PluginError
+description: The error thrown by plugin hooks to fail a compilation.
+---
+
+Plugin hooks report failure by throwing a `PluginError`. It is transported back to Rust and surfaces at the entry point as a [CompileError](/apis/javascript/CompileError) with the same message and source.
+
+```ts
+import { ErrorSource, PluginError } from "telarel";
+```
+
+## `PluginError`
+
+```ts
+class PluginError extends Error {
+    constructor(
+        message: string,
+        options?: {
+            source?: ErrorSource;
+        },
+    );
+
+    toCompileError(): CompileError;
+
+    name: "PluginError";
+    message: string;
+    source: ErrorSource | undefined;
+
+    render(): string;
+}
+```
+
+`PluginError` has the same `name`, `message`, `source`, and `render` behavior as `CompileError`. `toCompileError()` converts it while preserving the message and source.
+
+Throw a `PluginError` from any hook to fail the compile with a location. Attach an [ErrorSource](/apis/javascript/ErrorSource) from the hook's code, or from an AST whose source text is available. Its span is in UTF-16 code-unit offsets.
+
+```ts
+import type { Plugin } from "telarel";
+
+import { ErrorSource, PluginError } from "telarel";
+
+const noDebugger: Plugin = {
+    name: "no-debugger",
+    parse(ctx, args) {
+        const start: number = args.code.indexOf("debugger");
+
+        if (start !== -1) {
+            throw new PluginError("debugger statements are not allowed", {
+                source: ErrorSource.fromCode(ctx.module.file, args.code, {
+                    start,
+                    end: start + "debugger".length,
+                }),
+            });
+        }
+    },
+};
+```

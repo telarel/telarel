@@ -1,5 +1,7 @@
 use telarel_common::{AstResult, ParserOptions};
 
+use crate::PluginError;
+
 /// Arguments for the `parse` hook.
 #[derive(Debug, Clone, Copy)]
 pub struct ParseArgs<'a> {
@@ -10,7 +12,7 @@ pub struct ParseArgs<'a> {
 }
 
 /// The `parse` hook return: a parsed AST, `None` (defer), or an error.
-pub type ParseReturn = anyhow::Result<Option<AstResult>>;
+pub type ParseReturn = Result<Option<AstResult>, PluginError>;
 
 #[cfg(test)]
 mod tests {
@@ -46,7 +48,7 @@ mod tests {
     fn test_parse_return_defers_with_none() {
         let result: ParseReturn = Ok(None);
 
-        assert!(result.unwrap().is_none());
+        assert!(matches!(result, Ok(None)));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -65,6 +67,6 @@ mod tests {
 
         let result: ParseReturn = Ok(Some(AstResult { ast }));
 
-        assert!(result.unwrap().is_some());
+        assert!(matches!(result, Ok(Some(_))));
     }
 }

@@ -13,7 +13,9 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 | `src/ast/parser.rs`             | Builtin parser; resolves the requested input source map during parsing           |
 | `src/ast/result.rs`             | `AstResult` and `CodeResult`                                                     |
 | `src/contexts/compile.rs`       | `CompileContext`                                                                 |
-| `src/errors/compile.rs`         | `CompileError`                                                                   |
+| `src/errors/compile.rs`         | `CompileError` and code-frame rendering                                          |
+| `src/errors/plugin.rs`          | `PluginError`                                                                    |
+| `src/errors/source/mod.rs`      | `ErrorSource`                                                                    |
 | `src/helpers/resolve.rs`        | Option resolution helpers                                                        |
 | `src/sourcemap/mode.rs`         | Applies the resolved output mode after code generation                           |
 | `src/sourcemap/resolve.rs`      | Input map resolution: `Value`, `Path`, `Inline`, `External`, `Auto`              |

@@ -10,7 +10,7 @@ mod options;
 mod plugin;
 mod plugin_driver;
 
-pub use telarel_common::HookUsage;
+pub use telarel_common::{HookUsage, PluginError};
 
 pub use crate::_types::context::{
     CommonPluginContext, ModuleInfo, PluginContext,

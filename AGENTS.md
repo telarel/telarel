@@ -140,13 +140,23 @@ If unsure whether behavior is public, check existing docs and tests and ask inst
 
 Add user-visible changes under `## Next` in `CHANGELOG.md`, grouped by the crate or package they affect. Do not add internal refactors, test-only changes.
 
-Within each group, order entries by reader priority:
+Within each group, use these `####` subheadings in order, omitting any that have no entries:
 
-1. Breaking changes: removals, renames, signature and contract changes
-2. Additions
-3. Behavior changes and fixes
+1. `Breaking`: removals, renames, replacements, signature or contract changes, and observable default changes
+2. `Features`: new entry points, options, types, hooks, exports, and capabilities
+3. `Fixes`: bug fixes and behavior corrections
+4. `Refactor`: user-visible restructuring that preserves behavior; internal-only refactors still do not belong in the changelog
+5. `Performance`: CPU, memory, or output-size improvements
 
-Within a tier, order by public API surface: entry points, then options and types, then hooks and internals. Start each entry with `add`, `change`, `remove`, `rename`, or `replace`.
+If an entry fits more than one subheading, put it under the earliest one. Start each entry with `add`, `change`, `remove`, `rename`, or `replace`. Within a subheading, sort by:
+
+1. Leading verb, alphabetically: `add`, `change`, `remove`, `rename`, `replace`
+2. Public API surface: entry points, then options and types, then hooks and internals
+3. Primary API name, case-insensitively; for entries covering several related APIs, use the first listed one
+
+Put catch-all entries that name no single API last within their verb.
+
+The `### Dependencies` group keeps its own `#### Rust` and `#### JavaScript` structure instead of these subheadings.
 
 Cross-cutting dependency upgrades go in a `### Dependencies` group placed first under `## Next`. Within that group, order by upgrade impact:
 
