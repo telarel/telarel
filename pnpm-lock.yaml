@@ -106,8 +106,8 @@ importers:
         specifier: npm:@fumadocs/base-ui@16.17.4
         version: '@fumadocs/base-ui@16.17.4(@types/mdx@2.0.14)(@types/react@19.3.0)(fumadocs-core@16.17.5(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(flexsearch@0.8.212)(lucide-react@1.59.0(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(tailwindcss@4.3.3)(takumi-js@2.16.2(csstype@3.2.3)(react@19.3.1))'
       fumapress:
-        specifier: ^1.6.1
-        version: 1.6.1(859e3135c4402324fcc1c3170b5932d1)
+        specifier: ^1.6.2
+        version: 1.6.2(859e3135c4402324fcc1c3170b5932d1)
       lucide-react:
         specifier: ^1.59.0
         version: 1.59.0(@types/react@19.3.0)(react@19.3.1)
@@ -158,62 +158,6 @@ importers:
       oxc-transform:
         specifier: ~0.154.0
         version: 0.154.0
-    optionalDependencies:
-      '@telarel/binding-darwin-arm64':
-        specifier: workspace:*
-        version: link:npm/darwin-arm64
-      '@telarel/binding-darwin-x64':
-        specifier: workspace:*
-        version: link:npm/darwin-x64
-      '@telarel/binding-linux-arm64-gnu':
-        specifier: workspace:*
-        version: link:npm/linux-arm64-gnu
-      '@telarel/binding-linux-arm64-musl':
-        specifier: workspace:*
-        version: link:npm/linux-arm64-musl
-      '@telarel/binding-linux-x64-gnu':
-        specifier: workspace:*
-        version: link:npm/linux-x64-gnu
-      '@telarel/binding-linux-x64-musl':
-        specifier: workspace:*
-        version: link:npm/linux-x64-musl
-      '@telarel/binding-wasm32-wasi':
-        specifier: workspace:*
-        version: link:npm/wasm32-wasi
-      '@telarel/binding-win32-arm64-msvc':
-        specifier: workspace:*
-        version: link:npm/win32-arm64-msvc
-      '@telarel/binding-win32-x64-msvc':
-        specifier: workspace:*
-        version: link:npm/win32-x64-msvc
-
-  packages/telarel/npm/darwin-arm64: {}
-
-  packages/telarel/npm/darwin-x64: {}
-
-  packages/telarel/npm/linux-arm64-gnu: {}
-
-  packages/telarel/npm/linux-arm64-musl: {}
-
-  packages/telarel/npm/linux-x64-gnu: {}
-
-  packages/telarel/npm/linux-x64-musl: {}
-
-  packages/telarel/npm/wasm32-wasi:
-    dependencies:
-      '@emnapi/core':
-        specifier: 2.0.0-alpha.5
-        version: 2.0.0-alpha.5
-      '@emnapi/runtime':
-        specifier: 2.0.0-alpha.5
-        version: 2.0.0-alpha.5
-      '@napi-rs/wasm-runtime':
-        specifier: ^1.2.5
-        version: 1.2.5(@emnapi/core@2.0.0-alpha.5)(@emnapi/runtime@2.0.0-alpha.5)
-
-  packages/telarel/npm/win32-arm64-msvc: {}
-
-  packages/telarel/npm/win32-x64-msvc: {}
 
   tests/telarel:
     dependencies:
@@ -971,13 +915,6 @@ packages:
 
   '@napi-rs/wasm-runtime@1.2.4':
     resolution: {integrity: sha512-AJxoUD2/15ESHbvpcyjU274nsAPLuOtPHCk0vKJM5pj//Fg/B1FXNWjPnXTT9PymCYYiHo4zPj0ZomXBKhoy7g==}
-    engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
-    peerDependencies:
-      '@emnapi/core': 2.0.0-alpha.5
-      '@emnapi/runtime': 2.0.0-alpha.5
-
-  '@napi-rs/wasm-runtime@1.2.5':
-    resolution: {integrity: sha512-HshSvXzmBxNzqejd3k/KemgQ3hdREUYFRRrgxOZ+gPljDIsO2SDZrVZMd4Z/HsxudQbE62OVyVFE8z9BCurfjA==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
     peerDependencies:
       '@emnapi/core': 2.0.0-alpha.5
@@ -2836,8 +2773,8 @@ packages:
       next-themes: '*'
       react: ^18.0.0 || ^19.0.0
 
-  fumapress@1.6.1:
-    resolution: {integrity: sha512-K3PtnHA4wUEDhdHPuBRSDzTsRq3HvvT3+rjCjPtx5Sd5HoHknPxNsf+i0wjWQIfpTjgzQUNOWo5+9auTZEu9mQ==}
+  fumapress@1.6.2:
+    resolution: {integrity: sha512-QvY2c/oTE9/Bw/ovOPvzM9xS7aogMnvaXbAtuY0jzftuM4IIfMKU9s2GSTeDOPRNqsMszXHxJbIw0hejoi3Dkw==}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
@@ -3149,9 +3086,6 @@ packages:
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
-
-  magic-string@1.2.3:
-    resolution: {integrity: sha512-Bpb0W2TbLKOZ7vJnOUnVRGq3WL2p+ISV29M6hYPL1AFCpyKZpdr5ytiXoTSSxRVhg8YW7f65+6gbG8WG6PCa/g==}
 
   magic-string@1.4.3:
     resolution: {integrity: sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ==}
@@ -4573,12 +4507,6 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@napi-rs/wasm-runtime@1.2.5(@emnapi/core@2.0.0-alpha.5)(@emnapi/runtime@2.0.0-alpha.5)':
-    dependencies:
-      '@emnapi/core': 2.0.0-alpha.5
-      '@emnapi/runtime': 2.0.0-alpha.5
-      '@tybys/wasm-util': 0.10.3
-
   '@napi-rs/wasm-tools-android-arm-eabi@1.1.0':
     optional: true
 
@@ -5120,6 +5048,7 @@ snapshots:
   '@tybys/wasm-util@0.10.3':
     dependencies:
       tslib: 2.8.1
+    optional: true
 
   '@types/chai@5.2.3':
     dependencies:
@@ -5967,7 +5896,7 @@ snapshots:
       react: 19.3.1
       unist-util-visit: 5.1.0
 
-  fumapress@1.6.1(859e3135c4402324fcc1c3170b5932d1):
+  fumapress@1.6.2(859e3135c4402324fcc1c3170b5932d1):
     dependencies:
       '@fuma-translate/react': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       class-variance-authority: 0.7.1
@@ -6263,10 +6192,6 @@ snapshots:
       '@types/react': 19.3.0
 
   magic-string@0.30.21:
-    dependencies:
-      '@jridgewell/sourcemap-codec': 1.6.0
-
-  magic-string@1.2.3:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
 
@@ -7356,7 +7281,7 @@ snapshots:
       '@vitejs/plugin-rsc': 0.5.38(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       dotenv: 17.4.2
       hono: 4.13.13
-      magic-string: 1.2.3
+      magic-string: 1.4.3
       picocolors: 1.1.1
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
