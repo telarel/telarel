@@ -81,13 +81,13 @@ Returning `null` or `void` defers. For `parse` and `generate` a deferral hands o
 | `OptionsArgs`   | `options: ResolvableOptions`             |
 | `StartArgs`     | `options: ResolvedOptions` (read-only)   |
 | `ParseArgs`     | `code: string`, `options: ParserOptions` |
-| `PrepareArgs`   | `ast: Program` (read-only)               |
-| `TransformArgs` | `ast: Program` (read-only)               |
-| `FinalizeArgs`  | `ast: Program` (read-only)               |
+| `PrepareArgs`   | `ast: Ast`                               |
+| `TransformArgs` | `ast: Ast`                               |
+| `FinalizeArgs`  | `ast: Ast`                               |
 | `GenerateArgs`  | `ast: Ast`, `options: GeneratorOptions`  |
 | `EndArgs`       | `error: string \| null`                  |
 
-`TransformResult` is the value a `transform` hook returns to replace the carried AST: `{ ast: Program }`. Returning it replaces the AST for the rest of the chain.
+All hook AST values are [Ast](/apis/javascript/Ast) instances; see that page for construction, mutation, and snapshot behavior.
 
 ### Errors
 
@@ -197,19 +197,21 @@ const TO: string = "preact/compat";
 
 const importRewrite: Plugin = {
     name: "import-rewrite",
-    transform: (_: PluginContext, args: TransformArgs): TransformResult => {
-        walk(args.ast, {
-            enter(node): void {
-                if (
-                    node.type === "ImportDeclaration" &&
-                    node.source.value === FROM
-                ) {
-                    node.source.value = TO;
-                }
-            },
+    transform: (_: PluginContext, { ast }: TransformArgs): TransformResult => {
+        ast.mutate((program): void => {
+            walk(program, {
+                enter(node): void {
+                    if (
+                        node.type === "ImportDeclaration" &&
+                        node.source.value === FROM
+                    ) {
+                        node.source.value = TO;
+                    }
+                },
+            });
         });
 
-        return { ast: args.ast };
+        return { ast };
     },
 };
 

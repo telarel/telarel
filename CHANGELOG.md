@@ -91,6 +91,7 @@
 #### Breaking
 
 - change AST normalization to `{ program, code, map? }` and accept either an `Ast` or a `Program` plus its source text
+- change `prepare`, `transform`, and `finalize` hook payloads to carry the AST's `code` and optional `map`; transform results are rebuilt from the returned `Ast`
 - rename constructed builtin plugins to their JS-facing names
 - replace `compileStart` and `compileEnd` with `start` and `end`
 
@@ -119,14 +120,24 @@
 #### Breaking
 
 - change `compile` to take the source text first: `compile(code, options)`
+- change `createGenerator` and `ErrorSource.fromAst` to accept `Ast`
+- change `Ast` from a plain object to a class with `program`, `source`, and `map` getters
+- change `Ast.map` to return `null` when no map is attached
+- change `Ast.program` to a deeply read-only view; use `Ast.mutate` to change it
+- change `ErrorSource.file`, `ErrorSource.code`, and `ErrorSource.span` from methods to getters
+- change `PrepareArgs`, `FinalizeArgs`, and `GenerateArgs` to carry `Ast` instead of `Program`; `TransformArgs` and `TransformResult` carry `Ast`
 - change entry-point rejections to `CompileError`
+- remove plain-object `Ast` inputs; construct `new Ast({ program, source })` instead
 - remove the `PrepareResult` and `FinalizeResult` exports
+- rename `Ast.code` to `Ast.source`
 - rename `CompileResult` to `CodeResult`
 - rename the `compileStart` and `compileEnd` hooks to `start` and `end`
 - replace `CompileStartArgs` and `CompileEndArgs` with `StartArgs` and `EndArgs`
 
 #### Features
 
+- add `AstOptions`
+- add `Ast.mutate` for synchronous and asynchronous program mutation
 - add exports for `parse`, `rewrite`, `generate`, `compileFromAst`, `createParser`, `createGenerator`, and `transform`
 - add exports for `Ast`, `AstResult`, `CodeResult`, the per-entry options, and the source-map types
 - add `CompileError`, `PluginError`, and `ErrorSource`

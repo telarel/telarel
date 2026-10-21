@@ -38,12 +38,12 @@ impl PluginError {
 }
 ```
 
-| Method             | Description                                                        |
-| ------------------ | ------------------------------------------------------------------ |
-| `new`              | Creates a source-less error from a message.                        |
-| `with_source`      | Attaches an [ErrorSource](/apis/rust/ErrorSource).                 |
-| `with_source_code` | Attaches a source from a file name, its code, and a span.          |
-| `with_source_ast`  | Attaches a source that shares the AST's code and a span within it. |
+| Method             | Description                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------ |
+| `new`              | Creates a source-less error from a message.                                          |
+| `with_source`      | Attaches an [ErrorSource](/apis/rust/ErrorSource).                                   |
+| `with_source_code` | Attaches a source from a file name, its code, and a span.                            |
+| `with_source_ast`  | Attaches a source that shares the [Ast](/apis/rust/Ast)'s code and a span within it. |
 
 Attaching a source replaces any source already present.
 

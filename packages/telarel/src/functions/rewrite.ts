@@ -1,11 +1,12 @@
 import type { Program } from "@oxc-project/types";
 
-import type { Ast, AstResult } from "#/@types/ast";
+import type { AstResult } from "#/@types/ast";
 import type { RewriteOptions } from "#/@types/plugin/options";
 import type { RawPlugin } from "#/bridges/plugin";
 
 import { rewrite as bindingRewrite } from "#/binding";
-import { toRawPlugins } from "#/bridges/plugin";
+import { toAstInput, toRawPlugins } from "#/bridges/plugin";
+import { Ast } from "#/classes/ast";
 import { CompileError } from "#/errors/compile";
 import { normalizeAstInput } from "#/functions/ast-input";
 
@@ -44,7 +45,7 @@ async function rewrite(
 
     try {
         const result: Awaited<ReturnType<typeof bindingRewrite>> =
-            await bindingRewrite(ast, {
+            await bindingRewrite(toAstInput(ast), {
                 cwd: options?.cwd,
                 file: options?.file,
                 language: options?.language,
@@ -53,11 +54,11 @@ async function rewrite(
                 plugins,
             });
 
-        next = {
+        next = new Ast({
             program: result.ast.program as Program,
-            code: result.ast.code,
+            source: result.ast.code,
             map: result.ast.map,
-        };
+        });
     } catch (error: unknown) {
         throw CompileError.from(error);
     }

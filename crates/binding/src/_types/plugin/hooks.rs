@@ -11,11 +11,15 @@ use crate::_types::sourcemap::JsSourceMap;
 use crate::plugin::options::{language_label, source_type_label};
 
 /// Args for the `transform`, `prepare` and `finalize` hooks: the current AST
-/// as an ESTree JSON string. The JS wrapper parses it before calling the user
-/// hook; all three hooks reuse this exact serialization.
+/// as an ESTree JSON string plus the source text and input map it anchors to.
+/// The JS wrapper reconstructs the normalized AST before calling the user hook.
 pub struct JsAstArgs {
     /// AST serialized as JSON for the JS bridge.
     pub ast_json: String,
+    /// Source text the program's spans anchor to.
+    pub code: String,
+    /// The input source map, when the AST carries one.
+    pub map: Option<JsSourceMap>,
 }
 
 impl ToNapiValue for JsAstArgs {
@@ -29,19 +33,28 @@ impl ToNapiValue for JsAstArgs {
 
         object.set("astJson", val.ast_json)?;
 
+        object.set("code", val.code)?;
+
+        if let Some(map) = val.map {
+            object.set("map", map)?;
+        }
+
         Ok(JsValue::raw(&object))
     }
 }
 
-/// Output of the `transform` hook: the mutated ESTree tree as a JSON string.
-/// The JS wrapper sends `null` when the hook returns `null`/`void` (no
-/// change); the baseline string-equality skip is defense in depth for raw
-/// plugin objects.
+/// Output of the `transform` hook: the replacement AST. The JS wrapper sends
+/// `null` when the hook returns `null`/`void` (no change); the baseline
+/// equality skip is defense in depth for raw plugin objects.
 #[napi_derive::napi(object)]
 pub struct JsTransformOutput {
     /// AST serialized as JSON for the JS bridge.
     #[napi(js_name = "astJson")]
     pub ast_json: String,
+    /// Source text the program's spans anchor to.
+    pub code: String,
+    /// The input source map, when the AST carries one.
+    pub map: Option<JsSourceMap>,
 }
 
 /// Output of the `options` hook: the fields of the options bag after the JS

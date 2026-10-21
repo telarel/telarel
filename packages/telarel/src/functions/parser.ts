@@ -1,9 +1,10 @@
 import type { Program } from "@oxc-project/types";
 
-import type { Ast, AstResult } from "#/@types/ast";
+import type { AstResult } from "#/@types/ast";
 import type { ParserOptions } from "#/@types/parser";
 
 import { builtinParse } from "#/binding";
+import { Ast } from "#/classes/ast";
 import { CompileError } from "#/errors/compile";
 
 /**
@@ -34,11 +35,11 @@ const createParser = (
                         sourceMap: options.sourceMap,
                     });
 
-                ast = {
+                ast = new Ast({
                     program: result.ast.program as Program,
-                    code: result.ast.code,
+                    source: result.ast.code,
                     map: result.ast.map,
-                };
+                });
             } catch (error: unknown) {
                 throw CompileError.from(error);
             }

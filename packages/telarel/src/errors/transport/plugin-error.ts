@@ -34,9 +34,9 @@ const encodePluginError = ({
 
     if (source !== void 0) {
         payload.source = {
-            file: source.file(),
-            code: source.code(),
-            span: source.span(),
+            file: source.file,
+            code: source.code,
+            span: source.span,
         };
     }
 

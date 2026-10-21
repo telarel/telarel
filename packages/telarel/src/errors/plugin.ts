@@ -56,9 +56,9 @@ class PluginError extends Error {
         }
 
         return renderCodeFrame(
-            this.#source.file(),
-            this.#source.code(),
-            this.#source.span(),
+            this.#source.file,
+            this.#source.code,
+            this.#source.span,
             this.#message,
         );
     }

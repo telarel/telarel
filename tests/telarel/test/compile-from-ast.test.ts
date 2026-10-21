@@ -1,4 +1,5 @@
 import type {
+    AstOptions,
     AstResult,
     CodeResult,
     CompileFromAstOptions,
@@ -29,8 +30,8 @@ describe("compileFromAst", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: ProgramFixture =
-                            args.ast as unknown as ProgramFixture;
+                        const program: ProgramFixture = args.ast
+                            .program as unknown as ProgramFixture;
                         renameRootIdentifier({ program, name: "renamed" });
 
                         return { ast: args.ast };
@@ -110,8 +111,8 @@ describe("compileFromAst", (): void => {
         const ast: AstResult = await parsed();
 
         const result: CodeResult = await compileFromAst(
-            ast.ast.program,
-            ast.ast.code,
+            ast.ast.program as unknown as AstOptions["program"],
+            ast.ast.source,
             { file: "index.ts" },
         );
 

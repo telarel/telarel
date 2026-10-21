@@ -15,6 +15,7 @@ use crate::_types::plugin::hooks::{
     JsAstArgs, JsCodeOutput, JsEndArgs, JsGenerateArgs, JsParseArgs,
     JsParseOutput, JsResolvedOptions, JsStartArgs, JsTransformOutput,
 };
+use crate::_types::sourcemap::JsSourceMap;
 
 /// A TSFN bridging one JS hook.
 ///
@@ -522,6 +523,10 @@ pub struct ObserveCall {
     pub source_type: SharedStr,
     /// The AST as a JSON string.
     pub ast_json: String,
+    /// Source text the program's spans anchor to.
+    pub code: String,
+    /// The input source map, when the AST carries one.
+    pub map: Option<JsSourceMap>,
 }
 
 impl HookCall for ObserveCall {
@@ -536,7 +541,11 @@ impl HookCall for ObserveCall {
             self.source_type,
         )?;
 
-        let payload: JsAstArgs = JsAstArgs { ast_json: self.ast_json };
+        let payload: JsAstArgs = JsAstArgs {
+            ast_json: self.ast_json,
+            code: self.code,
+            map: self.map,
+        };
 
         Ok((context, payload))
     }
@@ -568,6 +577,10 @@ pub struct TransformCall {
     pub source_type: SharedStr,
     /// The AST as a JSON string.
     pub ast_json: String,
+    /// Source text the program's spans anchor to.
+    pub code: String,
+    /// The input source map, when the AST carries one.
+    pub map: Option<JsSourceMap>,
 }
 
 impl HookCall for TransformCall {
@@ -582,7 +595,11 @@ impl HookCall for TransformCall {
             self.source_type,
         )?;
 
-        let payload: JsAstArgs = JsAstArgs { ast_json: self.ast_json };
+        let payload: JsAstArgs = JsAstArgs {
+            ast_json: self.ast_json,
+            code: self.code,
+            map: self.map,
+        };
 
         Ok((context, payload))
     }

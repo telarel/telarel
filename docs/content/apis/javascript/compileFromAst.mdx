@@ -20,12 +20,12 @@ Compiles an existing AST through rewrite and generation, with plugins, in memory
 
 ## Parameters
 
-The function accepts either a normalized `Ast`, or a bare ESTree `Program` together with its source text.
+The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare ESTree `Program` together with its source text.
 
-| Name      | Type                    | Description                                   |
-| --------- | ----------------------- | --------------------------------------------- |
-| `ast`     | `Ast`                   | A normalized AST, carrying a `program` field. |
-| `options` | `CompileFromAstOptions` | Optional compile options.                     |
+| Name      | Type                    | Description               |
+| --------- | ----------------------- | ------------------------- |
+| `ast`     | `Ast`                   | An AST instance.          |
+| `options` | `CompileFromAstOptions` | Optional compile options. |
 
 | Name      | Type                    | Description                                                             |
 | --------- | ----------------------- | ----------------------------------------------------------------------- |

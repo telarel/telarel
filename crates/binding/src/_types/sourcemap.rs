@@ -1,6 +1,7 @@
 use oxc_sourcemap::SourceMap as OxcSourceMap;
 
 /// JS-facing source map, aligned with the standard source map v3 shape.
+#[derive(Clone, PartialEq)]
 #[napi_derive::napi(object)]
 pub struct JsSourceMap {
     /// Version of the source map format.

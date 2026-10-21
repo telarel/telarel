@@ -1,11 +1,12 @@
 import type { Program } from "@oxc-project/types";
 
-import type { Ast, AstResult } from "#/@types/ast";
+import type { AstResult } from "#/@types/ast";
 import type { ParseOptions } from "#/@types/plugin/options";
 import type { RawPlugin } from "#/bridges/plugin";
 
 import { parse as bindingParse } from "#/binding";
 import { toRawPlugins } from "#/bridges/plugin";
+import { Ast } from "#/classes/ast";
 import { CompileError } from "#/errors/compile";
 
 /**
@@ -34,11 +35,11 @@ const parse = async (
                 plugins,
             });
 
-        ast = {
+        ast = new Ast({
             program: result.ast.program as Program,
-            code: result.ast.code,
+            source: result.ast.code,
             map: result.ast.map,
-        };
+        });
     } catch (error: unknown) {
         throw CompileError.from(error);
     }

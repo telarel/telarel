@@ -28,9 +28,10 @@ use crate::_types::plugin::hooks::{
     optional_source_map_options_to_js,
 };
 use crate::_types::plugin::order::read_hook_meta;
+use crate::_types::sourcemap::JsSourceMap;
 use crate::ast::{
     ast_from_json, ast_from_program, ast_to_estree_json,
-    js_source_map_to_owned, source_type_for_options,
+    js_source_map_to_owned, source_map_to_js, source_type_for_options,
 };
 use crate::errors::plugin::decode_plugin_error;
 use crate::plugin::build::NAME_REQUIRED;
@@ -156,6 +157,16 @@ fn hook_error(error: napi::Error) -> PluginError {
 /// conversion impl in the plugin crate.
 fn anyhow_to_plugin_error(error: anyhow::Error) -> PluginError {
     PluginError::new(format!("{error:#}"))
+}
+
+/// Serialize the AST for a tree hook: the UTF-16 ESTree JSON, its source
+/// text, and its input map.
+fn ast_hook_parts(ast: &Ast) -> (String, String, Option<JsSourceMap>) {
+    (
+        ast_to_estree_json(ast),
+        ast.source().to_string(),
+        ast.map().map(source_map_to_js),
+    )
 }
 
 /// Unmarshal an `options` hook return into the pipeline bag ON the JS thread,
@@ -551,6 +562,9 @@ impl Pluginable for JsPlugin {
                 return Ok(());
             };
 
+            let (ast_json, code, map): (String, String, Option<JsSourceMap>) =
+                ast_hook_parts(args.ast);
+
             let call: ObserveCall = ObserveCall {
                 cwd: SharedStr::new(ctx.cwd),
                 file: SharedStr::new(ctx.module.file),
@@ -560,7 +574,9 @@ impl Pluginable for JsPlugin {
                 source_type: SharedStr::new(source_type_label(Some(
                     ctx.module.source_type,
                 ))),
-                ast_json: ast_to_estree_json(args.ast),
+                ast_json,
+                code,
+                map,
             };
 
             let output: Either<Promise<Undefined>, Undefined> =
@@ -595,7 +611,11 @@ impl Pluginable for JsPlugin {
             // The UTF-16 map is anchored to the AST's own source (the parse
             // input), NOT the module's original code, so it matches the byte
             // spans the codec emits.
-            let ast_json_utf16: String = ast_to_estree_json(&args.ast);
+            let (ast_json_utf16, source_code, source_map): (
+                String,
+                String,
+                Option<JsSourceMap>,
+            ) = ast_hook_parts(&args.ast);
 
             // The ESTree codec skips `Program.comments`; keep the parser-owned
             // comments to reattach them to the rebuilt program (a JS plugin
@@ -613,6 +633,8 @@ impl Pluginable for JsPlugin {
                     ctx.module.source_type,
                 ))),
                 ast_json: ast_json_utf16.clone(),
+                code: source_code.clone(),
+                map: source_map.clone(),
             };
 
             let output: Either<
@@ -630,20 +652,31 @@ impl Pluginable for JsPlugin {
             };
 
             // Defense in depth: a pass-through sends the tree back unchanged,
-            // so compare in the same UTF-16 form the plugin saw and skip the
-            // read-back.
-            if replaced.ast_json == ast_json_utf16 {
+            // so compare every AST field in the form the plugin saw and skip
+            // the read-back.
+            if replaced.ast_json == ast_json_utf16
+                && replaced.code == source_code
+                && replaced.map == source_map
+            {
                 return Ok(None);
             }
 
+            let input_map: Option<SourceMap> = match replaced.map {
+                | Some(map) => Some(
+                    js_source_map_to_owned(&map)
+                        .map_err(anyhow_to_plugin_error)?,
+                ),
+                | None => None,
+            };
+
             // Rebuild the returned tree into a fresh owned AST: the read-back
-            // allocates into the new AST's arena and anchors spans against its
-            // shared source, so the replacement travels as `Some` exactly like
-            // a Rust plugin's replacement.
+            // allocates into the new AST's arena and anchors spans against the
+            // returned source and map, so the replacement travels as `Some`
+            // exactly like a Rust plugin's replacement.
             let mut ast: Ast = ast_from_json(
                 &replaced.ast_json,
-                args.ast.source().clone(),
-                args.ast.map().cloned(),
+                Arc::from(replaced.code),
+                input_map,
                 source_type,
             )
             .map_err(anyhow_to_plugin_error)?;
@@ -684,6 +717,9 @@ impl Pluginable for JsPlugin {
                 return Ok(());
             };
 
+            let (ast_json, code, map): (String, String, Option<JsSourceMap>) =
+                ast_hook_parts(args.ast);
+
             let call: ObserveCall = ObserveCall {
                 cwd: SharedStr::new(ctx.cwd),
                 file: SharedStr::new(ctx.module.file),
@@ -693,7 +729,9 @@ impl Pluginable for JsPlugin {
                 source_type: SharedStr::new(source_type_label(Some(
                     ctx.module.source_type,
                 ))),
-                ast_json: ast_to_estree_json(args.ast),
+                ast_json,
+                code,
+                map,
             };
 
             let output: Either<Promise<Undefined>, Undefined> =

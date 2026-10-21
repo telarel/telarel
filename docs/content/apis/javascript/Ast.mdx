@@ -1,0 +1,67 @@
+---
+title: Ast
+description: An AST with its source text, optional source map, and mutable program access.
+---
+
+`Ast` carries an ESTree `Program`, the source text its spans anchor to, and an optional incremental source map. Every AST-bearing hook receives an `Ast`.
+
+```ts
+type AstOptions = {
+    program: Program;
+    source: string;
+    map?: SourceMap;
+};
+
+class Ast {
+    constructor(options: AstOptions);
+
+    get program(): DeepReadonly<Program>;
+    get source(): Readonly<string>;
+    get map(): DeepReadonly<SourceMap> | null;
+
+    mutate<Result extends void | Promise<void>>(
+        fn: (program: Program) => Result,
+    ): Result;
+}
+```
+
+## Constructor
+
+| Field     | Type        | Description                                             |
+| --------- | ----------- | ------------------------------------------------------- |
+| `program` | `Program`   | The ESTree program.                                     |
+| `source`  | `string`    | The source text the program's spans anchor to.          |
+| `map`     | `SourceMap` | Optional incremental source map. Omit when unavailable. |
+
+## Members
+
+| Member    | Type                              | Description                                                          |
+| --------- | --------------------------------- | -------------------------------------------------------------------- |
+| `program` | `DeepReadonly<Program>`           | A deeply read-only view of the program. Use `mutate` to change it.   |
+| `source`  | `string`                          | The source text the program's spans anchor to.                       |
+| `map`     | `DeepReadonly<SourceMap> \| null` | The incremental source map, or `null` when the AST carries none.     |
+| `mutate`  | `(fn) => Result`                  | Runs `fn` with mutable access to the program and returns its result. |
+
+The `program` getter is typed as `DeepReadonly<Program>`, so nested nodes and arrays cannot be changed through it.
+
+`mutate` returns `void` for a synchronous callback and `Promise<void>` for an asynchronous one. The returned value matches the callback, so `await ast.mutate(fn)` works in both cases.
+
+## Mutation
+
+Only the `transform` hook carries mutations forward: mutate `args.ast` and return `{ ast: args.ast }` to replace the compiler's AST for the rest of the chain. Returning nothing discards the mutation.
+
+The `prepare`, `finalize`, and `generate` hooks receive a snapshot of the compiler's AST. Mutating that snapshot changes only the local instance and does not alter the compiler's AST. A `generate` hook can pass a mutated AST to [createGenerator](/apis/javascript/createGenerator) to generate from it.
+
+## Example
+
+```ts
+import type { AstResult } from "telarel";
+
+import { parse } from "telarel";
+
+const { ast }: AstResult = await parse("const x: number = 1;");
+
+ast.mutate((program): void => {
+    program.body.length = 0;
+});
+```

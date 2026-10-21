@@ -40,13 +40,7 @@ The parser resolves `sourceMap.input` and attaches it to the returned AST. Outpu
 
 A `Parser` whose `parse()` method returns `Promise<AstResult>`.
 
-`AstResult` is `{ ast: Ast }`, where `Ast` is:
-
-| Field     | Type         | Description                                    |
-| --------- | ------------ | ---------------------------------------------- |
-| `program` | `Program`    | The ESTree program.                            |
-| `code`    | `string`     | The source text the program's spans anchor to. |
-| `map`     | `SourceMap?` | An optional incremental source map.            |
+`AstResult` is `{ ast: Ast }`.
 
 Parse failures reject with a [CompileError](/apis/javascript/CompileError).
 

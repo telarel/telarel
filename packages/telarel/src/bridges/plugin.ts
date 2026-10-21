@@ -30,6 +30,7 @@ import type { SourceMap } from "#/@types/sourcemap";
 import type { NormalizedHook } from "#/bridges/normalize-hook";
 
 import { normalizeHook } from "#/bridges/normalize-hook";
+import { Ast } from "#/classes/ast";
 import { getPluginErrorMessage, PluginError } from "#/errors/plugin";
 import { encodePluginError } from "#/errors/transport/plugin-error";
 
@@ -45,9 +46,25 @@ type RawPluginContext = {
     sourceType: string;
 };
 
-type RawAstArgs = { astJson: string };
+type RawAstArgs = {
+    astJson: string;
+    code: string;
+    map?: SourceMap | null;
+};
 
-type RawTransformOutput = { astJson: string } | null;
+type AstInput = {
+    program: Program;
+    code: string;
+    map?: SourceMap;
+};
+
+type RawTransformAstOutput = {
+    astJson: string;
+    code: string;
+    map?: SourceMap;
+};
+
+type RawTransformOutput = RawTransformAstOutput | null;
 
 type RawOptionsArgs = {
     cwd: string;
@@ -91,13 +108,7 @@ type RawParseArgs = {
     options: RawParserOptions;
 };
 
-type RawAstOutput = {
-    program: Program;
-    code: string;
-    map?: SourceMap;
-};
-
-type RawParseOutput = { ast: RawAstOutput } | null;
+type RawParseOutput = { ast: AstInput } | null;
 
 type RawGeneratorOptions = {
     cwd: string;
@@ -106,7 +117,7 @@ type RawGeneratorOptions = {
 };
 
 type RawGenerateArgs = {
-    ast: RawAstOutput;
+    ast: AstInput;
     options: RawGeneratorOptions;
 };
 
@@ -259,6 +270,38 @@ const runHook = async <Result>(
 
         throw error;
     }
+};
+
+const isAst = (value: unknown): value is Ast => value instanceof Ast;
+
+const fromAstInput = (ast: AstInput): Ast =>
+    new Ast({
+        program: ast.program,
+        source: ast.code,
+        map: ast.map,
+    });
+
+const toAstInput = (ast: Ast): AstInput => ({
+    program: ast.program as Program,
+    code: ast.source,
+    map: (ast.map as SourceMap | null) ?? void 0,
+});
+
+const toAst = ({ args }: { args: RawAstArgs }): Ast =>
+    fromAstInput({
+        program: JSON.parse(args.astJson) as Program,
+        code: args.code,
+        map: args.map ?? void 0,
+    });
+
+const requireAst = (value: unknown): Ast => {
+    if (!isAst(value)) {
+        throw new TypeError(
+            "Expected an Ast instance; use new Ast({ program, source })",
+        );
+    }
+
+    return value;
 };
 
 const flattenPlugins = async (
@@ -456,16 +499,7 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                     return null;
                 }
 
-                const ast: RawAstOutput = {
-                    program: result.ast.program,
-                    code: result.ast.code,
-                };
-
-                if (result.ast.map !== void 0) {
-                    ast.map = result.ast.map;
-                }
-
-                return { ast };
+                return { ast: toAstInput(requireAst(result.ast)) };
             });
 
         if (parse.meta.order !== void 0) {
@@ -485,9 +519,9 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
             rawArgs: RawAstArgs,
         ): Promise<void> =>
             await runHook(async (): Promise<void> => {
-                const ast: Program = JSON.parse(rawArgs.astJson) as Program;
-
-                await prepareHandler(toContext(rawCtx), { ast });
+                await prepareHandler(toContext(rawCtx), {
+                    ast: toAst({ args: rawArgs }),
+                });
             });
 
         if (prepare.meta.order !== void 0) {
@@ -506,16 +540,27 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
             rawArgs: RawAstArgs,
         ): Promise<RawTransformOutput | null> =>
             await runHook(async (): Promise<RawTransformOutput | null> => {
-                const ast: Program = JSON.parse(rawArgs.astJson) as Program;
-
                 const result: TransformResult | null | void =
-                    await transformHandler(toContext(rawCtx), { ast });
+                    await transformHandler(toContext(rawCtx), {
+                        ast: toAst({ args: rawArgs }),
+                    });
 
                 if (result === null || result === void 0) {
                     return null;
                 }
 
-                return { astJson: JSON.stringify(result.ast) };
+                const ast: AstInput = toAstInput(requireAst(result.ast));
+
+                const output: RawTransformAstOutput = {
+                    astJson: JSON.stringify(ast.program),
+                    code: ast.code,
+                };
+
+                if (ast.map !== void 0) {
+                    output.map = ast.map;
+                }
+
+                return output;
             });
 
         if (transform.meta.order !== void 0) {
@@ -535,9 +580,9 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
             rawArgs: RawAstArgs,
         ): Promise<void> =>
             await runHook(async (): Promise<void> => {
-                const ast: Program = JSON.parse(rawArgs.astJson) as Program;
-
-                await finalizeHandler(toContext(rawCtx), { ast });
+                await finalizeHandler(toContext(rawCtx), {
+                    ast: toAst({ args: rawArgs }),
+                });
             });
 
         if (finalize.meta.order !== void 0) {
@@ -558,7 +603,7 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         ): Promise<RawCodeOutput> =>
             await runHook(async (): Promise<RawCodeOutput> => {
                 const args: GenerateArgs = {
-                    ast: rawArgs.ast,
+                    ast: fromAstInput(rawArgs.ast),
                     options: toGeneratorOptions(rawArgs.options),
                 };
 
@@ -620,4 +665,4 @@ const toRawPlugins = async ({
 };
 
 export type { RawPlugin };
-export { toRawPlugin, toRawPlugins };
+export { isAst, toAstInput, toRawPlugin, toRawPlugins };

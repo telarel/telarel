@@ -1,25 +1,5 @@
-import type { Program } from "@oxc-project/types";
-
 import type { SourceMap } from "#/@types/sourcemap";
-
-/**
- * An AST together with the source text its spans anchor to and an optional
- * incremental source map.
- */
-type Ast = {
-    /**
-     * The ESTree program.
-     */
-    program: Program;
-    /**
-     * The source text the program's spans anchor to.
-     */
-    code: string;
-    /**
-     * An optional incremental source map.
-     */
-    map?: SourceMap;
-};
+import type { Ast } from "#/classes/ast";
 
 /**
  * Result of a parse step.
@@ -45,4 +25,4 @@ type CodeResult = {
     map?: SourceMap | null;
 };
 
-export type { Ast, AstResult, CodeResult };
+export type { AstResult, CodeResult };

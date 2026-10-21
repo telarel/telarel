@@ -13,18 +13,20 @@ const TO: string = "preact";
 
 const importRewritePlugin: Plugin = {
     name: "import-rewrite",
-    transform: (_: PluginContext, args: TransformArgs): TransformResult => {
-        walk(args.ast, {
-            enter(node): void {
-                if (node.type === "ImportDeclaration") {
-                    if (node.source.value === FROM) {
-                        node.source.value = TO;
+    transform: (_: PluginContext, { ast }: TransformArgs): TransformResult => {
+        ast.mutate((program): void => {
+            walk(program, {
+                enter(node): void {
+                    if (node.type === "ImportDeclaration") {
+                        if (node.source.value === FROM) {
+                            node.source.value = TO;
+                        }
                     }
-                }
-            },
+                },
+            });
         });
 
-        return { ast: args.ast };
+        return { ast };
     },
 };
 

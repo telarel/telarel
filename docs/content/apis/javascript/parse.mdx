@@ -35,13 +35,7 @@ The builtin parser is the terminal fallback after every `parse` plugin hook defe
 
 ## Returns
 
-`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }` and `Ast` is:
-
-| Field     | Type         | Description                                    |
-| --------- | ------------ | ---------------------------------------------- |
-| `program` | `Program`    | The ESTree program.                            |
-| `code`    | `string`     | The source text the program's spans anchor to. |
-| `map`     | `SourceMap?` | An optional incremental source map.            |
+`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }`.
 
 ## Example
 

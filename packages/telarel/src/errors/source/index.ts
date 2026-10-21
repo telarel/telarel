@@ -1,4 +1,4 @@
-import type { Ast } from "#/@types/ast";
+import type { Ast } from "#/classes/ast";
 import type { Span } from "#/errors/source/span";
 
 /**
@@ -30,27 +30,27 @@ class ErrorSource {
      * Create a source location from an AST's source text and a UTF-16 span.
      */
     public static fromAst(file: string, ast: Ast, span: Span): ErrorSource {
-        return new ErrorSource(file, ast.code, span);
+        return new ErrorSource(file, ast.source, span);
     }
 
     /**
      * The path of the file the span belongs to.
      */
-    public file(): string {
+    public get file(): string {
         return this.#file;
     }
 
     /**
      * The source text the span refers to.
      */
-    public code(): string {
+    public get code(): string {
         return this.#code;
     }
 
     /**
      * A copy of the UTF-16 span, so callers cannot mutate the source.
      */
-    public span(): Span {
+    public get span(): Span {
         return { start: this.#span.start, end: this.#span.end };
     }
 }

@@ -1,5 +1,6 @@
-export type { Ast, AstResult, CodeResult } from "#/@types/ast";
+export type { AstResult, CodeResult } from "#/@types/ast";
 export type { BuiltinPlugin } from "#/@types/builtin";
+export type { DeepReadonly } from "#/@types/common";
 export type { GeneratorOptions } from "#/@types/generator";
 export type { Language, SourceType } from "#/@types/grammar";
 export type { ParserOptions } from "#/@types/parser";
@@ -41,6 +42,7 @@ export type {
     OutputSourceMapOptions,
     SourceMapOptions,
 } from "#/@types/source-map";
+export type { AstOptions } from "#/classes/ast";
 export type {
     CompileErrorOptions,
     CompleteCompileErrorOptions,
@@ -50,6 +52,7 @@ export type { Span } from "#/errors/source/span";
 export type { Generator } from "#/functions/generator";
 export type { Parser } from "#/functions/parser";
 
+export { Ast } from "#/classes/ast";
 export { CompileError } from "#/errors/compile";
 export { PluginError } from "#/errors/plugin";
 export { ErrorSource } from "#/errors/source";

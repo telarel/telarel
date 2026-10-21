@@ -1,13 +1,13 @@
-import type { Program } from "@oxc-project/types";
+import type { Ast } from "#/classes/ast";
 
 /**
  * Arguments for the `transform` hook.
  */
 type TransformArgs = {
     /**
-     * The AST entering the stage.
+     * The AST entering the stage, with its source text and optional input map.
      */
-    ast: Program;
+    ast: Ast;
 };
 
 /**
@@ -17,7 +17,7 @@ type TransformResult = {
     /**
      * The replacement AST.
      */
-    ast: Program;
+    ast: Ast;
 };
 
 export type { TransformArgs, TransformResult };

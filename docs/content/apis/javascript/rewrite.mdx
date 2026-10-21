@@ -19,12 +19,12 @@ The AST's own input map wins; otherwise the resolved input source map is attache
 
 ## Parameters
 
-The function accepts either a normalized `Ast`, or a bare ESTree `Program` together with its source text.
+The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare ESTree `Program` together with its source text.
 
-| Name      | Type             | Description                                   |
-| --------- | ---------------- | --------------------------------------------- |
-| `ast`     | `Ast`            | A normalized AST, carrying a `program` field. |
-| `options` | `RewriteOptions` | Optional rewrite options.                     |
+| Name      | Type             | Description               |
+| --------- | ---------------- | ------------------------- |
+| `ast`     | `Ast`            | An AST instance.          |
+| `options` | `RewriteOptions` | Optional rewrite options. |
 
 | Name      | Type             | Description                                                             |
 | --------- | ---------------- | ----------------------------------------------------------------------- |
@@ -45,13 +45,7 @@ The function accepts either a normalized `Ast`, or a bare ESTree `Program` toget
 
 ## Returns
 
-`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }`:
-
-| Field     | Type         | Description                                    |
-| --------- | ------------ | ---------------------------------------------- |
-| `program` | `Program`    | The rewritten ESTree program.                  |
-| `code`    | `string`     | The source text the program's spans anchor to. |
-| `map`     | `SourceMap?` | An optional incremental source map.            |
+`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }`.
 
 ## Example
 

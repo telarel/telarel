@@ -1,16 +1,19 @@
 import type { Program } from "@oxc-project/types";
 
-import type { Ast } from "#/@types/ast";
+import type { Ast } from "#/classes/ast";
+
+import { isAst } from "#/bridges/plugin";
+import { Ast as AstClass } from "#/classes/ast";
 
 /**
- * Whether the value is a normalized {@link Ast} (carrying a `program`) rather
- * than a bare ESTree `Program`.
+ * Whether the value carries the legacy plain-object AST shape.
  */
-const isAst = (value: Ast | Program): value is Ast => "program" in value;
+const isAstLike = (value: unknown): boolean =>
+    typeof value === "object" && value !== null && "program" in value;
 
 /**
- * Normalize the two public AST-input calling conventions into the binding's
- * `JsAstInput` shape.
+ * Normalize the two public AST-input calling conventions into a normalized
+ * {@link Ast}.
  *
  * `(ast, options?)` passes the {@link Ast} through untouched; `(program, code,
  * options?)` wraps a bare program with its source text.
@@ -24,7 +27,16 @@ const normalizeAstInput = <Options>(
         return { ast: first, options: second as Options | undefined };
     }
 
-    return { ast: { program: first, code: second as string }, options: third };
+    if (isAstLike(first)) {
+        throw new TypeError(
+            "Expected an Ast instance; use new Ast({ program, source })",
+        );
+    }
+
+    return {
+        ast: new AstClass({ program: first, source: second as string }),
+        options: third,
+    };
 };
 
 export { normalizeAstInput };

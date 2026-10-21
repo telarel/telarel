@@ -1,4 +1,5 @@
 import type {
+    AstOptions,
     AstResult,
     BuiltinPlugin,
     CodeResult,
@@ -12,7 +13,7 @@ import type { TransformOptions } from "telarel/plugins/transform";
 
 import type { ProgramFixture } from "#/functions/ast";
 
-import { compile } from "telarel";
+import { Ast, compile, parse } from "telarel";
 import { transform } from "telarel/plugins/transform";
 import { describe, expect, it } from "vitest";
 
@@ -385,7 +386,8 @@ describe("transform", (): void => {
         const jsPlugin: Plugin = {
             name: "observer",
             transform: (_ctx: PluginContext, args: TransformArgs): void => {
-                const body: Array<{ type: string }> = args.ast.body as Array<{
+                const body: ReadonlyArray<{ type: string }> = args.ast.program
+                    .body as ReadonlyArray<{
                     type: string;
                 }>;
 
@@ -474,7 +476,7 @@ describe("transform", (): void => {
         const plugin: Plugin = {
             name: "span-observer",
             transform: (_ctx: PluginContext, args: TransformArgs): void => {
-                const statement = args.ast.body[1] as {
+                const statement = args.ast.program.body[1] as {
                     start: number;
                     end: number;
                 };
@@ -512,7 +514,7 @@ describe("transform", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): void => {
-                        snapshot = structuredClone(args.ast);
+                        snapshot = structuredClone(args.ast.program);
                     },
                 },
             ],
@@ -524,13 +526,13 @@ describe("transform", (): void => {
         const plugin: Plugin = {
             name: "parse-supplier",
             parse: (_ctx: PluginContext, _args: ParseArgs): AstResult => ({
-                ast: {
-                    program: snapshot as AstResult["ast"]["program"],
-                    code: rewritten,
-                },
+                ast: new Ast({
+                    program: snapshot as AstOptions["program"],
+                    source: rewritten,
+                }),
             }),
             transform: (_ctx: PluginContext, args: TransformArgs): void => {
-                const statement = args.ast.body[1] as unknown as {
+                const statement = args.ast.program.body[1] as unknown as {
                     start: number;
                     end: number;
                 };
@@ -559,8 +561,8 @@ describe("transform", (): void => {
                 _ctx: PluginContext,
                 args: TransformArgs,
             ): TransformResult => {
-                const program: ProgramFixture =
-                    args.ast as unknown as ProgramFixture;
+                const program: ProgramFixture = args.ast
+                    .program as unknown as ProgramFixture;
 
                 renameRootIdentifier({ program, name: "renamed" });
 
@@ -579,24 +581,57 @@ describe("transform", (): void => {
     });
 
     it("exposes only the ast key on the transform hook payload", async (): Promise<void> => {
+        const code: string = "// keep me\nconst a = 1;";
         let keys: Array<string> = [];
+        let astKeys: Array<string> = [];
+        let astSource: string = "";
+        let astInstance: boolean = false;
 
         const plugin: Plugin = {
             name: "payload-shape",
             transform: (_ctx: PluginContext, args: TransformArgs): void => {
                 keys = Object.keys(args);
+                astKeys = Object.keys(args.ast);
+                astSource = args.ast.source;
+                astInstance = args.ast instanceof Ast;
             },
         };
 
-        await compile("// keep me\nconst a = 1;", {
+        await compile(code, {
             cwd: "/repo",
             file: "index.js",
             plugins: [plugin],
         });
 
         expect(keys).toEqual(["ast"]);
+        expect(astKeys).toEqual([]);
+        expect(astInstance).toBe(true);
+        expect(astSource).toBe(code);
         expect(keys).not.toContain("comments");
         expect(keys).not.toContain("commentsJson");
+    });
+
+    it("replaces the carried AST with the returned Ast", async (): Promise<void> => {
+        const replacement: Ast = (
+            await parse("const b = 2;", {
+                cwd: "/repo",
+                file: "index.js",
+            })
+        ).ast;
+
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.js",
+            plugins: [
+                {
+                    name: "replace",
+                    transform: (): TransformResult => ({ ast: replacement }),
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const b = 2;");
+        expect(result.map?.sourcesContent).toEqual(["const b = 2;"]);
     });
 
     it("keeps a comment after non-ASCII code through a mutating transform", async (): Promise<void> => {
@@ -608,8 +643,8 @@ describe("transform", (): void => {
                 _ctx: PluginContext,
                 args: TransformArgs,
             ): TransformResult => {
-                const program: ProgramFixture =
-                    args.ast as unknown as ProgramFixture;
+                const program: ProgramFixture = args.ast
+                    .program as unknown as ProgramFixture;
 
                 renameRootIdentifier({ program, name: "renamed" });
 

@@ -69,7 +69,7 @@ Each hook returns an `impl Future`, so its body can be written as an `async` blo
 | `GenerateArgs`  | `ast: &Ast`, `options: &GeneratorOptions`                      |
 | `EndArgs`       | `error: Option<CompileError>`                                  |
 
-`TransformArgs` owns a cheap `Ast` handle: `Ast::clone` is O(1), and `Ast::with_mut` copies the arena on write when the driver still holds the carried AST. `TransformArgs` is `Clone`, not `Copy`. Returning `None` leaves the driver's AST untouched.
+`TransformArgs` owns a cheap [Ast](/apis/rust/Ast) handle: `Ast::clone` is O(1), and `Ast::with_mut` copies the arena on write when the driver still holds the carried AST. `TransformArgs` is `Clone`, not `Copy`. Returning `None` leaves the driver's AST untouched.
 
 `TransformOutput` is the value a `transform` hook returns to replace the carried AST; it wraps the new owned `ast`.
 

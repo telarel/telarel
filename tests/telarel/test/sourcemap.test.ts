@@ -1,6 +1,8 @@
 import type {
     CodeResult,
+    DeepReadonly,
     PluginContext,
+    SourceMap,
     TransformArgs,
     TransformResult,
 } from "telarel";
@@ -11,6 +13,7 @@ import { compile } from "telarel";
 import { describe, expect, it } from "vitest";
 
 import { renameRootIdentifier } from "#/functions/ast";
+import { buildMap } from "#/functions/sourcemap";
 
 describe("sourcemap", (): void => {
     it("emits a v3 codegen map with observed exact fields", async (): Promise<void> => {
@@ -33,6 +36,43 @@ describe("sourcemap", (): void => {
         expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 
+    it("passes the Ast source and input map to transform", async (): Promise<void> => {
+        const code: string = "const a = 1;";
+        const inputMap: SourceMap = buildMap({
+            file: "upstream.ts",
+            mappings: "AASA",
+            names: [],
+            sources: ["upstream.ts"],
+            sourcesContent: [code],
+        });
+        let observedCode: string = "";
+        const observedMaps: Array<DeepReadonly<SourceMap> | null> = [];
+
+        await compile(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: inputMap },
+            plugins: [
+                {
+                    name: "ast-observer",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
+                        observedCode = args.ast.source;
+                        observedMaps.push(args.ast.map);
+
+                        return { ast: args.ast };
+                    },
+                },
+            ],
+        });
+
+        expect(observedCode).toBe(code);
+        expect(observedMaps[0]?.sources).toEqual(["upstream.ts"]);
+        expect(observedMaps[0]?.mappings).toBe("AASA");
+    });
+
     it("keeps the map stable after a transform mutation", async (): Promise<void> => {
         const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
@@ -44,8 +84,8 @@ describe("sourcemap", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: ProgramFixture =
-                            args.ast as unknown as ProgramFixture;
+                        const program: ProgramFixture = args.ast
+                            .program as unknown as ProgramFixture;
                         renameRootIdentifier({ program, name: "renamed" });
 
                         return { ast: args.ast };
@@ -210,8 +250,8 @@ describe("sourcemap", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: ProgramFixture =
-                            args.ast as unknown as ProgramFixture;
+                        const program: ProgramFixture = args.ast
+                            .program as unknown as ProgramFixture;
                         renameRootIdentifier({ program, name: "renamed-long" });
 
                         return { ast: args.ast };

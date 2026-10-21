@@ -54,10 +54,10 @@ describe("errors", (): void => {
             await rejection(compile(code, { cwd: "/repo", file: "index.ts" })),
         );
         const source: ErrorSource | undefined = error.source;
-        const span: Span | undefined = source?.span();
+        const span: Span | undefined = source?.span;
 
-        expect(source?.file()).toBe("index.ts");
-        expect(source?.code()).toBe(code);
+        expect(source?.file).toBe("index.ts");
+        expect(source?.code).toBe(code);
         expect(span).toEqual({
             start: code.lastIndexOf("="),
             end: code.lastIndexOf("=") + 1,
@@ -71,7 +71,7 @@ describe("errors", (): void => {
             await rejection(compile(code, { cwd: "/repo", file: "index.ts" })),
         );
         const start: number = code.indexOf("😀");
-        const span: Span | undefined = error.source?.span();
+        const span: Span | undefined = error.source?.span;
 
         expect(span).toEqual({ start, end: start + "😀".length });
         expect(code.slice(span?.start, span?.end)).toBe("😀");
@@ -92,8 +92,8 @@ describe("errors", (): void => {
         const start: number = code.indexOf("😀");
 
         expect(error.name).toBe("CompileError");
-        expect(error.source?.file()).toBe("index.ts");
-        expect(error.source?.span()).toEqual({
+        expect(error.source?.file).toBe("index.ts");
+        expect(error.source?.span).toEqual({
             start,
             end: start + "😀".length,
         });
@@ -128,9 +128,9 @@ describe("errors", (): void => {
         expect(error.message).toBe("plugin-boom");
         expect(error.render()).toContain("plugin-boom");
         expect(error.render()).toContain("input.ts");
-        expect(error.source?.file()).toBe("input.ts");
-        expect(error.source?.span()).toEqual({ start: 6, end: 7 });
-        expect(error.source?.code()).toBe(sourceCode);
+        expect(error.source?.file).toBe("input.ts");
+        expect(error.source?.span).toEqual({ start: 6, end: 7 });
+        expect(error.source?.code).toBe(sourceCode);
     });
 
     it("preserves an AST-derived plugin error source", async (): Promise<void> => {
@@ -150,10 +150,7 @@ describe("errors", (): void => {
                                 throw new PluginError("ast-boom", {
                                     source: ErrorSource.fromAst(
                                         "input.ts",
-                                        {
-                                            program: args.ast,
-                                            code: sourceCode,
-                                        },
+                                        args.ast,
                                         { start: 6, end: 7 },
                                     ),
                                 });
@@ -166,9 +163,9 @@ describe("errors", (): void => {
 
         expect(error.message).toBe("ast-boom");
         expect(error.render()).toContain("input.ts");
-        expect(error.source?.file()).toBe("input.ts");
-        expect(error.source?.span()).toEqual({ start: 6, end: 7 });
-        expect(error.source?.code()).toBe(sourceCode);
+        expect(error.source?.file).toBe("input.ts");
+        expect(error.source?.span).toEqual({ start: 6, end: 7 });
+        expect(error.source?.code).toBe(sourceCode);
     });
 
     it("leaves a source-less plugin error without file or span", async (): Promise<void> => {
@@ -208,9 +205,9 @@ describe("errors", (): void => {
         expect(converted.name).toBe("CompileError");
         expect(converted.message).toBe("plugin-boom");
         expect(converted.render()).toContain("input.ts");
-        expect(converted.source?.file()).toBe("input.ts");
-        expect(converted.source?.span()).toEqual({ start: 6, end: 7 });
-        expect(converted.source?.code()).toBe("const x = 1;");
+        expect(converted.source?.file).toBe("input.ts");
+        expect(converted.source?.span).toEqual({ start: 6, end: 7 });
+        expect(converted.source?.code).toBe("const x = 1;");
 
         const bare: CompileError = new PluginError(
             "plain-boom",
@@ -238,9 +235,9 @@ describe("errors", (): void => {
         );
 
         expect(converted).toBeInstanceOf(CompileError);
-        expect(converted.source?.file()).toBe("input.ts");
-        expect(converted.source?.span()).toEqual({ start: 6, end: 7 });
-        expect(converted.source?.code()).toBe("const x = 1;");
+        expect(converted.source?.file).toBe("input.ts");
+        expect(converted.source?.span).toEqual({ start: 6, end: 7 });
+        expect(converted.source?.code).toBe("const x = 1;");
     });
 
     it("rebuilds a raw binding compile error", (): void => {
@@ -261,9 +258,9 @@ describe("errors", (): void => {
         expect(error.name).toBe("CompileError");
         expect(error.message).toBe("raw-boom");
         expect(error.render()).toContain("input.ts");
-        expect(error.source?.file()).toBe("input.ts");
-        expect(error.source?.span()).toEqual({ start: 6, end: 7 });
-        expect(error.source?.code()).toBe("const x = 1;");
+        expect(error.source?.file).toBe("input.ts");
+        expect(error.source?.span).toEqual({ start: 6, end: 7 });
+        expect(error.source?.code).toBe("const x = 1;");
     });
 
     it("rebuilds a source-less raw binding compile error", (): void => {
@@ -297,9 +294,9 @@ describe("errors", (): void => {
         expect(error.message).toBe("envelope-boom");
         expect(error.render()).toContain("input.ts");
         expect(error.message).not.toContain("__TELAREL_COMPILE_ERROR__");
-        expect(error.source?.file()).toBe("input.ts");
-        expect(error.source?.span()).toEqual({ start: 6, end: 7 });
-        expect(error.source?.code()).toBe("const x = 1;");
+        expect(error.source?.file).toBe("input.ts");
+        expect(error.source?.span).toEqual({ start: 6, end: 7 });
+        expect(error.source?.code).toBe("const x = 1;");
     });
 
     it("clamps out-of-range code-frame spans", (): void => {
@@ -369,15 +366,15 @@ describe("errors", (): void => {
 
         span.start = 99;
 
-        expect(source.file()).toBe("input.ts");
-        expect(source.code()).toBe("abc");
-        expect(source.span()).toEqual({ start: 1, end: 2 });
+        expect(source.file).toBe("input.ts");
+        expect(source.code).toBe("abc");
+        expect(source.span).toEqual({ start: 1, end: 2 });
 
-        const copy: Span = source.span();
+        const copy: Span = source.span;
 
         copy.end = 99;
 
-        expect(source.span()).toEqual({ start: 1, end: 2 });
+        expect(source.span).toEqual({ start: 1, end: 2 });
 
         const parsed: AstResult = await parse("const x = 1;", {
             cwd: "/repo",
@@ -389,7 +386,7 @@ describe("errors", (): void => {
             end: 7,
         });
 
-        expect(astSource.code()).toBe(ast.code);
-        expect(astSource.code()).toBe("const x = 1;");
+        expect(astSource.code).toBe(ast.source);
+        expect(astSource.code).toBe("const x = 1;");
     });
 });

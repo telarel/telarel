@@ -1,7 +1,9 @@
-import type { Ast, CodeResult } from "#/@types/ast";
+import type { CodeResult } from "#/@types/ast";
 import type { GeneratorOptions } from "#/@types/generator";
+import type { Ast } from "#/classes/ast";
 
 import { builtinGenerate } from "#/binding";
+import { toAstInput } from "#/bridges/plugin";
 import { CompileError } from "#/errors/compile";
 
 /**
@@ -23,7 +25,7 @@ const createGenerator = (
             let result: Awaited<ReturnType<typeof builtinGenerate>>;
 
             try {
-                result = await builtinGenerate(ast, {
+                result = await builtinGenerate(toAstInput(ast), {
                     cwd: options.cwd,
                     file: options.file,
                     sourceMap: options.sourceMap,

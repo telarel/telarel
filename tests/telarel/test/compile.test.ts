@@ -15,7 +15,7 @@ import type {
 
 import type { ProgramFixture } from "#/functions/ast";
 
-import { compile } from "telarel";
+import { Ast, compile } from "telarel";
 import { walk } from "telarel/walker";
 import { describe, expect, it } from "vitest";
 
@@ -99,8 +99,8 @@ describe("compile", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): void => {
-                        const program: CallFixture =
-                            args.ast as unknown as CallFixture;
+                        const program: CallFixture = args.ast
+                            .program as unknown as CallFixture;
                         const statement: CallFixture["body"][number] | void =
                             program.body[0];
                         if (!statement) {
@@ -726,8 +726,8 @@ describe("compile", (): void => {
                 _ctx: PluginContext,
                 args: TransformArgs,
             ): TransformResult => {
-                const program: ProgramFixture =
-                    args.ast as unknown as ProgramFixture;
+                const program: ProgramFixture = args.ast
+                    .program as unknown as ProgramFixture;
                 if (
                     name === "second" &&
                     program.body[0]?.declarations[0]?.id.name !== "first"
@@ -848,8 +848,8 @@ describe("compile", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: InitFixture =
-                            args.ast as unknown as InitFixture;
+                        const program: InitFixture = args.ast
+                            .program as unknown as InitFixture;
                         const statement:
                             | InitFixture["body"][number]
                             | undefined = program.body[0];
@@ -885,8 +885,8 @@ describe("compile", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: ProgramFixture =
-                            args.ast as unknown as ProgramFixture;
+                        const program: ProgramFixture = args.ast
+                            .program as unknown as ProgramFixture;
                         renameRootIdentifier({ program, name: "mutated" });
 
                         return { ast: args.ast };
@@ -909,8 +909,8 @@ describe("compile", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): void => {
-                        const program: ProgramFixture =
-                            args.ast as unknown as ProgramFixture;
+                        const program: ProgramFixture = args.ast
+                            .program as unknown as ProgramFixture;
                         renameRootIdentifier({ program, name: "not-applied" });
                     },
                 },
@@ -934,11 +934,16 @@ describe("compile", (): void => {
                         args: TransformArgs,
                     ): TransformResult => {
                         const program: ProgramFixture = structuredClone(
-                            args.ast,
+                            args.ast.program,
                         ) as unknown as ProgramFixture;
                         renameRootIdentifier({ program, name: "replaced" });
 
-                        return { ast: program as never };
+                        return {
+                            ast: new Ast({
+                                program: program as never,
+                                source: args.ast.source,
+                            }),
+                        };
                     },
                 },
             ],
@@ -961,11 +966,16 @@ describe("compile", (): void => {
                         args: TransformArgs,
                     ): TransformResult => {
                         const program: ProgramFixture = structuredClone(
-                            args.ast,
+                            args.ast.program,
                         ) as unknown as ProgramFixture;
                         renameRootIdentifier({ program, name: "returned" });
 
-                        return { ast: program as never };
+                        return {
+                            ast: new Ast({
+                                program: program as never,
+                                source: args.ast.source,
+                            }),
+                        };
                     },
                 },
             ],
@@ -989,11 +999,8 @@ describe("compile", (): void => {
                             _ctx: PluginContext,
                             args: TransformArgs,
                         ): TransformResult => {
-                            walk(
-                                args.ast as unknown as Parameters<
-                                    typeof walk
-                                >[0],
-                                {
+                            args.ast.mutate((program): void => {
+                                walk(program, {
                                     enter(node): void {
                                         if (
                                             node.type === "JSXIdentifier" &&
@@ -1002,8 +1009,8 @@ describe("compile", (): void => {
                                             node.name = "Buttonx";
                                         }
                                     },
-                                },
-                            );
+                                });
+                            });
 
                             return { ast: args.ast };
                         },
@@ -1013,6 +1020,33 @@ describe("compile", (): void => {
         );
 
         expect(result.code).toContain("<Buttonx>");
+    });
+
+    it("mutates the carried ast through Ast.mutate", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "mutate-rename",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
+                        args.ast.mutate((program): void => {
+                            renameRootIdentifier({
+                                program: program as unknown as ProgramFixture,
+                                name: "mutated",
+                            });
+                        });
+
+                        return { ast: args.ast };
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const mutated = 1;");
     });
 
     it("rejects cleanly on a non-Error throwable from transform", async (): Promise<void> => {
@@ -1065,8 +1099,8 @@ describe("compile", (): void => {
                             _ctx: PluginContext,
                             args: TransformArgs,
                         ): TransformResult => {
-                            const program: ProgramFixture =
-                                args.ast as unknown as ProgramFixture;
+                            const program: ProgramFixture = args.ast
+                                .program as unknown as ProgramFixture;
                             renameRootIdentifier({ program, name: "renamed" });
 
                             return { ast: args.ast };
@@ -1251,7 +1285,11 @@ describe("compile", (): void => {
     });
 
     it("observes the parsed AST in prepare", async (): Promise<void> => {
-        const seen: Array<{ keys: Array<string>; type: string }> = [];
+        const seen: Array<{
+            keys: Array<string>;
+            type: string;
+            code: string;
+        }> = [];
 
         const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
@@ -1262,7 +1300,8 @@ describe("compile", (): void => {
                     prepare: (_ctx: PluginContext, args: PrepareArgs): void => {
                         seen.push({
                             keys: Object.keys(args),
-                            type: args.ast.type,
+                            type: args.ast.program.type,
+                            code: args.ast.source,
                         });
                     },
                 },
@@ -1271,7 +1310,9 @@ describe("compile", (): void => {
 
         // The prepare payload carries only the parsed AST; there is no
         // rewrite channel, so the return is ignored.
-        expect(seen).toEqual([{ keys: ["ast"], type: "Program" }]);
+        expect(seen).toEqual([
+            { keys: ["ast"], type: "Program", code: "const a = 1;" },
+        ]);
         expect(result.code).toBe("const a = 1;");
     });
 
@@ -1306,7 +1347,11 @@ describe("compile", (): void => {
     });
 
     it("observes the final AST in finalize", async (): Promise<void> => {
-        const seen: Array<{ keys: Array<string>; type: string }> = [];
+        const seen: Array<{
+            keys: Array<string>;
+            type: string;
+            code: string;
+        }> = [];
 
         const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
@@ -1320,14 +1365,17 @@ describe("compile", (): void => {
                     ): void => {
                         seen.push({
                             keys: Object.keys(args),
-                            type: args.ast.type,
+                            type: args.ast.program.type,
+                            code: args.ast.source,
                         });
                     },
                 },
             ],
         });
 
-        expect(seen).toEqual([{ keys: ["ast"], type: "Program" }]);
+        expect(seen).toEqual([
+            { keys: ["ast"], type: "Program", code: "const a = 1;" },
+        ]);
         expect(result.code).toBe("const a = 1;");
     });
 
@@ -1344,8 +1392,8 @@ describe("compile", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: ProgramFixture =
-                            args.ast as unknown as ProgramFixture;
+                        const program: ProgramFixture = args.ast
+                            .program as unknown as ProgramFixture;
                         renameRootIdentifier({ program, name: "renamed" });
 
                         return { ast: args.ast };
@@ -1357,8 +1405,8 @@ describe("compile", (): void => {
                         _ctx: PluginContext,
                         args: FinalizeArgs,
                     ): void => {
-                        const program: ProgramFixture =
-                            args.ast as unknown as ProgramFixture;
+                        const program: ProgramFixture = args.ast
+                            .program as unknown as ProgramFixture;
 
                         names.push(
                             program.body[0]?.declarations[0]?.id.name ?? "",

@@ -1,4 +1,5 @@
 import type {
+    AstOptions,
     AstResult,
     CodeResult,
     GenerateArgs,
@@ -39,8 +40,8 @@ describe("generate", (): void => {
         const ast: AstResult = await parsed();
 
         const result: CodeResult = await generate(
-            ast.ast.program,
-            ast.ast.code,
+            ast.ast.program as unknown as AstOptions["program"],
+            ast.ast.source,
             {
                 file: "index.ts",
             },
@@ -112,7 +113,7 @@ describe("generate", (): void => {
         expect(seen).toEqual([
             {
                 keys: ["ast", "options"],
-                astKeys: ["program", "code"],
+                astKeys: [],
                 file: "index.ts",
             },
         ]);

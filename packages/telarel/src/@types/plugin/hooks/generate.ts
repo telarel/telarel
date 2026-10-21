@@ -1,5 +1,5 @@
-import type { Ast } from "#/@types/ast";
 import type { GeneratorOptions } from "#/@types/generator";
+import type { Ast } from "#/classes/ast";
 
 /**
  * Arguments for the `generate` hook.

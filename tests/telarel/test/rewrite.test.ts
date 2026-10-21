@@ -1,5 +1,5 @@
 import type {
-    Ast,
+    AstOptions,
     AstResult,
     FinalizeArgs,
     Plugin,
@@ -11,7 +11,7 @@ import type {
 
 import type { ProgramFixture } from "#/functions/ast";
 
-import { generate, parse, rewrite } from "telarel";
+import { Ast, generate, parse, rewrite } from "telarel";
 import { describe, expect, it } from "vitest";
 
 import { renameRootIdentifier } from "#/functions/ast";
@@ -36,7 +36,8 @@ const rename = (
     name: string,
 ): ((ctx: unknown, args: TransformArgs) => TransformResult) => {
     return (_ctx: unknown, args: TransformArgs): TransformResult => {
-        const program: ProgramFixture = args.ast as unknown as ProgramFixture;
+        const program: ProgramFixture = args.ast
+            .program as unknown as ProgramFixture;
 
         if (
             name === "second" &&
@@ -61,9 +62,9 @@ describe("rewrite", (): void => {
             file: "index.ts",
         });
 
-        expect(result.ast.code).toBe("const a = 1;");
+        expect(result.ast.source).toBe("const a = 1;");
         expect(result.ast.program.type).toBe("Program");
-        expect(result.ast.map).toBeUndefined();
+        expect(result.ast.map).toBeNull();
     });
 
     it("accepts a bare program with its code", async (): Promise<void> => {
@@ -72,13 +73,13 @@ describe("rewrite", (): void => {
         });
 
         const result: AstResult = await rewrite(
-            parsed.ast.program,
-            parsed.ast.code,
+            parsed.ast.program as unknown as AstOptions["program"],
+            parsed.ast.source,
             { file: "index.ts" },
         );
 
         expect(result.ast.program.type).toBe("Program");
-        expect(result.ast.code).toBe("const a = 1;");
+        expect(result.ast.source).toBe("const a = 1;");
     });
 
     it("observes the AST in prepare and finalize with ignored returns", async (): Promise<void> => {
@@ -190,11 +191,11 @@ describe("rewrite", (): void => {
             names: [],
             sources: ["own.ts"],
         });
-        const ast: Ast = {
-            program: parsed.ast.program,
-            code: parsed.ast.code,
+        const ast: Ast = new Ast({
+            program: parsed.ast.program as unknown as AstOptions["program"],
+            source: parsed.ast.source,
             map: ownMap,
-        };
+        });
 
         const result: AstResult = await rewrite(ast, {
             file: "index.ts",

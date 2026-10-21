@@ -1,11 +1,12 @@
 import type { Program } from "@oxc-project/types";
 
-import type { Ast, CodeResult } from "#/@types/ast";
+import type { CodeResult } from "#/@types/ast";
 import type { GenerateOptions } from "#/@types/plugin/options";
 import type { RawPlugin } from "#/bridges/plugin";
+import type { Ast } from "#/classes/ast";
 
 import { generate as bindingGenerate } from "#/binding";
-import { toRawPlugins } from "#/bridges/plugin";
+import { toAstInput, toRawPlugins } from "#/bridges/plugin";
 import { CompileError } from "#/errors/compile";
 import { normalizeAstInput } from "#/functions/ast-input";
 
@@ -43,7 +44,7 @@ async function generate(
     let result: Awaited<ReturnType<typeof bindingGenerate>>;
 
     try {
-        result = await bindingGenerate(ast, {
+        result = await bindingGenerate(toAstInput(ast), {
             cwd: options?.cwd,
             file: options?.file,
             sourceMap: options?.sourceMap,

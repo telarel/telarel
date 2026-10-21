@@ -19,7 +19,7 @@ class CompileError extends Error {
 
     name: "CompileError";
     message: string;
-    source: ErrorSource | undefined;
+    get source(): ErrorSource | undefined;
 
     render(): string;
 }

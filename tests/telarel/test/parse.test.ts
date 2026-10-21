@@ -1,4 +1,5 @@
 import type {
+    AstOptions,
     AstResult,
     ParseArgs,
     ParserOptions,
@@ -55,10 +56,10 @@ describe("parse", (): void => {
             file: "index.ts",
         });
 
-        expect(result.ast.code).toBe("const a = 1;");
+        expect(result.ast.source).toBe("const a = 1;");
         expect(result.ast.program.type).toBe("Program");
         // Input maps are off by default: no map is attached.
-        expect(result.ast.map).toBeUndefined();
+        expect(result.ast.map).toBeNull();
     });
 
     it("round-trips the parsed program through generate", async (): Promise<void> => {
@@ -68,8 +69,8 @@ describe("parse", (): void => {
 
         const fromAst = await generate(parsed.ast, { file: "index.ts" });
         const fromProgram = await generate(
-            parsed.ast.program,
-            parsed.ast.code,
+            parsed.ast.program as unknown as AstOptions["program"],
+            parsed.ast.source,
             {
                 file: "index.ts",
             },
@@ -259,7 +260,7 @@ describe("parse", (): void => {
             sourceMap: { input: "auto" },
         });
 
-        expect(result.ast.map).toBeUndefined();
+        expect(result.ast.map).toBeNull();
     });
 
     it("rejects a plugin with a missing name", async (): Promise<void> => {

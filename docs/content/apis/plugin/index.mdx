@@ -28,9 +28,9 @@ The core owns all state: a hook observes its stage arguments and returns a value
 
 **`parse` — first-win.** Runs over the plugins that implement it. The first plugin returning an AST wins and the rest are skipped; returning nothing defers to the next plugin; when every hook defers the builtin parser runs.
 
-**`prepare` / `finalize` — observers.** Each runs as a read-only observer of the AST — the parsed AST for `prepare`, the final AST for `finalize`. Return values are ignored; they cannot change the tree.
+**`prepare` / `finalize` — observers.** Each runs as a read-only observer of the AST — the parsed AST for `prepare`, the final AST for `finalize`. Return values are ignored; they cannot change the tree. In JavaScript these hooks, and `generate`, receive an `Ast` snapshot whose mutations stay local to the hook.
 
-**`transform` — carried fold.** Runs over the plugins that implement it, carrying an owned AST from plugin to plugin. The **last** replacement AST returned wins; returning nothing leaves the carried AST untouched. In Rust the argument is an owned cheap handle and mutation goes through `Ast::with_mut`; in JavaScript the AST is read-only.
+**`transform` — carried fold.** Runs over the plugins that implement it, carrying an owned AST from plugin to plugin. The **last** replacement AST returned wins; returning nothing leaves the carried AST untouched. In Rust the argument is an owned cheap handle and mutation goes through `Ast::with_mut`; in JavaScript the argument is an `Ast` instance, mutation goes through `Ast.mutate`, and the returned `Ast` replaces it.
 
 **`generate` — first-win.** Runs over the plugins that implement it. The first plugin returning code wins and the rest are skipped; returning nothing defers to the next plugin, and ultimately to the builtin generator.
 

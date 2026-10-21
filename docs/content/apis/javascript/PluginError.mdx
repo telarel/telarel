@@ -24,7 +24,7 @@ class PluginError extends Error {
 
     name: "PluginError";
     message: string;
-    source: ErrorSource | undefined;
+    get source(): ErrorSource | undefined;
 
     render(): string;
 }

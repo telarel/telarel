@@ -1,4 +1,4 @@
-import type { Program } from "@oxc-project/types";
+import type { Ast } from "#/classes/ast";
 
 /**
  * Arguments for the `finalize` hook.
@@ -7,9 +7,9 @@ import type { Program } from "@oxc-project/types";
  */
 type FinalizeArgs = {
     /**
-     * Read-only.
+     * The final AST, with its source text and optional input map.
      */
-    ast: Program;
+    ast: Ast;
 };
 
 export type { FinalizeArgs };

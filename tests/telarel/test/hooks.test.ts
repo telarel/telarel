@@ -1,4 +1,5 @@
 import type {
+    AstOptions,
     AstResult,
     CodeResult,
     EndArgs,
@@ -11,9 +12,16 @@ import type {
     PrepareArgs,
     SourceMap,
     TransformArgs,
+    TransformResult,
 } from "telarel";
 
-import { CompileError, compile, createGenerator, createParser } from "telarel";
+import {
+    Ast,
+    CompileError,
+    compile,
+    createGenerator,
+    createParser,
+} from "telarel";
 import { describe, expect, it } from "vitest";
 
 type CaptureProgramOptions = {
@@ -35,7 +43,7 @@ const captureProgram = async ({
             {
                 name: "snapshotter",
                 transform: (_ctx: PluginContext, args: TransformArgs): void => {
-                    snapshot = structuredClone(args.ast);
+                    snapshot = structuredClone(args.ast.program);
                 },
             },
         ],
@@ -44,7 +52,13 @@ const captureProgram = async ({
     return snapshot;
 };
 
-type Program = AstResult["ast"]["program"];
+type Program = AstOptions["program"];
+
+const clearBody = (ast: Ast): void => {
+    ast.mutate((program: Program): void => {
+        program.body = [];
+    });
+};
 
 describe("hooks", (): void => {
     it("parse: first non-null wins and later hooks are ignored", async (): Promise<void> => {
@@ -66,7 +80,10 @@ describe("hooks", (): void => {
                         seen.push("first");
 
                         return {
-                            ast: { program, code: "let custom = 1;" },
+                            ast: new Ast({
+                                program,
+                                source: "let custom = 1;",
+                            }),
                         };
                     },
                 },
@@ -79,7 +96,10 @@ describe("hooks", (): void => {
                         seen.push("second");
 
                         return {
-                            ast: { program, code: "let custom = 1;" },
+                            ast: new Ast({
+                                program,
+                                source: "let custom = 1;",
+                            }),
                         };
                     },
                 },
@@ -117,7 +137,10 @@ describe("hooks", (): void => {
                         seen.push("second");
 
                         return {
-                            ast: { program, code: "let second = 2;" },
+                            ast: new Ast({
+                                program,
+                                source: "let second = 2;",
+                            }),
                         };
                     },
                 },
@@ -297,6 +320,88 @@ describe("hooks", (): void => {
         expect(finalizeKeys).toEqual([["ast"]]);
     });
 
+    it("passes Ast to every AST hook", async (): Promise<void> => {
+        let prepareAst: unknown;
+        let transformAst: unknown;
+        let finalizeAst: unknown;
+        let generateAst: unknown;
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "ast-classes",
+                    prepare: (_ctx: PluginContext, args: PrepareArgs): void => {
+                        prepareAst = args.ast;
+                    },
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
+                        transformAst = args.ast;
+
+                        return { ast: args.ast };
+                    },
+                    finalize: (
+                        _ctx: PluginContext,
+                        args: FinalizeArgs,
+                    ): void => {
+                        finalizeAst = args.ast;
+                    },
+                    generate: (
+                        _ctx: PluginContext,
+                        args: GenerateArgs,
+                    ): null => {
+                        generateAst = args.ast;
+
+                        return null;
+                    },
+                },
+            ],
+        });
+
+        expect(prepareAst).toBeInstanceOf(Ast);
+        expect(prepareAst).toHaveProperty("mutate");
+        expect(finalizeAst).toBeInstanceOf(Ast);
+        expect(finalizeAst).toHaveProperty("mutate");
+        expect(generateAst).toBeInstanceOf(Ast);
+        expect(generateAst).toHaveProperty("mutate");
+        expect(transformAst).toBeInstanceOf(Ast);
+        expect(transformAst).toHaveProperty("mutate");
+    });
+
+    it("does not apply mutations made by prepare, finalize, or generate hooks", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "observer-mutator",
+                    prepare: (_ctx: PluginContext, args: PrepareArgs): void => {
+                        clearBody(args.ast);
+                    },
+                    finalize: (
+                        _ctx: PluginContext,
+                        args: FinalizeArgs,
+                    ): void => {
+                        clearBody(args.ast);
+                    },
+                    generate: (
+                        _ctx: PluginContext,
+                        args: GenerateArgs,
+                    ): null => {
+                        clearBody(args.ast);
+
+                        return null;
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+    });
+
     it("end receives only the error key on the success path", async (): Promise<void> => {
         const seen: Array<{ keys: Array<string>; error: string | null }> = [];
 
@@ -371,7 +476,7 @@ describe("hooks", (): void => {
                 {
                     name: "custom-language",
                     parse: (): AstResult => ({
-                        ast: { program, code: custom },
+                        ast: new Ast({ program, source: custom }),
                     }),
                     generate: (
                         _ctx: PluginContext,
@@ -379,7 +484,7 @@ describe("hooks", (): void => {
                     ): CodeResult => {
                         // The generate hook sees the AST the parse hook put in
                         // place, not one built from `custom`.
-                        expect(args.ast.code).toBe(custom);
+                        expect(args.ast.source).toBe(custom);
 
                         return { code: "// custom output", map: null };
                     },

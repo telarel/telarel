@@ -21,13 +21,13 @@ class ErrorSource {
     static fromCode(file: string, code: string, span: Span): ErrorSource;
     static fromAst(file: string, ast: Ast, span: Span): ErrorSource;
 
-    file(): string;
-    code(): string;
-    span(): Span;
+    get file(): string;
+    get code(): string;
+    get span(): Span;
 }
 ```
 
-Use `fromCode` with a hook's code or `fromAst` with an AST that carries its source text.
+Use `fromCode` with a hook's code or `fromAst` with an [Ast](/apis/javascript/Ast) whose `source` text is available.
 
 | Member     | Description                                                |
 | ---------- | ---------------------------------------------------------- |
@@ -37,6 +37,6 @@ Use `fromCode` with a hook's code or `fromAst` with an AST that carries its sour
 | `code`     | The source text the span refers to.                        |
 | `span`     | A copy of the span within `code`.                          |
 
-`span()` returns a copy, so mutating the result does not mutate the source.
+`span` returns a copy, so mutating the result does not mutate the source.
 
 Use `CompileError.render()` or `PluginError.render()` to turn a source into a code frame.

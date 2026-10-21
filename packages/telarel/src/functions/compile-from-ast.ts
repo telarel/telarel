@@ -1,11 +1,12 @@
 import type { Program } from "@oxc-project/types";
 
-import type { Ast, CodeResult } from "#/@types/ast";
+import type { CodeResult } from "#/@types/ast";
 import type { CompileFromAstOptions } from "#/@types/plugin/options";
 import type { RawPlugin } from "#/bridges/plugin";
+import type { Ast } from "#/classes/ast";
 
 import { compileFromAst as bindingCompileFromAst } from "#/binding";
-import { toRawPlugins } from "#/bridges/plugin";
+import { toAstInput, toRawPlugins } from "#/bridges/plugin";
 import { CompileError } from "#/errors/compile";
 import { normalizeAstInput } from "#/functions/ast-input";
 
@@ -53,7 +54,7 @@ async function compileFromAst(
     let result: Awaited<ReturnType<typeof bindingCompileFromAst>>;
 
     try {
-        result = await bindingCompileFromAst(ast, {
+        result = await bindingCompileFromAst(toAstInput(ast), {
             cwd: options?.cwd,
             file: options?.file,
             language: options?.language,

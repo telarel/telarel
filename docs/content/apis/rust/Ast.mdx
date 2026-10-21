@@ -1,0 +1,97 @@
+---
+title: Ast
+description: An owned AST with its source text, input source map, and mutable program access.
+---
+
+`Ast` bundles an oxc `Program` with the source text its spans anchor to, the resolved source type, and an optional input source map.
+
+```rust
+pub struct Ast { /* private fields */ }
+
+impl Ast {
+    pub fn from_source<F>(
+        source: Arc<str>,
+        source_type: SourceType,
+        input_map: Option<SourceMap>,
+        build: F,
+    ) -> Ast
+    where
+        F: for<'a> FnOnce(&'a str, &'a Allocator) -> Program<'a>;
+
+    pub fn try_from_source<F, E>(
+        source: Arc<str>,
+        source_type: SourceType,
+        input_map: Option<SourceMap>,
+        build: F,
+    ) -> Result<Ast, E>
+    where
+        F: for<'a> FnOnce(&'a str, &'a Allocator) -> Result<Program<'a>, E>;
+
+    pub fn program(&self) -> &Program<'_>;
+    pub fn source(&self) -> &Arc<str>;
+    pub fn source_type(&self) -> SourceType;
+    pub fn map(&self) -> Option<&SourceMap>;
+
+    pub fn with_input_map(&self, map: Option<SourceMap>) -> Ast;
+
+    pub fn with_mut<R>(
+        &mut self,
+        f: impl for<'i> FnOnce(&'i Allocator, &mut Program<'i>) -> R,
+    ) -> R;
+}
+```
+
+## Construction
+
+`parse` is the normal way to obtain an `Ast`. `from_source` and `try_from_source` are lower-level constructors for building one from an existing oxc `Program`: the closure receives the source text and allocator that the program must borrow.
+
+## Accessors
+
+| Accessor            | Type                 | Description                                    |
+| ------------------- | -------------------- | ---------------------------------------------- |
+| `ast.program()`     | `&Program<'_>`       | The parsed program.                            |
+| `ast.source()`      | `&Arc<str>`          | The source text the program's spans anchor to. |
+| `ast.source_type()` | `SourceType`         | The resolved source type.                      |
+| `ast.map()`         | `Option<&SourceMap>` | The input source map, if any.                  |
+
+Program spans are UTF-8 byte offsets into `source()`, matching `oxc::span::Span`.
+
+## Input source map
+
+`ast.map()` is the **input** source map: it describes how this AST's source was produced from upstream originals. It is not the map generated from this AST.
+
+`with_input_map` rebuilds the AST with a different input map: the program is cloned into a fresh allocator and the source text is shared.
+
+## Mutation
+
+`with_mut` is the only path to the arena. The closure receives the allocator and a mutable program, so new nodes can be allocated while mutating.
+
+`Ast` clones are O(1): they share the same arena. `with_mut` copies the arena first when another clone is still alive, so mutating a clone never mutates the original.
+
+Only the `transform` hook carries mutations forward. `prepare`, `finalize`, and `generate` receive a borrowed `&Ast`, so they cannot mutate the program through `with_mut`.
+
+## Thread safety
+
+`Ast` is `Send + Sync` so plugin futures can move owned handles or borrow the AST across threads. Sharing `&Ast` across threads is read-only: `Program` exposes interior-mutable `Cell` fields, so mutating them through a shared `&Ast` is a data race and is forbidden.
+
+## Example
+
+```rust
+use telarel::allocator::Allocator;
+use telarel::ast::ast::Program;
+use telarel::{parse, Ast, ParseOptions, AstResult};
+
+let parsed: AstResult = parse(
+    String::from("const x: number = 1;"),
+    ParseOptions::default(),
+    vec![],
+).await?;
+
+let mut ast: Ast = parsed.ast;
+
+ast.with_mut(|_: &Allocator, program: &mut Program<'_>| {
+    program.body.clear();
+});
+
+assert!(ast.program().body.is_empty());
+```

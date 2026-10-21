@@ -26,3 +26,12 @@ Every pipeline entry function accepts the options relevant to the stages it runs
 - **Code result** — the generated code and an optional source map.
 
 See the individual function pages for the exact shapes.
+
+## Types and errors
+
+| Type           | Description                                                              | Reference                                                                    |
+| -------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `Ast`          | A program, its source text, and an optional input source map.            | [JavaScript](/apis/javascript/Ast), [Rust](/apis/rust/Ast)                   |
+| `ErrorSource`  | A source location made of a file, its source text, and a span within it. | [JavaScript](/apis/javascript/ErrorSource), [Rust](/apis/rust/ErrorSource)   |
+| `PluginError`  | An error reported by a plugin hook, with an optional source location.    | [JavaScript](/apis/javascript/PluginError), [Rust](/apis/rust/PluginError)   |
+| `CompileError` | An entry-point failure with an optional source location.                 | [JavaScript](/apis/javascript/CompileError), [Rust](/apis/rust/CompileError) |

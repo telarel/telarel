@@ -35,14 +35,7 @@ Every field is required. In a `parse` hook, the stage options are available as `
 
 Parses the fixed source text and returns the resulting AST. The parser resolves any requested input source map and attaches it to the returned AST; output delivery is applied by the pipeline.
 
-`AstResult` is `{ ast: Ast }`. `Ast` is an owned, self-referential AST with accessors:
-
-| Accessor            | Type                 | Description                                    |
-| ------------------- | -------------------- | ---------------------------------------------- |
-| `ast.program()`     | `&Program<'_>`       | The parsed program.                            |
-| `ast.source()`      | `&Arc<str>`          | The source text the program's spans anchor to. |
-| `ast.source_type()` | `SourceType`         | The resolved oxc source type.                  |
-| `ast.map()`         | `Option<&SourceMap>` | The input source map, if any.                  |
+`AstResult` is `{ ast: Ast }`. See [Ast](/apis/rust/Ast) for accessors, clone semantics, and mutation.
 
 ## Example
 
