@@ -162,10 +162,12 @@ mod tests {
 
     #[test]
     fn test_source_ast_shares_ast_source() {
+        use std::path::PathBuf;
+
         use crate::ast::parse::{ParseAstOptions, parse_ast};
 
         let options: ParseAstOptions = ParseAstOptions {
-            cwd: String::new(),
+            cwd: PathBuf::new(),
             file: "index.ts".to_string(),
             language: None,
             source_type: None,

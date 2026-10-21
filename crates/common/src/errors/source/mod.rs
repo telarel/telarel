@@ -35,7 +35,7 @@ impl ErrorSource {
         Self::from_code(file, Arc::clone(ast.source()), span)
     }
 
-    /// The path of the file the span belongs to.
+    /// The file the span belongs to.
     pub fn file(&self) -> &str {
         &self.file
     }
@@ -66,12 +66,14 @@ impl fmt::Debug for ErrorSource {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use crate::ast::parse::{ParseAstOptions, parse_ast};
 
     fn parse(code: &str) -> Ast {
         let options: ParseAstOptions = ParseAstOptions {
-            cwd: String::new(),
+            cwd: PathBuf::new(),
             file: "index.ts".to_string(),
             language: None,
             source_type: None,

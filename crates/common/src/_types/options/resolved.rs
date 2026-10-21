@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
 use crate::_types::options::source_map::SourceMapOptions;
@@ -6,8 +8,8 @@ use crate::_types::options::source_map::SourceMapOptions;
 #[derive(Debug, Clone)]
 pub struct ResolvedOptions {
     /// Working directory used to resolve relative paths.
-    pub cwd: String,
-    /// Path of the file being compiled.
+    pub cwd: PathBuf,
+    /// The file being compiled.
     pub file: String,
     /// The grammar of the code, defaulted from the file extension.
     pub language: Language,
@@ -29,7 +31,7 @@ mod tests {
     #[test]
     fn test_constructs_resolved_options() {
         let options: ResolvedOptions = ResolvedOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("src/app.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
@@ -37,7 +39,7 @@ mod tests {
             plugins: vec![String::from("probe")],
         };
 
-        assert_eq!(options.cwd, "/repo");
+        assert_eq!(options.cwd, PathBuf::from("/repo"));
         assert_eq!(options.file, "src/app.ts");
         assert_eq!(options.language, Language::TS);
         assert_eq!(options.source_type, SourceType::Module);

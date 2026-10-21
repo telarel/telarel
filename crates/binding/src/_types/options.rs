@@ -298,7 +298,7 @@ pub fn parse_source_map_options(
 /// scalars on the wire; only the plugins array (bridged separately) is
 /// specific to each entry point.
 struct SharedOptions {
-    cwd: Option<String>,
+    cwd: Option<PathBuf>,
     file: Option<String>,
     language: Option<Language>,
     source_type: Option<SourceType>,
@@ -332,7 +332,13 @@ impl SharedOptions {
             | None => None,
         };
 
-        Ok(Self { cwd, file, language, source_type, source_map })
+        Ok(Self {
+            cwd: cwd.map(PathBuf::from),
+            file,
+            language,
+            source_type,
+            source_map,
+        })
     }
 }
 
@@ -429,7 +435,7 @@ impl JsGenerateOptions {
         };
 
         Ok(GenerateOptions {
-            cwd: self.cwd.clone(),
+            cwd: self.cwd.clone().map(PathBuf::from),
             file: self.file.clone(),
             source_map,
         })
@@ -469,7 +475,7 @@ impl JsGeneratorOptions {
         };
 
         Ok(ResolvableOptions {
-            cwd: self.cwd.clone(),
+            cwd: self.cwd.clone().map(PathBuf::from),
             file: self.file.clone(),
             language: None,
             source_type: None,
@@ -833,9 +839,26 @@ mod tests {
         let parsed: GenerateOptions =
             options.to_generate_options().expect("generate options parse");
 
-        assert_eq!(parsed.cwd.as_deref(), Some("/repo"));
+        assert_eq!(parsed.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(parsed.file.as_deref(), Some("out.js"));
         assert!(parsed.source_map.is_some());
+    }
+
+    #[test]
+    fn test_compile_options_cwd_becomes_path_buf() {
+        let options: JsCompileOptions = JsCompileOptions {
+            cwd: Some(String::from("/repo")),
+            file: Some(String::from("index.js")),
+            language: None,
+            source_type: None,
+            source_map: None,
+            plugins: Vec::new(),
+        };
+
+        let parsed: CompileOptions =
+            options.to_compile_options().expect("compile options parse");
+
+        assert_eq!(parsed.cwd, Some(PathBuf::from("/repo")));
     }
 
     #[test]
@@ -851,7 +874,7 @@ mod tests {
         let resolvable: ResolvableOptions =
             options.to_resolvable().expect("parser options parse");
 
-        assert_eq!(resolvable.cwd.as_deref(), Some("/repo"));
+        assert_eq!(resolvable.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(resolvable.file.as_deref(), Some("app.tsx"));
         assert_eq!(resolvable.language, Some(Language::TSX));
         assert_eq!(resolvable.source_type, Some(SourceType::Module));
@@ -869,7 +892,7 @@ mod tests {
         let resolvable: ResolvableOptions =
             options.to_resolvable().expect("generator options parse");
 
-        assert_eq!(resolvable.cwd.as_deref(), Some("/repo"));
+        assert_eq!(resolvable.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(resolvable.file.as_deref(), Some("out.js"));
         assert_eq!(resolvable.language, None);
         assert_eq!(resolvable.source_type, None);

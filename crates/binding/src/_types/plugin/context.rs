@@ -7,7 +7,7 @@ use crate::plugin::hooks::SharedStr;
 pub struct JsPluginContext {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,

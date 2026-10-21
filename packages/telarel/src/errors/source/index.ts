@@ -34,7 +34,7 @@ class ErrorSource {
     }
 
     /**
-     * The path of the file the span belongs to.
+     * The file the span belongs to.
      */
     public get file(): string {
         return this.#file;

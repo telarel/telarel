@@ -28,6 +28,8 @@ pub type TransformReturn = Result<Option<TransformOutput>, PluginError>;
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use telarel_common::{Ast, ParseAstOptions, parse_ast};
 
     use super::*;
@@ -37,7 +39,7 @@ mod tests {
         let ast: Ast = parse_ast(
             String::from("let a;"),
             ParseAstOptions {
-                cwd: String::from(""),
+                cwd: PathBuf::from(""),
                 file: String::from("a.ts"),
                 language: None,
                 source_type: None,

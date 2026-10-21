@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use oxc::allocator::Allocator;
@@ -21,7 +22,7 @@ pub struct ParseProgramOptions<'ctx, 'a> {
     pub context: &'ctx CompileContext<'ctx>,
     /// Destination allocator for the parsed program.
     pub allocator: &'a Allocator,
-    /// Path of the file being parsed.
+    /// The file being parsed.
     pub file: &'a str,
     /// The grammar of the code;
     /// `None` infers the grammar from the file extension.
@@ -41,9 +42,9 @@ pub struct ParseProgramResult<'a> {
 /// Options for [`parse_ast`].
 #[derive(Debug, Clone)]
 pub struct ParseAstOptions {
-    /// Current working directory (for diagnostics).
-    pub cwd: String,
-    /// Path of the file being parsed.
+    /// Working directory used to resolve relative paths.
+    pub cwd: PathBuf,
+    /// The file being parsed.
     pub file: String,
     /// The grammar of the code;
     /// `None` infers the grammar from the file extension.
@@ -153,14 +154,14 @@ pub fn parse_ast(
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use oxc::allocator::Allocator;
     use oxc_sourcemap::SourceMapBuilder;
 
     use crate::_types::grammar::language::grammar_source_type;
 
     use super::*;
-
-    const CWD: &str = "";
 
     const FILE: &str = "index.ts";
 
@@ -171,7 +172,8 @@ mod tests {
         source_type: Option<SourceType>,
         code: &'a str,
     ) -> Result<ParseProgramResult<'a>, CompileError> {
-        let context: CompileContext<'_> = CompileContext::new(CWD, file, code);
+        let context: CompileContext<'_> =
+            CompileContext::new(Path::new(""), file, code);
 
         let options: ParseProgramOptions<'_, 'a> = ParseProgramOptions {
             context: &context,
@@ -199,7 +201,7 @@ mod tests {
         code: &str,
     ) -> Result<Ast, CompileError> {
         let options: ParseAstOptions = ParseAstOptions {
-            cwd: CWD.to_string(),
+            cwd: PathBuf::new(),
             file: file.to_string(),
             language,
             source_type,
@@ -251,7 +253,7 @@ mod tests {
         let input_map: SourceMap = builder.into_owned_sourcemap().into_inner();
 
         let options: ParseAstOptions = ParseAstOptions {
-            cwd: CWD.to_string(),
+            cwd: PathBuf::new(),
             file: FILE.to_string(),
             language: None,
             source_type: None,

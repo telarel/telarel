@@ -27,7 +27,7 @@ Every field is required. In a `generate` hook, the stage options are available a
 
 | Field        | Type               | Description                                               |
 | ------------ | ------------------ | --------------------------------------------------------- |
-| `cwd`        | `String`           | Current working directory. Reserved; codegen ignores it.  |
+| `cwd`        | `PathBuf`          | Filesystem root. Reserved; codegen ignores it.            |
 | `file`       | `String`           | The file being generated.                                 |
 | `source_map` | `SourceMapOptions` | The source-map inputs and outputs requested for the step. |
 
@@ -42,6 +42,8 @@ The builtin generator always returns a map. Output delivery modes (`Inline` and 
 ## Example
 
 ```rust
+use std::path::PathBuf;
+
 use telarel::{
     parse, AstResult, CodeResult, Generator, GeneratorOptions, ParseOptions,
     SourceMapOptions,
@@ -56,7 +58,7 @@ let parsed: AstResult = parse(
 let result: CodeResult = Generator::new(
     &parsed.ast,
     GeneratorOptions {
-        cwd: String::from("."),
+        cwd: PathBuf::from("."),
         file: String::from("index.ts"),
         source_map: SourceMapOptions::default(),
     },

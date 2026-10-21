@@ -51,7 +51,7 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use oxc_sourcemap::SourceMapBuilder;
     use tempfile::TempDir;
@@ -62,7 +62,7 @@ mod tests {
     use crate::_types::options::source_map::input::{
         InputSourceMap, InputSourceMapMode,
     };
-    use crate::helpers::test_util::{path_string, temp_dir, write_file};
+    use crate::helpers::test_util::{path_buf, temp_dir, write_file};
     use crate::sourcemap::inline::append_inline_source_map;
 
     use super::*;
@@ -85,12 +85,12 @@ mod tests {
     }
 
     fn options(
-        cwd: &str,
+        cwd: &Path,
         file: &str,
         source_map: SourceMapOptions,
     ) -> ParserOptions {
         ParserOptions {
-            cwd: cwd.to_string(),
+            cwd: cwd.to_path_buf(),
             file: file.to_string(),
             language: Language::TS,
             source_type: SourceType::Unambiguous,
@@ -109,7 +109,7 @@ mod tests {
     fn test_parse_without_source_map_attaches_none() {
         let result: AstResult = Parser::new(
             String::from("const a = 1;"),
-            options("", "index.ts", SourceMapOptions::default()),
+            options(Path::new(""), "index.ts", SourceMapOptions::default()),
         )
         .parse()
         .expect("valid source parses");
@@ -122,7 +122,7 @@ mod tests {
         let parser: Parser = Parser::new(
             String::from("const a: number = 1;"),
             ParserOptions {
-                cwd: String::new(),
+                cwd: PathBuf::new(),
                 file: String::from("app.js"),
                 language: Language::TS,
                 source_type: SourceType::Script,
@@ -140,7 +140,7 @@ mod tests {
     fn test_parse_propagates_invalid_syntax() {
         let result: Result<AstResult, CompileError> = Parser::new(
             String::from("const = ;"),
-            options("", "index.ts", SourceMapOptions::default()),
+            options(Path::new(""), "index.ts", SourceMapOptions::default()),
         )
         .parse();
 
@@ -156,7 +156,7 @@ mod tests {
         let result: AstResult = Parser::new(
             String::from("const a = 1;"),
             options(
-                "",
+                Path::new(""),
                 "index.ts",
                 source_map_options(InputSourceMap::Mode(
                     InputSourceMapMode::Value(map.clone()),
@@ -179,7 +179,7 @@ mod tests {
         let result: AstResult = Parser::new(
             code,
             options(
-                "",
+                Path::new(""),
                 "index.ts",
                 source_map_options(InputSourceMap::Mode(
                     InputSourceMapMode::Inline,
@@ -202,7 +202,7 @@ mod tests {
         let result: AstResult = Parser::new(
             String::from("const a = 1;"),
             options(
-                &path_string(&dir),
+                &path_buf(&dir),
                 "index.ts",
                 source_map_options(InputSourceMap::Mode(
                     InputSourceMapMode::Path(PathBuf::from("custom.map")),
@@ -225,7 +225,7 @@ mod tests {
         let result: AstResult = Parser::new(
             String::from("const a = 1;"),
             options(
-                &path_string(&dir),
+                &path_buf(&dir),
                 "index.ts",
                 source_map_options(InputSourceMap::Mode(
                     InputSourceMapMode::External,
@@ -252,7 +252,7 @@ mod tests {
         let result: AstResult = Parser::new(
             code,
             options(
-                &path_string(&dir),
+                &path_buf(&dir),
                 "index.ts",
                 source_map_options(InputSourceMap::Mode(
                     InputSourceMapMode::Auto,
@@ -272,7 +272,7 @@ mod tests {
         let result: AstResult = Parser::new(
             String::from("const a = 1;"),
             options(
-                &path_string(&dir),
+                &path_buf(&dir),
                 "index.ts",
                 source_map_options(InputSourceMap::Mode(
                     InputSourceMapMode::Auto,

@@ -237,6 +237,8 @@ impl Plugin for TransformPlugin {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use oxc::transformer::CompilerAssumptions;
     use oxc::transformer::DecoratorOptions;
     use oxc::transformer::PluginsOptions;
@@ -277,7 +279,7 @@ mod tests {
         parse_ast(
             code.to_string(),
             ParseAstOptions {
-                cwd: CWD.to_string(),
+                cwd: PathBuf::from(CWD),
                 file: file.to_string(),
                 language: None,
                 source_type: None,
@@ -294,7 +296,7 @@ mod tests {
             source_type: telarel_common::SourceType::Module,
         };
 
-        PluginContext::new(CWD, module)
+        PluginContext::new(Path::new(CWD), module)
     }
 
     async fn run_hook(
@@ -1029,7 +1031,8 @@ mod tests {
             source_type: telarel_common::SourceType::Module,
         };
 
-        let ctx: PluginContext<'_> = PluginContext::new("/repo", module);
+        let ctx: PluginContext<'_> =
+            PluginContext::new(Path::new("/repo"), module);
 
         let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
@@ -1043,8 +1046,9 @@ mod tests {
             .expect("resolution succeeded")
             .oxc;
 
-        assert!(
-            cached.cwd.as_os_str().is_empty(),
+        assert_eq!(
+            cached.cwd,
+            PathBuf::new(),
             "cache must stay cwd-free, got {:?}",
             cached.cwd
         );

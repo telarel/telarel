@@ -39,6 +39,8 @@ impl<'a> Generator<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use oxc_sourcemap::SourceMapBuilder;
 
     use crate::_types::options::source_map::SourceMapOptions;
@@ -65,7 +67,7 @@ mod tests {
 
     fn parse_with_input_map(map: Option<SourceMap>) -> Ast {
         let options: ParseAstOptions = ParseAstOptions {
-            cwd: String::new(),
+            cwd: PathBuf::new(),
             file: FILE.to_string(),
             language: None,
             source_type: None,
@@ -77,7 +79,7 @@ mod tests {
 
     fn options() -> GeneratorOptions {
         GeneratorOptions {
-            cwd: String::new(),
+            cwd: PathBuf::new(),
             file: FILE.to_string(),
             source_map: SourceMapOptions::default(),
         }

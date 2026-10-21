@@ -20,6 +20,7 @@ pub async fn rewrite(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
 
@@ -207,7 +208,7 @@ mod tests {
         let ast: Ast = parse_fixture("const a = 1;").unwrap();
 
         let options: RewriteOptions = RewriteOptions {
-            cwd: Some(String::from("/definitely/missing")),
+            cwd: Some(PathBuf::from("/definitely/missing")),
             file: Some(String::from("index.ts")),
             source_map: Some(SourceMapOptions {
                 input: Some(InputSourceMap::Mode(InputSourceMapMode::External)),

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
 use crate::_types::options::functions::compile_from_ast::CompileFromAstOptions;
@@ -12,9 +14,9 @@ use crate::_types::options::source_map::SourceMapOptions;
 pub struct ResolvableOptions {
     /// Current working directory;
     /// `None` resolves to the process working directory.
-    pub cwd: Option<String>,
+    pub cwd: Option<PathBuf>,
     /// The file being compiled;
-    /// `None` resolves to a default filename.
+    /// `None` resolves to the default file name.
     pub file: Option<String>,
     /// The grammar of the code;
     /// `None` infers the grammar from the file extension.
@@ -81,7 +83,7 @@ mod tests {
     #[test]
     fn test_from_parse_options_moves_every_field() {
         let options: ParseOptions = ParseOptions {
-            cwd: Some(String::from("/repo")),
+            cwd: Some(PathBuf::from("/repo")),
             file: Some(String::from("src/app.ts")),
             language: Some(Language::TS),
             source_type: Some(SourceType::Module),
@@ -90,7 +92,7 @@ mod tests {
 
         let resolvable: ResolvableOptions = ResolvableOptions::from(options);
 
-        assert_eq!(resolvable.cwd.as_deref(), Some("/repo"));
+        assert_eq!(resolvable.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(resolvable.file.as_deref(), Some("src/app.ts"));
         assert_eq!(resolvable.language, Some(Language::TS));
         assert_eq!(resolvable.source_type, Some(SourceType::Module));
@@ -100,7 +102,7 @@ mod tests {
     #[test]
     fn test_from_rewrite_options_moves_every_field() {
         let options: RewriteOptions = RewriteOptions {
-            cwd: Some(String::from("/repo")),
+            cwd: Some(PathBuf::from("/repo")),
             file: Some(String::from("src/app.tsx")),
             language: Some(Language::TSX),
             source_type: Some(SourceType::Script),
@@ -109,7 +111,7 @@ mod tests {
 
         let resolvable: ResolvableOptions = ResolvableOptions::from(options);
 
-        assert_eq!(resolvable.cwd.as_deref(), Some("/repo"));
+        assert_eq!(resolvable.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(resolvable.file.as_deref(), Some("src/app.tsx"));
         assert_eq!(resolvable.language, Some(Language::TSX));
         assert_eq!(resolvable.source_type, Some(SourceType::Script));
@@ -119,14 +121,14 @@ mod tests {
     #[test]
     fn test_from_generate_options_drops_language_and_source_type() {
         let options: GenerateOptions = GenerateOptions {
-            cwd: Some(String::from("/repo")),
+            cwd: Some(PathBuf::from("/repo")),
             file: Some(String::from("src/app.js")),
             source_map: Some(SourceMapOptions::default()),
         };
 
         let resolvable: ResolvableOptions = ResolvableOptions::from(options);
 
-        assert_eq!(resolvable.cwd.as_deref(), Some("/repo"));
+        assert_eq!(resolvable.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(resolvable.file.as_deref(), Some("src/app.js"));
         assert_eq!(resolvable.language, None);
         assert_eq!(resolvable.source_type, None);
@@ -136,7 +138,7 @@ mod tests {
     #[test]
     fn test_from_compile_from_ast_options_moves_every_field() {
         let options: CompileFromAstOptions = CompileFromAstOptions {
-            cwd: Some(String::from("/repo")),
+            cwd: Some(PathBuf::from("/repo")),
             file: Some(String::from("src/app.mjs")),
             language: Some(Language::JS),
             source_type: Some(SourceType::CommonJS),
@@ -145,7 +147,7 @@ mod tests {
 
         let resolvable: ResolvableOptions = ResolvableOptions::from(options);
 
-        assert_eq!(resolvable.cwd.as_deref(), Some("/repo"));
+        assert_eq!(resolvable.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(resolvable.file.as_deref(), Some("src/app.mjs"));
         assert_eq!(resolvable.language, Some(Language::JS));
         assert_eq!(resolvable.source_type, Some(SourceType::CommonJS));

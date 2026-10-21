@@ -260,6 +260,7 @@ impl PluginDriver {
 #[allow(clippy::manual_async_fn)]
 mod tests {
     use std::borrow::Cow;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::MutexGuard;
@@ -294,14 +295,14 @@ mod tests {
     }
 
     fn make_plugin_ctx<'a>() -> PluginContext<'a> {
-        PluginContext::new("/repo", make_module())
+        PluginContext::new(Path::new("/repo"), make_module())
     }
 
     fn parse_fixture(code: &str) -> Result<Ast, PluginError> {
         parse_ast(
             code.to_string(),
             ParseAstOptions {
-                cwd: String::from("/repo"),
+                cwd: PathBuf::from("/repo"),
                 file: String::from("a.ts"),
                 language: None,
                 source_type: None,
@@ -317,7 +318,7 @@ mod tests {
 
     fn parser_options(file: &str) -> ParserOptions {
         ParserOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: file.to_string(),
             language: Language::TS,
             source_type: SourceType::Module,
@@ -327,7 +328,7 @@ mod tests {
 
     fn generator_options(file: &str) -> GeneratorOptions {
         GeneratorOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: file.to_string(),
             source_map: SourceMapOptions::default(),
         }
@@ -741,7 +742,7 @@ mod tests {
 
     #[derive(Debug)]
     struct NotifyArgsPlugin {
-        started: Arc<Mutex<Option<String>>>,
+        started: Arc<Mutex<Option<PathBuf>>>,
         ended: Arc<Mutex<Vec<Option<String>>>>,
     }
 
@@ -759,7 +760,7 @@ mod tests {
             _ctx: &'a PluginContext<'_>,
             args: &'a crate::StartArgs,
         ) -> impl Future<Output = NotifyReturn> + Send {
-            let cwd: String = args.options.cwd.clone();
+            let cwd: PathBuf = args.options.cwd.clone();
 
             async move {
                 *self.started.lock().unwrap() = Some(cwd);
@@ -787,7 +788,7 @@ mod tests {
     fn make_start_args() -> crate::StartArgs {
         crate::StartArgs {
             options: telarel_common::ResolvedOptions {
-                cwd: String::from("/repo"),
+                cwd: PathBuf::from("/repo"),
                 file: String::from("a.ts"),
                 language: Language::TS,
                 source_type: SourceType::Module,
@@ -1964,7 +1965,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_start_receives_resolved_options() {
-        let started: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let started: Arc<Mutex<Option<PathBuf>>> = Arc::new(Mutex::new(None));
 
         let ended: Arc<Mutex<Vec<Option<String>>>> =
             Arc::new(Mutex::new(Vec::new()));
@@ -1981,12 +1982,15 @@ mod tests {
 
         driver.start(&ctx, &make_start_args()).await.unwrap();
 
-        assert_eq!(started.lock().unwrap().as_deref(), Some("/repo"));
+        assert_eq!(
+            started.lock().unwrap().as_deref(),
+            Some(Path::new("/repo"))
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_end_receives_error_only() {
-        let started: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let started: Arc<Mutex<Option<PathBuf>>> = Arc::new(Mutex::new(None));
 
         let ended: Arc<Mutex<Vec<Option<String>>>> =
             Arc::new(Mutex::new(Vec::new()));

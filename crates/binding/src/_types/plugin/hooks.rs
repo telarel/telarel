@@ -7,6 +7,7 @@ use telarel_common::{
 };
 
 use crate::_types::ast::JsAst;
+use crate::_types::path::path_label;
 use crate::_types::sourcemap::JsSourceMap;
 use crate::plugin::options::{language_label, source_type_label};
 
@@ -66,7 +67,7 @@ pub struct JsTransformOutput {
 pub struct JsOptionsOutput {
     /// Working directory used to resolve relative paths.
     pub cwd: Option<String>,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: Option<String>,
     /// Source language of the file.
     pub language: Option<String>,
@@ -87,7 +88,7 @@ pub struct JsOptionsOutput {
 pub struct JsResolvedOptions {
     /// Working directory used to resolve relative paths.
     pub cwd: String,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: String,
     /// Source language of the file.
     pub language: String,
@@ -125,7 +126,7 @@ fn input_source_map_to_js(input: &InputSourceMap) -> serde_json::Value {
                 .unwrap_or(serde_json::Value::Null)
         },
         | InputSourceMap::Mode(InputSourceMapMode::Path(path)) => {
-            serde_json::Value::String(path.to_string_lossy().into_owned())
+            serde_json::Value::String(path_label(path))
         },
         | InputSourceMap::Mode(InputSourceMapMode::Inline) => {
             serde_json::Value::String(String::from("inline"))
@@ -162,7 +163,7 @@ fn source_map_options_to_js(options: &SourceMapOptions) -> serde_json::Value {
 impl From<&ResolvedOptions> for JsResolvedOptions {
     fn from(options: &ResolvedOptions) -> Self {
         Self {
-            cwd: options.cwd.clone(),
+            cwd: path_label(&options.cwd),
             file: options.file.clone(),
             language: language_label(Some(options.language)).to_owned(),
             source_type: source_type_label(Some(options.source_type))
@@ -188,7 +189,7 @@ pub fn optional_source_map_options_to_js(
 pub struct JsParserHookOptions {
     /// Working directory used to resolve relative paths.
     pub cwd: String,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: String,
     /// Source language of the file.
     pub language: String,
@@ -203,7 +204,7 @@ pub struct JsParserHookOptions {
 impl From<&ParserOptions> for JsParserHookOptions {
     fn from(options: &ParserOptions) -> Self {
         Self {
-            cwd: options.cwd.clone(),
+            cwd: path_label(&options.cwd),
             file: options.file.clone(),
             language: language_label(Some(options.language)).to_owned(),
             source_type: source_type_label(Some(options.source_type))
@@ -218,7 +219,7 @@ impl From<&ParserOptions> for JsParserHookOptions {
 pub struct JsGeneratorHookOptions {
     /// Current working directory (reserved).
     pub cwd: String,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: String,
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
@@ -228,7 +229,7 @@ pub struct JsGeneratorHookOptions {
 impl From<&GeneratorOptions> for JsGeneratorHookOptions {
     fn from(options: &GeneratorOptions) -> Self {
         Self {
-            cwd: options.cwd.clone(),
+            cwd: path_label(&options.cwd),
             file: options.file.clone(),
             source_map: source_map_options_to_js(&options.source_map),
         }
@@ -281,6 +282,8 @@ pub struct JsEndArgs {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use telarel_common::{
         InputSourceMap, InputSourceMapMode, Language, OutputSourceMap,
         OutputSourceMapMode, OutputSourceMapOptions, SourceMapOptions,
@@ -348,7 +351,7 @@ mod tests {
     #[test]
     fn test_parser_options_to_js_labels() {
         let options: ParserOptions = ParserOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("a.tsx"),
             language: Language::TSX,
             source_type: SourceType::Module,
@@ -373,7 +376,7 @@ mod tests {
     #[test]
     fn test_generator_options_to_js() {
         let options: GeneratorOptions = GeneratorOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("out.js"),
             source_map: SourceMapOptions {
                 input: None,
@@ -396,7 +399,7 @@ mod tests {
     #[test]
     fn test_resolved_options_to_js_carries_source_map() {
         let options: ResolvedOptions = ResolvedOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("index.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
@@ -423,7 +426,7 @@ mod tests {
     #[test]
     fn test_resolved_options_to_js_default_source_map_is_off() {
         let options: ResolvedOptions = ResolvedOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("index.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
@@ -437,5 +440,29 @@ mod tests {
             js.source_map,
             serde_json::json!({ "input": null, "output": null })
         );
+    }
+
+    #[test]
+    fn test_file_passes_through_every_option_presentation() {
+        let file: String = String::from("entry.ts?v=1#h");
+
+        let resolved: ResolvedOptions = ResolvedOptions {
+            cwd: PathBuf::from("/repo"),
+            file: file.clone(),
+            language: Language::TS,
+            source_type: SourceType::Module,
+            source_map: SourceMapOptions::default(),
+            plugins: Vec::new(),
+        };
+
+        let js_resolved: JsResolvedOptions = JsResolvedOptions::from(&resolved);
+        let js_parser: JsParserHookOptions =
+            JsParserHookOptions::from(&ParserOptions::from(&resolved));
+        let js_generator: JsGeneratorHookOptions =
+            JsGeneratorHookOptions::from(&GeneratorOptions::from(&resolved));
+
+        assert_eq!(js_resolved.file, file);
+        assert_eq!(js_parser.file, file);
+        assert_eq!(js_generator.file, file);
     }
 }

@@ -16,6 +16,7 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 | `src/errors/compile.rs`         | `CompileError` and code-frame rendering                                          |
 | `src/errors/plugin.rs`          | `PluginError`                                                                    |
 | `src/errors/source/mod.rs`      | `ErrorSource`                                                                    |
+| `src/helpers/path.rs`           | Centralized process-cwd and path-resolution helpers                              |
 | `src/helpers/resolve.rs`        | Option resolution helpers                                                        |
 | `src/sourcemap/mode.rs`         | Applies the resolved output mode after code generation                           |
 | `src/sourcemap/resolve.rs`      | Input map resolution: `Value`, `Path`, `Inline`, `External`, `Auto`              |
@@ -41,6 +42,8 @@ The public modes are defined by `InputSourceMapMode` and `OutputSourceMapMode` i
 ## Option resolution
 
 Each entry point has its own options struct. All of them convert to `ResolvableOptions`, pass through the plugin `options` fixpoint, and then resolve to `ResolvedOptions` (defaults applied).
+
+All internal path joining goes through `helpers/path.rs`; resolution is lexical and never canonicalizes. Internal code keeps path options as filesystem paths and converts to strings only at a boundary.
 
 ## Testing
 

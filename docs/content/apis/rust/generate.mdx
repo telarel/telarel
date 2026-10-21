@@ -29,7 +29,7 @@ Every field is optional and resolved against defaults before use.
 
 | Field        | Type                       | Default             | Description                                                            |
 | ------------ | -------------------------- | ------------------- | ---------------------------------------------------------------------- |
-| `cwd`        | `Option<String>`           | process working dir | Current working directory.                                             |
+| `cwd`        | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                        |
 | `file`       | `Option<String>`           | `index.ts`          | The file being generated. The language is inferred from its extension. |
 | `source_map` | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the step.              |
 

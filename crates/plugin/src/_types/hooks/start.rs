@@ -7,6 +7,8 @@ pub struct StartArgs {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use telarel_common::{
         Language, ResolvedOptions, SourceMapOptions, SourceType,
     };
@@ -17,7 +19,7 @@ mod tests {
     fn test_start_args_carry_resolved_options() {
         let args: StartArgs = StartArgs {
             options: ResolvedOptions {
-                cwd: String::from("/repo"),
+                cwd: PathBuf::from("/repo"),
                 file: String::from("a.ts"),
                 language: Language::TS,
                 source_type: SourceType::Module,
@@ -26,7 +28,7 @@ mod tests {
             },
         };
 
-        assert_eq!(args.options.cwd, "/repo");
+        assert_eq!(args.options.cwd, PathBuf::from("/repo"));
         assert_eq!(args.options.plugins.len(), 0);
     }
 }

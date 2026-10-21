@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
@@ -22,6 +23,7 @@ use telarel_plugin::{
 };
 
 use crate::_types::ast::JsAst;
+use crate::_types::path::path_label;
 use crate::_types::plugin::hooks::{
     JsCodeOutput, JsGeneratorHookOptions, JsOptionsOutput, JsParseOutput,
     JsParserHookOptions, JsResolvedOptions, JsTransformOutput,
@@ -229,7 +231,7 @@ fn unmarshal_options(
 
     let args: OptionsArgs = OptionsArgs {
         options: ResolvableOptions {
-            cwd: output.cwd,
+            cwd: output.cwd.map(PathBuf::from),
             file: output.file,
             language,
             source_type,
@@ -425,7 +427,9 @@ impl Pluginable for JsPlugin {
             };
 
             let call: OptionsCall = OptionsCall {
-                cwd: SharedStr::new(args.options.cwd.as_deref().unwrap_or("")),
+                cwd: SharedStr::new(&path_label(
+                    args.options.cwd.as_deref().unwrap_or(Path::new("")),
+                )),
                 file: SharedStr::new(
                     args.options.file.as_deref().unwrap_or(""),
                 ),
@@ -458,7 +462,7 @@ impl Pluginable for JsPlugin {
             };
 
             let call: StartCall = StartCall {
-                cwd: SharedStr::new(&args.options.cwd),
+                cwd: SharedStr::new(&path_label(&args.options.cwd)),
                 file: SharedStr::new(&args.options.file),
                 language: SharedStr::new(language_label(Some(
                     args.options.language,
@@ -495,7 +499,7 @@ impl Pluginable for JsPlugin {
             };
 
             let call: ParseCall = ParseCall {
-                cwd: SharedStr::new(ctx.cwd),
+                cwd: SharedStr::new(&path_label(ctx.cwd)),
                 file: SharedStr::new(ctx.module.file),
                 code: args.code.to_owned(),
                 language: SharedStr::new(language_label(Some(
@@ -566,7 +570,7 @@ impl Pluginable for JsPlugin {
                 ast_hook_parts(args.ast);
 
             let call: ObserveCall = ObserveCall {
-                cwd: SharedStr::new(ctx.cwd),
+                cwd: SharedStr::new(&path_label(ctx.cwd)),
                 file: SharedStr::new(ctx.module.file),
                 language: SharedStr::new(language_label(Some(
                     ctx.module.language,
@@ -624,7 +628,7 @@ impl Pluginable for JsPlugin {
                 args.ast.program().comments.iter().cloned().collect();
 
             let call: TransformCall = TransformCall {
-                cwd: SharedStr::new(ctx.cwd),
+                cwd: SharedStr::new(&path_label(ctx.cwd)),
                 file: SharedStr::new(ctx.module.file),
                 language: SharedStr::new(language_label(Some(
                     ctx.module.language,
@@ -721,7 +725,7 @@ impl Pluginable for JsPlugin {
                 ast_hook_parts(args.ast);
 
             let call: ObserveCall = ObserveCall {
-                cwd: SharedStr::new(ctx.cwd),
+                cwd: SharedStr::new(&path_label(ctx.cwd)),
                 file: SharedStr::new(ctx.module.file),
                 language: SharedStr::new(language_label(Some(
                     ctx.module.language,
@@ -760,7 +764,7 @@ impl Pluginable for JsPlugin {
             };
 
             let call: GenerateCall = GenerateCall {
-                cwd: SharedStr::new(ctx.cwd),
+                cwd: SharedStr::new(&path_label(ctx.cwd)),
                 file: SharedStr::new(ctx.module.file),
                 language: SharedStr::new(language_label(Some(
                     ctx.module.language,
@@ -814,7 +818,7 @@ impl Pluginable for JsPlugin {
             };
 
             let call: EndCall = EndCall {
-                cwd: SharedStr::new(ctx.cwd),
+                cwd: SharedStr::new(&path_label(ctx.cwd)),
                 file: SharedStr::new(ctx.module.file),
                 language: SharedStr::new(language_label(Some(
                     ctx.module.language,
@@ -850,6 +854,8 @@ impl Pluginable for JsPlugin {
 /// the options-injection tests in `tests/telarel/test/compile.test.ts`.
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use telarel_common::{Language, SourceType};
 
     use crate::plugin::hooks::RefList;
@@ -1004,7 +1010,7 @@ mod tests {
         .unwrap()
         .expect("a returned bag is Some");
 
-        assert_eq!(outcome.options.cwd.as_deref(), Some("/tmp"));
+        assert_eq!(outcome.options.cwd, Some(PathBuf::from("/tmp")));
         assert_eq!(outcome.options.file.as_deref(), Some("app.ts"));
         assert_eq!(outcome.options.language, Some(Language::TS));
         assert_eq!(outcome.options.source_type, Some(SourceType::Module));

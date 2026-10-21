@@ -5,9 +5,9 @@ import type { SourceMap } from "#/@types/sourcemap";
  *
  * - {@link SourceMap} — used directly
  * - `string` — a path to a map file, relative paths resolve against `cwd`
- * - `"inline"` — read a `//# sourceMappingURL=data:...` comment from the code
- * - `"external"` — read `<cwd>/<file>.map` from disk
- * - `"auto"` — inline comment first, then the external file (best effort)
+ * - `inline` — read a `//# sourceMappingURL=data:...` comment from the code
+ * - `external` — read external map for `file`; `?query`/`#hash` suffix ignored
+ * - `auto` — inline comment first, then the external file (best effort)
  *
  * The literal modes are documentation only: `string` absorbs them for typing.
  */

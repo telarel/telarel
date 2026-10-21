@@ -16,6 +16,8 @@ pub type GenerateReturn = Result<Option<CodeResult>, PluginError>;
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use telarel_common::{
         CodeResult, GeneratorOptions, ParseAstOptions, SourceMapOptions,
         parse_ast,
@@ -25,7 +27,7 @@ mod tests {
 
     fn options() -> GeneratorOptions {
         GeneratorOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("a.ts"),
             source_map: SourceMapOptions::default(),
         }
@@ -36,7 +38,7 @@ mod tests {
         let ast: Ast = parse_ast(
             String::from("let a;"),
             ParseAstOptions {
-                cwd: String::from("/repo"),
+                cwd: PathBuf::from("/repo"),
                 file: String::from("a.ts"),
                 language: None,
                 source_type: None,

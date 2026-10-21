@@ -16,6 +16,8 @@ pub type ParseReturn = Result<Option<AstResult>, PluginError>;
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use telarel_common::{
         AstResult, Language, ParseAstOptions, ParserOptions, SourceMapOptions,
         SourceType, parse_ast,
@@ -25,7 +27,7 @@ mod tests {
 
     fn options() -> ParserOptions {
         ParserOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("a.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
@@ -56,7 +58,7 @@ mod tests {
         let ast = parse_ast(
             String::from("let a;"),
             ParseAstOptions {
-                cwd: String::from("/repo"),
+                cwd: PathBuf::from("/repo"),
                 file: String::from("a.ts"),
                 language: None,
                 source_type: None,

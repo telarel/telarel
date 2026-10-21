@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::_types::options::resolved::ResolvedOptions;
 use crate::_types::options::source_map::SourceMapOptions;
 
@@ -5,8 +7,8 @@ use crate::_types::options::source_map::SourceMapOptions;
 #[derive(Debug, Clone)]
 pub struct GeneratorOptions {
     /// Current working directory (reserved; builtin codegen does not use it).
-    pub cwd: String,
-    /// Path of the file being generated.
+    pub cwd: PathBuf,
+    /// The file being generated.
     pub file: String,
     /// The source-map inputs and outputs requested for the step.
     pub source_map: SourceMapOptions,
@@ -32,7 +34,7 @@ mod tests {
 
     fn resolved_options() -> ResolvedOptions {
         ResolvedOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("src/app.js"),
             language: Language::JS,
             source_type: SourceType::Module,
@@ -47,7 +49,7 @@ mod tests {
 
         let options: GeneratorOptions = GeneratorOptions::from(&resolved);
 
-        assert_eq!(options.cwd, "/repo");
+        assert_eq!(options.cwd, PathBuf::from("/repo"));
         assert_eq!(options.file, "src/app.js");
         assert!(options.source_map.input.is_none());
         assert!(options.source_map.output.is_none());

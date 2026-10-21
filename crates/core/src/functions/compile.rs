@@ -33,7 +33,7 @@ mod tests {
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
-        SpyPlugin, StartObserverPlugin, first_token, input_value, path_string,
+        SpyPlugin, StartObserverPlugin, first_token, input_value, path_buf,
         sample_map, temp_dir, write_file,
     };
 
@@ -130,7 +130,7 @@ mod tests {
         write_file(&dir, "index.ts.map", &map.to_json_string());
 
         let options: CompileOptions = CompileOptions {
-            cwd: Some(path_string(&dir)),
+            cwd: Some(path_buf(&dir)),
             file: Some(String::from("index.ts")),
             source_map: Some(SourceMapOptions {
                 input: Some(InputSourceMap::Mode(InputSourceMapMode::External)),

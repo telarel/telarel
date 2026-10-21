@@ -5,6 +5,8 @@ pub mod jsx;
 pub mod target;
 pub mod typescript;
 
+use std::path::Path;
+
 use oxc::diagnostics::Diagnostics;
 use oxc::transformer::Engine;
 use oxc::transformer::EngineTargets;
@@ -52,9 +54,9 @@ impl TransformOptions {
     /// always overwrites the oxc base layer's `cwd`.
     pub(crate) fn apply_cwd(
         base: &mut OxcTransformOptions,
-        cwd: &str,
+        cwd: &Path,
     ) {
-        base.cwd = std::path::PathBuf::from(cwd);
+        base.cwd = cwd.to_path_buf();
     }
 
     /// Build the `EngineTargets` from the resolved targets,
@@ -172,7 +174,7 @@ mod tests {
     fn test_apply_cwd_sets_field() {
         let mut base: OxcTransformOptions = OxcTransformOptions::default();
 
-        TransformOptions::apply_cwd(&mut base, "/repo");
+        TransformOptions::apply_cwd(&mut base, Path::new("/repo"));
 
         assert_eq!(base.cwd, std::path::PathBuf::from("/repo"));
     }

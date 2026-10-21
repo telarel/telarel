@@ -166,6 +166,7 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
 mod tests {
     use std::borrow::Cow;
     use std::future::Future;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::sync::Mutex;
 
@@ -276,7 +277,7 @@ mod tests {
         parse_ast(
             code.to_string(),
             ParseAstOptions {
-                cwd: String::from("/repo"),
+                cwd: PathBuf::from("/repo"),
                 file: String::from("a.ts"),
                 language: None,
                 source_type: None,
@@ -397,7 +398,7 @@ mod tests {
                 let ast: Ast = parse_ast(
                     code.to_string(),
                     ParseAstOptions {
-                        cwd: String::from("/repo"),
+                        cwd: PathBuf::from("/repo"),
                         file: String::from("a.ts"),
                         language: None,
                         source_type: None,
@@ -438,7 +439,7 @@ mod tests {
 
     #[derive(Debug)]
     struct NotifyPlugin {
-        started: Arc<Mutex<Option<String>>>,
+        started: Arc<Mutex<Option<PathBuf>>>,
         ended: Arc<Mutex<EndedLog>>,
     }
 
@@ -479,6 +480,34 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct ContextObserverPlugin {
+        observed: Arc<Mutex<Option<(PathBuf, String)>>>,
+    }
+
+    impl Plugin for ContextObserverPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "context-observer".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Start
+        }
+
+        fn start<'a>(
+            &'a self,
+            ctx: &'a PluginContext<'_>,
+            _args: &'a StartArgs,
+        ) -> impl Future<Output = NotifyReturn> + Send {
+            async move {
+                *self.observed.lock().unwrap() =
+                    Some((ctx.cwd.to_path_buf(), ctx.module.file.to_string()));
+
+                Ok(())
+            }
+        }
+    }
+
     fn make_context<'a>() -> PluginContext<'a> {
         let module: ModuleInfo<'a> = ModuleInfo {
             file: "a.ts",
@@ -486,7 +515,7 @@ mod tests {
             source_type: SourceType::Module,
         };
 
-        PluginContext::new("/repo", module)
+        PluginContext::new(Path::new("/repo"), module)
     }
 
     fn make_args(plugins: Vec<SharedPluginable>) -> OptionsArgs {
@@ -501,7 +530,7 @@ mod tests {
 
     fn parser_options() -> ParserOptions {
         ParserOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("a.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
@@ -512,7 +541,7 @@ mod tests {
     fn make_start_args() -> StartArgs {
         StartArgs {
             options: telarel_common::ResolvedOptions {
-                cwd: String::from("/resolved"),
+                cwd: PathBuf::from("/resolved"),
                 file: String::from("a.ts"),
                 language: Language::TS,
                 source_type: SourceType::Module,
@@ -546,7 +575,7 @@ mod tests {
 
         let generator: telarel_common::GeneratorOptions =
             telarel_common::GeneratorOptions {
-                cwd: String::from("/repo"),
+                cwd: PathBuf::from("/repo"),
                 file: String::from("a.ts"),
                 source_map: SourceMapOptions::default(),
             };
@@ -655,7 +684,7 @@ mod tests {
 
         let generator: telarel_common::GeneratorOptions =
             telarel_common::GeneratorOptions {
-                cwd: String::from("/repo"),
+                cwd: PathBuf::from("/repo"),
                 file: String::from("a.ts"),
                 source_map: SourceMapOptions::default(),
             };
@@ -765,7 +794,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_start_and_end_receive_args() {
-        let started: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let started: Arc<Mutex<Option<PathBuf>>> = Arc::new(Mutex::new(None));
 
         let ended: Arc<Mutex<EndedLog>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -788,8 +817,31 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(started.lock().unwrap().as_deref(), Some("/resolved"));
+        assert_eq!(
+            started.lock().unwrap().as_deref(),
+            Some(Path::new("/resolved"))
+        );
 
         assert_eq!(*ended.lock().unwrap(), vec![Some(String::from("boom"))]);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_plugin_observes_context_cwd_and_module_file() {
+        let observed: Arc<Mutex<Option<(PathBuf, String)>>> =
+            Arc::new(Mutex::new(None));
+
+        let ctx: PluginContext<'_> = make_context();
+
+        let shared: SharedPluginable =
+            Plugin::new_shared(ContextObserverPlugin {
+                observed: Arc::clone(&observed),
+            });
+
+        shared.call_start(&ctx, &make_start_args()).await.unwrap();
+
+        assert_eq!(
+            *observed.lock().unwrap(),
+            Some((PathBuf::from("/repo"), String::from("a.ts")))
+        );
     }
 }

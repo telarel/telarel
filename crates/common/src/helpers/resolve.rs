@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use oxc::span::SourceType as OxcSourceType;
 
 use crate::_types::grammar::language::{Language, grammar_source_type};
@@ -5,25 +7,18 @@ use crate::_types::grammar::source_type::{SourceType, with_module_kind};
 use crate::_types::options::resolvable::ResolvableOptions;
 use crate::_types::options::resolved::ResolvedOptions;
 use crate::_types::options::source_map::SourceMapOptions;
+use crate::helpers::path::{get_process_cwd, strip_file_suffix};
 
-/// Drop the `?query`/`#hash` suffix from a module id.
-fn strip_id_suffix(module_id: &str) -> &str {
-    let without_hash: &str =
-        module_id.split_once('#').map_or(module_id, |(path, _)| path);
-
-    without_hash.split_once('?').map_or(without_hash, |(path, _)| path)
-}
-
-/// Infer the oxc source type from a module id, falling back to the default
-/// (an ES module) for extensionless or unknown virtual files.
+/// Infer the oxc source type from a file, falling back to the default
+/// (an ES module) for extensionless or unknown files.
 pub fn source_type_for_module_id(module_id: &str) -> OxcSourceType {
-    let path: &str = strip_id_suffix(module_id);
+    let path: &str = strip_file_suffix(module_id);
 
     OxcSourceType::from_path(path).unwrap_or_default()
 }
 
-/// The oxc grammar for a file: an explicit language wins; otherwise infer
-/// from the module id.
+/// The oxc grammar for a file: an explicit language wins;
+/// otherwise infer from the file.
 pub fn resolve_grammar(
     file: &str,
     language: Option<Language>,
@@ -32,14 +27,6 @@ pub fn resolve_grammar(
         | Some(language) => grammar_source_type(language),
         | None => source_type_for_module_id(file),
     }
-}
-
-/// Infer the telarel grammar for a file.
-pub fn infer_language(
-    file: &str,
-    language: Option<Language>,
-) -> Language {
-    from_oxc_language(resolve_grammar(file, language))
 }
 
 /// Narrow an oxc source type to an internal grammar.
@@ -58,6 +45,14 @@ pub fn from_oxc_language(source_type: OxcSourceType) -> Language {
     }
 }
 
+/// Infer the telarel grammar for a file.
+pub fn infer_language(
+    file: &str,
+    language: Option<Language>,
+) -> Language {
+    from_oxc_language(resolve_grammar(file, language))
+}
+
 /// Narrow an oxc source type to an internal module kind.
 pub fn from_oxc_module_kind(source_type: OxcSourceType) -> SourceType {
     if source_type.is_script() {
@@ -71,8 +66,8 @@ pub fn from_oxc_module_kind(source_type: OxcSourceType) -> SourceType {
     }
 }
 
-/// Resolve the telarel source type for a file: the resolved grammar's module
-/// kind, overlaid by an explicit option.
+/// Resolve the telarel source type for a file: the resolved grammar's module kind,
+/// overlaid by an explicit option.
 pub fn resolve_source_type(
     file: &str,
     language: Option<Language>,
@@ -88,20 +83,12 @@ pub fn resolve_source_type(
     from_oxc_module_kind(resolved)
 }
 
-/// Resolve an omitted `cwd` to the runtime's process working directory,
-/// falling back to `/` when it cannot be read.
-fn resolve_process_cwd() -> String {
-    std::env::current_dir()
-        .map(|p: std::path::PathBuf| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| String::from("/"))
-}
-
 /// Resolve the optional run settings into concrete options.
 pub fn resolve_options(
     options: ResolvableOptions,
     plugin_names: Vec<String>,
 ) -> ResolvedOptions {
-    let cwd: String = options.cwd.unwrap_or_else(resolve_process_cwd);
+    let cwd: PathBuf = options.cwd.unwrap_or_else(get_process_cwd);
     let file: String = options.file.unwrap_or_else(|| String::from("index.ts"));
     let language: Language = infer_language(&file, options.language);
     let source_type: SourceType =
@@ -128,6 +115,28 @@ mod tests {
     };
 
     use super::*;
+
+    fn resolvable(
+        file: Option<&str>,
+        language: Option<Language>,
+        source_type: Option<SourceType>,
+    ) -> ResolvableOptions {
+        ResolvableOptions {
+            file: file.map(String::from),
+            language,
+            source_type,
+            ..ResolvableOptions::default()
+        }
+    }
+
+    #[test]
+    fn test_from_oxc_language_narrows_grammar() {
+        assert_eq!(from_oxc_language(OxcSourceType::ts()), Language::TS);
+        assert_eq!(from_oxc_language(OxcSourceType::d_ts()), Language::DTS);
+        assert_eq!(from_oxc_language(OxcSourceType::jsx()), Language::JSX);
+        assert_eq!(from_oxc_language(OxcSourceType::tsx()), Language::TSX);
+        assert_eq!(from_oxc_language(OxcSourceType::default()), Language::JS);
+    }
 
     #[test]
     fn test_infer_language_defaults_to_typescript_for_ts_file() {
@@ -178,6 +187,24 @@ mod tests {
     }
 
     #[test]
+    fn test_from_oxc_module_kind_narrows_module_kind() {
+        let script: OxcSourceType = OxcSourceType::default().with_script(true);
+        assert_eq!(from_oxc_module_kind(script), SourceType::Script);
+
+        let commonjs: OxcSourceType =
+            OxcSourceType::default().with_commonjs(true);
+        assert_eq!(from_oxc_module_kind(commonjs), SourceType::CommonJS);
+
+        let module: OxcSourceType = OxcSourceType::default().with_module(true);
+        assert_eq!(from_oxc_module_kind(module), SourceType::Module);
+
+        assert_eq!(
+            from_oxc_module_kind(OxcSourceType::unambiguous()),
+            SourceType::Unambiguous,
+        );
+    }
+
+    #[test]
     fn test_resolve_source_type_keeps_grammar_module_kind_without_option() {
         // An explicit language yields an unambiguous grammar: its module
         // kind is telarel's `Unambiguous`, mirrored from the parser.
@@ -216,49 +243,9 @@ mod tests {
     }
 
     #[test]
-    fn test_from_oxc_language_narrows_grammar() {
-        assert_eq!(from_oxc_language(OxcSourceType::ts()), Language::TS);
-        assert_eq!(from_oxc_language(OxcSourceType::d_ts()), Language::DTS);
-        assert_eq!(from_oxc_language(OxcSourceType::jsx()), Language::JSX);
-        assert_eq!(from_oxc_language(OxcSourceType::tsx()), Language::TSX);
-        assert_eq!(from_oxc_language(OxcSourceType::default()), Language::JS);
-    }
-
-    #[test]
-    fn test_from_oxc_module_kind_narrows_module_kind() {
-        let script: OxcSourceType = OxcSourceType::default().with_script(true);
-        assert_eq!(from_oxc_module_kind(script), SourceType::Script);
-
-        let commonjs: OxcSourceType =
-            OxcSourceType::default().with_commonjs(true);
-        assert_eq!(from_oxc_module_kind(commonjs), SourceType::CommonJS);
-
-        let module: OxcSourceType = OxcSourceType::default().with_module(true);
-        assert_eq!(from_oxc_module_kind(module), SourceType::Module);
-
-        assert_eq!(
-            from_oxc_module_kind(OxcSourceType::unambiguous()),
-            SourceType::Unambiguous,
-        );
-    }
-
-    fn resolvable(
-        file: Option<&str>,
-        language: Option<Language>,
-        source_type: Option<SourceType>,
-    ) -> ResolvableOptions {
-        ResolvableOptions {
-            file: file.map(String::from),
-            language,
-            source_type,
-            ..ResolvableOptions::default()
-        }
-    }
-
-    #[test]
     fn test_resolve_options_explicit_fields_pass_through() {
         let options: ResolvableOptions = ResolvableOptions {
-            cwd: Some(String::from("/repo")),
+            cwd: Some(PathBuf::from("/repo")),
             file: Some(String::from("src/app.tsx")),
             language: Some(Language::TSX),
             source_type: Some(SourceType::Script),
@@ -268,7 +255,7 @@ mod tests {
         let resolved: ResolvedOptions =
             resolve_options(options, vec![String::from("probe")]);
 
-        assert_eq!(resolved.cwd, "/repo");
+        assert_eq!(resolved.cwd, PathBuf::from("/repo"));
         assert_eq!(resolved.file, "src/app.tsx");
         assert_eq!(resolved.language, Language::TSX);
         assert_eq!(resolved.source_type, SourceType::Script);
@@ -340,9 +327,8 @@ mod tests {
         let resolved: ResolvedOptions =
             resolve_options(ResolvableOptions::default(), vec![]);
 
-        let expected: String = std::env::current_dir()
-            .map(|path: std::path::PathBuf| path.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| String::from("/"));
+        let expected: PathBuf =
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
 
         assert_eq!(resolved.cwd, expected);
     }

@@ -7,8 +7,8 @@ pub fn temp_dir() -> TempDir {
     tempfile::tempdir().expect("temp dir creatable")
 }
 
-pub fn path_string(dir: &TempDir) -> String {
-    dir.path().to_string_lossy().into_owned()
+pub fn path_buf(dir: &TempDir) -> PathBuf {
+    dir.path().to_path_buf()
 }
 
 pub fn write_file(

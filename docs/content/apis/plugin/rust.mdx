@@ -108,12 +108,12 @@ fn transform_meta(&self) -> Option<PluginHookMeta> {
 - `options` receives `CommonPluginContext`, which carries no fields.
 - Every later hook receives `PluginContext`:
 
-| Field    | Type         | Description                |
-| -------- | ------------ | -------------------------- |
-| `cwd`    | `&str`       | Current working directory. |
-| `module` | `ModuleInfo` | Module being compiled.     |
+| Field    | Type         | Description                                     |
+| -------- | ------------ | ----------------------------------------------- |
+| `cwd`    | `&Path`      | Filesystem root used to resolve relative paths. |
+| `module` | `ModuleInfo` | Module being compiled.                          |
 
-`ModuleInfo` holds `file: &str`, `language: Language`, and `source_type: SourceType`.
+`ModuleInfo` holds `file: &str` (the file being compiled), `language: Language`, and `source_type: SourceType`.
 
 ## Passing plugins
 

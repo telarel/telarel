@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use telarel_common::{Language, SourceType};
 
 /// Common plugin context: available to every hook, including `options`.
@@ -7,7 +9,7 @@ pub struct CommonPluginContext {}
 /// Info about the module being compiled.
 #[derive(Debug)]
 pub struct ModuleInfo<'a> {
-    /// The file to be compiled.
+    /// The file being compiled.
     pub file: &'a str,
     /// The grammar of the code, inferred from the file extension.
     pub language: Language,
@@ -18,8 +20,8 @@ pub struct ModuleInfo<'a> {
 /// Plugin context for hooks that run after the `options` stage.
 #[derive(Debug)]
 pub struct PluginContext<'a> {
-    /// Current working directory.
-    pub cwd: &'a str,
+    /// Filesystem root used to resolve relative paths.
+    pub cwd: &'a Path,
     /// Info about the module being compiled.
     pub module: ModuleInfo<'a>,
 }
@@ -27,7 +29,7 @@ pub struct PluginContext<'a> {
 impl<'a> PluginContext<'a> {
     /// Create a plugin context from a cwd and module info.
     pub fn new(
-        cwd: &'a str,
+        cwd: &'a Path,
         module: ModuleInfo<'a>,
     ) -> Self {
         Self { cwd, module }
@@ -36,6 +38,8 @@ impl<'a> PluginContext<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use telarel_common::{Language, SourceType};
 
     use super::*;
@@ -55,9 +59,10 @@ mod tests {
             source_type: SourceType::Module,
         };
 
-        let ctx: PluginContext<'_> = PluginContext::new("/repo", module);
+        let ctx: PluginContext<'_> =
+            PluginContext::new(Path::new("/repo"), module);
 
-        assert_eq!(ctx.cwd, "/repo");
+        assert_eq!(ctx.cwd, Path::new("/repo"));
         assert_eq!(ctx.module.file, "a.ts");
         assert_eq!(ctx.module.language, Language::TS);
         assert_eq!(ctx.module.source_type, SourceType::Module);

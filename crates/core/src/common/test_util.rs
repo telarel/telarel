@@ -28,7 +28,7 @@ pub fn parse_fixture(code: &str) -> Result<Ast, CompileError> {
     parse_ast(
         code.to_string(),
         ParseAstOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("index.ts"),
             language: None,
             source_type: None,
@@ -44,7 +44,7 @@ pub fn parse_with_map(
     parse_ast(
         code.to_string(),
         ParseAstOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("index.ts"),
             language: None,
             source_type: None,
@@ -106,8 +106,8 @@ pub fn temp_dir() -> TempDir {
     tempfile::tempdir().expect("temp dir creatable")
 }
 
-pub fn path_string(dir: &TempDir) -> String {
-    dir.path().to_string_lossy().into_owned()
+pub fn path_buf(dir: &TempDir) -> PathBuf {
+    dir.path().to_path_buf()
 }
 
 pub fn write_file(

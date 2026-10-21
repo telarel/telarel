@@ -111,6 +111,7 @@ pub async fn options_fixpoint(
 #[allow(clippy::manual_async_fn)]
 mod tests {
     use std::borrow::Cow;
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::MutexGuard;
@@ -159,7 +160,7 @@ mod tests {
             async move {
                 let mut next: OptionsArgs = args.clone();
 
-                next.options.cwd = Some(self.cwd.to_string());
+                next.options.cwd = Some(PathBuf::from(self.cwd));
 
                 Ok(Some(next))
             }
@@ -243,6 +244,41 @@ mod tests {
         ) -> impl Future<Output = OptionsReturn> + Send {
             async move {
                 self.record(args.options.file.as_deref());
+
+                Ok(None)
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct ObserveCwdOptionsPlugin {
+        observed: Arc<Mutex<Vec<Option<PathBuf>>>>,
+    }
+
+    impl ObserveCwdOptionsPlugin {
+        fn new(observed: Arc<Mutex<Vec<Option<PathBuf>>>>) -> Self {
+            Self { observed }
+        }
+    }
+
+    impl Plugin for ObserveCwdOptionsPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "observe-cwd-options".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Options
+        }
+
+        fn options<'a>(
+            &'a self,
+            _ctx: &'a CommonPluginContext,
+            args: &'a OptionsArgs,
+        ) -> impl Future<Output = OptionsReturn> + Send {
+            async move {
+                let cwd: Option<PathBuf> = args.options.cwd.clone();
+
+                self.observed.lock().unwrap().push(cwd);
 
                 Ok(None)
             }
@@ -334,7 +370,7 @@ mod tests {
             async {
                 Ok(Some(OptionsArgs {
                     options: telarel_common::ResolvableOptions {
-                        cwd: Some("/only".to_string()),
+                        cwd: Some(PathBuf::from("/only")),
                         ..telarel_common::ResolvableOptions::default()
                     },
                     plugins: Vec::new(),
@@ -391,7 +427,7 @@ mod tests {
         let (settled, list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        assert_eq!(settled.options.cwd.as_deref(), Some("/second"));
+        assert_eq!(settled.options.cwd, Some(PathBuf::from("/second")));
 
         assert_eq!(list.len(), 2);
     }
@@ -408,7 +444,7 @@ mod tests {
         let (settled, _list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        assert_eq!(settled.options.cwd.as_deref(), Some("/first"));
+        assert_eq!(settled.options.cwd, Some(PathBuf::from("/first")));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -433,6 +469,30 @@ mod tests {
         let recorded: Vec<String> = observed.lock().unwrap().clone();
 
         assert_eq!(recorded, vec!["rewritten.ts".to_string()]);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_cwd_replacement_visible_to_later_plugin() {
+        let observed: Arc<Mutex<Vec<Option<PathBuf>>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(OptionsPlugin { cwd: "/replaced" }),
+            Plugin::new_shared(ObserveCwdOptionsPlugin::new(Arc::clone(
+                &observed,
+            ))),
+        ];
+
+        let args: OptionsArgs = make_args(plugins);
+
+        let (settled, _list): (OptionsArgs, Vec<SharedPluginable>) =
+            options_fixpoint(&common_ctx(), &args).await.unwrap();
+
+        assert_eq!(settled.options.cwd, Some(PathBuf::from("/replaced")));
+
+        let recorded: Vec<Option<PathBuf>> = observed.lock().unwrap().clone();
+
+        assert_eq!(recorded, vec![Some(PathBuf::from("/replaced"))]);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -613,7 +673,7 @@ mod tests {
         let (settled, _list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        assert_eq!(settled.options.cwd.as_deref(), Some("/only"));
+        assert_eq!(settled.options.cwd, Some(PathBuf::from("/only")));
 
         assert!(
             settled.options.file.is_none(),

@@ -21,6 +21,7 @@ pub type OptionsReturn = Result<Option<OptionsArgs>, PluginError>;
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
+    use std::path::PathBuf;
     use std::sync::Arc;
 
     use telarel_common::{HookUsage, Language, ResolvableOptions};
@@ -78,14 +79,14 @@ mod tests {
         // The options payload has no `code`; language/source-type are optional.
         let args: OptionsArgs = OptionsArgs {
             options: ResolvableOptions {
-                cwd: Some(String::from("/repo")),
+                cwd: Some(PathBuf::from("/repo")),
                 language: Some(Language::TS),
                 ..ResolvableOptions::default()
             },
             plugins: vec![],
         };
 
-        assert_eq!(args.options.cwd.as_deref(), Some("/repo"));
+        assert_eq!(args.options.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(args.options.language, Some(Language::TS));
     }
 }

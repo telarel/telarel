@@ -193,6 +193,8 @@ pub fn source_type_for_generate(language: Language) -> OxcSourceType {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use telarel_common::{ParseAstOptions, parse_ast};
 
     use super::*;
@@ -201,7 +203,7 @@ mod tests {
         parse_ast(
             code.to_owned(),
             ParseAstOptions {
-                cwd: String::from("/repo"),
+                cwd: PathBuf::from("/repo"),
                 file: String::from("a.ts"),
                 language: None,
                 source_type: None,

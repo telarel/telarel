@@ -11,10 +11,13 @@ pub enum InputSourceMapMode {
     Path(PathBuf),
     /// Read a `//# sourceMappingURL=data:...` comment from the code.
     Inline,
-    /// Read `<cwd>/<file>.map` from disk.
+    /// Read the external map file for `file` with `.map` appended.
+    ///
+    /// The `?query`/`#hash` suffix is ignored.
     External,
-    /// Inline comment first, then `<cwd>/<file>.map`;
-    /// missing sources are silently ignored (best effort).
+    /// Inline comment first, then the external map file for `file` with `.map` appended.
+    ///
+    /// The `?query`/`#hash` suffix is ignored, and missing sources are silently ignored.
     Auto,
 }
 

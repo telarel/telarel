@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
 use crate::_types::options::resolvable::ResolvableOptions;
@@ -9,9 +11,9 @@ use crate::_types::options::source_map::SourceMapOptions;
 pub struct CompileOptions {
     /// Current working directory;
     /// `None` resolves to the process working directory.
-    pub cwd: Option<String>,
-    /// The file to be compiled;
-    /// `None` resolves to a default filename.
+    pub cwd: Option<PathBuf>,
+    /// The file being compiled;
+    /// `None` resolves to the default file name.
     pub file: Option<String>,
     /// The grammar of the code;
     /// `None` infers the grammar from the file extension.
@@ -42,14 +44,14 @@ mod tests {
     #[test]
     fn test_constructs_compile_options() {
         let options: CompileOptions = CompileOptions {
-            cwd: Some("/repo".into()),
+            cwd: Some(PathBuf::from("/repo")),
             file: Some("src/app.ts".into()),
             language: Some(Language::TS),
             source_type: Some(SourceType::Module),
             source_map: Some(SourceMapOptions::default()),
         };
 
-        assert_eq!(options.cwd.as_deref(), Some("/repo"));
+        assert_eq!(options.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(options.file.as_deref(), Some("src/app.ts"));
         assert_eq!(options.language, Some(Language::TS));
         assert_eq!(options.source_type, Some(SourceType::Module));
@@ -70,7 +72,7 @@ mod tests {
     #[test]
     fn test_from_compile_options_moves_every_field() {
         let options: CompileOptions = CompileOptions {
-            cwd: Some(String::from("/repo")),
+            cwd: Some(PathBuf::from("/repo")),
             file: Some(String::from("src/app.tsx")),
             language: Some(Language::TSX),
             source_type: Some(SourceType::Script),
@@ -79,7 +81,7 @@ mod tests {
 
         let resolvable: ResolvableOptions = ResolvableOptions::from(options);
 
-        assert_eq!(resolvable.cwd.as_deref(), Some("/repo"));
+        assert_eq!(resolvable.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(resolvable.file.as_deref(), Some("src/app.tsx"));
         assert_eq!(resolvable.language, Some(Language::TSX));
         assert_eq!(resolvable.source_type, Some(SourceType::Script));

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
 use crate::_types::options::source_map::SourceMapOptions;
@@ -8,9 +10,9 @@ use crate::_types::options::source_map::SourceMapOptions;
 pub struct ParseOptions {
     /// Current working directory;
     /// `None` resolves to the process working directory.
-    pub cwd: Option<String>,
+    pub cwd: Option<PathBuf>,
     /// The file being parsed;
-    /// `None` resolves to a default filename.
+    /// `None` resolves to the default file name.
     pub file: Option<String>,
     /// The grammar of the code;
     /// `None` infers the grammar from the file extension.

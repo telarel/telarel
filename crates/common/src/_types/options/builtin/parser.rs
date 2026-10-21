@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
 use crate::_types::options::resolved::ResolvedOptions;
@@ -7,8 +9,8 @@ use crate::_types::options::source_map::SourceMapOptions;
 #[derive(Debug, Clone)]
 pub struct ParserOptions {
     /// Working directory used to resolve relative input source-map paths.
-    pub cwd: String,
-    /// Path of the file being parsed.
+    pub cwd: PathBuf,
+    /// The file being parsed.
     pub file: String,
     /// Source language of the file.
     pub language: Language,
@@ -40,7 +42,7 @@ mod tests {
 
     fn resolved_options() -> ResolvedOptions {
         ResolvedOptions {
-            cwd: String::from("/repo"),
+            cwd: PathBuf::from("/repo"),
             file: String::from("src/app.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
@@ -55,7 +57,7 @@ mod tests {
 
         let options: ParserOptions = ParserOptions::from(&resolved);
 
-        assert_eq!(options.cwd, "/repo");
+        assert_eq!(options.cwd, PathBuf::from("/repo"));
         assert_eq!(options.file, "src/app.ts");
         assert_eq!(options.language, Language::TS);
         assert_eq!(options.source_type, SourceType::Module);

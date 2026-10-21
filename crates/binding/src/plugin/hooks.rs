@@ -329,7 +329,7 @@ impl RefList {
 pub struct OptionsCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,
@@ -439,7 +439,7 @@ impl<A: ToNapiValue> JsValuesTupleIntoVec for FnCtx<A> {
 pub struct StartCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,
@@ -476,7 +476,7 @@ pub type StartTsfn =
 pub struct ParseCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: SharedStr,
     /// Source code text.
     pub code: String,
@@ -515,7 +515,7 @@ pub type ParseTsfn =
 pub struct ObserveCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,
@@ -569,7 +569,7 @@ pub type FinalizeTsfn = Tsfn<
 pub struct TransformCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,
@@ -616,7 +616,7 @@ pub type TransformTsfn = Tsfn<
 pub struct GenerateCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,
@@ -659,7 +659,7 @@ pub type GenerateTsfn = Tsfn<
 pub struct EndCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// Path of the file being parsed/generated.
+    /// The file being parsed/generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,

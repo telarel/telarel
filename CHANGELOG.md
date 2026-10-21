@@ -18,8 +18,11 @@
 
 #### Breaking
 
+- change `CompileContext.cwd` to `&Path`
 - change `CompileError` to carry a message and optional source
+- change the `cwd` field in Rust option structs to `PathBuf`
 - change the `file` default to `index.ts`
+- change the `cwd` parameter of `resolve_input_source_map` to `&Path`
 - remove `CompileError::from_message`; use `CompileError::new` instead
 - remove `code` from `CompileOptions`; the source is now a call argument
 
@@ -33,6 +36,10 @@
 - add the builtin `Parser` and `Generator` types and their options
 - add `SourceMapOptions` with value, path, `inline`, `external`, and `auto` input modes and `inline`, `external`, and `both` output modes
 - add input source-map resolution and output source-map mode application
+
+#### Fixes
+
+- change external input source-map lookup to ignore `?query`/`#hash` suffixes in `file`
 
 #### Performance
 
@@ -59,6 +66,7 @@
 
 #### Breaking
 
+- change `PluginContext.cwd` to `&Path`
 - change `TransformArgs` to own a cheap `Ast`; it loses its lifetime and `Copy`
 - change the `options` hook to receive `ResolvableOptions` before defaults are resolved
 - change `prepare` and `finalize` from carried code folds to read-only AST observers
@@ -107,6 +115,8 @@
 
 #### Breaking
 
+- change the re-exported `CompileContext.cwd` to `&Path`
+- change the re-exported `cwd` option fields to `PathBuf`
 - change the re-exported `TransformArgs` to own a cheap `Ast` and drop its lifetime and `Copy` implementation
 - replace the `parse_owned` and `codegen` re-exports with the new entry points
 
@@ -143,6 +153,10 @@
 - add exports for `Ast`, `AstResult`, `CodeResult`, the per-entry options, and the source-map types
 - add `CompileError`, `PluginError`, and `ErrorSource`
 - add `CompileError.render` and `PluginError.render` to render a code frame for a message
+
+#### Fixes
+
+- change external input source-map lookup to ignore `?query`/`#hash` suffixes in `file`
 
 ## 0.1.0 (2026-10-10)
 

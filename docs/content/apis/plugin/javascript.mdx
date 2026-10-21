@@ -137,6 +137,8 @@ Every hook receives a context as its first argument.
 
 `ModuleInfo` holds `file: string`, `language: Language | void`, and `sourceType: SourceType | void`.
 
+Path values that are not valid UTF-8 are rendered lossily (`U+FFFD`) in hook payloads.
+
 ## Passing plugins
 
 Plugins are passed through the `plugins` field of the options. A `PluginOption` may be a plugin, a builtin descriptor, a falsy slot, or a nested array; entries may also resolve to a promise.

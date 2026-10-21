@@ -10,7 +10,7 @@ use crate::sourcemap::{SourceMap, compose::compose_maps};
 /// Options for [`generate_code`].
 #[derive(Debug, Clone)]
 pub struct GenerateCodeOptions {
-    /// Path of the file being generated.
+    /// The file being generated.
     pub file: String,
 }
 
@@ -80,13 +80,11 @@ mod tests {
 
     use super::*;
 
-    const CWD: &str = "";
-
     const FILE: &str = "index.ts";
 
     fn parse_code(code: &str) -> Ast {
         let options: ParseAstOptions = ParseAstOptions {
-            cwd: CWD.to_string(),
+            cwd: PathBuf::new(),
             file: FILE.to_string(),
             language: None,
             source_type: None,
@@ -191,7 +189,7 @@ mod tests {
     #[test]
     fn test_generate_code_composes_input_map() {
         let options: ParseAstOptions = ParseAstOptions {
-            cwd: CWD.to_string(),
+            cwd: PathBuf::new(),
             file: FILE.to_string(),
             language: None,
             source_type: None,
@@ -215,5 +213,28 @@ mod tests {
         assert_eq!(token.get_dst_col(), 0);
         assert_eq!(token.get_src_line(), 9);
         assert_eq!(token.get_src_col(), 0);
+    }
+
+    #[test]
+    fn test_generate_code_uses_file_as_map_file() {
+        let options: ParseAstOptions = ParseAstOptions {
+            cwd: PathBuf::new(),
+            file: FILE.to_string(),
+            language: None,
+            source_type: None,
+            input_map: Some(sample_input_map()),
+        };
+
+        let ast: Ast =
+            parse_ast("const a = 1;".to_string(), options).expect("parses");
+
+        let file: &str = "entry.ts?v=1#h";
+
+        let result: CodeResult =
+            generate_code(&ast, GenerateCodeOptions { file: file.to_string() });
+
+        let map: SourceMap = result.map.expect("map always produced");
+
+        assert_eq!(map.get_file(), Some(file));
     }
 }

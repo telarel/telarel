@@ -1,3 +1,4 @@
+pub mod path;
 pub mod resolve;
 
 #[cfg(test)]
