@@ -1,4 +1,10 @@
-import type { CompileOptions, CodeResult } from "telarel";
+import type {
+    CodeResult,
+    CompileOptions,
+    Language,
+    PluginContext,
+    StartArgs,
+} from "telarel";
 
 import { CompileError, compile } from "telarel";
 import { describe, expect, it } from "vitest";
@@ -138,6 +144,38 @@ describe("language", (): void => {
 
         expect(result.code).toBe("declare const a: number;");
         expect(result.map?.mappings.length).toBeGreaterThan(0);
+    });
+
+    it("round-trips every language label through the compile boundary", async (): Promise<void> => {
+        const samples: Array<{ code: string; language: Language }> = [
+            { code: "const a = 1;", language: "js" },
+            { code: "const a: number = 1;", language: "ts" },
+            { code: "declare const a: number;", language: "dts" },
+            { code: "const a = <Button />;", language: "jsx" },
+            { code: "const a: number = <Button />;", language: "tsx" },
+        ];
+
+        const seen: Array<Language> = [];
+
+        for (const sample of samples) {
+            const result: CodeResult = await compile(sample.code, {
+                file: "index.js",
+                language: sample.language,
+                plugins: [
+                    {
+                        name: "observe",
+                        start: (_ctx: PluginContext, args: StartArgs): void => {
+                            seen.push(args.options.language);
+                        },
+                        transform: (): void => void 0,
+                    },
+                ],
+            });
+
+            expect(result.code).toBe(sample.code);
+        }
+
+        expect(seen).toEqual(["js", "ts", "dts", "jsx", "tsx"]);
     });
 
     it("rejects a language that is not js, ts, dts, jsx, or tsx", async (): Promise<void> => {

@@ -35,8 +35,6 @@ Every field is optional and resolved against defaults before use.
 | `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind. |
 | `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the step.           |
 
-`Language` is one of `Js`, `Ts`, `Dts`, `Jsx`, or `Tsx`. `SourceType` is one of `Script`, `CommonJS`, `Module`, or `Unambiguous`.
-
 ## Returns
 
 `Result<AstResult, CompileError>`, where `AstResult` is `{ ast: Ast }`. See [Ast](/apis/rust/Ast) for accessors, clone semantics, and mutation.

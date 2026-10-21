@@ -166,20 +166,6 @@ fn invalid_arg(message: String) -> Error {
     Error::new(Status::InvalidArg, message)
 }
 
-/// Parse a JS-facing language string into the Rust enum.
-fn parse_language(text: &str) -> std::result::Result<Language, String> {
-    match text {
-        | "js" => Ok(Language::JS),
-        | "ts" => Ok(Language::TS),
-        | "dts" => Ok(Language::DTS),
-        | "jsx" => Ok(Language::JSX),
-        | "tsx" => Ok(Language::TSX),
-        | _ => Err(format!(
-            "invalid language {text:?}: expected \"js\", \"ts\", \"dts\", \"jsx\" or \"tsx\""
-        )),
-    }
-}
-
 /// Parse a JS-facing source type string into the Rust enum.
 fn parse_source_type(text: &str) -> std::result::Result<SourceType, String> {
     match text {
@@ -330,7 +316,9 @@ impl SharedOptions {
         source_map: Option<&serde_json::Value>,
     ) -> Result<Self> {
         let language: Option<Language> = match language {
-            | Some(text) => Some(parse_language(text).map_err(invalid_arg)?),
+            | Some(text) => {
+                Some(text.parse::<Language>().map_err(invalid_arg)?)
+            },
             | None => None,
         };
 
@@ -511,7 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_language_valid_values() {
+    fn test_parse_options_language_labels_roundtrip() {
         let expected: [(&str, Language); 5] = [
             ("js", Language::JS),
             ("ts", Language::TS),
@@ -520,15 +508,15 @@ mod tests {
             ("tsx", Language::TSX),
         ];
 
-        for (text, language) in expected {
-            assert_eq!(parse_language(text), Ok(language), "{text}");
-        }
-    }
+        for (label, language) in expected {
+            let mut options: JsParseOptions = options();
 
-    #[test]
-    fn test_parse_language_invalid_value_errors() {
-        for text in ["", "txt", "json", "TS", "Js", "d.ts"] {
-            assert!(parse_language(text).is_err(), "{text} must error");
+            options.language = Some(String::from(label));
+
+            let parsed: ParseOptions =
+                options.to_parse_options().expect("valid options parse");
+
+            assert_eq!(parsed.language, Some(language), "{label}");
         }
     }
 

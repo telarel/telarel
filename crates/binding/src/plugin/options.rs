@@ -7,18 +7,15 @@ use telarel_common::{Language, SourceType};
 /// An empty string maps to `None` (the JS hook did not set the field).
 pub fn parse_language(text: &str) -> Result<Option<Language>> {
     match text {
-        | "js" => Ok(Some(Language::JS)),
-        | "ts" => Ok(Some(Language::TS)),
-        | "dts" => Ok(Some(Language::DTS)),
-        | "jsx" => Ok(Some(Language::JSX)),
-        | "tsx" => Ok(Some(Language::TSX)),
         | "" => Ok(None),
-        | _ => Err(Error::new(
-            Status::InvalidArg,
-            format!(
-                "invalid language {text:?} in the `options` hook output: expected \"js\", \"ts\", \"dts\", \"jsx\" or \"tsx\""
-            ),
-        )),
+        | text => text.parse::<Language>().map(Some).map_err(|_| {
+            Error::new(
+                Status::InvalidArg,
+                format!(
+                    "invalid language {text:?} in the `options` hook output: expected \"js\", \"ts\", \"dts\", \"jsx\" or \"tsx\""
+                ),
+            )
+        }),
     }
 }
 
@@ -44,11 +41,7 @@ pub fn parse_source_type(text: &str) -> Result<Option<SourceType>> {
 /// The JS-facing label for a grammar, `""` when unspecified.
 pub fn language_label(language: Option<Language>) -> &'static str {
     match language {
-        | Some(Language::JS) => "js",
-        | Some(Language::TS) => "ts",
-        | Some(Language::DTS) => "dts",
-        | Some(Language::JSX) => "jsx",
-        | Some(Language::TSX) => "tsx",
+        | Some(language) => language.as_str(),
         | None => "",
     }
 }
@@ -110,10 +103,12 @@ mod tests {
 
     #[test]
     fn test_parse_language_invalid_errors() {
-        let error: napi::Error =
-            parse_language("json").expect_err("invalid language errors");
+        for text in ["json", "TS", "Js", "d.ts"] {
+            let error: napi::Error =
+                parse_language(text).expect_err("invalid language errors");
 
-        assert_eq!(error.status, napi::Status::InvalidArg);
+            assert_eq!(error.status, napi::Status::InvalidArg, "{text}");
+        }
     }
 
     #[test]

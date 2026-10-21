@@ -28,6 +28,7 @@
 - add an optional input source map to `Ast`
 - add `AstResult` and `CodeResult`
 - add `ErrorSource`
+- add `Display`, `FromStr`, and `Language::as_str` for `Language`
 - add `ParseOptions`, `RewriteOptions`, `GenerateOptions`, and `CompileFromAstOptions`
 - add the builtin `Parser` and `Generator` types and their options
 - add `SourceMapOptions` with value, path, `inline`, `external`, and `auto` input modes and `inline`, `external`, and `both` output modes
