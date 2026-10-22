@@ -4,22 +4,22 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 
 ## Key files
 
-| Path                            | Responsibility                                                                   |
-| ------------------------------- | -------------------------------------------------------------------------------- |
-| `src/_types/options/`           | Per-entry options structs, `ResolvableOptions`, `ResolvedOptions`                |
-| `src/_types/options/source_map` | Input and output source-map modes                                                |
-| `src/ast/ast.rs`                | `Ast`: owned, self-referential AST bundling its allocator, source, and input map |
-| `src/ast/generator.rs`          | Builtin generator; produces code and an output map                               |
-| `src/ast/parser.rs`             | Builtin parser; resolves the requested input source map during parsing           |
-| `src/ast/result.rs`             | `AstResult` and `CodeResult`                                                     |
-| `src/contexts/compile.rs`       | `CompileContext`                                                                 |
-| `src/errors/compile.rs`         | `CompileError` and code-frame rendering                                          |
-| `src/errors/plugin.rs`          | `PluginError`                                                                    |
-| `src/errors/source/mod.rs`      | `ErrorSource`                                                                    |
-| `src/helpers/path.rs`           | Centralized process-cwd and path-resolution helpers                              |
-| `src/helpers/resolve.rs`        | Option resolution helpers                                                        |
-| `src/sourcemap/mode.rs`         | Applies the resolved output mode after code generation                           |
-| `src/sourcemap/resolve.rs`      | Input map resolution: `Value`, `Path`, `Inline`, `External`, `Auto`              |
+| Path                           | Responsibility                                                                   |
+| ------------------------------ | -------------------------------------------------------------------------------- |
+| `src/_types/options/`          | Per-entry options structs, `ResolvableOptions`, `ResolvedOptions`                |
+| `src/_types/options/sourcemap` | Input and output source-map modes                                                |
+| `src/ast/ast.rs`               | `Ast`: owned, self-referential AST bundling its allocator, source, and input map |
+| `src/ast/generator.rs`         | Builtin generator; produces code and an output map                               |
+| `src/ast/parser.rs`            | Builtin parser; resolves the requested input source map during parsing           |
+| `src/ast/result.rs`            | `AstResult` and `CodeResult`                                                     |
+| `src/contexts/compile.rs`      | `CompileContext`                                                                 |
+| `src/errors/compile.rs`        | `CompileError` and code-frame rendering                                          |
+| `src/errors/plugin.rs`         | `PluginError`                                                                    |
+| `src/errors/source/mod.rs`     | `ErrorSource`                                                                    |
+| `src/helpers/path.rs`          | Centralized process-cwd and path-resolution helpers                              |
+| `src/helpers/resolve.rs`       | Option resolution helpers                                                        |
+| `src/sourcemap/mode.rs`        | Applies the resolved output mode after code generation                           |
+| `src/sourcemap/resolve.rs`     | Input map resolution: `Value`, `Inline`, `External`, `Auto`                      |
 
 ## AST invariants
 
@@ -33,18 +33,19 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 
 ## Source maps
 
-The public modes are defined by `InputSourceMapMode` and `OutputSourceMapMode` in `crates/common/src/_types/options/source_map/` and mirrored by the JS types in `packages/telarel/src/@types/source-map.ts`. Internal invariants:
+The public modes are defined by `InputSourceMapMode` and `OutputSourceMapMode` in `crates/common/src/_types/options/sourcemap/` and mirrored by the JS types in `packages/telarel/src/@types/sourcemap/`. Internal invariants:
 
 - The AST's own input map always wins. The pipeline only attaches a resolved input map when the AST carries none.
+- Input path overrides resolve through `source_dir` and `external_map_path_for`; public path semantics: `docs/content/apis/rust/Parser.mdx` and `docs/content/apis/javascript/createParser.mdx`.
 - Code-entry functions (`parse`, `compile`) resolve the input map inside the builtin parser.
-- Output mode is applied uniformly after the winning `generate` hook, regardless of whether the builtin or a plugin generated the code.
+- Output options are applied uniformly after the winning `generate` hook, regardless of whether the builtin or a plugin generated the code. Public output semantics: `docs/content/apis/rust/compile.mdx#compileoptions` and `docs/content/apis/rust/generate.mdx#generateoptions`.
 - When no map was produced, the code is returned byte-identical in every mode. Never fabricate an identity map.
 
 ## Option resolution
 
 Each entry point has its own options struct. All of them convert to `ResolvableOptions`, pass through the plugin `options` fixpoint, and then resolve to `ResolvedOptions` (defaults applied).
 
-`parse` and `rewrite` expose a flat `input_source_map` on their user options; their conversions wrap it into the shared `source_map` bag with `output: None`. Plugin `options` hooks still receive the shared bag, and an `output` they set is ignored by the parse and rewrite stages.
+`parse` and `rewrite` expose a flat `input_source_map` on their user options; their conversions wrap it into the shared `source_map` bag with `output: None`. Plugin `options` hooks still receive the shared bag, and an `output` they set is ignored by the parse and rewrite stages. Public stage contract: `docs/content/apis/rust/parse.mdx` and `docs/content/apis/rust/rewrite.mdx`.
 
 All internal path joining goes through `helpers/path.rs`; resolution is lexical and never canonicalizes. Internal code keeps path options as filesystem paths and converts to strings only at a boundary.
 

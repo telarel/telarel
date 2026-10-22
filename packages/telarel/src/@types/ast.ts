@@ -1,4 +1,4 @@
-import type { SourceMap } from "#/@types/sourcemap";
+import type { SourceMap } from "#/@types/sourcemap/map";
 import type { Ast } from "#/classes/ast";
 
 /**

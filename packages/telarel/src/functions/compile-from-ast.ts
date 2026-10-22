@@ -59,6 +59,7 @@ async function compileFromAst(
             file: options?.file,
             language: options?.language,
             sourceType: options?.sourceType,
+            output: options?.output,
             sourceMap: options?.sourceMap,
             plugins,
         });

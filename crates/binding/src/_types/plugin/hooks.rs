@@ -2,11 +2,13 @@ use napi::bindgen_prelude::{JsValue, Object, ToNapiValue};
 use napi::sys;
 
 use telarel_common::{
-    GeneratorOptions, InputSourceMap, InputSourceMapMode, OutputSourceMap,
-    OutputSourceMapMode, ParserOptions, ResolvedOptions, SourceMapOptions,
+    GeneratorOptions, InputSourceMap, InputSourceMapMode, OutputOptions,
+    OutputSourceMap, OutputSourceMapMode, ParserOptions, ResolvedOptions,
+    SourceMapOptions,
 };
 
 use crate::_types::ast::JsAst;
+use crate::_types::options::JsOutputOptions;
 use crate::_types::path::path_label;
 use crate::_types::sourcemap::JsSourceMap;
 use crate::plugin::options::{language_label, source_type_label};
@@ -74,6 +76,8 @@ pub struct JsOptionsOutput {
     /// Module system used for code generation.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
+    /// The output code settings after the hook.
+    pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs after the hook; unspecified (`None`)
     /// is omitted from the wire.
     #[napi(js_name = "sourceMap")]
@@ -81,6 +85,13 @@ pub struct JsOptionsOutput {
     /// The bag's plugins after the hook, as raw descriptor objects; missing
     /// means the default (empty) list.
     pub plugins: Option<Vec<napi::bindgen_prelude::ObjectRef<false>>>,
+}
+
+/// JS-facing resolved output options, as presented to the `start` hook.
+#[napi_derive::napi(object)]
+pub struct JsResolvedOutputOptions {
+    /// The file the generated code is intended for.
+    pub file: String,
 }
 
 /// JS-facing resolved options, as presented to the `start` hook.
@@ -95,6 +106,8 @@ pub struct JsResolvedOptions {
     /// Module system used for code generation.
     #[napi(js_name = "sourceType")]
     pub source_type: String,
+    /// The output code settings.
+    pub output: JsResolvedOutputOptions,
     /// The source-map inputs and outputs requested for the run.
     #[napi(js_name = "sourceMap")]
     pub source_map: serde_json::Value,
@@ -121,21 +134,46 @@ fn output_mode_label(mode: OutputSourceMapMode) -> &'static str {
 /// Convert an input source-map request into its JS union value.
 fn input_source_map_to_js(input: &InputSourceMap) -> serde_json::Value {
     match input {
-        | InputSourceMap::Mode(InputSourceMapMode::Value(map)) => {
-            serde_json::from_str(&map.to_json_string())
-                .unwrap_or(serde_json::Value::Null)
+        | InputSourceMap::Mode(mode) => {
+            let label: &str = match mode {
+                | InputSourceMapMode::Value(map) => {
+                    return serde_json::from_str(&map.to_json_string())
+                        .unwrap_or(serde_json::Value::Null);
+                },
+                | InputSourceMapMode::Inline => "inline",
+                | InputSourceMapMode::External => "external",
+                | InputSourceMapMode::Auto => "auto",
+            };
+
+            serde_json::Value::String(label.to_owned())
         },
-        | InputSourceMap::Mode(InputSourceMapMode::Path(path)) => {
-            serde_json::Value::String(path_label(path))
-        },
-        | InputSourceMap::Mode(InputSourceMapMode::Inline) => {
-            serde_json::Value::String(String::from("inline"))
-        },
-        | InputSourceMap::Mode(InputSourceMapMode::External) => {
-            serde_json::Value::String(String::from("external"))
-        },
-        | InputSourceMap::Mode(InputSourceMapMode::Auto) => {
-            serde_json::Value::String(String::from("auto"))
+        | InputSourceMap::Options(options) => {
+            let label: &str = match &options.mode {
+                | InputSourceMapMode::Value(map) => {
+                    return serde_json::from_str(&map.to_json_string())
+                        .unwrap_or(serde_json::Value::Null);
+                },
+                | InputSourceMapMode::Inline => "inline",
+                | InputSourceMapMode::External => "external",
+                | InputSourceMapMode::Auto => "auto",
+            };
+
+            let mut object: serde_json::Map<String, serde_json::Value> =
+                serde_json::Map::new();
+
+            object.insert(
+                String::from("mode"),
+                serde_json::Value::String(label.to_owned()),
+            );
+
+            if let Some(path) = options.path.as_deref() {
+                object.insert(
+                    String::from("path"),
+                    serde_json::Value::String(path_label(path)),
+                );
+            }
+
+            serde_json::Value::Object(object)
         },
     }
 }
@@ -146,9 +184,26 @@ fn output_source_map_to_js(output: &OutputSourceMap) -> serde_json::Value {
         | OutputSourceMap::Mode(mode) => {
             serde_json::Value::String(output_mode_label(*mode).to_owned())
         },
-        | OutputSourceMap::Options(options) => serde_json::json!({
-            "mode": output_mode_label(options.mode),
-        }),
+        | OutputSourceMap::Options(options) => {
+            let mut object: serde_json::Map<String, serde_json::Value> =
+                serde_json::Map::new();
+
+            object.insert(
+                String::from("mode"),
+                serde_json::Value::String(
+                    output_mode_label(options.mode).to_owned(),
+                ),
+            );
+
+            if let Some(url) = options.url.as_deref() {
+                object.insert(
+                    String::from("url"),
+                    serde_json::Value::String(url.to_owned()),
+                );
+            }
+
+            serde_json::Value::Object(object)
+        },
     }
 }
 
@@ -168,10 +223,35 @@ impl From<&ResolvedOptions> for JsResolvedOptions {
             language: language_label(Some(options.language)).to_owned(),
             source_type: source_type_label(Some(options.source_type))
                 .to_owned(),
+            output: JsResolvedOutputOptions {
+                file: options.output.file.clone(),
+            },
             source_map: source_map_options_to_js(&options.source_map),
             plugins: options.plugins.clone(),
         }
     }
+}
+
+/// Convert output settings into the pre-resolution JS bag shape.
+///
+/// An unspecified request (`None`) stays `None` and is omitted from the wire;
+/// a present request (even `{}`) is transmitted.
+pub fn optional_output_options_to_js(
+    options: Option<&OutputOptions>
+) -> Option<serde_json::Value> {
+    options.map(|options: &OutputOptions| {
+        let mut object: serde_json::Map<String, serde_json::Value> =
+            serde_json::Map::new();
+
+        if let Some(file) = options.file.as_deref() {
+            object.insert(
+                String::from("file"),
+                serde_json::Value::String(file.to_owned()),
+            );
+        }
+
+        serde_json::Value::Object(object)
+    })
 }
 
 /// Convert an optional source-map request into its JS union value.
@@ -285,9 +365,9 @@ mod tests {
     use std::path::PathBuf;
 
     use telarel_common::{
-        InputSourceMap, InputSourceMapMode, Language, OutputSourceMap,
-        OutputSourceMapMode, OutputSourceMapOptions, SourceMapOptions,
-        SourceType,
+        InputSourceMap, InputSourceMapMode, InputSourceMapOptions, Language,
+        OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
+        SourceMapOptions, SourceType,
     };
 
     use super::*;
@@ -298,6 +378,22 @@ mod tests {
             source_map_options_to_js(&SourceMapOptions::default());
 
         assert_eq!(value, serde_json::json!({ "input": null, "output": null }));
+    }
+
+    #[test]
+    fn test_optional_output_options_to_js_omits_unspecified() {
+        assert_eq!(optional_output_options_to_js(None), None);
+    }
+
+    #[test]
+    fn test_optional_output_options_to_js_keeps_file() {
+        let options: OutputOptions =
+            OutputOptions { file: Some(String::from("dist/index.js")) };
+
+        assert_eq!(
+            optional_output_options_to_js(Some(&options)),
+            Some(serde_json::json!({ "file": "dist/index.js" })),
+        );
     }
 
     #[test]
@@ -334,6 +430,7 @@ mod tests {
             input: Some(InputSourceMap::Mode(InputSourceMapMode::Inline)),
             output: Some(OutputSourceMap::Options(OutputSourceMapOptions {
                 mode: OutputSourceMapMode::External,
+                url: None,
             })),
         };
 
@@ -344,6 +441,75 @@ mod tests {
             serde_json::json!({
                 "input": "inline",
                 "output": { "mode": "external" },
+            })
+        );
+    }
+
+    #[test]
+    fn test_source_map_options_input_options_with_path() {
+        let options: SourceMapOptions = SourceMapOptions {
+            input: Some(InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::External,
+                path: Some(PathBuf::from("maps/app.js.map")),
+            })),
+            output: None,
+        };
+
+        let value: serde_json::Value = source_map_options_to_js(&options);
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "input": {
+                    "mode": "external",
+                    "path": "maps/app.js.map",
+                },
+                "output": null,
+            })
+        );
+    }
+
+    #[test]
+    fn test_source_map_options_input_options_without_path() {
+        let options: SourceMapOptions = SourceMapOptions {
+            input: Some(InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::Inline,
+                path: None,
+            })),
+            output: None,
+        };
+
+        let value: serde_json::Value = source_map_options_to_js(&options);
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "input": { "mode": "inline" },
+                "output": null,
+            })
+        );
+    }
+
+    #[test]
+    fn test_source_map_options_output_options_with_url() {
+        let options: SourceMapOptions = SourceMapOptions {
+            input: None,
+            output: Some(OutputSourceMap::Options(OutputSourceMapOptions {
+                mode: OutputSourceMapMode::External,
+                url: Some(String::from("dist/app.js.map")),
+            })),
+        };
+
+        let value: serde_json::Value = source_map_options_to_js(&options);
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "input": null,
+                "output": {
+                    "mode": "external",
+                    "url": "dist/app.js.map",
+                },
             })
         );
     }
@@ -403,6 +569,9 @@ mod tests {
             file: String::from("index.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
+            output: telarel_common::ResolvedOutputOptions {
+                file: String::from("dist/index.js"),
+            },
             source_map: SourceMapOptions {
                 input: Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
                 output: Some(OutputSourceMap::Mode(OutputSourceMapMode::Both)),
@@ -416,6 +585,7 @@ mod tests {
         assert_eq!(js.file, "index.ts");
         assert_eq!(js.language, "ts");
         assert_eq!(js.source_type, "module");
+        assert_eq!(js.output.file, "dist/index.js");
         assert_eq!(
             js.source_map,
             serde_json::json!({ "input": "auto", "output": "both" })
@@ -430,6 +600,9 @@ mod tests {
             file: String::from("index.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
+            output: telarel_common::ResolvedOutputOptions {
+                file: String::from("dist/index.js"),
+            },
             source_map: SourceMapOptions::default(),
             plugins: Vec::new(),
         };
@@ -451,6 +624,9 @@ mod tests {
             file: file.clone(),
             language: Language::TS,
             source_type: SourceType::Module,
+            output: telarel_common::ResolvedOutputOptions {
+                file: String::from("dist/index.js"),
+            },
             source_map: SourceMapOptions::default(),
             plugins: Vec::new(),
         };

@@ -21,22 +21,30 @@
 - change `Ast::with_mut` to require `Program::source_text` to stay content-equal to `Ast::source`
 - change `CompileContext.cwd` to `&Path`
 - change `CompileError` to carry a message and optional source
+- change `CompileOptions`, `CompileFromAstOptions`, and `GenerateOptions` to carry `output`
+- change `OutputSourceMapOptions` to carry an optional external map `url`
 - change `ParseOptions` and `RewriteOptions` to accept `input_source_map` instead of `source_map`
+- change `ResolvableOptions` and `ResolvedOptions` to carry `output`
+- change `apply_output_source_map_mode` to accept `OutputSourceMapOptions` and the output file used for the default external map URL
+- change the `cwd` parameter of `resolve_input_source_map` to `&Path`
 - change the `cwd` field in Rust option structs to `PathBuf`
 - change the `file` default to `index.ts`
-- change the `cwd` parameter of `resolve_input_source_map` to `&Path`
+- change external output mode to append a `sourceMappingURL` default derived from `output.file` when `url` is absent
 - remove `CompileError::from_message`; use `CompileError::new` instead
 - remove `code` from `CompileOptions`; the source is now a call argument
+- remove `InputSourceMapMode::Path`; use `External` with `InputSourceMapOptions.path`, which resolves a relative `path` against the source file's directory instead of `cwd`
 
 #### Features
 
 - add an optional input source map to `Ast`
 - add `AstResult` and `CodeResult`
 - add `ErrorSource`
+- add `InputSourceMapOptions` and `InputSourceMap::Options` for custom external input map paths
 - add `Display`, `FromStr`, and `Language::as_str` for `Language`
+- add `OutputOptions` and `ResolvedOutputOptions` for the intended output file
 - add `ParseOptions`, `RewriteOptions`, `GenerateOptions`, and `CompileFromAstOptions`
 - add the builtin `Parser` and `Generator` types and their options
-- add `SourceMapOptions` with value, path, `inline`, `external`, and `auto` input modes and `inline`, `external`, and `both` output modes
+- add `SourceMapOptions` with value, `inline`, `external`, and `auto` input modes and `inline`, `external`, and `both` output modes
 - add input source-map resolution and output source-map mode application
 
 #### Fixes
@@ -51,6 +59,7 @@
 
 #### Breaking
 
+- change `compile`, `compileFromAst`, and `generate` to append a default external map comment derived from `output.file`
 - replace `CompileOutput` with `CodeResult`
 
 #### Features
@@ -102,14 +111,18 @@
 #### Breaking
 
 - change AST normalization to `{ program, code, map? }` and accept either an `Ast` or a `Program` plus its source text
-- change `prepare`, `transform`, and `finalize` hook payloads to carry the AST's `code` and optional `map`; transform results are rebuilt from the returned `Ast`
+- change `inputSourceMap` and `sourceMap.input` path strings to `InvalidArg`; use `{ mode: "external", path }`
 - change `parse` and `rewrite` JS options to use `inputSourceMap` instead of `sourceMap`
+- change `prepare`, `transform`, and `finalize` hook payloads to carry the AST's `code` and optional `map`; transform results are rebuilt from the returned `Ast`
 - rename constructed builtin plugins to their JS-facing names
 - replace `compileStart` and `compileEnd` with `start` and `end`
 
 #### Features
 
 - add NAPI entry points for `parse`, `rewrite`, `generate`, `compileFromAst`, `compile`, `builtinParse`, and `builtinGenerate`
+- add `output` to the resolved options payload
+- add `output.file` to the compile, compileFromAst, and generate options and to the plugin options bag
+- add `{ mode, path }` input and `{ mode, url }` output source-map options to `sourceMap`, and the flat input mode or `{ mode, path }` options to `inputSourceMap`; an input `mode` accepts a source-map value or a literal mode
 - add the JS-to-Rust `PluginError` transport
 - add structured NAPI rejection data with UTF-16 spans
 - add bridges for the new options, source-map types, and `parse` and `generate` hooks
@@ -119,16 +132,20 @@
 #### Breaking
 
 - change the re-exported `CompileContext.cwd` to `&Path`
-- change the re-exported `cwd` option fields to `PathBuf`
+- change the re-exported `CompileOptions`, `CompileFromAstOptions`, and `GenerateOptions` to carry `output`
+- change the re-exported `InputSourceMapMode` to remove `Path`; use `External` with `InputSourceMapOptions.path`, which resolves a relative `path` against the source file's directory instead of `cwd`
 - change the re-exported `ParseOptions` and `RewriteOptions` source-map option to `input_source_map`
 - change the re-exported `TransformArgs` to own a cheap `Ast` and drop its lifetime and `Copy` implementation
+- change the re-exported `cwd` option fields to `PathBuf`
 - replace the `parse_owned` and `codegen` re-exports with the new entry points
 
 #### Features
 
 - add re-exports of `parse`, `rewrite`, `generate`, `compile_from_ast`, and `compile`
-- add re-exports of the new options, result types, source-map types, and plugin hook types
+- add an `InputSourceMapOptions` re-export
+- add `OutputOptions` and `ResolvedOutputOptions` re-exports
 - add `PluginError` and `ErrorSource` re-exports
+- add re-exports of the new options, result types, source-map types, and plugin hook types
 
 ### Telarel (NPM)
 
@@ -136,13 +153,15 @@
 
 - change `compile` to take the source text first: `compile(code, options)`
 - change `createGenerator` and `ErrorSource.fromAst` to accept `Ast`
-- change `parse` and `rewrite` options to use `inputSourceMap` instead of `sourceMap`
 - change `Ast` from a plain object to a class with `program`, `source`, and `map` getters
 - change `Ast.map` to return `null` when no map is attached
 - change `Ast.program` to a deeply read-only view; use `Ast.mutate` to change it
 - change `ErrorSource.file`, `ErrorSource.code`, and `ErrorSource.span` from methods to getters
+- change `InputSourceMapMode` and `InputSourceMapOptions.mode` to accept a `SourceMap` value or the `"inline"`, `"external"`, and `"auto"` literals; `inputSourceMap` and `sourceMap.input` path strings now reject as `InvalidArg`—use `{ mode: "external", path }`, which resolves a relative `path` against the source file's directory instead of `cwd`
+- change `parse` and `rewrite` options to use `inputSourceMap` instead of `sourceMap`
 - change `PrepareArgs`, `FinalizeArgs`, and `GenerateArgs` to carry `Ast` instead of `Program`; `TransformArgs` and `TransformResult` carry `Ast`
 - change entry-point rejections to `CompileError`
+- change external output mode to append a default `sourceMappingURL` derived from `output.file` when `url` is absent
 - remove plain-object `Ast` inputs; construct `new Ast({ program, source })` instead
 - remove the `PrepareResult` and `FinalizeResult` exports
 - rename `Ast.code` to `Ast.source`
@@ -152,17 +171,22 @@
 
 #### Features
 
-- add `AstOptions`
-- add `Ast.mutate` for synchronous and asynchronous program mutation
 - add exports for `parse`, `rewrite`, `generate`, `compileFromAst`, `createParser`, `createGenerator`, and `transform`
 - add exports for `Ast`, `AstResult`, `CodeResult`, the per-entry options, and the source-map types
+- add `Ast.mutate` for synchronous and asynchronous program mutation
+- add `AstOptions`
 - add `CompileError`, `PluginError`, and `ErrorSource`
 - add `CompileError.render` and `PluginError.render` to render a code frame for a message
+- add `CompleteOutputOptions` and `OutputOptions` for the intended output file
+- add `InputSourceMapOptions` for custom external input map paths
+- add `output.file` to the compile, compileFromAst, and generate options
+- add an output `url` option for external `sourceMappingURL` comments
 
 #### Fixes
 
-- change external input source-map lookup to ignore `?query`/`#hash` suffixes in `file`
+- change empty `output.file` and `sourceMap.output.url` to be treated as unset instead of rejected
 - change the `options` hook to omit unset `cwd` and `file` instead of sending empty strings
+- change external input source-map lookup to ignore `?query`/`#hash` suffixes in `file`
 
 ## 0.1.0 (2026-10-10)
 

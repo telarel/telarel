@@ -27,11 +27,12 @@ The builtin generator is the terminal fallback after every `generate` hook defer
 
 Every field is optional and resolved against defaults before use.
 
-| Field        | Type                       | Default             | Description                                                            |
-| ------------ | -------------------------- | ------------------- | ---------------------------------------------------------------------- |
-| `cwd`        | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                        |
-| `file`       | `Option<String>`           | `index.ts`          | The file being generated. The language is inferred from its extension. |
-| `source_map` | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the step.              |
+| Field        | Type                       | Default             | Description                                                             |
+| ------------ | -------------------------- | ------------------- | ----------------------------------------------------------------------- |
+| `cwd`        | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                         |
+| `file`       | `Option<String>`           | `index.ts`          | The file being generated. The language is inferred from its extension.  |
+| `output`     | `Option<OutputOptions>`    | `file`              | Output code settings. `output.file` derives the default source-map URL. |
+| `source_map` | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the step.               |
 
 ## Returns
 

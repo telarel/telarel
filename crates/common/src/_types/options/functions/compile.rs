@@ -2,8 +2,9 @@ use std::path::PathBuf;
 
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
+use crate::_types::options::output::OutputOptions;
 use crate::_types::options::resolvable::ResolvableOptions;
-use crate::_types::options::source_map::SourceMapOptions;
+use crate::_types::options::sourcemap::SourceMapOptions;
 
 /// User options for a compile run; every field is optional and resolved
 /// against defaults before use.
@@ -21,6 +22,8 @@ pub struct CompileOptions {
     /// The module system of the code;
     /// `None` keeps the module kind resolved from the grammar.
     pub source_type: Option<SourceType>,
+    /// The output code settings.
+    pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the run.
     pub source_map: Option<SourceMapOptions>,
 }
@@ -32,6 +35,7 @@ impl From<CompileOptions> for ResolvableOptions {
             file: options.file,
             language: options.language,
             source_type: options.source_type,
+            output: options.output,
             source_map: options.source_map,
         }
     }
@@ -48,6 +52,9 @@ mod tests {
             file: Some("src/app.ts".into()),
             language: Some(Language::TS),
             source_type: Some(SourceType::Module),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/app.js")),
+            }),
             source_map: Some(SourceMapOptions::default()),
         };
 
@@ -55,6 +62,10 @@ mod tests {
         assert_eq!(options.file.as_deref(), Some("src/app.ts"));
         assert_eq!(options.language, Some(Language::TS));
         assert_eq!(options.source_type, Some(SourceType::Module));
+        assert_eq!(
+            options.output.as_ref().and_then(|output| output.file.as_deref()),
+            Some("dist/app.js"),
+        );
         assert!(options.source_map.is_some());
     }
 
@@ -66,6 +77,7 @@ mod tests {
         assert!(options.file.is_none());
         assert!(options.language.is_none());
         assert!(options.source_type.is_none());
+        assert!(options.output.is_none());
         assert!(options.source_map.is_none());
     }
 
@@ -76,6 +88,9 @@ mod tests {
             file: Some(String::from("src/app.tsx")),
             language: Some(Language::TSX),
             source_type: Some(SourceType::Script),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/app.mjs")),
+            }),
             source_map: Some(SourceMapOptions::default()),
         };
 
@@ -85,6 +100,13 @@ mod tests {
         assert_eq!(resolvable.file.as_deref(), Some("src/app.tsx"));
         assert_eq!(resolvable.language, Some(Language::TSX));
         assert_eq!(resolvable.source_type, Some(SourceType::Script));
+        assert_eq!(
+            resolvable
+                .output
+                .as_ref()
+                .and_then(|output| output.file.as_deref()),
+            Some("dist/app.mjs"),
+        );
         assert!(resolvable.source_map.is_some());
     }
 }

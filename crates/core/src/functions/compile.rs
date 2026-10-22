@@ -20,6 +20,7 @@ pub async fn compile(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
 
@@ -27,8 +28,9 @@ mod tests {
 
     use telarel_common::{
         CodeResult, CompileOptions, InputSourceMap, InputSourceMapMode,
-        Language, ResolvedOptions, SourceMap, SourceMapOptions, SourceType,
-        append_inline_source_map,
+        InputSourceMapOptions, Language, OutputOptions, OutputSourceMap,
+        OutputSourceMapMode, ResolvedOptions, SourceMap, SourceMapOptions,
+        SourceType, append_inline_source_map,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
@@ -98,6 +100,34 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_output_external_uses_output_file() {
+        let options: CompileOptions = CompileOptions {
+            file: Some(String::from("src/index.ts")),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/index.js")),
+            }),
+            source_map: Some(SourceMapOptions {
+                input: None,
+                output: Some(OutputSourceMap::Mode(
+                    OutputSourceMapMode::External,
+                )),
+            }),
+            ..CompileOptions::default()
+        };
+
+        let result: CodeResult =
+            compile(String::from("const a = 1;"), options, vec![])
+                .await
+                .expect("compile succeeds");
+
+        assert_eq!(
+            result.code,
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
+        assert!(result.map.is_some());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn test_compile_inline_input_map_composes_output_map() {
         let map: SourceMap = sample_map("upstream.ts", 9);
 
@@ -134,6 +164,37 @@ mod tests {
             file: Some(String::from("index.ts")),
             source_map: Some(SourceMapOptions {
                 input: Some(InputSourceMap::Mode(InputSourceMapMode::External)),
+                output: None,
+            }),
+            ..CompileOptions::default()
+        };
+
+        let result: CodeResult =
+            compile(String::from("const a = 1;"), options, vec![])
+                .await
+                .expect("compile succeeds");
+
+        let generated: SourceMap = result.map.expect("output map present");
+
+        assert_eq!(first_token(&generated), (0, 0, 9, 0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_external_input_map_uses_custom_path() {
+        let dir: TempDir = temp_dir();
+
+        let map: SourceMap = sample_map("upstream.ts", 9);
+
+        write_file(&dir, "custom.map", &map.to_json_string());
+
+        let options: CompileOptions = CompileOptions {
+            cwd: Some(path_buf(&dir)),
+            file: Some(String::from("index.ts")),
+            source_map: Some(SourceMapOptions {
+                input: Some(InputSourceMap::Options(InputSourceMapOptions {
+                    mode: InputSourceMapMode::External,
+                    path: Some(PathBuf::from("custom.map")),
+                })),
                 output: None,
             }),
             ..CompileOptions::default()

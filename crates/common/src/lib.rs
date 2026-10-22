@@ -23,13 +23,16 @@ pub use crate::_types::options::functions::compile_from_ast::CompileFromAstOptio
 pub use crate::_types::options::functions::generate::GenerateOptions;
 pub use crate::_types::options::functions::parse::ParseOptions;
 pub use crate::_types::options::functions::rewrite::RewriteOptions;
+pub use crate::_types::options::output::{
+    OutputOptions, ResolvedOutputOptions,
+};
 pub use crate::_types::options::resolvable::ResolvableOptions;
 pub use crate::_types::options::resolved::ResolvedOptions;
-pub use crate::_types::options::source_map::SourceMapOptions;
-pub use crate::_types::options::source_map::input::{
-    InputSourceMap, InputSourceMapMode,
+pub use crate::_types::options::sourcemap::SourceMapOptions;
+pub use crate::_types::options::sourcemap::input::{
+    InputSourceMap, InputSourceMapMode, InputSourceMapOptions,
 };
-pub use crate::_types::options::source_map::output::{
+pub use crate::_types::options::sourcemap::output::{
     OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
 };
 pub use crate::ast::ast::Ast;

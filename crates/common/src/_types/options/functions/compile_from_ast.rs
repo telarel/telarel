@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
-use crate::_types::options::source_map::SourceMapOptions;
+use crate::_types::options::output::OutputOptions;
+use crate::_types::options::sourcemap::SourceMapOptions;
 
 /// User options for compiling from an existing AST; every field is optional
 /// and resolved against defaults before use.
@@ -20,6 +21,8 @@ pub struct CompileFromAstOptions {
     /// The module system of the code;
     /// `None` keeps the module kind resolved from the grammar.
     pub source_type: Option<SourceType>,
+    /// The output code settings.
+    pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the step.
     pub source_map: Option<SourceMapOptions>,
 }

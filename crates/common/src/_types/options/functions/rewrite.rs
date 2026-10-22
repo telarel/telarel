@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
-use crate::_types::options::source_map::input::InputSourceMap;
+use crate::_types::options::sourcemap::input::InputSourceMap;
 
 /// User options for a rewrite step; every field is optional and resolved
 /// against defaults before use.

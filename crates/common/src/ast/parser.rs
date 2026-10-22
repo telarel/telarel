@@ -58,9 +58,9 @@ mod tests {
 
     use crate::_types::grammar::language::Language;
     use crate::_types::grammar::source_type::SourceType;
-    use crate::_types::options::source_map::SourceMapOptions;
-    use crate::_types::options::source_map::input::{
-        InputSourceMap, InputSourceMapMode,
+    use crate::_types::options::sourcemap::SourceMapOptions;
+    use crate::_types::options::sourcemap::input::{
+        InputSourceMap, InputSourceMapMode, InputSourceMapOptions,
     };
     use crate::helpers::test_util::{path_buf, temp_dir, write_file};
     use crate::sourcemap::inline::append_inline_source_map;
@@ -193,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_path_mode_attaches_map() {
+    fn test_parse_external_mode_with_path_attaches_map() {
         let dir: TempDir = temp_dir();
         let map: SourceMap = sample_map("upstream.ts");
 
@@ -204,13 +204,16 @@ mod tests {
             options(
                 &path_buf(&dir),
                 "index.ts",
-                source_map_options(InputSourceMap::Mode(
-                    InputSourceMapMode::Path(PathBuf::from("custom.map")),
+                source_map_options(InputSourceMap::Options(
+                    InputSourceMapOptions {
+                        mode: InputSourceMapMode::External,
+                        path: Some(PathBuf::from("custom.map")),
+                    },
                 )),
             ),
         )
         .parse()
-        .expect("path mode parses");
+        .expect("external path parses");
 
         assert_same_map(result.ast.map().expect("map attached"), &map);
     }

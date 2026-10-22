@@ -27,7 +27,7 @@ use crate::_types::path::path_label;
 use crate::_types::plugin::hooks::{
     JsCodeOutput, JsGeneratorHookOptions, JsOptionsOutput, JsParseOutput,
     JsParserHookOptions, JsResolvedOptions, JsTransformOutput,
-    optional_source_map_options_to_js,
+    optional_output_options_to_js, optional_source_map_options_to_js,
 };
 use crate::_types::plugin::order::read_hook_meta;
 use crate::_types::sourcemap::JsSourceMap;
@@ -211,6 +211,10 @@ fn unmarshal_options(
             | None => None,
         };
 
+    let output_options: Option<telarel_common::OutputOptions> =
+        crate::_types::options::parse_output_options(output.output.as_ref())
+            .map_err(hook_error)?;
+
     let source_map: Option<telarel_common::SourceMapOptions> =
         match &output.source_map {
             | Some(value) => Some(
@@ -235,6 +239,7 @@ fn unmarshal_options(
             file: output.file,
             language,
             source_type,
+            output: output_options,
             source_map,
         },
         plugins,
@@ -437,6 +442,9 @@ impl Pluginable for JsPlugin {
                 source_type: SharedStr::new(source_type_label(
                     args.options.source_type,
                 )),
+                output: optional_output_options_to_js(
+                    args.options.output.as_ref(),
+                ),
                 source_map: optional_source_map_options_to_js(
                     args.options.source_map.as_ref(),
                 ),
@@ -856,7 +864,9 @@ impl Pluginable for JsPlugin {
 mod tests {
     use std::path::PathBuf;
 
-    use telarel_common::{Language, SourceType};
+    use telarel_common::{
+        Language, OutputOptions, SourceMapOptions, SourceType,
+    };
 
     use crate::plugin::hooks::RefList;
 
@@ -880,6 +890,7 @@ mod tests {
             file,
             language,
             source_type,
+            output: None,
             source_map: None,
             plugins: None,
         }
@@ -934,8 +945,30 @@ mod tests {
         assert_eq!(outcome.options.file, None);
         assert_eq!(outcome.options.language, None);
         assert_eq!(outcome.options.source_type, None);
+        assert!(outcome.options.output.is_none());
         assert!(outcome.options.source_map.is_none());
         assert!(outcome.plugins.is_empty());
+    }
+
+    #[test]
+    fn test_unmarshal_options_bag_parses_output() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.output = Some(crate::_types::options::JsOutputOptions {
+            file: Some(String::from("dist/index.js")),
+        });
+
+        let outcome: OptionsArgs = unmarshal_options(Some(bag), &env, &refs)
+            .unwrap()
+            .expect("a returned bag is Some");
+
+        let output: OutputOptions =
+            outcome.options.output.expect("the bag's output is carried");
+
+        assert_eq!(output.file.as_deref(), Some("dist/index.js"));
     }
 
     #[test]
@@ -969,8 +1002,55 @@ mod tests {
             Some(telarel_common::OutputSourceMap::Options(
                 telarel_common::OutputSourceMapOptions {
                     mode: telarel_common::OutputSourceMapMode::Both,
+                    url: None,
                 }
             ))
+        ));
+    }
+
+    #[test]
+    fn test_unmarshal_options_bag_parses_source_map_paths() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.source_map = Some(serde_json::json!({
+            "input": {
+                "mode": "external",
+                "path": "maps/in.map",
+            },
+            "output": {
+                "mode": "external",
+                "url": "dist/out.js.map",
+            },
+        }));
+
+        let outcome: OptionsArgs = unmarshal_options(Some(bag), &env, &refs)
+            .unwrap()
+            .expect("a returned bag is Some");
+
+        let source_map: SourceMapOptions =
+            outcome.options.source_map.expect("the bag's sourceMap is carried");
+
+        assert!(matches!(
+            source_map.input,
+            Some(telarel_common::InputSourceMap::Options(
+                telarel_common::InputSourceMapOptions {
+                    mode: telarel_common::InputSourceMapMode::External,
+                    path: Some(path),
+                }
+            )) if path == std::path::Path::new("maps/in.map")
+        ));
+
+        assert!(matches!(
+            source_map.output,
+            Some(telarel_common::OutputSourceMap::Options(
+                telarel_common::OutputSourceMapOptions {
+                    mode: telarel_common::OutputSourceMapMode::External,
+                    url: Some(url),
+                }
+            )) if url == "dist/out.js.map"
         ));
     }
 

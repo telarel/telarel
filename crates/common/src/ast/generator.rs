@@ -22,11 +22,11 @@ impl<'a> Generator<'a> {
         Self { ast, options }
     }
 
-    /// Generate external-form output: code plus the composed source map.
+    /// Generate the composed output: code plus the source map.
     ///
-    /// Output-mode post-processing (inline/`both` comments) is applied by the
-    /// pipeline, not here. Returns `Ok` today; the `Result` is kept for future
-    /// error paths.
+    /// Output delivery modes (`Inline`, `External`, and `Both`) are applied by
+    /// the pipeline, not here. Returns `Ok` today; the `Result` is kept for
+    /// future error paths.
     pub fn generate(self) -> Result<CodeResult, CompileError> {
         let result: CodeResult = generate_code(
             self.ast,
@@ -43,7 +43,7 @@ mod tests {
 
     use oxc_sourcemap::SourceMapBuilder;
 
-    use crate::_types::options::source_map::SourceMapOptions;
+    use crate::_types::options::sourcemap::SourceMapOptions;
     use crate::ast::parse::{ParseAstOptions, parse_ast};
     use crate::sourcemap::SourceMap;
 

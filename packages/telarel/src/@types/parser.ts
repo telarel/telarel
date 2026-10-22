@@ -1,5 +1,5 @@
 import type { Language, SourceType } from "#/@types/grammar";
-import type { SourceMapOptions } from "#/@types/source-map";
+import type { SourceMapOptions } from "#/@types/sourcemap";
 
 /**
  * Resolved options for the builtin parser.

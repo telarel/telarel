@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use crate::_types::options::source_map::SourceMapOptions;
+use crate::_types::options::output::OutputOptions;
+use crate::_types::options::sourcemap::SourceMapOptions;
 
 /// User options for a generate step; every field is optional and resolved
 /// against defaults before use.
@@ -12,6 +13,8 @@ pub struct GenerateOptions {
     /// The file being generated;
     /// `None` resolves to the default file name.
     pub file: Option<String>,
+    /// The output code settings.
+    pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the step.
     pub source_map: Option<SourceMapOptions>,
 }

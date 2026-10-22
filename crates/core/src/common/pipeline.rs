@@ -10,7 +10,7 @@
 
 use telarel_common::{
     Ast, AstResult, CodeResult, CompileError, Generator, GeneratorOptions,
-    OutputSourceMap, OutputSourceMapMode, Parser, ParserOptions,
+    OutputSourceMap, OutputSourceMapOptions, Parser, ParserOptions,
     ResolvableOptions, ResolvedOptions, apply_output_source_map_mode,
     resolve_input_source_map, resolve_options,
 };
@@ -34,13 +34,14 @@ pub trait Stage {
     ) -> Result<Self::Output, CompileError>;
 }
 
-/// The resolved output mode; `None` (and `Options` defaults) fall back to
-/// `External`.
-fn output_mode(output: Option<&OutputSourceMap>) -> OutputSourceMapMode {
+/// The resolved output options; `None` falls back to the defaults.
+fn output_options(output: Option<&OutputSourceMap>) -> OutputSourceMapOptions {
     match output {
-        | Some(OutputSourceMap::Mode(mode)) => *mode,
-        | Some(OutputSourceMap::Options(options)) => options.mode,
-        | None => OutputSourceMapMode::default(),
+        | Some(OutputSourceMap::Mode(mode)) => {
+            OutputSourceMapOptions { mode: *mode, url: None }
+        },
+        | Some(OutputSourceMap::Options(options)) => options.clone(),
+        | None => OutputSourceMapOptions::default(),
     }
 }
 
@@ -115,8 +116,8 @@ async fn rewrite_stages(
 }
 
 /// The `generate` stage: the builtin generator is the terminal fallback after
-/// every `generate` hook defers. The resolved output mode is applied uniformly,
-/// regardless of which hook won.
+/// every `generate` hook defers. The resolved output source-map options are
+/// applied uniformly, regardless of which hook won.
 async fn generate_stage(
     driver: &PluginDriver,
     ctx: &PluginContext<'_>,
@@ -130,9 +131,14 @@ async fn generate_stage(
     let result: CodeResult =
         driver.generate(ctx, ast, &options, &builtin).await?;
 
+    let output: Option<&OutputSourceMap> = resolved.source_map.output.as_ref();
+    let output_file: Option<&str> =
+        output.map(|_output: &OutputSourceMap| resolved.output.file.as_str());
+
     Ok(apply_output_source_map_mode(
         result,
-        output_mode(resolved.source_map.output.as_ref()),
+        &output_options(output),
+        output_file,
     ))
 }
 

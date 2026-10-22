@@ -27,13 +27,14 @@ Because the stages run inline, `options`, `start`, and `end` fire exactly once. 
 
 Every field is optional and resolved against defaults before use.
 
-| Field         | Type                       | Default             | Description                                                           |
-| ------------- | -------------------------- | ------------------- | --------------------------------------------------------------------- |
-| `cwd`         | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                       |
-| `file`        | `Option<String>`           | `index.ts`          | The file being compiled. The language is inferred from its extension. |
-| `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.           |
-| `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind.   |
-| `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the run.              |
+| Field         | Type                       | Default             | Description                                                             |
+| ------------- | -------------------------- | ------------------- | ----------------------------------------------------------------------- |
+| `cwd`         | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                         |
+| `file`        | `Option<String>`           | `index.ts`          | The file being compiled. The language is inferred from its extension.   |
+| `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.             |
+| `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind.     |
+| `output`      | `Option<OutputOptions>`    | `file`              | Output code settings. `output.file` derives the default source-map URL. |
+| `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the run.                |
 
 ## Returns
 

@@ -213,6 +213,35 @@ describe("rewrite", (): void => {
         expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
     });
 
+    it("ignores a top-level output set by an options hook", async (): Promise<void> => {
+        const parsed: AstResult = await parse("const a = 1;", {
+            file: "index.ts",
+        });
+
+        const result: AstResult = await rewrite(parsed.ast, {
+            file: "index.ts",
+            inputSourceMap: upstreamMap(),
+            plugins: [
+                {
+                    name: "set-top-level-output",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): OptionsArgs => ({
+                        options: {
+                            ...args.options,
+                            output: { file: "dist/index.js" },
+                        },
+                    }),
+                },
+            ],
+        });
+
+        expect(result.ast.source).toBe("const a = 1;");
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+        expect(result.ast.map?.mappings).toBe("AASA");
+    });
+
     it("keeps the AST's own map over a requested input map", async (): Promise<void> => {
         const parsed: AstResult = await parse("const a = 1;", {
             file: "index.ts",

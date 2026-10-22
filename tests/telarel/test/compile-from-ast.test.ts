@@ -107,6 +107,19 @@ describe("compileFromAst", (): void => {
         expect(seen).toEqual(["prepare", "transform", "finalize", "generate"]);
     });
 
+    it("appends the external map URL derived from output.file", async (): Promise<void> => {
+        const result: CodeResult = await compileFromAst((await parsed()).ast, {
+            file: "src/index.ts",
+            output: { file: "dist/index.js" },
+            sourceMap: { output: "external" },
+        });
+
+        expect(result.code).toBe(
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
+        expect(result.map?.sources).toEqual(["src/index.ts"]);
+    });
+
     it("accepts a bare program with its code", async (): Promise<void> => {
         const ast: AstResult = await parsed();
 

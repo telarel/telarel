@@ -33,7 +33,9 @@ The builtin parser is the terminal fallback after every `parse` plugin hook defe
 
 `SourceType` is one of `"script"`, `"commonjs"`, `"module"`, or `"unambiguous"`.
 
-`parse` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `sourceMap.input`; a plugin-set `sourceMap.output` is ignored by `parse`.
+`InputSourceMap` is a `SourceMap` value, a literal input mode (`"inline"`, `"external"`, or `"auto"`), or `{ mode, path? }`; in the options form, `mode` accepts a `SourceMap` value or a literal input mode.
+
+`parse` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `sourceMap.input`; a plugin-set `sourceMap.output` or top-level `output` is ignored by `parse`.
 
 ## Returns
 

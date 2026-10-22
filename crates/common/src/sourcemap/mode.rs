@@ -1,13 +1,21 @@
-use crate::_types::options::source_map::output::OutputSourceMapMode;
+use crate::_types::options::sourcemap::output::{
+    OutputSourceMapMode, OutputSourceMapOptions,
+};
 use crate::ast::result::CodeResult;
-use crate::sourcemap::inline::append_inline_source_map;
+use crate::helpers::path::external_map_url;
+use crate::sourcemap::inline::{
+    append_inline_source_map, append_source_mapping_url,
+};
 
-/// Apply the resolved output mode to a [`CodeResult`].
+/// Apply the resolved output options to a [`CodeResult`].
 ///
-/// Called by the pipeline after the winning generate hook (builtin or custom).
+/// `output_file` derives the default external map URL when `url` is absent;
+/// pass `None` when no output map was explicitly requested. Called by the
+/// pipeline after the winning generate hook (builtin or custom).
 pub fn apply_output_source_map_mode(
     result: CodeResult,
-    mode: OutputSourceMapMode,
+    options: &OutputSourceMapOptions,
+    output_file: Option<&str>,
 ) -> CodeResult {
     let CodeResult { code, map } = result;
 
@@ -15,8 +23,24 @@ pub fn apply_output_source_map_mode(
         return CodeResult { code, map: None };
     };
 
-    match mode {
-        | OutputSourceMapMode::External => CodeResult { code, map: Some(map) },
+    match options.mode {
+        | OutputSourceMapMode::External => {
+            let default_url: Option<String> =
+                output_file.and_then(external_map_url);
+
+            let url: Option<&str> = options
+                .url
+                .as_deref()
+                .filter(|url: &&str| !url.is_empty())
+                .or(default_url.as_deref());
+
+            let code: String = match url {
+                | Some(url) => append_source_mapping_url(code, url),
+                | None => code,
+            };
+
+            CodeResult { code, map: Some(map) }
+        },
         | OutputSourceMapMode::Inline => {
             CodeResult { code: append_inline_source_map(code, &map), map: None }
         },
@@ -60,14 +84,86 @@ mod tests {
         CodeResult { code: String::from("const a = 1;"), map: None }
     }
 
+    fn options(mode: OutputSourceMapMode) -> OutputSourceMapOptions {
+        OutputSourceMapOptions { mode, url: None }
+    }
+
+    fn options_with_url(
+        mode: OutputSourceMapMode,
+        url: &str,
+    ) -> OutputSourceMapOptions {
+        OutputSourceMapOptions { mode, url: Some(url.to_owned()) }
+    }
+
     #[test]
-    fn test_external_returns_result_unchanged() {
+    fn test_external_without_output_file_returns_result_unchanged() {
         let result: CodeResult = apply_output_source_map_mode(
             result_with_map(),
-            OutputSourceMapMode::External,
+            &options(OutputSourceMapMode::External),
+            None,
         );
 
         assert_eq!(result.code, "const a = 1;");
+        assert!(result.map.is_some());
+    }
+
+    #[test]
+    fn test_external_appends_configured_url_and_keeps_map() {
+        let result: CodeResult = apply_output_source_map_mode(
+            result_with_map(),
+            &options_with_url(OutputSourceMapMode::External, "dist/app.js.map"),
+            None,
+        );
+
+        assert_eq!(
+            result.code,
+            "const a = 1;\n//# sourceMappingURL=dist/app.js.map\n",
+        );
+        assert!(result.map.is_some());
+    }
+
+    #[test]
+    fn test_external_without_url_uses_output_file_map() {
+        let result: CodeResult = apply_output_source_map_mode(
+            result_with_map(),
+            &options(OutputSourceMapMode::External),
+            Some("dist/index.js"),
+        );
+
+        assert_eq!(
+            result.code,
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
+        assert!(result.map.is_some());
+    }
+
+    #[test]
+    fn test_external_configured_url_wins_over_output_file() {
+        let result: CodeResult = apply_output_source_map_mode(
+            result_with_map(),
+            &options_with_url(OutputSourceMapMode::External, "custom.js.map"),
+            Some("dist/index.js"),
+        );
+
+        assert_eq!(
+            result.code,
+            "const a = 1;\n//# sourceMappingURL=custom.js.map\n",
+        );
+        assert!(result.map.is_some());
+    }
+
+    #[test]
+    fn test_external_empty_url_falls_back_to_output_file() {
+        let result: CodeResult = apply_output_source_map_mode(
+            result_with_map(),
+            &options_with_url(OutputSourceMapMode::External, ""),
+            Some("dist/index.js"),
+        );
+
+        assert_eq!(
+            result.code,
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
         assert!(result.map.is_some());
     }
 
@@ -77,7 +173,8 @@ mod tests {
 
         let result: CodeResult = apply_output_source_map_mode(
             result_with_map(),
-            OutputSourceMapMode::Inline,
+            &options(OutputSourceMapMode::Inline),
+            Some("dist/index.js"),
         );
 
         assert!(result.map.is_none());
@@ -91,12 +188,27 @@ mod tests {
     }
 
     #[test]
+    fn test_inline_ignores_configured_url() {
+        let result: CodeResult = apply_output_source_map_mode(
+            result_with_map(),
+            &options_with_url(OutputSourceMapMode::Inline, "dist/app.js.map"),
+            Some("dist/index.js"),
+        );
+
+        assert!(result.map.is_none());
+        assert!(
+            result.code.starts_with("const a = 1;\n//# sourceMappingURL=data:")
+        );
+    }
+
+    #[test]
     fn test_both_appends_comment_and_keeps_map() {
         let map: SourceMap = sample_map();
 
         let result: CodeResult = apply_output_source_map_mode(
             result_with_map(),
-            OutputSourceMapMode::Both,
+            &options(OutputSourceMapMode::Both),
+            Some("dist/index.js"),
         );
 
         let kept: SourceMap = result.map.expect("map kept");
@@ -106,14 +218,31 @@ mod tests {
     }
 
     #[test]
+    fn test_both_ignores_configured_url() {
+        let result: CodeResult = apply_output_source_map_mode(
+            result_with_map(),
+            &options_with_url(OutputSourceMapMode::Both, "dist/app.js.map"),
+            Some("dist/index.js"),
+        );
+
+        assert!(result.map.is_some());
+        assert!(
+            result.code.starts_with("const a = 1;\n//# sourceMappingURL=data:")
+        );
+    }
+
+    #[test]
     fn test_missing_map_leaves_code_byte_identical_in_every_mode() {
         for mode in [
             OutputSourceMapMode::External,
             OutputSourceMapMode::Inline,
             OutputSourceMapMode::Both,
         ] {
-            let result: CodeResult =
-                apply_output_source_map_mode(result_without_map(), mode);
+            let result: CodeResult = apply_output_source_map_mode(
+                result_without_map(),
+                &options_with_url(mode, "dist/app.js.map"),
+                Some("dist/index.js"),
+            );
 
             assert_eq!(result.code, "const a = 1;");
             assert!(result.map.is_none());

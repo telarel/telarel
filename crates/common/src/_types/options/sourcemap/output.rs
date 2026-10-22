@@ -3,9 +3,10 @@
 pub enum OutputSourceMapMode {
     /// Append `//# sourceMappingURL=data:...` to the code; `CodeResult.map = None`.
     Inline,
-    /// Return the map separately; no comment (default).
+    /// Return the map separately; append an external comment when a map URL is
+    /// configured (default).
     External,
-    /// Append the comment and also return the map.
+    /// Append the data-URI comment and also return the map.
     Both,
 }
 
@@ -16,11 +17,19 @@ impl Default for OutputSourceMapMode {
     }
 }
 
-/// Options for the output source map.
+/// A full output source-map request.
+///
+/// `mode` selects how the map is delivered; `url` overrides the appended
+/// external URL for `External`.
 #[derive(Debug, Clone, Default)]
 pub struct OutputSourceMapOptions {
     /// How the map is delivered.
     pub mode: OutputSourceMapMode,
+    /// URL written verbatim into the appended `sourceMappingURL` comment.
+    ///
+    /// It is neither resolved nor fetched; an empty string is treated as
+    /// absent. Used only by `External`; ignored by other modes.
+    pub url: Option<String>,
 }
 
 /// The output source map request, either a bare mode or full options.
@@ -58,5 +67,13 @@ mod tests {
             output_map,
             OutputSourceMap::Mode(OutputSourceMapMode::External),
         ));
+    }
+
+    #[test]
+    fn test_output_source_map_options_default_is_external_without_url() {
+        let options: OutputSourceMapOptions = OutputSourceMapOptions::default();
+
+        assert_eq!(options.mode, OutputSourceMapMode::External);
+        assert!(options.url.is_none());
     }
 }

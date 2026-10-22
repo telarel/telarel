@@ -9,7 +9,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sourcemap_alias_is_owned_static_map() {
+    fn test_source_map_alias_is_owned_static_map() {
         let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
 
         builder.set_file("a.ts");

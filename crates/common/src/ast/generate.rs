@@ -119,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_code_produces_sourcemap() {
+    fn test_generate_code_produces_source_map() {
         let ast: Ast = parse_code("const a = 1;");
 
         let result: CodeResult =
@@ -133,7 +133,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_code_sourcemap_sources_entry() {
+    fn test_generate_code_source_map_sources_entry() {
         let ast: Ast = parse_code("const a = 1;");
 
         let result: CodeResult =

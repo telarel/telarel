@@ -9,8 +9,9 @@ pub use telarel_common::{
     Ast, AstResult, CodeResult, CompileContext, CompileError,
     CompileFromAstOptions, CompileOptions, ErrorSource, GenerateOptions,
     Generator, GeneratorOptions, HookUsage, InputSourceMap, InputSourceMapMode,
-    Language, OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
-    ParseOptions, Parser, ParserOptions, ResolvableOptions, ResolvedOptions,
+    InputSourceMapOptions, Language, OutputOptions, OutputSourceMap,
+    OutputSourceMapMode, OutputSourceMapOptions, ParseOptions, Parser,
+    ParserOptions, ResolvableOptions, ResolvedOptions, ResolvedOutputOptions,
     RewriteOptions, SourceMap, SourceMapOptions, SourceType,
 };
 

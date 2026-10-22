@@ -6,8 +6,9 @@ use crate::_types::options::functions::compile_from_ast::CompileFromAstOptions;
 use crate::_types::options::functions::generate::GenerateOptions;
 use crate::_types::options::functions::parse::ParseOptions;
 use crate::_types::options::functions::rewrite::RewriteOptions;
-use crate::_types::options::source_map::SourceMapOptions;
-use crate::_types::options::source_map::input::InputSourceMap;
+use crate::_types::options::output::OutputOptions;
+use crate::_types::options::sourcemap::SourceMapOptions;
+use crate::_types::options::sourcemap::input::InputSourceMap;
 
 /// The union of every step's optional settings, resolved once per compile
 /// run; every field is optional.
@@ -25,6 +26,8 @@ pub struct ResolvableOptions {
     /// The module system of the code;
     /// `None` keeps the module kind resolved from the grammar.
     pub source_type: Option<SourceType>,
+    /// The output code settings.
+    pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the run.
     pub source_map: Option<SourceMapOptions>,
 }
@@ -46,6 +49,7 @@ impl From<ParseOptions> for ResolvableOptions {
             file: options.file,
             language: options.language,
             source_type: options.source_type,
+            output: None,
             source_map: wrap_input_source_map(options.input_source_map),
         }
     }
@@ -58,6 +62,7 @@ impl From<RewriteOptions> for ResolvableOptions {
             file: options.file,
             language: options.language,
             source_type: options.source_type,
+            output: None,
             source_map: wrap_input_source_map(options.input_source_map),
         }
     }
@@ -70,6 +75,7 @@ impl From<GenerateOptions> for ResolvableOptions {
             file: options.file,
             language: None,
             source_type: None,
+            output: options.output,
             source_map: options.source_map,
         }
     }
@@ -82,6 +88,7 @@ impl From<CompileFromAstOptions> for ResolvableOptions {
             file: options.file,
             language: options.language,
             source_type: options.source_type,
+            output: options.output,
             source_map: options.source_map,
         }
     }
@@ -89,7 +96,7 @@ impl From<CompileFromAstOptions> for ResolvableOptions {
 
 #[cfg(test)]
 mod tests {
-    use crate::_types::options::source_map::input::InputSourceMapMode;
+    use crate::_types::options::sourcemap::input::InputSourceMapMode;
 
     use super::*;
 
@@ -156,6 +163,9 @@ mod tests {
         let options: GenerateOptions = GenerateOptions {
             cwd: Some(PathBuf::from("/repo")),
             file: Some(String::from("src/app.js")),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/app.js")),
+            }),
             source_map: Some(SourceMapOptions::default()),
         };
 
@@ -165,6 +175,13 @@ mod tests {
         assert_eq!(resolvable.file.as_deref(), Some("src/app.js"));
         assert_eq!(resolvable.language, None);
         assert_eq!(resolvable.source_type, None);
+        assert_eq!(
+            resolvable
+                .output
+                .as_ref()
+                .and_then(|output| output.file.as_deref()),
+            Some("dist/app.js"),
+        );
         assert!(resolvable.source_map.is_some());
     }
 
@@ -175,6 +192,9 @@ mod tests {
             file: Some(String::from("src/app.mjs")),
             language: Some(Language::JS),
             source_type: Some(SourceType::CommonJS),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/app.mjs")),
+            }),
             source_map: Some(SourceMapOptions::default()),
         };
 
@@ -184,6 +204,13 @@ mod tests {
         assert_eq!(resolvable.file.as_deref(), Some("src/app.mjs"));
         assert_eq!(resolvable.language, Some(Language::JS));
         assert_eq!(resolvable.source_type, Some(SourceType::CommonJS));
+        assert_eq!(
+            resolvable
+                .output
+                .as_ref()
+                .and_then(|output| output.file.as_deref()),
+            Some("dist/app.mjs"),
+        );
         assert!(resolvable.source_map.is_some());
     }
 }

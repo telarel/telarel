@@ -54,7 +54,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sourcemap_conversion_all_fields() {
+    fn test_source_map_conversion_all_fields() {
         let json: oxc_sourcemap::JSONSourceMap = oxc_sourcemap::JSONSourceMap {
             version: 3,
             file: Some(String::from("out.js")),
@@ -85,7 +85,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sourcemap_conversion_minimal() {
+    fn test_source_map_conversion_minimal() {
         let json: oxc_sourcemap::JSONSourceMap = oxc_sourcemap::JSONSourceMap {
             version: 3,
             file: None,
@@ -110,7 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sourcemap_conversion_mappings_roundtrip() {
+    fn test_source_map_conversion_mappings_roundtrip() {
         let mappings: &str = "AAAA,MAAM,IAAI";
         let json: oxc_sourcemap::JSONSourceMap = oxc_sourcemap::JSONSourceMap {
             version: 3,
@@ -142,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sourcemap_conversion_drops_debug_id() {
+    fn test_source_map_conversion_drops_debug_id() {
         let json: oxc_sourcemap::JSONSourceMap = oxc_sourcemap::JSONSourceMap {
             version: 3,
             file: None,
@@ -161,7 +161,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sourcemap_conversion_token_details() {
+    fn test_source_map_conversion_token_details() {
         let json: oxc_sourcemap::JSONSourceMap = oxc_sourcemap::JSONSourceMap {
             version: 3,
             file: None,

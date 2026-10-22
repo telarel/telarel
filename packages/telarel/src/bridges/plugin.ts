@@ -21,12 +21,14 @@ import type {
     TransformResult,
 } from "#/@types/plugin/hooks/transform";
 import type {
+    CompleteOutputOptions,
     OptionsArgs,
+    OutputOptions,
     PluginOption,
     ResolvableOptions,
 } from "#/@types/plugin/options";
-import type { SourceMapOptions } from "#/@types/source-map";
-import type { SourceMap } from "#/@types/sourcemap";
+import type { SourceMapOptions } from "#/@types/sourcemap";
+import type { SourceMap } from "#/@types/sourcemap/map";
 import type { NormalizedHook } from "#/bridges/normalize-hook";
 
 import { normalizeHook } from "#/bridges/normalize-hook";
@@ -71,6 +73,7 @@ type RawOptionsArgs = {
     file?: string;
     language: string;
     sourceType: string;
+    output?: OutputOptions;
     sourceMap?: SourceMapOptions;
     plugins: Array<RawPlugin>;
 };
@@ -80,6 +83,7 @@ type RawOptionsOutput = {
     file?: string;
     language?: string;
     sourceType?: string;
+    output?: OutputOptions;
     sourceMap?: SourceMapOptions;
     plugins?: Array<RawPlugin>;
 };
@@ -90,6 +94,7 @@ type RawStartArgs = {
         file: string;
         language: string;
         sourceType: string;
+        output: CompleteOutputOptions;
         sourceMap: SourceMapOptions;
         plugins: Array<string>;
     };
@@ -396,6 +401,10 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                     bag.sourceType = rawArgs.sourceType as SourceType;
                 }
 
+                if (rawArgs.output !== void 0) {
+                    bag.output = rawArgs.output;
+                }
+
                 if (rawArgs.sourceMap !== void 0) {
                     bag.sourceMap = rawArgs.sourceMap;
                 }
@@ -437,6 +446,10 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                     output.sourceType = next.sourceType;
                 }
 
+                if (next.output !== void 0) {
+                    output.output = next.output;
+                }
+
                 if (next.sourceMap !== void 0) {
                     output.sourceMap = next.sourceMap;
                 }
@@ -467,6 +480,7 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                         file: rawArgs.options.file,
                         language: rawArgs.options.language as Language,
                         sourceType: rawArgs.options.sourceType as SourceType,
+                        output: rawArgs.options.output,
                         sourceMap: rawArgs.options.sourceMap,
                         plugins: rawArgs.options.plugins,
                     },

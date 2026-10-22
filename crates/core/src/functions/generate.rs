@@ -24,7 +24,9 @@ mod tests {
     use std::sync::Mutex;
 
     use telarel_common::{
-        Ast, CodeResult, CompileError, GenerateOptions, OutputSourceMapMode,
+        Ast, CodeResult, CompileError, GenerateOptions, OutputOptions,
+        OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
+        SourceMapOptions,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
@@ -149,7 +151,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_generate_output_mode_external() {
+    async fn test_generate_output_mode_external_appends_default_url() {
         let ast: Ast = parse_fixture("const a = 1;").unwrap();
 
         let options: GenerateOptions = GenerateOptions {
@@ -161,7 +163,72 @@ mod tests {
             generate(ast, options, vec![]).await.expect("generate succeeds");
 
         assert!(result.map.is_some(), "external keeps the map");
-        assert!(!result.code.contains("sourceMappingURL"));
+        assert_eq!(
+            result.code,
+            "const a = 1;\n//# sourceMappingURL=index.ts.map\n",
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_output_mode_external_uses_output_file() {
+        let ast: Ast = parse_fixture("const a = 1;").unwrap();
+
+        let options: GenerateOptions = GenerateOptions {
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/app.js")),
+            }),
+            source_map: Some(output_mode(OutputSourceMapMode::External)),
+            ..GenerateOptions::default()
+        };
+
+        let result: CodeResult =
+            generate(ast, options, vec![]).await.expect("generate succeeds");
+
+        assert!(result.map.is_some(), "external keeps the map");
+        assert_eq!(
+            result.code,
+            "const a = 1;\n//# sourceMappingURL=dist/app.js.map\n",
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_default_output_omits_comment() {
+        let ast: Ast = parse_fixture("const a = 1;").unwrap();
+
+        let result: CodeResult =
+            generate(ast, GenerateOptions::default(), vec![])
+                .await
+                .expect("generate succeeds");
+
+        assert_eq!(result.code, "const a = 1;");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_output_external_appends_configured_url() {
+        let ast: Ast = parse_fixture("const a = 1;").unwrap();
+
+        let options: GenerateOptions = GenerateOptions {
+            source_map: Some(SourceMapOptions {
+                input: None,
+                output: Some(OutputSourceMap::Options(
+                    OutputSourceMapOptions {
+                        mode: OutputSourceMapMode::External,
+                        url: Some(String::from("dist/app.js.map")),
+                    },
+                )),
+            }),
+            ..GenerateOptions::default()
+        };
+
+        let result: CodeResult =
+            generate(ast, options, vec![]).await.expect("generate succeeds");
+
+        assert!(result.map.is_some(), "external keeps the map");
+
+        assert_eq!(
+            result.code,
+            "const a = 1;\n//# sourceMappingURL=dist/app.js.map\n",
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

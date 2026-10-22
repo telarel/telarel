@@ -335,6 +335,9 @@ pub struct OptionsCall {
     pub language: SharedStr,
     /// Module system used for code generation.
     pub source_type: SharedStr,
+    /// The output code settings requested so far, as the JS object;
+    /// `None` (unspecified) is omitted from the payload.
+    pub output: Option<serde_json::Value>,
     /// The source-map inputs and outputs requested so far, as the JS union;
     /// `None` (unspecified) is omitted from the payload.
     pub source_map: Option<serde_json::Value>,
@@ -365,6 +368,12 @@ impl ToNapiValue for OptionsCall {
 
         object.set("language", val.language)?;
         object.set("sourceType", val.source_type)?;
+
+        // An omitted `output` means "unspecified" on the wire; only a
+        // requested output is transmitted.
+        if let Some(output) = val.output {
+            object.set("output", output)?;
+        }
 
         // An omitted `sourceMap` means "unspecified" on the wire; only a
         // requested map is transmitted.
@@ -873,6 +882,9 @@ mod tests {
                 file: String::from("index.ts"),
                 language: String::from("ts"),
                 source_type: String::from("module"),
+                output: crate::_types::plugin::hooks::JsResolvedOutputOptions {
+                    file: String::from("dist/index.js"),
+                },
                 source_map: serde_json::json!({
                     "input": "auto",
                     "output": "both",

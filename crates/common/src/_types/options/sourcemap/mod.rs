@@ -1,8 +1,8 @@
 pub mod input;
 pub mod output;
 
-use crate::_types::options::source_map::input::InputSourceMap;
-use crate::_types::options::source_map::output::OutputSourceMap;
+use crate::_types::options::sourcemap::input::InputSourceMap;
+use crate::_types::options::sourcemap::output::OutputSourceMap;
 
 /// The source-map inputs and outputs requested for a step.
 #[derive(Debug, Clone, Default)]

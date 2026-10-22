@@ -545,6 +545,9 @@ mod tests {
                 file: String::from("a.ts"),
                 language: Language::TS,
                 source_type: SourceType::Module,
+                output: telarel_common::ResolvedOutputOptions {
+                    file: String::from("dist/a.js"),
+                },
                 source_map: SourceMapOptions::default(),
                 plugins: vec![String::from("probe")],
             },

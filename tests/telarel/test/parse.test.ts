@@ -173,6 +173,19 @@ describe("parse", (): void => {
         expect(result.ast.map?.mappings).toBe("AASA");
     });
 
+    it("attaches a value input map from options and ignores its path", async (): Promise<void> => {
+        const result: AstResult = await parse("const a = 1;", {
+            file: "index.ts",
+            inputSourceMap: {
+                mode: upstreamMap(),
+                path: "ignored.map",
+            },
+        });
+
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+        expect(result.ast.map?.mappings).toBe("AASA");
+    });
+
     it("attaches an inline input map from a code comment", async (): Promise<void> => {
         const code: string = appendInlineMap("const a = 1;", upstreamMap());
 
@@ -212,6 +225,33 @@ describe("parse", (): void => {
         expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
     });
 
+    it("ignores a top-level output set by an options hook", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+
+        const result: AstResult = await parse(code, {
+            file: "index.ts",
+            inputSourceMap: "inline",
+            plugins: [
+                {
+                    name: "set-top-level-output",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): OptionsArgs => ({
+                        options: {
+                            ...args.options,
+                            output: { file: "dist/index.js" },
+                        },
+                    }),
+                },
+            ],
+        });
+
+        expect(result.ast.source).toBe(code);
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+        expect(result.ast.map?.mappings).toBe("AASA");
+    });
+
     it.skipIf(isWasiWindows)(
         "attaches an external input map read next to the source",
         async (): Promise<void> => {
@@ -232,6 +272,67 @@ describe("parse", (): void => {
             expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
         },
     );
+
+    it.skipIf(isWasiWindows)(
+        "attaches an external input map read from a custom path",
+        async (): Promise<void> => {
+            const directory: string = await tempDir();
+
+            await Fsp.writeFile(
+                Path.join(directory, "custom.map"),
+                JSON.stringify(upstreamMap()),
+                "utf-8",
+            );
+
+            const result: AstResult = await parse("const a = 1;", {
+                cwd: directory,
+                file: "index.ts",
+                inputSourceMap: {
+                    mode: "external",
+                    path: "custom.map",
+                },
+            });
+
+            expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+        },
+    );
+
+    it.skipIf(isWasiWindows)(
+        "resolves a relative input map path against the source file's directory",
+        async (): Promise<void> => {
+            const directory: string = await tempDir();
+
+            await Fsp.mkdir(Path.join(directory, "src"), {
+                recursive: true,
+            });
+
+            await Fsp.writeFile(
+                Path.join(directory, "src", "custom.map"),
+                JSON.stringify(upstreamMap()),
+                "utf-8",
+            );
+
+            const result: AstResult = await parse("const a = 1;", {
+                cwd: directory,
+                file: "src/index.ts",
+                inputSourceMap: {
+                    mode: "external",
+                    path: "custom.map",
+                },
+            });
+
+            expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+        },
+    );
+
+    it("rejects a path string as inputSourceMap", async (): Promise<void> => {
+        await expect(
+            parse("const a = 1;", {
+                file: "index.ts",
+                inputSourceMap: "custom.map" as never,
+            }),
+        ).rejects.toThrow("invalid inputSourceMap");
+    });
 
     it("prefers the inline map in auto mode", async (): Promise<void> => {
         const directory: string = await tempDir();
@@ -278,6 +379,30 @@ describe("parse", (): void => {
             });
 
             expect(fromExternal.ast.map?.sources).toEqual(["upstream.ts"]);
+        },
+    );
+
+    it.skipIf(isWasiWindows)(
+        "falls back to a custom external map in auto mode",
+        async (): Promise<void> => {
+            const directory: string = await tempDir();
+
+            await Fsp.writeFile(
+                Path.join(directory, "custom.map"),
+                JSON.stringify(upstreamMap()),
+                "utf-8",
+            );
+
+            const result: AstResult = await parse("const a = 1;", {
+                cwd: directory,
+                file: "index.ts",
+                inputSourceMap: {
+                    mode: "auto",
+                    path: "custom.map",
+                },
+            });
+
+            expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
         },
     );
 

@@ -4,9 +4,10 @@ use oxc::span::SourceType as OxcSourceType;
 
 use crate::_types::grammar::language::{Language, grammar_source_type};
 use crate::_types::grammar::source_type::{SourceType, with_module_kind};
+use crate::_types::options::output::ResolvedOutputOptions;
 use crate::_types::options::resolvable::ResolvableOptions;
 use crate::_types::options::resolved::ResolvedOptions;
-use crate::_types::options::source_map::SourceMapOptions;
+use crate::_types::options::sourcemap::SourceMapOptions;
 use crate::helpers::path::{get_process_cwd, strip_file_suffix};
 
 /// Infer the oxc source type from a file, falling back to the default
@@ -95,11 +96,18 @@ pub fn resolve_options(
         resolve_source_type(&file, options.language, options.source_type);
     let source_map: SourceMapOptions = options.source_map.unwrap_or_default();
 
+    let output_file: String = options
+        .output
+        .and_then(|output| output.file)
+        .filter(|file: &String| !file.is_empty())
+        .unwrap_or_else(|| file.clone());
+
     ResolvedOptions {
         cwd,
         file,
         language,
         source_type,
+        output: ResolvedOutputOptions { file: output_file },
         source_map,
         plugins: plugin_names,
     }
@@ -107,10 +115,11 @@ pub fn resolve_options(
 
 #[cfg(test)]
 mod tests {
-    use crate::_types::options::source_map::input::{
+    use crate::_types::options::output::OutputOptions;
+    use crate::_types::options::sourcemap::input::{
         InputSourceMap, InputSourceMapMode,
     };
-    use crate::_types::options::source_map::output::{
+    use crate::_types::options::sourcemap::output::{
         OutputSourceMap, OutputSourceMapMode,
     };
 
@@ -249,6 +258,9 @@ mod tests {
             file: Some(String::from("src/app.tsx")),
             language: Some(Language::TSX),
             source_type: Some(SourceType::Script),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/app.js")),
+            }),
             source_map: Some(SourceMapOptions::default()),
         };
 
@@ -259,9 +271,37 @@ mod tests {
         assert_eq!(resolved.file, "src/app.tsx");
         assert_eq!(resolved.language, Language::TSX);
         assert_eq!(resolved.source_type, SourceType::Script);
+        assert_eq!(resolved.output.file, "dist/app.js");
         assert!(resolved.source_map.input.is_none());
         assert!(resolved.source_map.output.is_none());
         assert_eq!(resolved.plugins, vec![String::from("probe")]);
+    }
+
+    #[test]
+    fn test_resolve_options_output_file_defaults_to_file() {
+        let resolved: ResolvedOptions = resolve_options(
+            ResolvableOptions {
+                file: Some(String::from("src/app.ts")),
+                ..ResolvableOptions::default()
+            },
+            vec![],
+        );
+
+        assert_eq!(resolved.output.file, "src/app.ts");
+    }
+
+    #[test]
+    fn test_resolve_options_output_file_empty_falls_back_to_file() {
+        let resolved: ResolvedOptions = resolve_options(
+            ResolvableOptions {
+                file: Some(String::from("src/app.ts")),
+                output: Some(OutputOptions { file: Some(String::new()) }),
+                ..ResolvableOptions::default()
+            },
+            vec![],
+        );
+
+        assert_eq!(resolved.output.file, "src/app.ts");
     }
 
     #[test]

@@ -23,13 +23,13 @@ Creates a parser over `code` and its resolved `ParserOptions`.
 
 Every field is required. In a `parse` hook, the stage options are available as `args.options`.
 
-| Field         | Type               | Description                                               |
-| ------------- | ------------------ | --------------------------------------------------------- |
-| `cwd`         | `PathBuf`          | Filesystem root used to resolve input source-map paths.   |
-| `file`        | `String`           | The file being parsed.                                    |
-| `language`    | `Language`         | The grammar of the code.                                  |
-| `source_type` | `SourceType`       | The module system of the code.                            |
-| `source_map`  | `SourceMapOptions` | The source-map inputs and outputs requested for the step. |
+| Field         | Type               | Description                                                                                                                                                  |
+| ------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `cwd`         | `PathBuf`          | Filesystem root used to locate the source file; a relative input map `path` resolves against the source file's directory, and absolute paths are used as-is. |
+| `file`        | `String`           | The file being parsed.                                                                                                                                       |
+| `language`    | `Language`         | The grammar of the code.                                                                                                                                     |
+| `source_type` | `SourceType`       | The module system of the code.                                                                                                                               |
+| `source_map`  | `SourceMapOptions` | The source-map inputs and outputs requested for the step.                                                                                                    |
 
 ## `Parser::parse`
 

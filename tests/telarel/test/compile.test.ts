@@ -1515,6 +1515,20 @@ describe("compile", (): void => {
         expect(result.map?.mappings).toBe("AASA,MAAM,IAAI");
     });
 
+    it("appends the external map URL derived from output.file", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "src/index.ts",
+            output: { file: "dist/index.js" },
+            sourceMap: { output: "external" },
+        });
+
+        expect(result.code).toBe(
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
+        expect(result.map?.sources).toEqual(["src/index.ts"]);
+    });
+
     it("appends an inline map and drops the map end-to-end", async (): Promise<void> => {
         const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",

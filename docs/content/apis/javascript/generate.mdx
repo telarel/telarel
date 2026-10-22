@@ -34,12 +34,15 @@ The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare E
 
 ### `GenerateOptions`
 
-| Field       | Type               | Default         | Description                                                            |
-| ----------- | ------------------ | --------------- | ---------------------------------------------------------------------- |
-| `cwd`       | `string`           | `process.cwd()` | Current working directory.                                             |
-| `file`      | `string`           | `index.ts`      | The file being generated. The language is inferred from its extension. |
-| `sourceMap` | `SourceMapOptions` | off             | The source-map inputs and outputs requested for the step.              |
-| `plugins`   | `PluginOption[]`   | `[]`            | The plugins to run.                                                    |
+| Field       | Type               | Default          | Description                                                             |
+| ----------- | ------------------ | ---------------- | ----------------------------------------------------------------------- |
+| `cwd`       | `string`           | `process.cwd()`  | Current working directory.                                              |
+| `file`      | `string`           | `index.ts`       | The file being generated. The language is inferred from its extension.  |
+| `output`    | `OutputOptions`    | `{ file: file }` | Output code settings. `output.file` derives the default source-map URL. |
+| `sourceMap` | `SourceMapOptions` | off              | The source-map inputs and outputs requested for the step.               |
+| `plugins`   | `PluginOption[]`   | `[]`             | The plugins to run.                                                     |
+
+An empty `output.file` or `sourceMap.output.url` is treated as unset, same as absent.
 
 ## Returns
 

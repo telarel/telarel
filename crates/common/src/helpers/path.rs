@@ -38,6 +38,20 @@ pub fn external_map_path(
     PathBuf::from(path)
 }
 
+/// The source-map URL derived from `file`: the suffix-stripped file plus
+/// `.map`, written as a URL path.
+///
+/// Returns `None` when `file` is empty after stripping its suffix.
+pub fn external_map_url(file: &str) -> Option<String> {
+    let file: &str = strip_file_suffix(file);
+
+    if file.is_empty() {
+        return None;
+    }
+
+    Some(format!("{file}.map").replace('\\', "/"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,6 +96,37 @@ mod tests {
             external_map_path(Path::new("/repo"), "src/index.ts");
 
         assert_eq!(path, PathBuf::from("/repo/src/index.ts.map"));
+    }
+
+    #[test]
+    fn test_external_map_url_appends_map() {
+        assert_eq!(
+            external_map_url("dist/index.js"),
+            Some(String::from("dist/index.js.map")),
+        );
+    }
+
+    #[test]
+    fn test_external_map_url_strips_file_suffix() {
+        assert_eq!(
+            external_map_url("dist/index.js?v=1#h"),
+            Some(String::from("dist/index.js.map")),
+        );
+    }
+
+    #[test]
+    fn test_external_map_url_empty_file_is_none() {
+        assert_eq!(external_map_url(""), None);
+        assert_eq!(external_map_url("?v=1"), None);
+        assert_eq!(external_map_url("#h"), None);
+    }
+
+    #[test]
+    fn test_external_map_url_normalizes_backslashes() {
+        assert_eq!(
+            external_map_url(r"dist\index.js"),
+            Some(String::from("dist/index.js.map")),
+        );
     }
 
     #[test]

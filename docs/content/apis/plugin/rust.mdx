@@ -69,7 +69,7 @@ Each hook returns an `impl Future`, so its body can be written as an `async` blo
 | `GenerateArgs`  | `ast: &Ast`, `options: &GeneratorOptions`                      |
 | `EndArgs`       | `error: Option<CompileError>`                                  |
 
-The options bag is shared by every entry point and always uses `source_map`. `parse` and `rewrite` expose a flat `input_source_map` at the entry point; it is normalized to `source_map.input` before the `options` hook runs. Those AST-producing entry points ignore `source_map.output`, so a stage-agnostic plugin may set it for every stage without failing.
+The options bag is shared by every entry point and always uses `source_map`. `parse` and `rewrite` expose a flat `input_source_map` at the entry point; it is normalized to `source_map.input` before the `options` hook runs. Those AST-producing entry points ignore `source_map.output` and `output`, so a stage-agnostic plugin may set them for every stage without failing.
 
 `TransformArgs` owns a cheap [Ast](/apis/rust/Ast) handle: `Ast::clone` is O(1), and `Ast::with_mut` copies the arena on write when the driver still holds the carried AST. `TransformArgs` is `Clone`, not `Copy`. Returning `None` leaves the driver's AST untouched.
 

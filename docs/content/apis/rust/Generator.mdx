@@ -35,7 +35,7 @@ Every field is required. In a `generate` hook, the stage options are available a
 
 Generates code from the fixed AST and composes the AST's input map into the produced map.
 
-The builtin generator always returns a map. Output delivery modes (`Inline` and `Both`) are applied by the pipeline, not by `Generator::generate`.
+The builtin generator always returns a map. Output delivery modes (`Inline`, `External`, and `Both`) are applied by the pipeline, not by `Generator::generate`.
 
 `CodeResult` is `{ code: String, map: Option<SourceMap> }`.
 

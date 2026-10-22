@@ -87,7 +87,7 @@ Returning `null` or `void` defers. For `parse` and `generate` a deferral hands o
 | `GenerateArgs`  | `ast: Ast`, `options: GeneratorOptions`  |
 | `EndArgs`       | `error: string \| null`                  |
 
-The options bag is shared by every entry point and always uses `sourceMap`. `parse` and `rewrite` expose a flat `inputSourceMap` at the entry point; it is normalized to `sourceMap.input` before the `options` hook runs. Those AST-producing entry points ignore `sourceMap.output`, so a stage-agnostic plugin may set it for every stage without failing.
+The options bag is shared by every entry point and always uses `sourceMap`. `parse` and `rewrite` expose a flat `inputSourceMap` at the entry point; it is normalized to `sourceMap.input` before the `options` hook runs. Those AST-producing entry points ignore `sourceMap.output` and `output`, so a stage-agnostic plugin may set them for every stage without failing. An empty `output.file` or `sourceMap.output.url` is treated as unset, same as absent.
 
 The `options` hook observes the bag before resolution. An unset `cwd` or `file` is absent from `args.options` (read it as `undefined`), not `""`; the defaults (`process.cwd()` and `"index.ts"`) are applied only after the fixpoint settles, so `start` and later hooks see the resolved values. Returning `{ ...args.options }` therefore preserves unset fields and cannot turn them into explicit empty strings.
 

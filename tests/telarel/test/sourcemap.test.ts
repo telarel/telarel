@@ -1,8 +1,12 @@
 import type {
     CodeResult,
+    CommonPluginContext,
     DeepReadonly,
+    OptionsArgs,
     PluginContext,
     SourceMap,
+    SourceMapOptions,
+    StartArgs,
     TransformArgs,
     TransformResult,
 } from "telarel";
@@ -34,6 +38,150 @@ describe("sourcemap", (): void => {
         expect(result.map?.sourcesContent).toEqual(["const a = 1;"]);
         expect(result.map?.names).toEqual([]);
         expect(result.map?.mappings.length).toBeGreaterThan(0);
+    });
+
+    it("passes source-map options through the options bag", async (): Promise<void> => {
+        const seen: Array<SourceMapOptions | undefined> = [];
+
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            output: {
+                file: "dist/index.js",
+            },
+            sourceMap: {
+                input: { mode: "inline", path: "ignored.map" },
+                output: {
+                    mode: "external",
+                    url: "dist/index.js.map",
+                },
+            },
+            plugins: [
+                {
+                    name: "observe-options",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): void => {
+                        seen.push(args.options.sourceMap);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([
+            {
+                input: { mode: "inline", path: "ignored.map" },
+                output: {
+                    mode: "external",
+                    url: "dist/index.js.map",
+                },
+            },
+        ]);
+
+        expect(result.code).toBe(
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
+    });
+
+    it("passes output.file through the options bag", async (): Promise<void> => {
+        const seen: Array<{ file?: string } | undefined> = [];
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            output: { file: "dist/index.js" },
+            plugins: [
+                {
+                    name: "observe-output",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): void => {
+                        seen.push(args.options.output);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([{ file: "dist/index.js" }]);
+    });
+
+    it("passes the resolved output.file to start", async (): Promise<void> => {
+        let seen: string | undefined;
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            output: { file: "dist/index.js" },
+            plugins: [
+                {
+                    name: "observe-start-output",
+                    start: (_ctx: PluginContext, args: StartArgs): void => {
+                        seen = args.options.output.file;
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toBe("dist/index.js");
+    });
+
+    it("lets an options hook set output.file", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { output: "external" },
+            plugins: [
+                {
+                    name: "set-output",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): OptionsArgs => ({
+                        options: {
+                            ...args.options,
+                            output: { file: "dist/index.js" },
+                        },
+                    }),
+                },
+            ],
+        });
+
+        expect(result.code).toBe(
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
+    });
+
+    it("treats an empty output.file as unset for the external map URL", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            output: { file: "" },
+            sourceMap: { output: "external" },
+        });
+
+        expect(result.code).toBe(
+            "const a = 1;\n//# sourceMappingURL=index.ts.map\n",
+        );
+    });
+
+    it("falls back to output.file when sourceMap.output.url is empty", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            output: { file: "dist/index.js" },
+            sourceMap: {
+                output: {
+                    mode: "external",
+                    url: "",
+                },
+            },
+        });
+
+        expect(result.code).toBe(
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
     });
 
     it("passes the Ast source and input map to transform", async (): Promise<void> => {

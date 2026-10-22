@@ -23,25 +23,30 @@ export type {
 export type {
     CompileFromAstOptions,
     CompileOptions,
+    CompleteOutputOptions,
     FalsyPlugin,
     GenerateOptions,
     Options,
     OptionsArgs,
+    OutputOptions,
     ParseOptions,
     PluginOption,
     ResolvableOptions,
     ResolvedOptions,
     RewriteOptions,
 } from "#/@types/plugin/options";
-export type { SourceMap } from "#/@types/sourcemap";
+export type { SourceMapOptions } from "#/@types/sourcemap";
 export type {
     InputSourceMap,
     InputSourceMapMode,
+    InputSourceMapOptions,
+} from "#/@types/sourcemap/input";
+export type { SourceMap } from "#/@types/sourcemap/map";
+export type {
     OutputSourceMap,
     OutputSourceMapMode,
     OutputSourceMapOptions,
-    SourceMapOptions,
-} from "#/@types/source-map";
+} from "#/@types/sourcemap/output";
 export type { AstOptions } from "#/classes/ast";
 export type {
     CompileErrorOptions,

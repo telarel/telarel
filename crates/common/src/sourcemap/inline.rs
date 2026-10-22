@@ -8,46 +8,7 @@ const SOURCE_MAPPING_URL: &str = "sourceMappingURL=";
 
 const DATA_URI_PREFIX: &str = "data:";
 
-const INLINE_COMMENT_PREFIX: &str =
-    "//# sourceMappingURL=data:application/json;base64,";
-
-/// Extract an inline `sourceMappingURL` data-URI source map from `code`.
-///
-/// Scans the last non-empty line for a `sourceMappingURL` comment, tolerating
-/// the `//#` and `//@` line spellings and the `/*# ... */` block form.
-///
-/// - `None` when no inline map comment is present.
-/// - `Some(Ok(map))` when the data URI decodes and parses.
-/// - `Some(Err(error))` when the comment is present but corrupt.
-pub fn extract_inline_source_map(
-    code: &str
-) -> Option<Result<SourceMap, CompileError>> {
-    let line: &str = last_non_empty_line(code)?;
-    let url: &str = source_mapping_url(line)?;
-    let payload: &str = decode_data_uri_payload(url)?;
-
-    Some(decode_payload(payload))
-}
-
-/// Append an inline `//# sourceMappingURL=data:...` comment carrying `map`.
-///
-/// Ensures `code` ends with a newline before appending the comment line.
-pub fn append_inline_source_map(
-    mut code: String,
-    map: &SourceMap,
-) -> String {
-    if !code.ends_with('\n') {
-        code.push('\n');
-    }
-
-    let payload: String = STANDARD.encode(map.to_json_string());
-
-    code.push_str(INLINE_COMMENT_PREFIX);
-    code.push_str(&payload);
-    code.push('\n');
-
-    code
-}
+const SOURCE_MAPPING_COMMENT_PREFIX: &str = "//# sourceMappingURL=";
 
 /// The last line with non-whitespace content, if any.
 fn last_non_empty_line(code: &str) -> Option<&str> {
@@ -104,6 +65,55 @@ fn decode_payload(payload: &str) -> Result<SourceMap, CompileError> {
         )?;
 
     Ok(map.into_owned())
+}
+
+/// Append a `//# sourceMappingURL=<url>` comment to `code`.
+///
+/// Ensures `code` ends with a newline before appending the comment line.
+pub fn append_source_mapping_url(
+    mut code: String,
+    url: &str,
+) -> String {
+    if !code.ends_with('\n') {
+        code.push('\n');
+    }
+
+    code.push_str(SOURCE_MAPPING_COMMENT_PREFIX);
+    code.push_str(url);
+    code.push('\n');
+
+    code
+}
+
+/// Append an inline `//# sourceMappingURL=data:...` comment carrying `map`.
+///
+/// Ensures `code` ends with a newline before appending the comment line.
+pub fn append_inline_source_map(
+    code: String,
+    map: &SourceMap,
+) -> String {
+    let payload: String = STANDARD.encode(map.to_json_string());
+    let url: String = format!("data:application/json;base64,{payload}");
+
+    append_source_mapping_url(code, &url)
+}
+
+/// Extract an inline `sourceMappingURL` data-URI source map from `code`.
+///
+/// Scans the last non-empty line for a `sourceMappingURL` comment, tolerating
+/// the `//#` and `//@` line spellings and the `/*# ... */` block form.
+///
+/// - `None` when no inline map comment is present.
+/// - `Some(Ok(map))` when the data URI decodes and parses.
+/// - `Some(Err(error))` when the comment is present but corrupt.
+pub fn extract_inline_source_map(
+    code: &str
+) -> Option<Result<SourceMap, CompileError>> {
+    let line: &str = last_non_empty_line(code)?;
+    let url: &str = source_mapping_url(line)?;
+    let payload: &str = decode_data_uri_payload(url)?;
+
+    Some(decode_payload(payload))
 }
 
 #[cfg(test)]
@@ -209,6 +219,19 @@ mod tests {
             .expect("valid map");
 
         assert_eq!(extracted.to_json_string(), map.to_json_string());
+    }
+
+    #[test]
+    fn test_append_source_mapping_url_appends_external_comment() {
+        let code: String = append_source_mapping_url(
+            String::from("const a = 1;"),
+            "dist/app.js.map",
+        );
+
+        assert_eq!(
+            code,
+            "const a = 1;\n//# sourceMappingURL=dist/app.js.map\n",
+        );
     }
 
     #[test]

@@ -5,9 +5,9 @@ use napi::{Error, Result, Status};
 
 use telarel_common::{
     CompileFromAstOptions, CompileOptions, GenerateOptions, InputSourceMap,
-    InputSourceMapMode, Language, OutputSourceMap, OutputSourceMapMode,
-    OutputSourceMapOptions, ParseOptions, ResolvableOptions, RewriteOptions,
-    SourceMap, SourceMapOptions, SourceType,
+    InputSourceMapMode, InputSourceMapOptions, Language, OutputOptions,
+    OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions, ParseOptions,
+    ResolvableOptions, RewriteOptions, SourceMap, SourceMapOptions, SourceType,
 };
 
 /// JS-facing options for `parse`.
@@ -35,6 +35,13 @@ pub struct JsParseOptions {
     pub plugins: Vec<ObjectRef<false>>,
 }
 
+/// JS-facing output code options.
+#[napi_derive::napi(object)]
+pub struct JsOutputOptions {
+    /// The intended path of the generated code.
+    pub file: Option<String>,
+}
+
 /// JS-facing options for `compile`.
 #[napi_derive::napi(object)]
 pub struct JsCompileOptions {
@@ -51,6 +58,8 @@ pub struct JsCompileOptions {
     /// omitted on the JS side keeps the module kind resolved from the grammar.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
+    /// The output code settings.
+    pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
@@ -100,6 +109,8 @@ pub struct JsCompileFromAstOptions {
     /// omitted on the JS side keeps the module kind resolved from the grammar.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
+    /// The output code settings.
+    pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
@@ -118,6 +129,8 @@ pub struct JsGenerateOptions {
     /// The file being generated;
     /// omitted on the JS side resolves to a default filename.
     pub file: Option<String>,
+    /// The output code settings.
+    pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
@@ -217,29 +230,127 @@ fn parse_source_map_object(
         })
 }
 
-/// Parse an input source-map request: a source-map object, a path string, or
-/// one of `"inline"` / `"external"` / `"auto"`.
+/// Parse an optional non-empty string field from an options object.
+fn parse_optional_string<'a>(
+    object: &'a serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    label: &str,
+) -> Result<Option<&'a str>> {
+    match object.get(key) {
+        | Some(serde_json::Value::Null) | None => Ok(None),
+        | Some(serde_json::Value::String(text)) if !text.is_empty() => {
+            Ok(Some(text))
+        },
+        | Some(_) => Err(invalid_arg(format!(
+            "invalid {label}: expected a non-empty string"
+        ))),
+    }
+}
+
+/// Parse an optional output source-map URL field from an options object.
+///
+/// An absent, `null`, or empty-string URL is unset, matching the resolved
+/// contract; any other non-string value is invalid.
+fn parse_optional_url<'a>(
+    object: &'a serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    label: &str,
+) -> Result<Option<&'a str>> {
+    match object.get(key) {
+        | Some(serde_json::Value::Null) | None => Ok(None),
+        | Some(serde_json::Value::String(text)) if !text.is_empty() => {
+            Ok(Some(text))
+        },
+        | Some(serde_json::Value::String(_)) => Ok(None),
+        | Some(_) => {
+            Err(invalid_arg(format!("invalid {label}: expected a string")))
+        },
+    }
+}
+
+/// Parse an input source-map mode label.
+fn parse_input_source_map_mode(
+    text: &str,
+    label: &str,
+) -> Result<InputSourceMapMode> {
+    match text {
+        | "inline" => Ok(InputSourceMapMode::Inline),
+        | "external" => Ok(InputSourceMapMode::External),
+        | "auto" => Ok(InputSourceMapMode::Auto),
+        | _ => Err(invalid_arg(format!(
+            "invalid {label}: expected \"inline\", \"external\" or \"auto\""
+        ))),
+    }
+}
+
+/// Parse an input source-map mode: a literal label or a source-map value.
+fn parse_input_source_map_mode_value(
+    value: &serde_json::Value,
+    label: &str,
+) -> Result<InputSourceMapMode> {
+    match value {
+        | serde_json::Value::String(text) => {
+            parse_input_source_map_mode(text.as_str(), label)
+        },
+        | serde_json::Value::Object(_) => Ok(InputSourceMapMode::Value(
+            parse_source_map_object(value, label)?,
+        )),
+        | _ => Err(invalid_arg(format!(
+            "invalid {label}: expected a mode string or a source map object"
+        ))),
+    }
+}
+
+/// Parse an input source-map options object.
+fn parse_input_source_map_options(
+    object: &serde_json::Map<String, serde_json::Value>,
+    label: &str,
+) -> Result<InputSourceMap> {
+    let mode: &serde_json::Value = object.get("mode").ok_or_else(|| {
+        invalid_arg(format!(
+            "invalid {label}: an options object requires a `mode`"
+        ))
+    })?;
+
+    let mode: InputSourceMapMode =
+        parse_input_source_map_mode_value(mode, &format!("{label}.mode"))?;
+
+    let path: Option<PathBuf> =
+        parse_optional_string(object, "path", &format!("{label}.path"))?
+            .map(PathBuf::from);
+
+    Ok(InputSourceMap::Options(InputSourceMapOptions { mode, path }))
+}
+
+/// Parse an input source-map request: a source-map object, an options object,
+/// or one of `"inline"` / `"external"` / `"auto"`.
 fn parse_input_source_map(
     value: &serde_json::Value,
     label: &str,
 ) -> Result<InputSourceMap> {
     match value {
-        | serde_json::Value::Object(_) => Ok(InputSourceMap::Mode(
-            InputSourceMapMode::Value(parse_source_map_object(value, label)?),
-        )),
+        | serde_json::Value::Object(object) => {
+            if object.contains_key("mode") {
+                parse_input_source_map_options(object, label)
+            } else if object.contains_key("path") {
+                Err(invalid_arg(format!(
+                    "invalid {label}: an options object requires a `mode`"
+                )))
+            } else {
+                Ok(InputSourceMap::Mode(InputSourceMapMode::Value(
+                    parse_source_map_object(value, label)?,
+                )))
+            }
+        },
         | serde_json::Value::String(text) => {
-            let mode: InputSourceMapMode = match text.as_str() {
-                | "inline" => InputSourceMapMode::Inline,
-                | "external" => InputSourceMapMode::External,
-                | "auto" => InputSourceMapMode::Auto,
-                | path => InputSourceMapMode::Path(PathBuf::from(path)),
-            };
+            let mode: InputSourceMapMode =
+                parse_input_source_map_mode(text.as_str(), label)?;
 
             Ok(InputSourceMap::Mode(mode))
         },
         | _ => Err(invalid_arg(format!(
-            "invalid {label}: expected a source map object, a path string, or \
-             \"inline\" / \"external\" / \"auto\""
+            "invalid {label}: expected a source map object, an options object, \
+             or \"inline\" / \"external\" / \"auto\""
         ))),
     }
 }
@@ -257,7 +368,7 @@ fn parse_output_source_map_mode(text: &str) -> Result<OutputSourceMapMode> {
     }
 }
 
-/// Parse the `sourceMap.output` union: a mode string or `{ mode }`.
+/// Parse the `sourceMap.output` union: a mode string or `{ mode, url? }`.
 fn parse_output_source_map(
     value: &serde_json::Value
 ) -> Result<OutputSourceMap> {
@@ -282,13 +393,18 @@ fn parse_output_source_map(
                 )
             })?;
 
+            let url: Option<String> =
+                parse_optional_url(object, "url", "sourceMap.output.url")?
+                    .map(str::to_owned);
+
             Ok(OutputSourceMap::Options(OutputSourceMapOptions {
                 mode: parse_output_source_map_mode(text)?,
+                url,
             }))
         },
         | _ => Err(invalid_arg(
             "invalid sourceMap.output: expected \"inline\" / \"external\" / \
-             \"both\" or { mode }"
+             \"both\" or { mode, url? }"
                 .to_owned(),
         )),
     }
@@ -321,16 +437,34 @@ pub fn parse_source_map_options(
     Ok(SourceMapOptions { input, output })
 }
 
+/// Parse the JS `output` object into the Rust output options.
+pub fn parse_output_options(
+    output: Option<&JsOutputOptions>
+) -> Result<Option<OutputOptions>> {
+    match output {
+        | None => Ok(None),
+        | Some(output) => {
+            let file: Option<String> = match output.file.as_deref() {
+                | Some("") | None => None,
+                | Some(file) => Some(file.to_owned()),
+            };
+
+            Ok(Some(OutputOptions { file }))
+        },
+    }
+}
+
 /// The parsed, shared scalar fields of an entry-point option struct.
 ///
-/// `compile`, `compileFromAst`, and the builtin parser options carry the same
-/// five scalars on the wire; only the plugins array (bridged separately) is
-/// specific to each entry point.
+/// `compile` and `compileFromAst` carry these six scalars on the wire; the
+/// builtin parser options carry all of them except `output`. Each entry point
+/// bridges its own plugins array.
 struct SharedOptions {
     cwd: Option<PathBuf>,
     file: Option<String>,
     language: Option<Language>,
     source_type: Option<SourceType>,
+    output: Option<OutputOptions>,
     source_map: Option<SourceMapOptions>,
 }
 
@@ -342,11 +476,14 @@ impl SharedOptions {
         file: Option<String>,
         language: Option<&str>,
         source_type: Option<&str>,
+        output: Option<&JsOutputOptions>,
         source_map: Option<&serde_json::Value>,
     ) -> Result<Self> {
         let language: Option<Language> = parse_language_option(language)?;
         let source_type: Option<SourceType> =
             parse_source_type_option(source_type)?;
+
+        let output: Option<OutputOptions> = parse_output_options(output)?;
 
         let source_map: Option<SourceMapOptions> = match source_map {
             | Some(value) => Some(parse_source_map_options(value)?),
@@ -358,6 +495,7 @@ impl SharedOptions {
             file,
             language,
             source_type,
+            output,
             source_map,
         })
     }
@@ -434,6 +572,7 @@ impl JsCompileOptions {
             self.file.clone(),
             self.language.as_deref(),
             self.source_type.as_deref(),
+            self.output.as_ref(),
             self.source_map.as_ref(),
         )?;
 
@@ -442,6 +581,7 @@ impl JsCompileOptions {
             file: shared.file,
             language: shared.language,
             source_type: shared.source_type,
+            output: shared.output,
             source_map: shared.source_map,
         })
     }
@@ -476,6 +616,7 @@ impl JsCompileFromAstOptions {
             self.file.clone(),
             self.language.as_deref(),
             self.source_type.as_deref(),
+            self.output.as_ref(),
             self.source_map.as_ref(),
         )?;
 
@@ -484,6 +625,7 @@ impl JsCompileFromAstOptions {
             file: shared.file,
             language: shared.language,
             source_type: shared.source_type,
+            output: shared.output,
             source_map: shared.source_map,
         })
     }
@@ -500,6 +642,7 @@ impl JsGenerateOptions {
         Ok(GenerateOptions {
             cwd: self.cwd.clone().map(PathBuf::from),
             file: self.file.clone(),
+            output: parse_output_options(self.output.as_ref())?,
             source_map,
         })
     }
@@ -514,6 +657,7 @@ impl JsParserOptions {
             self.file.clone(),
             self.language.as_deref(),
             self.source_type.as_deref(),
+            None,
             self.source_map.as_ref(),
         )?;
 
@@ -522,6 +666,7 @@ impl JsParserOptions {
             file: shared.file,
             language: shared.language,
             source_type: shared.source_type,
+            output: None,
             source_map: shared.source_map,
         })
     }
@@ -542,6 +687,7 @@ impl JsGeneratorOptions {
             file: self.file.clone(),
             language: None,
             source_type: None,
+            output: None,
             source_map,
         })
     }
@@ -550,8 +696,9 @@ impl JsGeneratorOptions {
 #[cfg(test)]
 mod tests {
     use telarel_common::{
-        InputSourceMapMode, Language, OutputSourceMap, OutputSourceMapMode,
-        OutputSourceMapOptions, SourceType,
+        InputSourceMapMode, InputSourceMapOptions, Language, OutputOptions,
+        OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
+        SourceType,
     };
 
     use super::*;
@@ -647,6 +794,7 @@ mod tests {
             file: Some(String::from("index.js")),
             language: None,
             source_type: None,
+            output: None,
             source_map: None,
             plugins: Vec::new(),
         }
@@ -669,6 +817,7 @@ mod tests {
             file: Some(String::from("index.js")),
             language: None,
             source_type: None,
+            output: None,
             source_map: None,
             plugins: Vec::new(),
         }
@@ -748,25 +897,94 @@ mod tests {
                         "{label} maps to {mode:?}"
                     );
                 },
+                | InputSourceMap::Options(options) => {
+                    panic!("expected a bare mode, got {options:?}");
+                },
             }
         }
     }
 
     #[test]
-    fn test_input_source_map_path_string() {
-        let parsed: ParseOptions =
+    fn test_input_source_map_path_string_is_invalid() {
+        let error: napi::Error =
             options_with_input_source_map(serde_json::json!("maps/app.js.map"))
                 .to_parse_options()
-                .expect("path string parses");
+                .expect_err("path strings are rejected");
+
+        assert_eq!(error.status, napi::Status::InvalidArg);
+
+        assert!(error.reason.contains("invalid inputSourceMap"), "{error}",);
+    }
+
+    #[test]
+    fn test_input_source_map_options_with_external_path() {
+        let parsed: ParseOptions =
+            options_with_input_source_map(serde_json::json!({
+                "mode": "external",
+                "path": "maps/app.js.map",
+            }))
+            .to_parse_options()
+            .expect("input options parse");
 
         let input: InputSourceMap =
             parsed.input_source_map.expect("input map is present");
 
         match input {
-            | InputSourceMap::Mode(InputSourceMapMode::Path(path)) => {
-                assert_eq!(path.to_string_lossy(), "maps/app.js.map");
+            | InputSourceMap::Options(options) => {
+                assert!(matches!(options.mode, InputSourceMapMode::External,));
+
+                assert_eq!(
+                    options.path.as_deref(),
+                    Some(std::path::Path::new("maps/app.js.map")),
+                );
             },
-            | other => panic!("expected a path input, got {other:?}"),
+            | other => panic!("expected an options input, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_input_source_map_options_ignore_path_for_inline() {
+        let parsed: ParseOptions = options_with_input_source_map(
+            serde_json::json!({ "mode": "inline", "path": "maps/app.js.map" }),
+        )
+        .to_parse_options()
+        .expect("inline options parse");
+
+        let input: InputSourceMap =
+            parsed.input_source_map.expect("input map is present");
+
+        assert!(matches!(
+            input,
+            InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::Inline,
+                path: Some(_),
+            })
+        ));
+    }
+
+    #[test]
+    fn test_input_source_map_options_require_mode() {
+        let error: napi::Error = options_with_input_source_map(
+            serde_json::json!({ "path": "a.map" }),
+        )
+        .to_parse_options()
+        .expect_err("missing mode errors");
+
+        assert_eq!(error.status, napi::Status::InvalidArg);
+        assert!(error.reason.contains("requires a `mode`"), "{error}");
+    }
+
+    #[test]
+    fn test_input_source_map_options_reject_invalid_path() {
+        for path in [serde_json::json!(42), serde_json::json!("")] {
+            let error: napi::Error = options_with_input_source_map(
+                serde_json::json!({ "mode": "external", "path": path }),
+            )
+            .to_parse_options()
+            .expect_err("invalid path errors");
+
+            assert_eq!(error.status, napi::Status::InvalidArg);
+            assert!(error.reason.contains("invalid inputSourceMap.path"));
         }
     }
 
@@ -792,6 +1010,79 @@ mod tests {
             },
             | other => panic!("expected a value input, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_input_source_map_options_accept_value_mode() {
+        let parsed: ParseOptions =
+            options_with_input_source_map(serde_json::json!({
+                "mode": {
+                    "version": 3,
+                    "sources": ["upstream.ts"],
+                    "mappings": "AASA",
+                },
+                "path": "ignored.map",
+            }))
+            .to_parse_options()
+            .expect("value options parse");
+
+        let input: InputSourceMap =
+            parsed.input_source_map.expect("input map is present");
+
+        match input {
+            | InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::Value(map),
+                path,
+            }) => {
+                let json: oxc_sourcemap::JSONSourceMap = map.to_json();
+
+                assert_eq!(json.sources, vec![String::from("upstream.ts")]);
+
+                assert_eq!(
+                    path.as_deref(),
+                    Some(std::path::Path::new("ignored.map")),
+                );
+            },
+            | other => {
+                panic!("expected options with a value mode, got {other:?}")
+            },
+        }
+    }
+
+    #[test]
+    fn test_input_source_map_options_reject_invalid_mode() {
+        for mode in [
+            serde_json::json!(42),
+            serde_json::json!(null),
+            serde_json::json!(true),
+        ] {
+            let error: napi::Error = options_with_input_source_map(
+                serde_json::json!({ "mode": mode }),
+            )
+            .to_parse_options()
+            .expect_err("invalid mode errors");
+
+            assert_eq!(error.status, napi::Status::InvalidArg);
+            assert!(
+                error.reason.contains("invalid inputSourceMap.mode"),
+                "{error}",
+            );
+        }
+    }
+
+    #[test]
+    fn test_input_source_map_options_reject_invalid_value_mode() {
+        let error: napi::Error = options_with_input_source_map(
+            serde_json::json!({ "mode": { "version": 3 } }),
+        )
+        .to_parse_options()
+        .expect_err("invalid value mode errors");
+
+        assert_eq!(error.status, napi::Status::InvalidArg);
+        assert!(
+            error.reason.contains("invalid inputSourceMap.mode object"),
+            "{error}",
+        );
     }
 
     #[test]
@@ -834,6 +1125,7 @@ mod tests {
         let options: JsGenerateOptions = JsGenerateOptions {
             cwd: Some(String::from("/repo")),
             file: Some(String::from("out.js")),
+            output: None,
             source_map: Some(serde_json::json!({ "output": "inline" })),
             plugins: Vec::new(),
         };
@@ -854,6 +1146,7 @@ mod tests {
             file: Some(String::from("index.js")),
             language: None,
             source_type: None,
+            output: None,
             source_map: Some(value),
             plugins: Vec::new(),
         }
@@ -910,6 +1203,139 @@ mod tests {
             parsed.source_map.expect("sourceMap is present").output,
             Some(OutputSourceMap::Options(OutputSourceMapOptions {
                 mode: OutputSourceMapMode::Inline,
+                url: None,
+            }))
+        ));
+    }
+
+    #[test]
+    fn test_compile_options_output_file() {
+        let options: CompileOptions = JsCompileOptions {
+            cwd: None,
+            file: Some(String::from("src/index.ts")),
+            language: None,
+            source_type: None,
+            output: Some(JsOutputOptions {
+                file: Some(String::from("dist/index.js")),
+            }),
+            source_map: None,
+            plugins: Vec::new(),
+        }
+        .to_compile_options()
+        .expect("output options parse");
+
+        let output: OutputOptions = options.output.expect("output is carried");
+
+        assert_eq!(output.file.as_deref(), Some("dist/index.js"));
+    }
+
+    #[test]
+    fn test_compile_options_empty_output_file_is_unset() {
+        let options: CompileOptions = JsCompileOptions {
+            cwd: None,
+            file: Some(String::from("src/index.ts")),
+            language: None,
+            source_type: None,
+            output: Some(JsOutputOptions { file: Some(String::new()) }),
+            source_map: None,
+            plugins: Vec::new(),
+        }
+        .to_compile_options()
+        .expect("empty output file is unset");
+
+        let output: OutputOptions = options.output.expect("output is carried");
+
+        assert!(output.file.is_none());
+    }
+
+    #[test]
+    fn test_compile_from_ast_options_output_file() {
+        let options: CompileFromAstOptions = JsCompileFromAstOptions {
+            cwd: None,
+            file: Some(String::from("src/index.ts")),
+            language: None,
+            source_type: None,
+            output: Some(JsOutputOptions {
+                file: Some(String::from("dist/index.js")),
+            }),
+            source_map: None,
+            plugins: Vec::new(),
+        }
+        .to_compile_from_ast_options()
+        .expect("output options parse");
+
+        let output: OutputOptions = options.output.expect("output is carried");
+
+        assert_eq!(output.file.as_deref(), Some("dist/index.js"));
+    }
+
+    #[test]
+    fn test_generate_options_output_file() {
+        let options: GenerateOptions = JsGenerateOptions {
+            cwd: None,
+            file: Some(String::from("src/index.ts")),
+            output: Some(JsOutputOptions {
+                file: Some(String::from("dist/index.js")),
+            }),
+            source_map: None,
+            plugins: Vec::new(),
+        }
+        .to_generate_options()
+        .expect("output options parse");
+
+        let output: OutputOptions = options.output.expect("output is carried");
+
+        assert_eq!(output.file.as_deref(), Some("dist/index.js"));
+    }
+
+    #[test]
+    fn test_compile_options_source_map_output_options_with_url() {
+        let parsed: CompileOptions =
+            compile_options_with_source_map(serde_json::json!({
+                "output": {
+                    "mode": "external",
+                    "url": "dist/app.js.map",
+                },
+            }))
+            .to_compile_options()
+            .expect("output options with url parse");
+
+        assert!(matches!(
+            parsed.source_map.expect("sourceMap is present").output,
+            Some(OutputSourceMap::Options(OutputSourceMapOptions {
+                mode: OutputSourceMapMode::External,
+                url: Some(url),
+            })) if url == "dist/app.js.map"
+        ));
+    }
+
+    #[test]
+    fn test_compile_options_source_map_output_options_reject_non_string_url() {
+        let error: napi::Error =
+            compile_options_with_source_map(serde_json::json!({
+                "output": { "mode": "external", "url": 42 },
+            }))
+            .to_compile_options()
+            .expect_err("non-string output url errors");
+
+        assert_eq!(error.status, napi::Status::InvalidArg);
+        assert!(error.reason.contains("invalid sourceMap.output.url"));
+    }
+
+    #[test]
+    fn test_compile_options_source_map_output_options_empty_url_is_unset() {
+        let parsed: CompileOptions =
+            compile_options_with_source_map(serde_json::json!({
+                "output": { "mode": "external", "url": "" },
+            }))
+            .to_compile_options()
+            .expect("empty output url is unset");
+
+        assert!(matches!(
+            parsed.source_map.expect("sourceMap is present").output,
+            Some(OutputSourceMap::Options(OutputSourceMapOptions {
+                mode: OutputSourceMapMode::External,
+                url: None,
             }))
         ));
     }
@@ -956,6 +1382,7 @@ mod tests {
             file: Some(String::from("index.js")),
             language: None,
             source_type: None,
+            output: None,
             source_map: None,
             plugins: Vec::new(),
         };

@@ -3,12 +3,13 @@ use std::path::PathBuf;
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
 use crate::_types::options::resolved::ResolvedOptions;
-use crate::_types::options::source_map::SourceMapOptions;
+use crate::_types::options::sourcemap::SourceMapOptions;
 
 /// Resolved options for the builtin [`crate::ast::parser::Parser`].
 #[derive(Debug, Clone)]
 pub struct ParserOptions {
-    /// Working directory used to resolve relative input source-map paths.
+    /// Resolved working directory used to anchor a relative `file` and derive its
+    /// default external input source-map path.
     pub cwd: PathBuf,
     /// The file being parsed.
     pub file: String,
@@ -36,7 +37,8 @@ impl From<&ResolvedOptions> for ParserOptions {
 mod tests {
     use crate::_types::grammar::language::Language;
     use crate::_types::grammar::source_type::SourceType;
-    use crate::_types::options::source_map::SourceMapOptions;
+    use crate::_types::options::output::ResolvedOutputOptions;
+    use crate::_types::options::sourcemap::SourceMapOptions;
 
     use super::*;
 
@@ -46,6 +48,9 @@ mod tests {
             file: String::from("src/app.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
+            output: ResolvedOutputOptions {
+                file: String::from("dist/src/app.js"),
+            },
             source_map: SourceMapOptions::default(),
             plugins: vec![String::from("probe")],
         }

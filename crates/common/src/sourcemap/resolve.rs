@@ -1,10 +1,12 @@
 use std::path::{Path, PathBuf};
 
-use crate::_types::options::source_map::input::{
+use crate::_types::options::sourcemap::input::{
     InputSourceMap, InputSourceMapMode,
 };
 use crate::errors::compile::CompileError;
-use crate::helpers::path::{external_map_path, resolve_against};
+use crate::helpers::path::{
+    external_map_path, resolve_against, strip_file_suffix,
+};
 use crate::sourcemap::SourceMap;
 use crate::sourcemap::inline::extract_inline_source_map;
 
@@ -38,26 +40,54 @@ fn read_map_file(path: &Path) -> Result<SourceMap, CompileError> {
     parse_map_json(&json, &path.display().to_string())
 }
 
+/// The directory of `file`, used to resolve a relative external map `path`.
+///
+/// An empty suffix-stripped `file` falls back to `cwd`.
+fn source_dir(
+    cwd: &Path,
+    file: &str,
+) -> PathBuf {
+    let file: &str = strip_file_suffix(file);
+
+    if file.is_empty() {
+        return cwd.to_path_buf();
+    }
+
+    let resolved: PathBuf = resolve_against(cwd, Path::new(file));
+
+    resolved
+        .parent()
+        .map_or_else(|| cwd.to_path_buf(), |parent: &Path| parent.to_path_buf())
+}
+
+/// The external map path for `file`, or the configured `path` override.
+fn external_map_path_for(
+    cwd: &Path,
+    file: &str,
+    path: Option<&Path>,
+) -> PathBuf {
+    match path {
+        | None => external_map_path(cwd, file),
+        | Some(path) if path.is_absolute() => path.to_path_buf(),
+        | Some(path) => source_dir(cwd, file).join(path),
+    }
+}
+
 /// Resolve the map for a concrete [`InputSourceMapMode`].
 fn resolve_input_source_map_mode(
     code: &str,
     cwd: &Path,
     file: &str,
     mode: &InputSourceMapMode,
+    path: Option<&Path>,
 ) -> Result<Option<SourceMap>, CompileError> {
     match mode {
         | InputSourceMapMode::Value(map) => Ok(Some(map.clone())),
         | InputSourceMapMode::Inline => extract_inline_source_map(code)
             .map_or(Ok(None), |result| result.map(Some)),
-        | InputSourceMapMode::Path(path) => {
-            let resolved: PathBuf = resolve_against(cwd, path);
-            let map: SourceMap = read_map_file(&resolved)?;
-
-            Ok(Some(map))
-        },
         | InputSourceMapMode::External => {
-            let path: PathBuf = external_map_path(cwd, file);
-            let map: SourceMap = read_map_file(&path)?;
+            let map_path: PathBuf = external_map_path_for(cwd, file, path);
+            let map: SourceMap = read_map_file(&map_path)?;
 
             Ok(Some(map))
         },
@@ -65,10 +95,10 @@ fn resolve_input_source_map_mode(
             | Some(Ok(map)) => Ok(Some(map)),
             | Some(Err(error)) => Err(error),
             | None => {
-                let path: PathBuf = external_map_path(cwd, file);
+                let map_path: PathBuf = external_map_path_for(cwd, file, path);
 
-                if path.is_file() {
-                    let map: SourceMap = read_map_file(&path)?;
+                if map_path.is_file() {
+                    let map: SourceMap = read_map_file(&map_path)?;
 
                     Ok(Some(map))
                 } else {
@@ -82,22 +112,28 @@ fn resolve_input_source_map_mode(
 /// Resolve the input source map requested by `input`.
 ///
 /// `code` is the source being parsed (`Inline`/`Auto` scan it for an inline
-/// comment). `cwd` is the root for relative paths. `External`/`Auto` strip any
-/// `?query`/`#hash` suffix from `file`, resolve it against `cwd`, and read
-/// `<resolved file>.map`; `Path` resolves its own path against `cwd`.
+/// comment). `cwd` is the root used to locate the source file. `External` and
+/// the `Auto` fallback read the configured `path` when set, or `<file>.map`
+/// otherwise; a relative `path` resolves against the source file's directory,
+/// and the default path strips any `?query`/`#hash` suffix.
 ///
 /// Returns `Ok(None)` only when the mode is best-effort (`Inline`/`Auto`) and
-/// no map was found. Explicitly requested but missing maps (`Path`/`External`)
-/// and corrupt data are `Err`.
+/// no map was found. Explicitly requested but missing maps (`External`) and
+/// corrupt data are `Err`.
 pub fn resolve_input_source_map(
     code: &str,
     cwd: &Path,
     file: &str,
     input: &InputSourceMap,
 ) -> Result<Option<SourceMap>, CompileError> {
-    let InputSourceMap::Mode(mode) = input;
+    let (mode, path): (&InputSourceMapMode, Option<&Path>) = match input {
+        | InputSourceMap::Mode(mode) => (mode, None),
+        | InputSourceMap::Options(options) => {
+            (&options.mode, options.path.as_deref())
+        },
+    };
 
-    resolve_input_source_map_mode(code, cwd, file, mode)
+    resolve_input_source_map_mode(code, cwd, file, mode, path)
 }
 
 #[cfg(test)]
@@ -107,6 +143,7 @@ mod tests {
     use oxc_sourcemap::SourceMapBuilder;
     use tempfile::TempDir;
 
+    use crate::_types::options::sourcemap::input::InputSourceMapOptions;
     use crate::helpers::test_util::{path_buf, temp_dir, write_file};
     use crate::sourcemap::inline::append_inline_source_map;
 
@@ -136,6 +173,22 @@ mod tests {
         assert_eq!(json_of(actual), json_of(expected));
     }
 
+    fn write_nested_file(
+        dir: &TempDir,
+        name: &str,
+        contents: &str,
+    ) -> PathBuf {
+        let path: PathBuf = dir.path().join(name);
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("parent dir creatable");
+        }
+
+        write_file(dir, name, contents);
+
+        path
+    }
+
     #[test]
     fn test_value_mode_clones_provided_map() {
         let map: SourceMap = sample_map("original.ts");
@@ -147,6 +200,24 @@ mod tests {
             &InputSourceMap::Mode(InputSourceMapMode::Value(map.clone())),
         )
         .expect("value mode always succeeds");
+
+        assert_same_map(&resolved.expect("map present"), &map);
+    }
+
+    #[test]
+    fn test_options_value_mode_clones_provided_map_and_ignores_path() {
+        let map: SourceMap = sample_map("original.ts");
+
+        let resolved: Option<SourceMap> = resolve_input_source_map(
+            "",
+            Path::new(""),
+            "index.ts",
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::Value(map.clone()),
+                path: Some(PathBuf::from("ignored.map")),
+            }),
+        )
+        .expect("value options always succeed");
 
         assert_same_map(&resolved.expect("map present"), &map);
     }
@@ -198,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn test_path_mode_relative_to_cwd() {
+    fn test_external_mode_uses_relative_path() {
         let dir: TempDir = temp_dir();
         let map: SourceMap = sample_map("original.ts");
 
@@ -208,17 +279,106 @@ mod tests {
             "",
             &path_buf(&dir),
             "index.ts",
-            &InputSourceMap::Mode(InputSourceMapMode::Path(PathBuf::from(
-                "custom.map",
-            ))),
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::External,
+                path: Some(PathBuf::from("custom.map")),
+            }),
         )
-        .expect("relative map resolves");
+        .expect("relative path resolves");
 
         assert_same_map(&resolved.expect("map present"), &map);
     }
 
     #[test]
-    fn test_path_mode_absolute() {
+    fn test_external_mode_resolves_relative_path_against_source_dir() {
+        let dir: TempDir = temp_dir();
+        let map: SourceMap = sample_map("original.ts");
+
+        write_nested_file(&dir, "src/custom.map", &json_of(&map));
+
+        let resolved: Option<SourceMap> = resolve_input_source_map(
+            "",
+            &path_buf(&dir),
+            "src/index.ts",
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::External,
+                path: Some(PathBuf::from("custom.map")),
+            }),
+        )
+        .expect("source-relative path resolves");
+
+        assert_same_map(&resolved.expect("map present"), &map);
+    }
+
+    #[test]
+    fn test_external_mode_resolves_parent_relative_path_against_source_dir() {
+        let dir: TempDir = temp_dir();
+        let map: SourceMap = sample_map("original.ts");
+
+        write_nested_file(&dir, "maps/custom.map", &json_of(&map));
+        std::fs::create_dir_all(dir.path().join("src"))
+            .expect("source dir creatable");
+
+        let resolved: Option<SourceMap> = resolve_input_source_map(
+            "",
+            &path_buf(&dir),
+            "src/index.ts",
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::External,
+                path: Some(PathBuf::from("../maps/custom.map")),
+            }),
+        )
+        .expect("parent-relative path resolves");
+
+        assert_same_map(&resolved.expect("map present"), &map);
+    }
+
+    #[test]
+    fn test_external_mode_prefers_source_relative_path_over_cwd() {
+        let dir: TempDir = temp_dir();
+        let cwd_map: SourceMap = sample_map("cwd.ts");
+        let source_map: SourceMap = sample_map("source.ts");
+
+        write_file(&dir, "custom.map", &json_of(&cwd_map));
+        write_nested_file(&dir, "src/custom.map", &json_of(&source_map));
+
+        let resolved: Option<SourceMap> = resolve_input_source_map(
+            "",
+            &path_buf(&dir),
+            "src/index.ts",
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::External,
+                path: Some(PathBuf::from("custom.map")),
+            }),
+        )
+        .expect("source-relative path wins");
+
+        assert_same_map(&resolved.expect("map present"), &source_map);
+    }
+
+    #[test]
+    fn test_external_mode_empty_stripped_file_falls_back_to_cwd() {
+        let dir: TempDir = temp_dir();
+        let map: SourceMap = sample_map("original.ts");
+
+        write_file(&dir, "custom.map", &json_of(&map));
+
+        let resolved: Option<SourceMap> = resolve_input_source_map(
+            "",
+            &path_buf(&dir),
+            "?v=1",
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::External,
+                path: Some(PathBuf::from("custom.map")),
+            }),
+        )
+        .expect("empty file falls back to cwd");
+
+        assert_same_map(&resolved.expect("map present"), &map);
+    }
+
+    #[test]
+    fn test_external_mode_uses_absolute_path() {
         let dir: TempDir = temp_dir();
         let map: SourceMap = sample_map("original.ts");
 
@@ -228,15 +388,18 @@ mod tests {
             "",
             Path::new("/some/other/cwd"),
             "index.ts",
-            &InputSourceMap::Mode(InputSourceMapMode::Path(map_path)),
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::External,
+                path: Some(map_path),
+            }),
         )
-        .expect("absolute map resolves");
+        .expect("absolute path resolves");
 
         assert_same_map(&resolved.expect("map present"), &map);
     }
 
     #[test]
-    fn test_path_mode_missing_is_err() {
+    fn test_external_mode_missing_path_is_err() {
         let dir: TempDir = temp_dir();
 
         let result: Result<Option<SourceMap>, CompileError> =
@@ -244,9 +407,10 @@ mod tests {
                 "",
                 &path_buf(&dir),
                 "index.ts",
-                &InputSourceMap::Mode(InputSourceMapMode::Path(PathBuf::from(
-                    "absent.map",
-                ))),
+                &InputSourceMap::Options(InputSourceMapOptions {
+                    mode: InputSourceMapMode::External,
+                    path: Some(PathBuf::from("absent.map")),
+                }),
             );
 
         assert!(result.is_err());
@@ -426,6 +590,88 @@ mod tests {
         .expect("auto resolves");
 
         assert_same_map(&resolved.expect("map present"), &external_map);
+    }
+
+    #[test]
+    fn test_auto_mode_uses_path_for_external_fallback() {
+        let dir: TempDir = temp_dir();
+        let external_map: SourceMap = sample_map("external.ts");
+
+        write_file(&dir, "custom.map", &json_of(&external_map));
+
+        let resolved: Option<SourceMap> = resolve_input_source_map(
+            "const a = 1;",
+            &path_buf(&dir),
+            "index.ts",
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::Auto,
+                path: Some(PathBuf::from("custom.map")),
+            }),
+        )
+        .expect("auto path resolves");
+
+        assert_same_map(&resolved.expect("map present"), &external_map);
+    }
+
+    #[test]
+    fn test_auto_mode_resolves_relative_path_against_source_dir() {
+        let dir: TempDir = temp_dir();
+        let external_map: SourceMap = sample_map("external.ts");
+
+        write_nested_file(&dir, "src/custom.map", &json_of(&external_map));
+
+        let resolved: Option<SourceMap> = resolve_input_source_map(
+            "const a = 1;",
+            &path_buf(&dir),
+            "src/index.ts",
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::Auto,
+                path: Some(PathBuf::from("custom.map")),
+            }),
+        )
+        .expect("auto source-relative path resolves");
+
+        assert_same_map(&resolved.expect("map present"), &external_map);
+    }
+
+    #[test]
+    fn test_auto_mode_missing_path_is_none() {
+        let dir: TempDir = temp_dir();
+
+        let resolved: Option<SourceMap> = resolve_input_source_map(
+            "const a = 1;",
+            &path_buf(&dir),
+            "index.ts",
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::Auto,
+                path: Some(PathBuf::from("absent.map")),
+            }),
+        )
+        .expect("auto remains best effort");
+
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn test_inline_mode_ignores_path() {
+        let dir: TempDir = temp_dir();
+        let map: SourceMap = sample_map("original.ts");
+
+        let code: String =
+            append_inline_source_map(String::from("const a = 1;"), &map);
+
+        let resolved: Option<SourceMap> = resolve_input_source_map(
+            &code,
+            &path_buf(&dir),
+            "index.ts",
+            &InputSourceMap::Options(InputSourceMapOptions {
+                mode: InputSourceMapMode::Inline,
+                path: Some(PathBuf::from("absent.map")),
+            }),
+        )
+        .expect("inline ignores the path");
+
+        assert_same_map(&resolved.expect("map present"), &map);
     }
 
     #[test]

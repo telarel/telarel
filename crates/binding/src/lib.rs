@@ -8,13 +8,14 @@ mod tasks;
 pub use crate::_types::ast::{JsAst, JsAstInput, JsAstResult};
 pub use crate::_types::options::{
     JsCompileFromAstOptions, JsCompileOptions, JsGenerateOptions,
-    JsGeneratorOptions, JsParseOptions, JsParserOptions, JsRewriteOptions,
+    JsGeneratorOptions, JsOutputOptions, JsParseOptions, JsParserOptions,
+    JsRewriteOptions,
 };
 pub use crate::_types::plugin::context::JsPluginContext;
 pub use crate::_types::plugin::hooks::{
     JsAstArgs, JsCodeOutput, JsEndArgs, JsGenerateArgs, JsGeneratorHookOptions,
     JsOptionsOutput, JsParseArgs, JsParseOutput, JsParserHookOptions,
-    JsResolvedOptions, JsStartArgs, JsTransformOutput,
+    JsResolvedOptions, JsResolvedOutputOptions, JsStartArgs, JsTransformOutput,
 };
 pub use crate::_types::results::JsCodeResult;
 pub use crate::_types::sourcemap::JsSourceMap;

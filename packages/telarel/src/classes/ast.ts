@@ -1,7 +1,7 @@
 import type { Program } from "@oxc-project/types";
 
 import type { DeepReadonly } from "#/@types/common";
-import type { SourceMap } from "#/@types/sourcemap";
+import type { SourceMap } from "#/@types/sourcemap/map";
 
 /**
  * Options for constructing an {@link Ast}.

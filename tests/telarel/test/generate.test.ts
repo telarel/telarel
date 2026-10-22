@@ -32,8 +32,61 @@ describe("generate", (): void => {
         expect(result.map?.version).toBe(3);
         expect(result.map?.sources).toEqual(["index.ts"]);
         expect(result.map?.mappings).toBe("AAAA,MAAM,IAAI");
-        // The external mode returns the map without appending a comment.
         expect(result.code).not.toContain(SOURCE_MAPPING_COMMENT);
+    });
+
+    it("appends a configured external map URL and keeps the map", async (): Promise<void> => {
+        const result: CodeResult = await generate((await parsed()).ast, {
+            file: "index.ts",
+            sourceMap: {
+                output: {
+                    mode: "external",
+                    url: "dist/index.js.map",
+                },
+            },
+        });
+
+        expect(result.code).toBe(
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
+        expect(result.map?.sources).toEqual(["index.ts"]);
+    });
+
+    it("uses output.file for the default external map URL", async (): Promise<void> => {
+        const result: CodeResult = await generate((await parsed()).ast, {
+            file: "index.ts",
+            output: {
+                file: "dist/index.js",
+            },
+            sourceMap: { output: "external" },
+        });
+
+        expect(result.code).toBe(
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
+        expect(result.map?.sources).toEqual(["index.ts"]);
+    });
+
+    it("falls back to file for the default external map URL", async (): Promise<void> => {
+        const result: CodeResult = await generate((await parsed()).ast, {
+            file: "index.ts",
+            sourceMap: { output: "external" },
+        });
+
+        expect(result.code).toBe(
+            "const a = 1;\n//# sourceMappingURL=index.ts.map\n",
+        );
+        expect(result.map?.sources).toEqual(["index.ts"]);
+    });
+
+    it("omits the comment when sourceMap.output is not requested", async (): Promise<void> => {
+        const result: CodeResult = await generate((await parsed()).ast, {
+            file: "index.ts",
+            output: { file: "dist/index.js" },
+        });
+
+        expect(result.code).toBe("const a = 1;");
+        expect(result.map?.sources).toEqual(["index.ts"]);
     });
 
     it("generates from a bare program with its code", async (): Promise<void> => {
@@ -60,6 +113,23 @@ describe("generate", (): void => {
         expect(result.map).toBeNull();
         expect(result.code).toContain(SOURCE_MAPPING_COMMENT);
         expect(decodeInlineMap(result.code).sources).toEqual(["index.ts"]);
+    });
+
+    it("ignores the external map URL in inline mode", async (): Promise<void> => {
+        const result: CodeResult = await generate((await parsed()).ast, {
+            file: "index.ts",
+            sourceMap: {
+                output: {
+                    mode: "inline",
+                    url: "dist/index.js.map",
+                },
+            },
+        });
+
+        expect(result.map).toBeNull();
+        expect(result.code).toContain(SOURCE_MAPPING_COMMENT);
+        expect(result.code).toContain("data:application/json;base64,");
+        expect(result.code).not.toContain("sourceMappingURL=dist/index.js.map");
     });
 
     it("accepts the output options object form", async (): Promise<void> => {
