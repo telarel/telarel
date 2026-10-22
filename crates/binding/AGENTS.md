@@ -27,6 +27,7 @@ The public JavaScript surface is documented in `docs/content/apis/javascript`. I
 
 - `parse` / `generate` hooks use the normalized object `{ program, code, map? }`.
 - `prepare` / `transform` / `finalize` use a JSON-serialized ESTree string (`astJson`) via `oxc_estree_codec`, plus the AST's `code` and optional `map`. The JS wrapper rebuilds the normalized `Ast` from those fields.
+- Outbound ESTree serialization debug-asserts that `Program::source_text` is still content-equal to `Ast::source` before building the UTF-16 `SpanMap`.
 - The JS `transform` return is compared in its UTF-16 JSON form plus `code` and `map`; an unchanged AST short-circuits to `None`. Rebuilt programs anchor to the returned `code`/`map` and reattach the original comments, because the ESTree codec skips `Program.comments`.
 - No `Ast` or pipeline future crosses the JS/worker boundary. The worker closure produces the JS-facing value directly.
 

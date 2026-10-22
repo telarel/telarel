@@ -47,9 +47,20 @@ pub struct JsAstInput {
     pub map: Option<serde_json::Value>,
 }
 
+fn debug_assert_source_anchored(ast: &Ast) {
+    // Span conversion uses `Ast::source`, so the program text must match.
+    debug_assert_eq!(
+        ast.program().source_text,
+        ast.source().as_ref(),
+        "Program::source_text must stay anchored to Ast::source()"
+    );
+}
+
 /// Serialize `ast` to the ESTree JSON string the JS side receives: byte spans
 /// are rewritten to UTF-16 code units so they match JS string indices.
 pub fn ast_to_estree_json(ast: &Ast) -> String {
+    debug_assert_source_anchored(ast);
+
     let json: String = oxc_estree_codec::program_to_json(
         ast.program(),
         oxc_estree_codec::ProgramToJsonOptions::new(),
@@ -195,6 +206,8 @@ pub fn source_type_for_generate(language: Language) -> OxcSourceType {
 mod tests {
     use std::path::PathBuf;
 
+    use oxc::allocator::Allocator;
+    use oxc::ast::ast::Program;
     use telarel_common::{ParseAstOptions, parse_ast};
 
     use super::*;
@@ -252,6 +265,44 @@ mod tests {
 
         assert!(json.contains(r#""type":"Program""#), "{json}");
         assert!(json.contains(r#""start":0"#), "{json}");
+    }
+
+    #[test]
+    fn test_ast_to_estree_json_accepts_rebuilt_source_text() {
+        // `with_input_map` reallocates `source_text` into a fresh arena, so the
+        // anchor check must compare content, not pointers.
+        let ast: Ast =
+            fixture_ast("const a = 1;").with_input_map(Some(sample_map()));
+
+        let json: String = ast_to_estree_json(&ast);
+
+        assert!(json.contains(r#""type":"Program""#), "{json}");
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "source_text")]
+    fn test_ast_to_estree_json_rejects_mismatched_source_text() {
+        let ast: Ast = Ast::from_source(
+            Arc::from("const a = 1;"),
+            OxcSourceType::ts(),
+            None,
+            |source: &str, allocator: &Allocator| {
+                let mut program: Program<'_> = oxc::parser::Parser::new(
+                    allocator,
+                    source,
+                    OxcSourceType::ts(),
+                )
+                .parse()
+                .program;
+
+                program.source_text = allocator.alloc_str("const b = 2;");
+
+                program
+            },
+        );
+
+        let _json: String = ast_to_estree_json(&ast);
     }
 
     #[test]

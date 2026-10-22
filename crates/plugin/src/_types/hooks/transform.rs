@@ -5,7 +5,9 @@ use crate::PluginError;
 /// Arguments for the `transform` hook.
 ///
 /// The AST is an owned cheap handle. A plugin that changes the tree mutates it
-/// through [`Ast::with_mut`] and returns it in [`TransformOutput`].
+/// through [`Ast::with_mut`] and returns it in [`TransformOutput`]. A plugin
+/// that changes the source text must build a new [`Ast`] instead; replacing
+/// `Program::source_text` in place is unsupported.
 #[derive(Clone)]
 pub struct TransformArgs {
     /// The current AST. The driver keeps its own handle, so mutation copies on

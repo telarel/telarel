@@ -18,6 +18,7 @@
 
 #### Breaking
 
+- change `Ast::with_mut` to require `Program::source_text` to stay content-equal to `Ast::source`
 - change `CompileContext.cwd` to `&Path`
 - change `CompileError` to carry a message and optional source
 - change the `cwd` field in Rust option structs to `PathBuf`

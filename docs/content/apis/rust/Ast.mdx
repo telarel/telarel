@@ -43,7 +43,7 @@ impl Ast {
 
 ## Construction
 
-`parse` is the normal way to obtain an `Ast`. `from_source` and `try_from_source` are lower-level constructors for building one from an existing oxc `Program`: the closure receives the source text and allocator that the program must borrow.
+`parse` is the normal way to obtain an `Ast`. `from_source` and `try_from_source` are lower-level constructors for building one from an existing oxc `Program`: the closure receives the source text and allocator that the program must borrow, and must return a program whose `source_text` is that source.
 
 ## Accessors
 
@@ -65,6 +65,8 @@ Program spans are UTF-8 byte offsets into `source()`, matching `oxc::span::Span`
 ## Mutation
 
 `with_mut` is the only path to the arena. The closure receives the allocator and a mutable program, so new nodes can be allocated while mutating.
+
+The closure may rewrite the tree, but not the source text: `Program::source_text` must stay content-equal to `Ast::source`. Debug builds assert this. Build a new `Ast` to change the source text.
 
 `Ast` clones are O(1): they share the same arena. `with_mut` copies the arena first when another clone is still alive, so mutating a clone never mutates the original.
 

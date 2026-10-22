@@ -88,6 +88,10 @@ unsafe impl Sync for AstInner {}
 /// this AST's source was produced from upstream originals, and nothing about
 /// the code generated from this AST.
 ///
+/// `Program::source_text` must stay content-equal to [`Ast::source`];
+/// [`Ast::with_mut`] may rewrite the tree but not the source text. Build a new
+/// `Ast` to change the source text.
+///
 /// Cloning is O(1): clones share the same arena. [`Ast::with_mut`] copies the
 /// arena into a fresh allocation when another clone is still alive, so
 /// mutating a clone never mutates the original.
@@ -107,6 +111,8 @@ pub struct Ast {
 
 impl Ast {
     /// Build an owned AST whose `Program::source_text` borrows the owner's source.
+    ///
+    /// `build` must return a program whose `Program::source_text` is `source`.
     ///
     /// `input_map` is the map describing how `source` was produced from
     /// upstream originals, if any (see [`Ast::map`]).
@@ -195,6 +201,10 @@ impl Ast {
     ///
     /// The arena is copied first when another [`Ast`] handle is still alive,
     /// so mutation never affects a shared AST.
+    ///
+    /// The closure may rewrite the tree, but not the source text:
+    /// `Program::source_text` must stay content-equal to [`Ast::source`].
+    /// Debug builds assert this. Build a new `Ast` to change the source text.
     pub fn with_mut<R>(
         &mut self,
         f: impl for<'i> FnOnce(&'i Allocator, &mut Program<'i>) -> R,
@@ -202,7 +212,15 @@ impl Ast {
         let inner: &mut AstInner = Arc::make_mut(&mut self.inner);
 
         inner.with_dependent_mut(|owner, dep| {
-            f(&owner.allocator, &mut dep.program)
+            let result: R = f(&owner.allocator, &mut dep.program);
+
+            debug_assert_eq!(
+                dep.program.source_text,
+                owner.source.as_ref(),
+                "with_mut must not replace Program::source_text; rebuild the Ast"
+            );
+
+            result
         })
     }
 }
@@ -307,11 +325,12 @@ mod tests {
     fn test_with_mut_can_mutate_program() {
         let mut ast: Ast = owner_from_code("const a = 1;");
 
-        ast.with_mut(|allocator: &Allocator, program: &mut Program<'_>| {
-            program.source_text = allocator.alloc_str("// changed");
+        ast.with_mut(|_allocator: &Allocator, program: &mut Program<'_>| {
+            program.body.clear();
         });
 
-        assert_eq!(ast.program().source_text, "// changed");
+        assert!(ast.program().body.is_empty());
+        assert_eq!(ast.program().source_text, ast.source().as_ref());
     }
 
     #[test]
@@ -349,13 +368,24 @@ mod tests {
 
         let mut clone: Ast = ast.clone();
 
-        clone.with_mut(|allocator: &Allocator, program: &mut Program<'_>| {
-            program.source_text = allocator.alloc_str("// changed");
+        clone.with_mut(|_allocator: &Allocator, program: &mut Program<'_>| {
+            program.body.clear();
         });
 
-        assert_eq!(ast.program().source_text, "const a = 1;");
-        assert_eq!(clone.program().source_text, "// changed");
+        assert!(!ast.program().body.is_empty());
+        assert!(clone.program().body.is_empty());
         assert!(!Arc::ptr_eq(&ast.inner, &clone.inner));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "source_text")]
+    fn test_with_mut_rejects_replacing_source_text() {
+        let mut ast: Ast = owner_from_code("const a = 1;");
+
+        ast.with_mut(|allocator: &Allocator, program: &mut Program<'_>| {
+            program.source_text = allocator.alloc_str("// changed");
+        });
     }
 
     #[test]
@@ -431,6 +461,20 @@ mod tests {
         assert!(Arc::ptr_eq(rebuilt.source(), ast.source()));
 
         assert_eq!(rebuilt.source_type(), ast.source_type());
+    }
+
+    #[test]
+    fn test_with_mut_after_with_input_map_keeps_anchor() {
+        let mut rebuilt: Ast =
+            owner_from_code("const a = 1;").with_input_map(Some(sample_map()));
+
+        rebuilt.with_mut(
+            |_allocator: &Allocator, program: &mut Program<'_>| {
+                program.body.clear();
+            },
+        );
+
+        assert_eq!(rebuilt.program().source_text, rebuilt.source().as_ref());
     }
 
     #[test]

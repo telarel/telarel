@@ -26,6 +26,7 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 - `Ast` shares ownership of its allocator and source through `Arc`; `program()` borrows a tree whose spans anchor to that source.
 - `Ast` wraps `Arc<AstInner>`; `Clone` is O(1) and shares the arena.
 - `with_mut` is the only path to the arena. It takes `&mut self` and copy-on-writes through `Arc::make_mut` when another handle is alive, so mutating a clone never mutates the original.
+- `with_mut` debug-asserts that `Program::source_text` stays content-equal to `Ast::source`; span conversion, codegen source maps, and error frames depend on it. Public contract: `docs/content/apis/rust/Ast.mdx`.
 - `with_input_map` is a deep rebuild into a fresh allocator; it shares the source `Arc` and carries the requested input map.
 - `Ast` is `Send + Sync` so plugin futures can move owned handles or borrow it across threads, but sharing is read-only by contract: never mutate `Program`'s interior-mutable `Cell` fields through a shared `&Ast`.
 - `Ast::map` is the **input** map (how the source was produced upstream), never the generated output map.

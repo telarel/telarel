@@ -71,6 +71,8 @@ Each hook returns an `impl Future`, so its body can be written as an `async` blo
 
 `TransformArgs` owns a cheap [Ast](/apis/rust/Ast) handle: `Ast::clone` is O(1), and `Ast::with_mut` copies the arena on write when the driver still holds the carried AST. `TransformArgs` is `Clone`, not `Copy`. Returning `None` leaves the driver's AST untouched.
 
+`with_mut` may rewrite the tree, but changing the source text requires building a new [Ast](/apis/rust/Ast) and returning it. Debug builds assert that `Program::source_text` still matches `Ast::source`.
+
 `TransformOutput` is the value a `transform` hook returns to replace the carried AST; it wraps the new owned `ast`.
 
 ### Returns
