@@ -28,8 +28,7 @@ mod tests {
 
     use crate::common::test_util::{
         EndObserverPlugin, FailPlugin, FailStage, ParseOutcome,
-        ParseOutcomePlugin, SpyPlugin, assert_same_map, input_value,
-        sample_map,
+        ParseOutcomePlugin, SpyPlugin, assert_same_map, input_map, sample_map,
     };
 
     use super::parse;
@@ -68,7 +67,7 @@ mod tests {
         let map: SourceMap = sample_map("upstream.ts", 5);
 
         let options: ParseOptions = ParseOptions {
-            source_map: Some(input_value(map.clone())),
+            input_source_map: Some(input_map(map.clone())),
             ..ParseOptions::default()
         };
 

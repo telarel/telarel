@@ -1,6 +1,8 @@
 import type {
     AstOptions,
     AstResult,
+    CommonPluginContext,
+    OptionsArgs,
     ParseArgs,
     ParserOptions,
     Plugin,
@@ -164,7 +166,7 @@ describe("parse", (): void => {
     it("attaches a value input map to the AST", async (): Promise<void> => {
         const result: AstResult = await parse("const a = 1;", {
             file: "index.ts",
-            sourceMap: { input: upstreamMap() },
+            inputSourceMap: upstreamMap(),
         });
 
         expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
@@ -176,7 +178,35 @@ describe("parse", (): void => {
 
         const result: AstResult = await parse(code, {
             file: "index.ts",
-            sourceMap: { input: "inline" },
+            inputSourceMap: "inline",
+        });
+
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+    });
+
+    it("ignores an output map set by an options hook", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+
+        const result: AstResult = await parse(code, {
+            file: "index.ts",
+            inputSourceMap: "inline",
+            plugins: [
+                {
+                    name: "output-for-every-stage",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): OptionsArgs => ({
+                        options: {
+                            ...args.options,
+                            sourceMap: {
+                                ...args.options.sourceMap,
+                                output: "inline",
+                            },
+                        },
+                    }),
+                },
+            ],
         });
 
         expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
@@ -196,7 +226,7 @@ describe("parse", (): void => {
             const result: AstResult = await parse("const a = 1;", {
                 cwd: directory,
                 file: "index.ts",
-                sourceMap: { input: "external" },
+                inputSourceMap: "external",
             });
 
             expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
@@ -223,7 +253,7 @@ describe("parse", (): void => {
             {
                 cwd: directory,
                 file: "index.ts",
-                sourceMap: { input: "auto" },
+                inputSourceMap: "auto",
             },
         );
 
@@ -244,7 +274,7 @@ describe("parse", (): void => {
             const fromExternal: AstResult = await parse("const a = 1;", {
                 cwd: directory,
                 file: "index.ts",
-                sourceMap: { input: "auto" },
+                inputSourceMap: "auto",
             });
 
             expect(fromExternal.ast.map?.sources).toEqual(["upstream.ts"]);
@@ -257,7 +287,7 @@ describe("parse", (): void => {
         const result: AstResult = await parse("const a = 1;", {
             cwd: directory,
             file: "index.ts",
-            sourceMap: { input: "auto" },
+            inputSourceMap: "auto",
         });
 
         expect(result.ast.map).toBeNull();

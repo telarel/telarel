@@ -44,6 +44,8 @@ The public modes are defined by `InputSourceMapMode` and `OutputSourceMapMode` i
 
 Each entry point has its own options struct. All of them convert to `ResolvableOptions`, pass through the plugin `options` fixpoint, and then resolve to `ResolvedOptions` (defaults applied).
 
+`parse` and `rewrite` expose a flat `input_source_map` on their user options; their conversions wrap it into the shared `source_map` bag with `output: None`. Plugin `options` hooks still receive the shared bag, and an `output` they set is ignored by the parse and rewrite stages.
+
 All internal path joining goes through `helpers/path.rs`; resolution is lexical and never canonicalizes. Internal code keeps path options as filesystem paths and converts to strings only at a boundary.
 
 ## Testing

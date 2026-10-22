@@ -78,11 +78,13 @@ pub fn assert_same_map(
     assert_eq!(actual.to_json_string(), expected.to_json_string());
 }
 
+/// The input-only request for a directly supplied map.
+pub fn input_map(map: SourceMap) -> InputSourceMap {
+    InputSourceMap::Mode(InputSourceMapMode::Value(map))
+}
+
 pub fn input_value(map: SourceMap) -> SourceMapOptions {
-    SourceMapOptions {
-        input: Some(InputSourceMap::Mode(InputSourceMapMode::Value(map))),
-        output: None,
-    }
+    SourceMapOptions { input: Some(input_map(map)), output: None }
 }
 
 pub fn output_mode(mode: OutputSourceMapMode) -> SourceMapOptions {

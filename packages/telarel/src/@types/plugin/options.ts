@@ -1,10 +1,10 @@
-import type { Format, Omit, Partial } from "ts-vista";
+import type { Omit, Partial } from "ts-vista";
 
 import type { BuiltinPlugin } from "#/@types/builtin";
 import type { MaybePromise } from "#/@types/common";
 import type { Language, SourceType } from "#/@types/grammar";
 import type { Plugin } from "#/@types/plugin";
-import type { SourceMapOptions } from "#/@types/source-map";
+import type { InputSourceMap, SourceMapOptions } from "#/@types/source-map";
 
 /**
  * A conditional plugin slot that is skipped.
@@ -65,9 +65,16 @@ type CompleteOptions = {
 type ParseOptions = Partial<
     Pick<
         CompleteOptions,
-        "cwd" | "file" | "language" | "sourceType" | "sourceMap" | "plugins"
+        "cwd" | "file" | "language" | "sourceType" | "plugins"
     >
->;
+> & {
+    /**
+     * The input source-map request for the step.
+     *
+     * `parse` returns an AST and has no output source map.
+     */
+    inputSourceMap?: InputSourceMap;
+};
 
 /**
  * Options for `rewrite`.
@@ -75,9 +82,16 @@ type ParseOptions = Partial<
 type RewriteOptions = Partial<
     Pick<
         CompleteOptions,
-        "cwd" | "file" | "language" | "sourceType" | "sourceMap" | "plugins"
+        "cwd" | "file" | "language" | "sourceType" | "plugins"
     >
->;
+> & {
+    /**
+     * The input source-map request for the step.
+     *
+     * `rewrite` returns an AST and has no output source map.
+     */
+    inputSourceMap?: InputSourceMap;
+};
 
 /**
  * Options for `generate`.
@@ -112,7 +126,7 @@ type CompileOptions = Partial<
 /**
  * User options for a compile run.
  */
-type Options = Format<Partial<CompleteOptions>>;
+type Options = Partial<CompleteOptions>;
 
 /**
  * The options bag an `options` hook observes and returns.
@@ -132,14 +146,12 @@ type OptionsArgs = {
 /**
  * Resolved options, as seen by `start` and later hooks.
  */
-type ResolvedOptions = Format<
-    Omit<CompleteOptions, "plugins"> & {
-        /**
-         * The settled plugin list, after the options fixpoint.
-         */
-        plugins: Array<string>;
-    }
->;
+type ResolvedOptions = Omit<CompleteOptions, "plugins"> & {
+    /**
+     * The settled plugin list, after the options fixpoint.
+     */
+    plugins: Array<string>;
+};
 
 export type {
     CompleteOptions,

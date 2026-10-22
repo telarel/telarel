@@ -21,6 +21,8 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 
 The public JavaScript surface is documented in `docs/content/apis/javascript`. Internally, the seven NAPI functions live in `src/functions/`: the source (text or AST) is always the first argument, options never carry `code`, and `builtinParse` / `builtinGenerate` bypass the plugin chain.
 
+`parse` and `rewrite` take a flat `inputSourceMap`; every other entry point keeps the shared `sourceMap` bag, and every hook payload uses it.
+
 `cwd` stays a JS string at the napi boundary: the JS-facing option structs keep `String`, and both `_types/options.rs` and `unmarshal_options` convert it to `PathBuf` on entry. `_types/path.rs::path_label` renders it back at every outbound site; non-UTF-8 paths become `U+FFFD`. `file` stays a UTF-8 string (`String`) in both directions. Do not expose `PathBuf` in outbound napi structs: napi rejects non-UTF-8 paths on Unix.
 
 ## AST boundary

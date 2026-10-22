@@ -34,14 +34,16 @@ The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare E
 
 ### `RewriteOptions`
 
-| Field        | Type               | Default         | Description                                                            |
-| ------------ | ------------------ | --------------- | ---------------------------------------------------------------------- |
-| `cwd`        | `string`           | `process.cwd()` | Current working directory.                                             |
-| `file`       | `string`           | `index.ts`      | The file being rewritten. The language is inferred from its extension. |
-| `language`   | `Language`         | inferred        | The grammar of the code. Overrides the extension inference.            |
-| `sourceType` | `SourceType`       | inferred        | The module system of the code. Overrides the grammar's module kind.    |
-| `sourceMap`  | `SourceMapOptions` | off             | The source-map inputs and outputs requested for the step.              |
-| `plugins`    | `PluginOption[]`   | `[]`            | The plugins to run.                                                    |
+| Field            | Type             | Default         | Description                                                            |
+| ---------------- | ---------------- | --------------- | ---------------------------------------------------------------------- |
+| `cwd`            | `string`         | `process.cwd()` | Current working directory.                                             |
+| `file`           | `string`         | `index.ts`      | The file being rewritten. The language is inferred from its extension. |
+| `language`       | `Language`       | inferred        | The grammar of the code. Overrides the extension inference.            |
+| `sourceType`     | `SourceType`     | inferred        | The module system of the code. Overrides the grammar's module kind.    |
+| `inputSourceMap` | `InputSourceMap` | off             | The input source-map request for the step.                             |
+| `plugins`        | `PluginOption[]` | `[]`            | The plugins to run.                                                    |
+
+`rewrite` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `sourceMap.input`; a plugin-set `sourceMap.output` is ignored by `rewrite`.
 
 ## Returns
 

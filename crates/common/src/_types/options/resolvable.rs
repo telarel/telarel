@@ -7,6 +7,7 @@ use crate::_types::options::functions::generate::GenerateOptions;
 use crate::_types::options::functions::parse::ParseOptions;
 use crate::_types::options::functions::rewrite::RewriteOptions;
 use crate::_types::options::source_map::SourceMapOptions;
+use crate::_types::options::source_map::input::InputSourceMap;
 
 /// The union of every step's optional settings, resolved once per compile
 /// run; every field is optional.
@@ -28,6 +29,16 @@ pub struct ResolvableOptions {
     pub source_map: Option<SourceMapOptions>,
 }
 
+/// Normalize a flat input request into the shared source-map bag.
+fn wrap_input_source_map(
+    input: Option<InputSourceMap>
+) -> Option<SourceMapOptions> {
+    input.map(|input: InputSourceMap| SourceMapOptions {
+        input: Some(input),
+        output: None,
+    })
+}
+
 impl From<ParseOptions> for ResolvableOptions {
     fn from(options: ParseOptions) -> Self {
         Self {
@@ -35,7 +46,7 @@ impl From<ParseOptions> for ResolvableOptions {
             file: options.file,
             language: options.language,
             source_type: options.source_type,
-            source_map: options.source_map,
+            source_map: wrap_input_source_map(options.input_source_map),
         }
     }
 }
@@ -47,7 +58,7 @@ impl From<RewriteOptions> for ResolvableOptions {
             file: options.file,
             language: options.language,
             source_type: options.source_type,
-            source_map: options.source_map,
+            source_map: wrap_input_source_map(options.input_source_map),
         }
     }
 }
@@ -78,16 +89,20 @@ impl From<CompileFromAstOptions> for ResolvableOptions {
 
 #[cfg(test)]
 mod tests {
+    use crate::_types::options::source_map::input::InputSourceMapMode;
+
     use super::*;
 
     #[test]
-    fn test_from_parse_options_moves_every_field() {
+    fn test_from_parse_options_wraps_input_source_map() {
         let options: ParseOptions = ParseOptions {
             cwd: Some(PathBuf::from("/repo")),
             file: Some(String::from("src/app.ts")),
             language: Some(Language::TS),
             source_type: Some(SourceType::Module),
-            source_map: Some(SourceMapOptions::default()),
+            input_source_map: Some(InputSourceMap::Mode(
+                InputSourceMapMode::Auto,
+            )),
         };
 
         let resolvable: ResolvableOptions = ResolvableOptions::from(options);
@@ -96,17 +111,27 @@ mod tests {
         assert_eq!(resolvable.file.as_deref(), Some("src/app.ts"));
         assert_eq!(resolvable.language, Some(Language::TS));
         assert_eq!(resolvable.source_type, Some(SourceType::Module));
-        assert!(resolvable.source_map.is_some());
+
+        let source_map: SourceMapOptions =
+            resolvable.source_map.expect("input map is carried");
+
+        assert!(matches!(
+            source_map.input,
+            Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
+        ));
+        assert!(source_map.output.is_none());
     }
 
     #[test]
-    fn test_from_rewrite_options_moves_every_field() {
+    fn test_from_rewrite_options_wraps_input_source_map() {
         let options: RewriteOptions = RewriteOptions {
             cwd: Some(PathBuf::from("/repo")),
             file: Some(String::from("src/app.tsx")),
             language: Some(Language::TSX),
             source_type: Some(SourceType::Script),
-            source_map: Some(SourceMapOptions::default()),
+            input_source_map: Some(InputSourceMap::Mode(
+                InputSourceMapMode::Inline,
+            )),
         };
 
         let resolvable: ResolvableOptions = ResolvableOptions::from(options);
@@ -115,7 +140,15 @@ mod tests {
         assert_eq!(resolvable.file.as_deref(), Some("src/app.tsx"));
         assert_eq!(resolvable.language, Some(Language::TSX));
         assert_eq!(resolvable.source_type, Some(SourceType::Script));
-        assert!(resolvable.source_map.is_some());
+
+        let source_map: SourceMapOptions =
+            resolvable.source_map.expect("input map is carried");
+
+        assert!(matches!(
+            source_map.input,
+            Some(InputSourceMap::Mode(InputSourceMapMode::Inline)),
+        ));
+        assert!(source_map.output.is_none());
     }
 
     #[test]

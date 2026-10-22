@@ -26,14 +26,13 @@ mod tests {
 
     use telarel_common::{
         Ast, AstResult, CompileError, InputSourceMap, InputSourceMapMode,
-        RewriteOptions, SourceMap, SourceMapOptions,
+        RewriteOptions, SourceMap,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
         EndObserverPlugin, FailPlugin, FailStage, ReplaceAstPlugin, SpyPlugin,
-        assert_same_map, input_value, parse_fixture, parse_with_map,
-        sample_map,
+        assert_same_map, input_map, parse_fixture, parse_with_map, sample_map,
     };
 
     use super::rewrite;
@@ -89,7 +88,7 @@ mod tests {
         let map: SourceMap = sample_map("upstream.ts", 7);
 
         let options: RewriteOptions = RewriteOptions {
-            source_map: Some(input_value(map.clone())),
+            input_source_map: Some(input_map(map.clone())),
             ..RewriteOptions::default()
         };
 
@@ -109,7 +108,7 @@ mod tests {
         let ast: Ast = parse_with_map("const a = 1;", incoming.clone());
 
         let options: RewriteOptions = RewriteOptions {
-            source_map: Some(input_value(requested)),
+            input_source_map: Some(input_map(requested)),
             ..RewriteOptions::default()
         };
 
@@ -210,10 +209,9 @@ mod tests {
         let options: RewriteOptions = RewriteOptions {
             cwd: Some(PathBuf::from("/definitely/missing")),
             file: Some(String::from("index.ts")),
-            source_map: Some(SourceMapOptions {
-                input: Some(InputSourceMap::Mode(InputSourceMapMode::External)),
-                output: None,
-            }),
+            input_source_map: Some(InputSourceMap::Mode(
+                InputSourceMapMode::External,
+            )),
             ..RewriteOptions::default()
         };
 

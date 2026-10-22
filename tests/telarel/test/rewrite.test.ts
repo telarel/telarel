@@ -1,7 +1,9 @@
 import type {
     AstOptions,
     AstResult,
+    CommonPluginContext,
     FinalizeArgs,
+    OptionsArgs,
     Plugin,
     PluginContext,
     PrepareArgs,
@@ -174,11 +176,41 @@ describe("rewrite", (): void => {
 
         const result: AstResult = await rewrite(parsed.ast, {
             file: "index.ts",
-            sourceMap: { input: upstreamMap() },
+            inputSourceMap: upstreamMap(),
         });
 
         expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
         expect(result.ast.map?.mappings).toBe("AASA");
+    });
+
+    it("ignores an output map set by an options hook", async (): Promise<void> => {
+        const parsed: AstResult = await parse("const a = 1;", {
+            file: "index.ts",
+        });
+
+        const result: AstResult = await rewrite(parsed.ast, {
+            file: "index.ts",
+            inputSourceMap: upstreamMap(),
+            plugins: [
+                {
+                    name: "output-for-every-stage",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): OptionsArgs => ({
+                        options: {
+                            ...args.options,
+                            sourceMap: {
+                                ...args.options.sourceMap,
+                                output: "inline",
+                            },
+                        },
+                    }),
+                },
+            ],
+        });
+
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
     });
 
     it("keeps the AST's own map over a requested input map", async (): Promise<void> => {
@@ -199,7 +231,7 @@ describe("rewrite", (): void => {
 
         const result: AstResult = await rewrite(ast, {
             file: "index.ts",
-            sourceMap: { input: upstreamMap() },
+            inputSourceMap: upstreamMap(),
         });
 
         expect(result.ast.map?.sources).toEqual(["own.ts"]);

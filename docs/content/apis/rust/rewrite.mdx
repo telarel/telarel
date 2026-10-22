@@ -27,13 +27,15 @@ The AST's own input map wins; otherwise the resolved input source map is attache
 
 Every field is optional and resolved against defaults before use.
 
-| Field         | Type                       | Default             | Description                                                            |
-| ------------- | -------------------------- | ------------------- | ---------------------------------------------------------------------- |
-| `cwd`         | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                        |
-| `file`        | `Option<String>`           | `index.ts`          | The file being rewritten. The language is inferred from its extension. |
-| `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.            |
-| `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind.    |
-| `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the step.              |
+| Field              | Type                     | Default             | Description                                                            |
+| ------------------ | ------------------------ | ------------------- | ---------------------------------------------------------------------- |
+| `cwd`              | `Option<PathBuf>`        | process working dir | Filesystem root used to resolve relative paths.                        |
+| `file`             | `Option<String>`         | `index.ts`          | The file being rewritten. The language is inferred from its extension. |
+| `language`         | `Option<Language>`       | inferred            | The grammar of the code. Overrides the extension inference.            |
+| `source_type`      | `Option<SourceType>`     | inferred            | The module system of the code. Overrides the grammar's module kind.    |
+| `input_source_map` | `Option<InputSourceMap>` | off                 | The input source-map request for the step.                             |
+
+`rewrite` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `source_map.input`; a plugin-set `source_map.output` is ignored by `rewrite`.
 
 ## Returns
 

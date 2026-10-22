@@ -21,6 +21,7 @@
 - change `Ast::with_mut` to require `Program::source_text` to stay content-equal to `Ast::source`
 - change `CompileContext.cwd` to `&Path`
 - change `CompileError` to carry a message and optional source
+- change `ParseOptions` and `RewriteOptions` to accept `input_source_map` instead of `source_map`
 - change the `cwd` field in Rust option structs to `PathBuf`
 - change the `file` default to `index.ts`
 - change the `cwd` parameter of `resolve_input_source_map` to `&Path`
@@ -102,6 +103,7 @@
 
 - change AST normalization to `{ program, code, map? }` and accept either an `Ast` or a `Program` plus its source text
 - change `prepare`, `transform`, and `finalize` hook payloads to carry the AST's `code` and optional `map`; transform results are rebuilt from the returned `Ast`
+- change `parse` and `rewrite` JS options to use `inputSourceMap` instead of `sourceMap`
 - rename constructed builtin plugins to their JS-facing names
 - replace `compileStart` and `compileEnd` with `start` and `end`
 
@@ -118,6 +120,7 @@
 
 - change the re-exported `CompileContext.cwd` to `&Path`
 - change the re-exported `cwd` option fields to `PathBuf`
+- change the re-exported `ParseOptions` and `RewriteOptions` source-map option to `input_source_map`
 - change the re-exported `TransformArgs` to own a cheap `Ast` and drop its lifetime and `Copy` implementation
 - replace the `parse_owned` and `codegen` re-exports with the new entry points
 
@@ -133,6 +136,7 @@
 
 - change `compile` to take the source text first: `compile(code, options)`
 - change `createGenerator` and `ErrorSource.fromAst` to accept `Ast`
+- change `parse` and `rewrite` options to use `inputSourceMap` instead of `sourceMap`
 - change `Ast` from a plain object to a class with `program`, `source`, and `map` getters
 - change `Ast.map` to return `null` when no map is attached
 - change `Ast.program` to a deeply read-only view; use `Ast.mutate` to change it
