@@ -162,6 +162,7 @@
 #### Fixes
 
 - change external input source-map lookup to ignore `?query`/`#hash` suffixes in `file`
+- change the `options` hook to omit unset `cwd` and `file` instead of sending empty strings
 
 ## 0.1.0 (2026-10-10)
 

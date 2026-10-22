@@ -27,10 +27,6 @@ type PluginOption = MaybePromise<
 type CompleteOptions = {
     /**
      * Current working directory. By default, it is `process.cwd()`.
-     *
-     * Inside an `options` hook it reflects the value carried so far, and may be
-     * empty when a previous `options` hook omitted it; it is re-resolved to the
-     * process working directory before `start` and later hooks.
      */
     cwd: string;
     /**
@@ -130,6 +126,10 @@ type Options = Partial<CompleteOptions>;
 
 /**
  * The options bag an `options` hook observes and returns.
+ *
+ * Unset `cwd` and `file` are absent rather than empty strings. Defaults are
+ * applied only after the options fixpoint settles, so returning the bag
+ * unchanged keeps the defaults.
  */
 type ResolvableOptions = Partial<CompleteOptions>;
 

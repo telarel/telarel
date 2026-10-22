@@ -327,10 +327,10 @@ impl RefList {
 
 /// Worker-side call data for the `options` hook.
 pub struct OptionsCall {
-    /// Working directory used to resolve relative paths.
-    pub cwd: SharedStr,
-    /// The file being parsed/generated.
-    pub file: SharedStr,
+    /// Working directory used to resolve relative paths; absent when unset.
+    pub cwd: Option<SharedStr>,
+    /// The file being parsed/generated; absent when unset.
+    pub file: Option<SharedStr>,
     /// Source language of the file.
     pub language: SharedStr,
     /// Module system used for code generation.
@@ -353,8 +353,16 @@ impl ToNapiValue for OptionsCall {
 
         let mut object: Object<'static> = Object::new(&env)?;
 
-        object.set("cwd", val.cwd)?;
-        object.set("file", val.file)?;
+        // Unset values are absent, not empty strings: the pre-resolution bag
+        // must preserve "unset" so a hook echoing it keeps the defaults.
+        if let Some(cwd) = val.cwd {
+            object.set("cwd", cwd)?;
+        }
+
+        if let Some(file) = val.file {
+            object.set("file", file)?;
+        }
+
         object.set("language", val.language)?;
         object.set("sourceType", val.source_type)?;
 

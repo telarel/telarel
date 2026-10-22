@@ -40,6 +40,7 @@ The public plugin API is documented in `docs/content/apis/plugin/javascript`. In
 - `JsPlugin::from_object` validates `name` and scans the hook slots into TSFNs; `read_hook_meta` reads the `<hook>Meta` siblings produced by the JS wrapper.
 - Hook usage is inferred from the TSFNs present on the adapter.
 - The `options` hook is special: it is an async function returning a promise. Its resolution is bridged on the JS thread, because late plugin descriptors must be rooted and wrapped where JS objects are reachable.
+- The pre-resolution `options` payload omits unset `cwd` and `file`; absent means unset. Resolved hook payloads always carry both. Do not reintroduce empty-string sentinels.
 - Rooted descriptors live on the compile's `RefList` and are drained in `FunctionTask::finally`. Do not leak or double-release them.
 - Hook failures decode the private `PluginError` envelope from the message; ordinary `napi::Error` values keep their existing rendering.
 

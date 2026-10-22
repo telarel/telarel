@@ -293,44 +293,102 @@ describe("compile", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
-    it("defaults an omitted cwd to the process working directory", async (): Promise<void> => {
-        // `cwd` is optional. The `options` fixpoint runs BEFORE resolution, so
-        // an `options` hook observes the raw value (`""` when unset); the core
-        // resolves it to the process working directory for `start` and later
-        // hooks. The resolved value is runtime-dependent (the native binding
-        // reports Node's `process.cwd()` while the WASI runtime starts at `/`)
-        // — pin each runtime's own default.
+    it("omits unset cwd and file from the options hook and resolves their defaults", async (): Promise<void> => {
+        // The `options` fixpoint runs BEFORE resolution, so an unset `cwd` or
+        // `file` is absent from the bag (not `""`) — otherwise echoing the bag
+        // would shadow the defaults. The core resolves both for `start` and
+        // later hooks. `cwd` is runtime-dependent (the native binding reports
+        // Node's `process.cwd()` while the WASI runtime starts at `/`), so pin
+        // each runtime's own default.
         const isWasi: boolean = process.env.NAPI_RS_FORCE_WASI === "error";
-        const expected: string = isWasi ? "/" : process.cwd();
-        const seenRaw: Array<string> = [];
-        const seenResolved: Array<string> = [];
+
+        const expectedCwd: string = isWasi ? "/" : process.cwd();
+
+        const seenRaw: Array<{
+            hasCwd: boolean;
+            hasFile: boolean;
+            cwd: string | void;
+            file: string | void;
+        }> = [];
+
+        const seenResolved: Array<{ cwd: string; file: string }> = [];
 
         const result: CodeResult = await compile("const a = 1;", {
-            file: "index.ts",
             plugins: [
                 {
-                    name: "observe-raw-cwd",
+                    name: "observe-raw-options",
                     options: (
                         _ctx: CommonPluginContext,
                         args: OptionsArgs,
                     ): null => {
-                        seenRaw.push(args.options.cwd ?? "");
+                        seenRaw.push({
+                            hasCwd: "cwd" in args.options,
+                            hasFile: "file" in args.options,
+                            cwd: args.options.cwd,
+                            file: args.options.file,
+                        });
 
                         return null;
                     },
                 },
                 {
-                    name: "observe-resolved-cwd",
+                    name: "observe-resolved-options",
                     start: (_ctx: PluginContext, args: StartArgs): void => {
-                        seenResolved.push(args.options.cwd);
+                        seenResolved.push({
+                            cwd: args.options.cwd,
+                            file: args.options.file,
+                        });
                     },
                 },
             ],
         });
 
-        expect(seenRaw).toEqual([""]);
-        expect(seenResolved).toEqual([expected]);
+        expect(seenRaw).toEqual([
+            {
+                hasCwd: false,
+                hasFile: false,
+                cwd: void 0,
+                file: void 0,
+            },
+        ]);
+        expect(seenResolved).toEqual([{ cwd: expectedCwd, file: "index.ts" }]);
         expect(result.code).toBe("const a = 1;");
+    });
+
+    it("preserves defaults when an options hook echoes an unset bag", async (): Promise<void> => {
+        // Regression: the raw bag used to carry `""` for unset fields, so a
+        // spread-and-return turned them into explicit empty strings and lost
+        // the `index.ts` default (the empty file also infers the JS grammar).
+        const isWasi: boolean = process.env.NAPI_RS_FORCE_WASI === "error";
+        const expectedCwd: string = isWasi ? "/" : process.cwd();
+        const seen: Array<{ cwd: string; file: string }> = [];
+
+        const result: CodeResult = await compile("const a: number = 1;", {
+            plugins: [
+                {
+                    name: "echo-options",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): OptionsArgs => ({
+                        options: { ...args.options },
+                    }),
+                },
+                {
+                    name: "observe-resolved-options",
+                    start: (_ctx: PluginContext, args: StartArgs): void => {
+                        seen.push({
+                            cwd: args.options.cwd,
+                            file: args.options.file,
+                        });
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([{ cwd: expectedCwd, file: "index.ts" }]);
+        expect(result.map?.sources).toEqual(["index.ts"]);
+        expect(result.code).toBe("const a: number = 1;");
     });
 
     it("re-resolves a cwd omitted by a late options hook to the process working directory", async (): Promise<void> => {

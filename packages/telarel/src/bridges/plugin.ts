@@ -67,8 +67,8 @@ type RawTransformAstOutput = {
 type RawTransformOutput = RawTransformAstOutput | null;
 
 type RawOptionsArgs = {
-    cwd: string;
-    file: string;
+    cwd?: string;
+    file?: string;
     language: string;
     sourceType: string;
     sourceMap?: SourceMapOptions;
@@ -376,10 +376,17 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
             await runHook(async (): Promise<RawOptionsOutput | null> => {
                 // The payload's descriptors are already raw plugin objects.
                 const bag: ResolvableOptions = {
-                    cwd: rawArgs.cwd,
-                    file: rawArgs.file,
                     plugins: rawArgs.plugins as unknown as Array<PluginOption>,
                 };
+
+                // Unset values stay absent so an echoed bag keeps the defaults.
+                if (typeof rawArgs.cwd === "string") {
+                    bag.cwd = rawArgs.cwd;
+                }
+
+                if (typeof rawArgs.file === "string") {
+                    bag.file = rawArgs.file;
+                }
 
                 if (rawArgs.language.length > 0) {
                     bag.language = rawArgs.language as Language;

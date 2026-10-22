@@ -22,7 +22,7 @@ The core owns all state: a hook observes its stage arguments and returns a value
 
 ### Hook semantics
 
-**`options` — fixpoint replace.** Runs before the options are resolved, as a sequential fixpoint over the plugin list. A returned value replaces the whole options bag — this is a struct-level replace, not a patch: fields the returned value omits are dropped and fall back to their defaults. Returning nothing keeps the current bag. The payload carries the resolvable options and the plugin list, never the source.
+**`options` — fixpoint replace.** Runs before the options are resolved, as a sequential fixpoint over the plugin list. A returned value replaces the whole options bag — this is a struct-level replace, not a patch: fields the returned value omits are dropped and fall back to their defaults. Returning nothing keeps the current bag. The payload carries the resolvable options and the plugin list, never the source. An unset field stays unset until the fixpoint settles; defaults are applied only when the options are resolved.
 
 **`start` — notify.** Runs on every settled plugin with the fully resolved, read-only options. Return values are ignored; the first error aborts.
 

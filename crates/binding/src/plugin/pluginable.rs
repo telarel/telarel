@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
@@ -427,12 +427,12 @@ impl Pluginable for JsPlugin {
             };
 
             let call: OptionsCall = OptionsCall {
-                cwd: SharedStr::new(&path_label(
-                    args.options.cwd.as_deref().unwrap_or(Path::new("")),
-                )),
-                file: SharedStr::new(
-                    args.options.file.as_deref().unwrap_or(""),
-                ),
+                cwd: args
+                    .options
+                    .cwd
+                    .as_deref()
+                    .map(|cwd| SharedStr::new(&path_label(cwd))),
+                file: args.options.file.as_deref().map(SharedStr::new),
                 language: SharedStr::new(language_label(args.options.language)),
                 source_type: SharedStr::new(source_type_label(
                     args.options.source_type,
