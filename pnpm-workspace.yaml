@@ -19,7 +19,7 @@ overrides:
 
 catalogs:
     dep:
-        vite: ^8.3.4
+        vite: ^8.3.5
     test:
         vitest: ^5.0.5
 
