@@ -20,10 +20,7 @@ include = ["src/**", "Cargo.toml", "README.md"]
 # Workspace
 telarel_common = { workspace = true }
 
-# Crates
-oxc = { workspace = true }
-oxc_sourcemap = { workspace = true }
-
 [dev-dependencies]
 oxc = { workspace = true, features = ["codegen"] }
+oxc_sourcemap = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

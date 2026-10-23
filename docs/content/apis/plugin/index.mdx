@@ -7,6 +7,8 @@ Telarel is built around plugin hooks. A plugin is a value that carries a `name` 
 
 The core owns all state: a hook observes its stage arguments and returns a value that the core applies. A hook that returns nothing leaves the carried state unchanged. Plugins are passed to every entry point alongside the options.
 
+Rust plugins are coupled to the bundled oxc version, while JavaScript plugins remain backend-independent through ESTree.
+
 ## Hooks
 
 | Hook        | Arguments              | Return     | Semantics        |

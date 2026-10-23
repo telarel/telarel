@@ -16,7 +16,7 @@ pub struct CompileFromAstOptions {
     /// `None` resolves to the default file name.
     pub file: Option<String>,
     /// The grammar of the code;
-    /// `None` infers the grammar from the file extension.
+    /// `None` falls back to the input AST grammar, then the file extension.
     pub language: Option<Language>,
     /// The module system of the code;
     /// `None` keeps the module kind resolved from the grammar.

@@ -40,7 +40,7 @@ The parser resolves `sourceMap.input` and attaches it to the returned AST. Outpu
 
 A `Parser` whose `parse()` method returns `Promise<AstResult>`.
 
-`AstResult` is `{ ast: Ast }`.
+`AstResult` is `{ ast: Ast }`. `ast.language` is the grammar from the parser options.
 
 Parse failures reject with a [CompileError](/apis/javascript/CompileError).
 

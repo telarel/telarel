@@ -1,9 +1,9 @@
 ---
 title: Ast
-description: An owned AST with its source text, input source map, and mutable program access.
+description: An owned AST with its source text, language metadata, input source map, and mutable program access.
 ---
 
-`Ast` bundles an oxc `Program` with the source text its spans anchor to, the resolved source type, and an optional input source map.
+`Ast` bundles an oxc `Program` with the source text its spans anchor to, language metadata derived from that program, and an optional input source map.
 
 ```rust
 pub struct Ast { /* private fields */ }
@@ -11,6 +11,7 @@ pub struct Ast { /* private fields */ }
 impl Ast {
     pub fn from_source<F>(
         source: Arc<str>,
+        language: Language,
         source_type: SourceType,
         input_map: Option<SourceMap>,
         build: F,
@@ -20,6 +21,7 @@ impl Ast {
 
     pub fn try_from_source<F, E>(
         source: Arc<str>,
+        language: Language,
         source_type: SourceType,
         input_map: Option<SourceMap>,
         build: F,
@@ -29,6 +31,7 @@ impl Ast {
 
     pub fn program(&self) -> &Program<'_>;
     pub fn source(&self) -> &Arc<str>;
+    pub fn language(&self) -> Language;
     pub fn source_type(&self) -> SourceType;
     pub fn map(&self) -> Option<&SourceMap>;
 
@@ -47,12 +50,15 @@ impl Ast {
 
 ## Accessors
 
-| Accessor            | Type                 | Description                                    |
-| ------------------- | -------------------- | ---------------------------------------------- |
-| `ast.program()`     | `&Program<'_>`       | The parsed program.                            |
-| `ast.source()`      | `&Arc<str>`          | The source text the program's spans anchor to. |
-| `ast.source_type()` | `SourceType`         | The resolved source type.                      |
-| `ast.map()`         | `Option<&SourceMap>` | The input source map, if any.                  |
+| Accessor            | Type                 | Description                                                                        |
+| ------------------- | -------------------- | ---------------------------------------------------------------------------------- |
+| `ast.program()`     | `&Program<'_>`       | The parsed program.                                                                |
+| `ast.source()`      | `&Arc<str>`          | The source text the program's spans anchor to.                                     |
+| `ast.language()`    | `Language`           | The grammar of the parsed program: `JS`, `TS`, `DTS`, `JSX`, or `TSX`.             |
+| `ast.source_type()` | `SourceType`         | The resolved module kind of the parsed program: `Script`, `CommonJS`, or `Module`. |
+| `ast.map()`         | `Option<&SourceMap>` | The input source map, if any.                                                      |
+
+`Language` and `SourceType` are the Telarel enums. `source_type()` never reports `Unambiguous` for a normally parsed AST: that value is a parser input, and a parsed program resolves to `Script`, `CommonJS`, or `Module`.
 
 Program spans are UTF-8 byte offsets into `source()`, matching `oxc::span::Span`.
 

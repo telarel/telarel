@@ -56,6 +56,8 @@ This repository is a TypeScript/Rust monorepo.
 
 Do not introduce circular dependencies.
 
+Only `common`, `plugin_transform`, `binding`, and `telarel` may use `oxc` in production; `core` and `plugin` access it only from tests.
+
 ## Code Standards
 
 ### Languages

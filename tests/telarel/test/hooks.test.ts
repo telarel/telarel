@@ -6,6 +6,7 @@ import type {
     FinalizeArgs,
     GenerateArgs,
     Generator,
+    Language,
     ParseArgs,
     Parser,
     PluginContext,
@@ -21,6 +22,7 @@ import {
     compile,
     createGenerator,
     createParser,
+    parse,
 } from "telarel";
 import { describe, expect, it } from "vitest";
 
@@ -108,6 +110,39 @@ describe("hooks", (): void => {
 
         expect(seen).toEqual(["first"]);
         expect(result.code).toBe("let custom = 1;");
+    });
+
+    it("parse: parser options own the grammar over a returned Ast language", async (): Promise<void> => {
+        const replacement: Ast = (
+            await parse("const a = 1;", { file: "index.js" })
+        ).ast;
+        const seen: Array<Language | void> = [];
+
+        const result: CodeResult = await compile("const b = 2;", {
+            cwd: "/repo",
+            file: "index.js",
+            plugins: [
+                {
+                    name: "returned-language",
+                    parse: (): AstResult => ({
+                        ast: new Ast({
+                            program: replacement.program as unknown as Program,
+                            source: replacement.source,
+                            language: "tsx",
+                        }),
+                    }),
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): void => {
+                        seen.push(args.ast.language);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["js"]);
+        expect(result.code).toBe("const a = 1;");
     });
 
     it("parse: a null return defers to the next hook", async (): Promise<void> => {

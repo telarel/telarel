@@ -78,7 +78,8 @@ pub struct JsRewriteOptions {
     /// omitted on the JS side resolves to a default filename.
     pub file: Option<String>,
     /// The grammar of the source;
-    /// omitted on the JS side infers the grammar from the file extension.
+    /// omitted on the JS side falls back to the AST language, then the file
+    /// extension.
     pub language: Option<String>,
     /// The module system of the source;
     /// omitted on the JS side keeps the module kind resolved from the grammar.
@@ -103,7 +104,8 @@ pub struct JsCompileFromAstOptions {
     /// omitted on the JS side resolves to a default filename.
     pub file: Option<String>,
     /// The grammar of the source;
-    /// omitted on the JS side infers the grammar from the file extension.
+    /// omitted on the JS side falls back to the AST language, then the file
+    /// extension.
     pub language: Option<String>,
     /// The module system of the source;
     /// omitted on the JS side keeps the module kind resolved from the grammar.
@@ -119,8 +121,8 @@ pub struct JsCompileFromAstOptions {
     pub plugins: Vec<ObjectRef<false>>,
 }
 
-/// JS-facing options for `generate`: no grammar and no module kind, because
-/// the generated program's own `sourceType` settles the module kind.
+/// JS-facing options for `generate`: the module kind is absent because the
+/// generated program's own `sourceType` settles it.
 #[napi_derive::napi(object)]
 pub struct JsGenerateOptions {
     /// Current working directory;
@@ -129,6 +131,10 @@ pub struct JsGenerateOptions {
     /// The file being generated;
     /// omitted on the JS side resolves to a default filename.
     pub file: Option<String>,
+    /// The grammar of the generated code;
+    /// omitted on the JS side falls back to the AST language, then the file
+    /// extension.
+    pub language: Option<String>,
     /// The output code settings.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
@@ -195,7 +201,9 @@ fn parse_source_type(text: &str) -> std::result::Result<SourceType, String> {
 }
 
 /// Parse an optional JS grammar label.
-fn parse_language_option(language: Option<&str>) -> Result<Option<Language>> {
+pub(crate) fn parse_language_option(
+    language: Option<&str>
+) -> Result<Option<Language>> {
     match language {
         | Some(text) => {
             Ok(Some(text.parse::<Language>().map_err(invalid_arg)?))
@@ -634,6 +642,9 @@ impl JsCompileFromAstOptions {
 impl JsGenerateOptions {
     /// Convert the JS-facing options into the Rust [`GenerateOptions`].
     pub fn to_generate_options(&self) -> Result<GenerateOptions> {
+        let language: Option<Language> =
+            parse_language_option(self.language.as_deref())?;
+
         let source_map: Option<SourceMapOptions> = match &self.source_map {
             | Some(value) => Some(parse_source_map_options(value)?),
             | None => None,
@@ -642,6 +653,7 @@ impl JsGenerateOptions {
         Ok(GenerateOptions {
             cwd: self.cwd.clone().map(PathBuf::from),
             file: self.file.clone(),
+            language,
             output: parse_output_options(self.output.as_ref())?,
             source_map,
         })
@@ -1121,10 +1133,11 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_options_drop_language_and_source_type() {
+    fn test_generate_options_forward_language_and_drop_source_type() {
         let options: JsGenerateOptions = JsGenerateOptions {
             cwd: Some(String::from("/repo")),
             file: Some(String::from("out.js")),
+            language: Some(String::from("tsx")),
             output: None,
             source_map: Some(serde_json::json!({ "output": "inline" })),
             plugins: Vec::new(),
@@ -1135,7 +1148,43 @@ mod tests {
 
         assert_eq!(parsed.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(parsed.file.as_deref(), Some("out.js"));
+        assert_eq!(parsed.language, Some(Language::TSX));
         assert!(parsed.source_map.is_some());
+    }
+
+    #[test]
+    fn test_generate_options_absent_language_stays_unset() {
+        let options: JsGenerateOptions = JsGenerateOptions {
+            cwd: None,
+            file: None,
+            language: None,
+            output: None,
+            source_map: None,
+            plugins: Vec::new(),
+        };
+
+        let parsed: GenerateOptions =
+            options.to_generate_options().expect("generate options parse");
+
+        assert_eq!(parsed.language, None);
+    }
+
+    #[test]
+    fn test_generate_options_invalid_language_errors() {
+        let options: JsGenerateOptions = JsGenerateOptions {
+            cwd: None,
+            file: None,
+            language: Some(String::from("json")),
+            output: None,
+            source_map: None,
+            plugins: Vec::new(),
+        };
+
+        let error: napi::Error =
+            options.to_generate_options().expect_err("invalid language errors");
+
+        assert_eq!(error.status, napi::Status::InvalidArg);
+        assert!(error.reason.contains("invalid language \"json\""));
     }
 
     fn compile_options_with_source_map(
@@ -1274,6 +1323,7 @@ mod tests {
         let options: GenerateOptions = JsGenerateOptions {
             cwd: None,
             file: Some(String::from("src/index.ts")),
+            language: None,
             output: Some(JsOutputOptions {
                 file: Some(String::from("dist/index.js")),
             }),

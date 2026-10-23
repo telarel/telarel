@@ -32,6 +32,8 @@ Every field is required. In a `generate` hook, the stage options are available a
 | `file`      | `string`           | The file being generated.                                 |
 | `sourceMap` | `SourceMapOptions` | The source-map inputs and outputs requested for the step. |
 
+Generation uses `ast.language` when present, then the `file` extension. `GeneratorOptions` has no `language` field.
+
 The builtin generator composes the AST's input map into the produced map and returns that map separately. Output delivery modes (`external`, `inline`, and `both`) are applied by the pipeline, not by the builtin generator.
 
 ## Returns

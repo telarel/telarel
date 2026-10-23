@@ -1,12 +1,16 @@
+use oxc::span::SourceType as OxcSourceType;
+
 use telarel_common::{
-    Ast, CodeResult, Generator, GeneratorOptions, ResolvedOptions,
+    Ast, CodeResult, Generator, GeneratorOptions, Language, ResolvedOptions,
     resolve_options,
 };
 
 use crate::_types::ast::JsAstInput;
 use crate::_types::options::JsGeneratorOptions;
 use crate::_types::results::JsCodeResult;
-use crate::ast::{js_to_ast, source_type_for_generate};
+use crate::ast::{
+    effective_language, js_to_ast, parse_ast_language, source_type_for_generate,
+};
 use crate::tasks::anyhow_to_napi;
 use crate::tasks::error_to_napi;
 use crate::tasks::function::{FunctionTask, Run};
@@ -20,16 +24,22 @@ pub fn builtin_generate(
     options: JsGeneratorOptions,
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<FunctionTask<JsCodeResult>>>
 {
-    // The generator options carry no grammar/module kind: the resolved file
-    // supplies the grammar and the program JSON supplies the module kind.
+    // The generator options carry no grammar: the input AST's language wins,
+    // then the resolved file, while the program JSON owns the module kind.
     let resolved: ResolvedOptions =
         resolve_options(options.to_resolvable()?, Vec::new());
 
     let options_rust: GeneratorOptions = GeneratorOptions::from(&resolved);
 
-    let source_type = source_type_for_generate(resolved.language);
-
     let input: crate::ast::JsAstInput = ast.into();
+
+    let language: Language = effective_language(
+        None,
+        parse_ast_language(input.language.as_deref())?,
+        resolved.language,
+    );
+
+    let source_type: OxcSourceType = source_type_for_generate(language);
 
     let run: Run<JsCodeResult> = Box::new(move || {
         let ast: Ast = js_to_ast(input, source_type).map_err(anyhow_to_napi)?;

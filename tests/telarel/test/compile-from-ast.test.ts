@@ -1,4 +1,5 @@
 import type {
+    Ast,
     AstOptions,
     AstResult,
     CodeResult,
@@ -42,6 +43,42 @@ describe("compileFromAst", (): void => {
 
         expect(result.code).toBe("const renamed = 1;");
         expect(result.map?.version).toBe(3);
+    });
+
+    it("uses the AST language and lets an explicit language override it", async (): Promise<void> => {
+        const tsx: AstResult = await parse("const f = <T,>(x: T) => x;", {
+            language: "tsx",
+        });
+
+        const fromAst: CodeResult = await compileFromAst(tsx.ast);
+
+        expect(fromAst.code).toBe("const f = <T,>(x: T) => x;");
+
+        const explicit: CodeResult = await compileFromAst(tsx.ast, {
+            language: "ts",
+        });
+
+        expect(explicit.code).toBe("const f = <T>(x: T) => x;");
+    });
+
+    it("exposes the AST language to hook contexts", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const f = <T,>(x: T) => x;", {
+                language: "tsx",
+            })
+        ).ast;
+
+        await compileFromAst(ast, {
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "observe-language",
+                    prepare: (ctx: PluginContext): void => {
+                        expect(ctx.module.language).toBe("tsx");
+                    },
+                },
+            ],
+        });
     });
 
     it("runs options, start, and end exactly once and skips parse", async (): Promise<void> => {

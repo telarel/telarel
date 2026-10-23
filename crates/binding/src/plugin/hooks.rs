@@ -544,6 +544,8 @@ pub struct ObserveCall {
     pub code: String,
     /// The input source map, when the AST carries one.
     pub map: Option<JsSourceMap>,
+    /// Grammar of the AST.
+    pub ast_language: String,
 }
 
 impl HookCall for ObserveCall {
@@ -562,6 +564,7 @@ impl HookCall for ObserveCall {
             ast_json: self.ast_json,
             code: self.code,
             map: self.map,
+            language: self.ast_language,
         };
 
         Ok((context, payload))
@@ -598,6 +601,8 @@ pub struct TransformCall {
     pub code: String,
     /// The input source map, when the AST carries one.
     pub map: Option<JsSourceMap>,
+    /// Grammar of the AST the hook receives.
+    pub ast_language: String,
 }
 
 impl HookCall for TransformCall {
@@ -616,6 +621,7 @@ impl HookCall for TransformCall {
             ast_json: self.ast_json,
             code: self.code,
             map: self.map,
+            language: self.ast_language,
         };
 
         Ok((context, payload))

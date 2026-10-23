@@ -57,7 +57,7 @@ type CompleteOptions = {
      */
     file: string;
     /**
-     * The grammar of the code. By default, it is inferred from the file
+     * The grammar of the code. Resolved from options, the AST, or the file
      * extension.
      */
     language: Language;
@@ -119,11 +119,12 @@ type RewriteOptions = Partial<
 /**
  * Options for `generate`.
  *
- * The grammar and module kind are absent: the generated program's own
- * `sourceType` settles the module kind.
+ * The module kind is absent: the generated program's own `sourceType` settles
+ * it. The grammar falls back from `language` to the AST language, then the file
+ * extension.
  */
 type GenerateOptions = Partial<
-    Pick<CompleteOptions, "cwd" | "file" | "sourceMap" | "plugins">
+    Pick<CompleteOptions, "cwd" | "file" | "language" | "sourceMap" | "plugins">
 > & {
     /**
      * The output code settings.

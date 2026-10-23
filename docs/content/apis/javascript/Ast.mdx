@@ -1,14 +1,15 @@
 ---
 title: Ast
-description: An AST with its source text, optional source map, and mutable program access.
+description: An AST with its source text, optional language metadata and source map, and mutable program access.
 ---
 
-`Ast` carries an ESTree `Program`, the source text its spans anchor to, and an optional incremental source map. Every AST-bearing hook receives an `Ast`.
+`Ast` carries an ESTree `Program`, the source text its spans anchor to, optional language metadata, and an optional incremental source map. Every AST-bearing hook receives an `Ast`.
 
 ```ts
 type AstOptions = {
     program: Program;
     source: string;
+    language?: Language;
     map?: SourceMap;
 };
 
@@ -17,6 +18,8 @@ class Ast {
 
     get program(): DeepReadonly<Program>;
     get source(): Readonly<string>;
+    get language(): Language | void;
+    get sourceType(): SourceType;
     get map(): DeepReadonly<SourceMap> | null;
 
     mutate<Result extends void | Promise<void>>(
@@ -27,20 +30,27 @@ class Ast {
 
 ## Constructor
 
-| Field     | Type        | Description                                             |
-| --------- | ----------- | ------------------------------------------------------- |
-| `program` | `Program`   | The ESTree program.                                     |
-| `source`  | `string`    | The source text the program's spans anchor to.          |
-| `map`     | `SourceMap` | Optional incremental source map. Omit when unavailable. |
+| Field      | Type        | Description                                                                                                                     |
+| ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `program`  | `Program`   | The ESTree program.                                                                                                             |
+| `source`   | `string`    | The source text the program's spans anchor to.                                                                                  |
+| `language` | `Language`  | Optional grammar of the program. Omit for `new Ast({ program, source })`: ESTree cannot carry grammar, so it stays `undefined`. |
+| `map`      | `SourceMap` | Optional incremental source map. Omit when unavailable.                                                                         |
 
 ## Members
 
-| Member    | Type                              | Description                                                          |
-| --------- | --------------------------------- | -------------------------------------------------------------------- |
-| `program` | `DeepReadonly<Program>`           | A deeply read-only view of the program. Use `mutate` to change it.   |
-| `source`  | `string`                          | The source text the program's spans anchor to.                       |
-| `map`     | `DeepReadonly<SourceMap> \| null` | The incremental source map, or `null` when the AST carries none.     |
-| `mutate`  | `(fn) => Result`                  | Runs `fn` with mutable access to the program and returns its result. |
+| Member       | Type                              | Description                                                                                                   |
+| ------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `program`    | `DeepReadonly<Program>`           | A deeply read-only view of the program. Use `mutate` to change it.                                            |
+| `source`     | `string`                          | The source text the program's spans anchor to.                                                                |
+| `language`   | `Language \| void`                | The grammar of the program, or `undefined` when unknown. Populated by `parse`, `rewrite`, and `createParser`. |
+| `sourceType` | `SourceType`                      | The module kind, read through from `program.sourceType`. Values are `"script" \| "module" \| "commonjs"`.     |
+| `map`        | `DeepReadonly<SourceMap> \| null` | The incremental source map, or `null` when the AST carries none.                                              |
+| `mutate`     | `(fn) => Result`                  | Runs `fn` with mutable access to the program and returns its result.                                          |
+
+`sourceType` is a read-through of `ast.program.sourceType`; it never returns `"unambiguous"`. There is no stored source-type field, so changes made through `Ast.mutate` are reflected immediately.
+
+When an entry point resolves a grammar, explicit `options.language` wins over `Ast.language`, which wins over the `file` extension.
 
 The `program` getter is typed as `DeepReadonly<Program>`, so nested nodes and arrays cannot be changed through it.
 

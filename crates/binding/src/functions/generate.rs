@@ -1,17 +1,20 @@
 use std::sync::Arc;
 
 use napi::Env;
+use oxc::span::SourceType as OxcSourceType;
 
 use telarel_common::{
-    Ast, CodeResult, GenerateOptions, ResolvableOptions, ResolvedOptions,
-    resolve_options,
+    Ast, CodeResult, GenerateOptions, Language, ResolvableOptions,
+    ResolvedOptions, resolve_options,
 };
 use telarel_plugin::SharedPluginable;
 
 use crate::_types::ast::JsAstInput;
 use crate::_types::options::JsGenerateOptions;
 use crate::_types::results::JsCodeResult;
-use crate::ast::{js_to_ast, source_type_for_generate};
+use crate::ast::{
+    effective_language, js_to_ast, parse_ast_language, source_type_for_generate,
+};
 use crate::plugin::build::to_plugins;
 use crate::plugin::hooks::RefList;
 use crate::tasks::function::{FunctionTask, Run};
@@ -27,22 +30,28 @@ pub fn generate(
 {
     let options_rust: GenerateOptions = options.to_generate_options()?;
 
-    // The generate options carry no grammar/module kind: the AST is rebuilt
-    // with an unambiguous source type, so the codec resolves the module kind
-    // from the program JSON while the grammar comes from the resolved file.
+    // Explicit options win, then the input AST's grammar, then the grammar
+    // inferred from the resolved file. The module kind stays absent so the
+    // generated program's own `sourceType` settles it.
     let resolved: ResolvedOptions = resolve_options(
         ResolvableOptions::from(options_rust.clone()),
         Vec::new(),
     );
 
-    let source_type = source_type_for_generate(resolved.language);
+    let input: crate::ast::JsAstInput = ast.into();
+
+    let language: Language = effective_language(
+        options_rust.language,
+        parse_ast_language(input.language.as_deref())?,
+        resolved.language,
+    );
+
+    let source_type: OxcSourceType = source_type_for_generate(language);
 
     let refs: Arc<RefList> = Arc::new(RefList::new());
 
     let plugins: Vec<SharedPluginable> =
         to_plugins(&env, options.plugins, &refs)?;
-
-    let input: crate::ast::JsAstInput = ast.into();
 
     let run: Run<JsCodeResult> = Box::new(move || {
         let ast: Ast = js_to_ast(input, source_type).map_err(anyhow_to_napi)?;

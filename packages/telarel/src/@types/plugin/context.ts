@@ -14,8 +14,8 @@ type ModuleInfo = {
      */
     file: string;
     /**
-     * The language of the source code. By default, it is inferred from the file
-     * extension.
+     * The language of the source code. Resolved from options, the AST, or the
+     * file extension.
      */
     language: Language | void;
     /**

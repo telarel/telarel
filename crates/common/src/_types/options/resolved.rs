@@ -12,7 +12,8 @@ pub struct ResolvedOptions {
     pub cwd: PathBuf,
     /// The file being compiled.
     pub file: String,
-    /// The grammar of the code, defaulted from the file extension.
+    /// The grammar of the code, resolved from options, the AST, or the file
+    /// extension.
     pub language: Language,
     /// The module system of the code, resolved from the grammar.
     pub source_type: SourceType,

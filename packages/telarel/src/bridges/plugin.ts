@@ -52,18 +52,21 @@ type RawAstArgs = {
     astJson: string;
     code: string;
     map?: SourceMap | null;
+    language?: string;
 };
 
 type AstInput = {
     program: Program;
     code: string;
     map?: SourceMap;
+    language?: Language;
 };
 
 type RawTransformAstOutput = {
     astJson: string;
     code: string;
     map?: SourceMap;
+    language?: string;
 };
 
 type RawTransformOutput = RawTransformAstOutput | null;
@@ -283,19 +286,29 @@ const fromAstInput = (ast: AstInput): Ast =>
     new Ast({
         program: ast.program,
         source: ast.code,
+        language: ast.language,
         map: ast.map,
     });
 
-const toAstInput = (ast: Ast): AstInput => ({
-    program: ast.program as Program,
-    code: ast.source,
-    map: (ast.map as SourceMap | null) ?? void 0,
-});
+const toAstInput = (ast: Ast): AstInput => {
+    const input: AstInput = {
+        program: ast.program as Program,
+        code: ast.source,
+        map: (ast.map as SourceMap | null) ?? void 0,
+    };
+
+    if (typeof ast.language === "string") {
+        input.language = ast.language;
+    }
+
+    return input;
+};
 
 const toAst = ({ args }: { args: RawAstArgs }): Ast =>
     fromAstInput({
         program: JSON.parse(args.astJson) as Program,
         code: args.code,
+        language: toLanguage(args.language ?? "") ?? void 0,
         map: args.map ?? void 0,
     });
 
@@ -579,6 +592,10 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
                 if (ast.map !== void 0) {
                     output.map = ast.map;
+                }
+
+                if (typeof ast.language === "string") {
+                    output.language = ast.language;
                 }
 
                 return output;

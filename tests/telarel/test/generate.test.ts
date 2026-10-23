@@ -1,13 +1,16 @@
 import type {
+    Ast,
     AstOptions,
     AstResult,
     CodeResult,
     GenerateArgs,
+    Generator,
+    Language,
     PluginContext,
     SourceMap,
 } from "telarel";
 
-import { generate, parse } from "telarel";
+import { CompileError, createGenerator, generate, parse } from "telarel";
 import { describe, expect, it } from "vitest";
 
 import { buildMap, SOURCE_MAPPING_COMMENT } from "#/functions/sourcemap";
@@ -152,6 +155,89 @@ describe("generate", (): void => {
         expect(result.code).toContain(SOURCE_MAPPING_COMMENT);
     });
 
+    it("uses the AST language when no generation language is given", async (): Promise<void> => {
+        const ast: AstResult["ast"] = (
+            await parse("const f = <T,>(x: T) => x;", { language: "tsx" })
+        ).ast;
+
+        const result: CodeResult = await generate(ast);
+
+        expect(ast.language).toBe("tsx");
+        expect(result.code).toBe("const f = <T,>(x: T) => x;");
+    });
+
+    it("lets an explicit language override the AST language", async (): Promise<void> => {
+        const ast: AstResult["ast"] = (
+            await parse("const f = <T,>(x: T) => x;", { language: "tsx" })
+        ).ast;
+
+        const result: CodeResult = await generate(ast, { language: "ts" });
+
+        expect(result.code).toBe("const f = <T>(x: T) => x;");
+    });
+
+    it("createGenerator prefers the AST language over the file", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const f = <T,>(x: T) => x;", {
+                language: "tsx",
+            })
+        ).ast;
+        const generator: Generator = createGenerator(ast, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: {},
+        });
+        const result: CodeResult = await generator.generate();
+
+        expect(result.code).toBe("const f = <T,>(x: T) => x;");
+    });
+
+    it("exposes the AST language to the generate hook", async (): Promise<void> => {
+        const ast: AstResult["ast"] = (
+            await parse("const a: number = 1;", { file: "index.ts" })
+        ).ast;
+        const seen: Array<Language | void> = [];
+
+        await generate(ast, {
+            plugins: [
+                {
+                    name: "observe-language",
+                    generate: (
+                        _ctx: PluginContext,
+                        args: GenerateArgs,
+                    ): null => {
+                        seen.push(args.ast.language);
+
+                        return null;
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["ts"]);
+    });
+
+    it("exposes the AST language to plugin contexts", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const f = <T,>(x: T) => x;", {
+                language: "tsx",
+            })
+        ).ast;
+
+        await generate(ast, {
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "observe-language",
+                    generate: (ctx: PluginContext): null => {
+                        expect(ctx.module.language).toBe("tsx");
+                        return null;
+                    },
+                },
+            ],
+        });
+    });
+
     it("exposes the ast and options to the generate hook", async (): Promise<void> => {
         const seen: Array<{
             keys: Array<string>;
@@ -294,6 +380,19 @@ describe("generate", (): void => {
                 ],
             }),
         ).rejects.toThrow("generate-kaboom");
+    });
+
+    it("rejects an invalid language with a CompileError", async (): Promise<void> => {
+        const ast: Ast = (await parse("const a = 1;")).ast;
+
+        await expect(
+            generate(ast, { language: "json" as never }),
+        ).rejects.toSatisfy(
+            (error: unknown): boolean =>
+                error instanceof CompileError &&
+                error.message ===
+                    'invalid language "json": expected "js", "ts", "dts", "jsx" or "tsx"',
+        );
     });
 
     it("rejects a malformed output mode", async (): Promise<void> => {

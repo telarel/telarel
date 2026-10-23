@@ -27,6 +27,8 @@ Every invocation runs:
 5. the entry point's stages, inline
 6. `end`
 
+AST-entry stages resolve language as explicit options, then AST language, then the file extension; `ModuleInfo` and post-resolution hooks see that language.
+
 `options`, `start`, and `end` fire exactly once per invocation. No entry point re-enters another.
 
 `end` runs on every path after the options fixpoint settles, including stage and `start` failures. The only path that skips `end` is an options-fixpoint failure, because no driver exists yet. On a stage failure, a failing `end` returns its own error instead of the stage error; on a success path it is the error.
@@ -44,6 +46,10 @@ Shared input/output invariants: [common source maps](../common/AGENTS.md#source-
 - Hook errors cross the pipeline unchanged; the pipeline adds no stage prefixes, so the message and `ErrorSource` are exactly what the plugin or builtin produced.
 - The original stage error is passed to `end` as-is.
 - A failing `end` returns its own error instead of the stage error; a succeeding `end` leaves the stage error untouched.
+
+## Dependency boundary
+
+Production code must not import `oxc` or `oxc_sourcemap` directly; use the re-exports and types from `telarel_common`. Direct access belongs in `#[cfg(test)]` modules, with both crates as dev-dependencies. Oxc is an implementation detail behind `telarel_common`, which keeps the pipeline on Telarel's semantic types rather than a specific backend.
 
 ## Testing
 

@@ -44,6 +44,10 @@ Each hook has its own optional `PluginHookMeta { order }`. `sort_plugins_by_hook
 
 `src/plugin_driver/hooks/transform.rs` owns the carried `Ast` and hands each hook an O(1) handle clone. Keeping the fold's handle alive is what forces a mutating hook's `Ast::with_mut` to copy on write, so a `None` return cannot mutate the carried AST. Public hook semantics: [plugin docs](../../docs/content/apis/plugin/index.mdx).
 
+## Dependency boundary
+
+Production code must not import `oxc` or `oxc_sourcemap` directly; use the re-exports and types from `telarel_common`. Direct access belongs in `#[cfg(test)]` modules, with both crates as dev-dependencies. Oxc is an implementation detail behind `telarel_common`, which keeps the hook contract on Telarel's semantic types rather than a specific backend.
+
 ## Testing
 
 The driver and fixpoint modules contain most of the behavioral coverage.

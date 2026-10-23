@@ -34,14 +34,16 @@ The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare E
 
 ### `RewriteOptions`
 
-| Field            | Type             | Default         | Description                                                            |
-| ---------------- | ---------------- | --------------- | ---------------------------------------------------------------------- |
-| `cwd`            | `string`         | `process.cwd()` | Current working directory.                                             |
-| `file`           | `string`         | `index.ts`      | The file being rewritten. The language is inferred from its extension. |
-| `language`       | `Language`       | inferred        | The grammar of the code. Overrides the extension inference.            |
-| `sourceType`     | `SourceType`     | inferred        | The module system of the code. Overrides the grammar's module kind.    |
-| `inputSourceMap` | `InputSourceMap` | off             | The input source-map request for the step.                             |
-| `plugins`        | `PluginOption[]` | `[]`            | The plugins to run.                                                    |
+| Field            | Type             | Default         | Description                                                                    |
+| ---------------- | ---------------- | --------------- | ------------------------------------------------------------------------------ |
+| `cwd`            | `string`         | `process.cwd()` | Current working directory.                                                     |
+| `file`           | `string`         | `index.ts`      | The file being rewritten. Its extension is the final fallback for the grammar. |
+| `language`       | `Language`       | inferred        | The grammar of the code. Overrides the AST language and extension inference.   |
+| `sourceType`     | `SourceType`     | inferred        | The module system of the code. Overrides the grammar's module kind.            |
+| `inputSourceMap` | `InputSourceMap` | off             | The input source-map request for the step.                                     |
+| `plugins`        | `PluginOption[]` | `[]`            | The plugins to run.                                                            |
+
+The grammar precedence is `options.language > Ast.language > file extension`.
 
 `InputSourceMap` is a `SourceMap` value, a literal input mode (`"inline"`, `"external"`, or `"auto"`), or `{ mode, path? }`; in the options form, `mode` accepts a `SourceMap` value or a literal input mode.
 
@@ -49,7 +51,7 @@ The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare E
 
 ## Returns
 
-`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }`.
+`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }`. The returned `Ast` carries the resolved language.
 
 ## Example
 

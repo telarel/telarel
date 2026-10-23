@@ -3,14 +3,16 @@ use std::sync::Arc;
 use napi::Env;
 
 use telarel_common::{
-    Ast, AstResult, ResolvableOptions, ResolvedOptions, RewriteOptions,
-    resolve_options,
+    Ast, AstResult, Language, ResolvableOptions, ResolvedOptions,
+    RewriteOptions, resolve_options,
 };
 use telarel_plugin::SharedPluginable;
 
 use crate::_types::ast::{JsAstInput, JsAstResult};
 use crate::_types::options::JsRewriteOptions;
-use crate::ast::{js_to_ast, source_type_for_options};
+use crate::ast::{
+    effective_language, js_to_ast, parse_ast_language, source_type_for_options,
+};
 use crate::plugin::build::to_plugins;
 use crate::plugin::hooks::RefList;
 use crate::tasks::function::{FunctionTask, Run};
@@ -25,16 +27,24 @@ pub fn rewrite(
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<FunctionTask<JsAstResult>>> {
     let options_rust: RewriteOptions = options.to_rewrite_options()?;
 
-    // The read-back grammar comes from the same resolved context the pipeline
-    // applies, so `language`/`sourceType` default identically.
+    // Explicit options win, then the input AST's grammar, then the grammar
+    // inferred from the resolved file.
     let resolved: ResolvedOptions = resolve_options(
         ResolvableOptions::from(options_rust.clone()),
         Vec::new(),
     );
 
+    let input: crate::ast::JsAstInput = ast.into();
+
+    let language: Language = effective_language(
+        options_rust.language,
+        parse_ast_language(input.language.as_deref())?,
+        resolved.language,
+    );
+
     let source_type = source_type_for_options(
         &resolved.file,
-        Some(resolved.language),
+        Some(language),
         resolved.source_type,
     );
 
@@ -42,8 +52,6 @@ pub fn rewrite(
 
     let plugins: Vec<SharedPluginable> =
         to_plugins(&env, options.plugins, &refs)?;
-
-    let input: crate::ast::JsAstInput = ast.into();
 
     let run: Run<JsAstResult> = Box::new(move || {
         let ast: Ast = js_to_ast(input, source_type).map_err(anyhow_to_napi)?;

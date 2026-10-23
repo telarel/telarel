@@ -39,7 +39,7 @@ The builtin parser is the terminal fallback after every `parse` plugin hook defe
 
 ## Returns
 
-`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }`.
+`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }`. `ast.language` is the resolved grammar: an explicit `language` option, or file-extension inference otherwise.
 
 ## Example
 

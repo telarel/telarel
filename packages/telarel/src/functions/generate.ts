@@ -47,6 +47,7 @@ async function generate(
         result = await bindingGenerate(toAstInput(ast), {
             cwd: options?.cwd,
             file: options?.file,
+            language: options?.language,
             output: options?.output,
             sourceMap: options?.sourceMap,
             plugins,

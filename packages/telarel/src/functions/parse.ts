@@ -1,6 +1,7 @@
 import type { Program } from "@oxc-project/types";
 
 import type { AstResult } from "#/@types/ast";
+import type { Language } from "#/@types/grammar";
 import type { ParseOptions } from "#/@types/plugin/options";
 import type { RawPlugin } from "#/bridges/plugin";
 
@@ -38,6 +39,7 @@ const parse = async (
         ast = new Ast({
             program: result.ast.program as Program,
             source: result.ast.code,
+            language: result.ast.language as Language,
             map: result.ast.map,
         });
     } catch (error: unknown) {

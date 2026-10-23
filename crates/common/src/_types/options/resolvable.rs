@@ -21,7 +21,8 @@ pub struct ResolvableOptions {
     /// `None` resolves to the default file name.
     pub file: Option<String>,
     /// The grammar of the code;
-    /// `None` infers the grammar from the file extension.
+    /// `None` leaves the grammar to be resolved from the AST, then the file
+    /// extension.
     pub language: Option<Language>,
     /// The module system of the code;
     /// `None` keeps the module kind resolved from the grammar.
@@ -73,7 +74,7 @@ impl From<GenerateOptions> for ResolvableOptions {
         Self {
             cwd: options.cwd,
             file: options.file,
-            language: None,
+            language: options.language,
             source_type: None,
             output: options.output,
             source_map: options.source_map,
@@ -159,10 +160,23 @@ mod tests {
     }
 
     #[test]
-    fn test_from_generate_options_drops_language_and_source_type() {
+    fn test_from_generate_options_preserves_language() {
+        let options: GenerateOptions = GenerateOptions {
+            language: Some(Language::TSX),
+            ..Default::default()
+        };
+
+        let resolvable: ResolvableOptions = ResolvableOptions::from(options);
+
+        assert_eq!(resolvable.language, Some(Language::TSX));
+    }
+
+    #[test]
+    fn test_from_generate_options_carries_language_and_drops_source_type() {
         let options: GenerateOptions = GenerateOptions {
             cwd: Some(PathBuf::from("/repo")),
             file: Some(String::from("src/app.js")),
+            language: Some(Language::TSX),
             output: Some(OutputOptions {
                 file: Some(String::from("dist/app.js")),
             }),
@@ -173,7 +187,7 @@ mod tests {
 
         assert_eq!(resolvable.cwd, Some(PathBuf::from("/repo")));
         assert_eq!(resolvable.file.as_deref(), Some("src/app.js"));
-        assert_eq!(resolvable.language, None);
+        assert_eq!(resolvable.language, Some(Language::TSX));
         assert_eq!(resolvable.source_type, None);
         assert_eq!(
             resolvable

@@ -27,12 +27,15 @@ The builtin generator is the terminal fallback after every `generate` hook defer
 
 Every field is optional and resolved against defaults before use.
 
-| Field        | Type                       | Default             | Description                                                             |
-| ------------ | -------------------------- | ------------------- | ----------------------------------------------------------------------- |
-| `cwd`        | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                         |
-| `file`       | `Option<String>`           | `index.ts`          | The file being generated. The language is inferred from its extension.  |
-| `output`     | `Option<OutputOptions>`    | `file`              | Output code settings. `output.file` derives the default source-map URL. |
-| `source_map` | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the step.               |
+| Field        | Type                       | Default                   | Description                                                                                                        |
+| ------------ | -------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `cwd`        | `Option<PathBuf>`          | process working dir       | Filesystem root used to resolve relative paths.                                                                    |
+| `file`       | `Option<String>`           | `index.ts`                | The file being generated; used for option resolution and source-map defaults. Does not change the AST grammar.     |
+| `language`   | `Option<Language>`         | AST language, then `file` | The grammar recorded in the resolved step options and visible to plugins. Builtin generation uses the AST grammar. |
+| `output`     | `Option<OutputOptions>`    | `file`                    | Output code settings. `output.file` derives the default source-map URL.                                            |
+| `source_map` | `Option<SourceMapOptions>` | off                       | The source-map inputs and outputs requested for the step.                                                          |
+
+`language` is resolved into the step options: an explicit value wins, otherwise the AST grammar, then `file`. The explicit value is visible to the `options` hook, and the resolved value is visible to `start` and later hooks through the resolved options and `PluginContext.module`. Builtin code generation does not use it: it emits from the AST's own `Program.source_type`. Module kind remains owned by `Program.source_type`: there is no `GenerateOptions.source_type`.
 
 ## Returns
 

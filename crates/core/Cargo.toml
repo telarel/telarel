@@ -21,11 +21,8 @@ include = ["src/**", "Cargo.toml", "README.md"]
 telarel_common = { workspace = true }
 telarel_plugin = { workspace = true }
 
-# Crates
-oxc = { workspace = true }
-oxc_sourcemap = { workspace = true }
-
 [dev-dependencies]
 oxc = { workspace = true, features = ["ast_visit"] }
+oxc_sourcemap = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

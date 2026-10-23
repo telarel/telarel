@@ -3,9 +3,13 @@ import type {
     AstResult,
     BuiltinPlugin,
     CodeResult,
+    FinalizeArgs,
+    GenerateArgs,
+    Language,
     ParseArgs,
     Plugin,
     PluginContext,
+    PrepareArgs,
     TransformArgs,
     TransformResult,
 } from "telarel";
@@ -578,6 +582,64 @@ describe("transform", (): void => {
 
         expect(result.code).toContain("// keep me");
         expect(result.code).toContain("const renamed = 1;");
+    });
+
+    it("exposes the AST language to every AST-bearing hook", async (): Promise<void> => {
+        const seen: Array<{ hook: string; language: Language | void }> = [];
+
+        await compile("const a: number = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "language-observer",
+                    prepare: (_ctx: PluginContext, args: PrepareArgs): void => {
+                        seen.push({
+                            hook: "prepare",
+                            language: args.ast.language,
+                        });
+                    },
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
+                        seen.push({
+                            hook: "transform",
+                            language: args.ast.language,
+                        });
+
+                        return { ast: args.ast };
+                    },
+                    finalize: (
+                        _ctx: PluginContext,
+                        args: FinalizeArgs,
+                    ): void => {
+                        seen.push({
+                            hook: "finalize",
+                            language: args.ast.language,
+                        });
+                    },
+                    generate: (
+                        _ctx: PluginContext,
+                        args: GenerateArgs,
+                    ): null => {
+                        seen.push({
+                            hook: "generate",
+                            language: args.ast.language,
+                        });
+
+                        return null;
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([
+            { hook: "prepare", language: "ts" },
+            { hook: "transform", language: "ts" },
+            { hook: "finalize", language: "ts" },
+            { hook: "generate", language: "ts" },
+        ]);
     });
 
     it("exposes only the ast key on the transform hook payload", async (): Promise<void> => {

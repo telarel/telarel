@@ -12,7 +12,9 @@ use crate::_types::grammar::source_type::{SourceType, with_module_kind};
 use crate::ast::ast::Ast;
 use crate::contexts::compile::CompileContext;
 use crate::errors::compile::CompileError;
-use crate::helpers::resolve::resolve_grammar;
+use crate::helpers::resolve::{
+    from_oxc_language, from_oxc_module_kind, resolve_grammar,
+};
 use crate::sourcemap::SourceMap;
 
 /// Options for [`parse_program`].
@@ -125,10 +127,13 @@ pub fn parse_ast(
     let grammar: OxcSourceType =
         resolve_grammar(&options.file, options.language);
 
-    let source_type: OxcSourceType = match options.source_type {
+    let raw_source_type: OxcSourceType = match options.source_type {
         | Some(module_kind) => with_module_kind(grammar, module_kind),
         | None => grammar,
     };
+
+    let language: Language = from_oxc_language(grammar);
+    let source_type: SourceType = from_oxc_module_kind(raw_source_type);
 
     let source: Arc<str> = Arc::from(code.as_str());
 
@@ -137,11 +142,12 @@ pub fn parse_ast(
 
     Ast::try_from_source(
         source,
+        language,
         source_type,
         options.input_map,
         |src: &str, allocator: &Allocator| {
             let parser_return: oxc::parser::ParserReturn<'_> =
-                Parser::new(allocator, src, source_type).parse();
+                Parser::new(allocator, src, raw_source_type).parse();
 
             if let Some(error) = parse_error(&context, &parser_return) {
                 return Err(error);

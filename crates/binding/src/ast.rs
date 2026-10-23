@@ -1,9 +1,10 @@
 //! The single source of truth for `Ast` ⇄ JS conversions.
 //!
 //! Every NAPI function and the plugin bridge convert between the internal
-//! [`Ast`] and the JS-facing normalized form (`{ program, code, map? }`)
-//! through this module. The ESTree spans crossing the boundary are UTF-16 code
-//! units (JS string indices); the internal [`Ast`] keeps byte spans.
+//! [`Ast`] and the JS-facing normalized form
+//! (`{ program, code, map?, language }`) through this module. The ESTree spans
+//! crossing the boundary are UTF-16 code units (JS string indices); the
+//! internal [`Ast`] keeps byte spans.
 //!
 //! The `SourceType` of a decoded program is always computed by the caller and
 //! passed in:
@@ -12,22 +13,24 @@
 //!   (grammar from `file`/`language`, overlaid with an explicit module kind).
 //! - [`source_type_for_generate`] keeps the module kind unambiguous, so the
 //!   codec resolves it from the program JSON's `sourceType` (the generate path,
-//!   whose options carry no `language`/`sourceType`).
+//!   where only the grammar is chosen from options/AST/file).
 
 use std::sync::Arc;
 
 use oxc::span::SourceType as OxcSourceType;
 
 use telarel_common::{
-    Ast, Language, SourceMap, SourceType, grammar_source_type, resolve_grammar,
+    Ast, Language, SourceMap, SourceType, from_oxc_language,
+    from_oxc_module_kind, grammar_source_type, resolve_grammar,
     with_module_kind,
 };
 
+use crate::_types::options::parse_language_option;
 use crate::_types::sourcemap::JsSourceMap;
 use crate::plugin::spans::{SpanMap, spans_to_bytes, spans_to_utf16};
 
-/// The JS-facing normalized AST: the ESTree `program`, its `code`, and its
-/// input `map` as a v3 source-map object.
+/// The JS-facing normalized AST: the ESTree `program`, its `code`, its input
+/// `map` as a v3 source-map object, and its grammar label.
 pub struct JsAst {
     /// The ESTree program.
     pub program: serde_json::Value,
@@ -35,6 +38,8 @@ pub struct JsAst {
     pub code: String,
     /// The input source map, when the AST carries one.
     pub map: Option<JsSourceMap>,
+    /// The grammar of the program, as its canonical label.
+    pub language: String,
 }
 
 /// The JS-facing normalized AST input, the read side of [`JsAst`].
@@ -45,6 +50,8 @@ pub struct JsAstInput {
     pub code: String,
     /// The input source map object, when the caller supplied one.
     pub map: Option<serde_json::Value>,
+    /// The grammar of the program; absent means unset.
+    pub language: Option<String>,
 }
 
 fn debug_assert_source_anchored(ast: &Ast) {
@@ -84,6 +91,7 @@ pub fn ast_to_js(ast: &Ast) -> anyhow::Result<JsAst> {
         program: serde_json::from_str(&json)?,
         code: ast.source().to_string(),
         map: ast.map().map(source_map_to_js),
+        language: ast.language().as_str().to_string(),
     })
 }
 
@@ -130,9 +138,13 @@ pub fn ast_from_json(
 
     let bytes: String = spans_to_bytes(&spans, program_json);
 
+    let language: Language = from_oxc_language(source_type);
+    let module_kind: SourceType = from_oxc_module_kind(source_type);
+
     Ast::try_from_source(
         source,
-        source_type,
+        language,
+        module_kind,
         map,
         |source_text: &str, allocator: &oxc::allocator::Allocator| {
             oxc_estree_codec::json_to_program(
@@ -202,6 +214,27 @@ pub fn source_type_for_generate(language: Language) -> OxcSourceType {
     with_module_kind(grammar_source_type(language), SourceType::Unambiguous)
 }
 
+/// Parse the optional grammar label carried by an inbound JS AST.
+///
+/// An absent label stays `None`; the caller applies the precedence fallbacks.
+pub fn parse_ast_language(
+    language: Option<&str>
+) -> napi::Result<Option<Language>> {
+    parse_language_option(language)
+}
+
+/// Resolve the effective grammar: explicit options, then AST, then file.
+///
+/// `file_language` is the grammar already inferred from the resolved
+/// options/file, so the last rung keeps extension inference as the fallback.
+pub fn effective_language(
+    explicit: Option<Language>,
+    ast: Option<Language>,
+    file_language: Language,
+) -> Language {
+    explicit.or(ast).unwrap_or(file_language)
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -219,6 +252,23 @@ mod tests {
                 cwd: PathBuf::from("/repo"),
                 file: String::from("a.ts"),
                 language: None,
+                source_type: None,
+                input_map: None,
+            },
+        )
+        .expect("fixture parses")
+    }
+
+    fn parse_fixture(
+        code: &str,
+        language: Language,
+    ) -> Ast {
+        parse_ast(
+            code.to_owned(),
+            ParseAstOptions {
+                cwd: PathBuf::from("/repo"),
+                file: String::from("index.ts"),
+                language: Some(language),
                 source_type: None,
                 input_map: None,
             },
@@ -285,7 +335,8 @@ mod tests {
     fn test_ast_to_estree_json_rejects_mismatched_source_text() {
         let ast: Ast = Ast::from_source(
             Arc::from("const a = 1;"),
-            OxcSourceType::ts(),
+            Language::TS,
+            SourceType::Script,
             None,
             |source: &str, allocator: &Allocator| {
                 let mut program: Program<'_> = oxc::parser::Parser::new(
@@ -397,7 +448,7 @@ mod tests {
             &program,
             String::from("const a = 1;"),
             None,
-            ast.source_type(),
+            ast.program().source_type,
         )
         .expect("read-back succeeds");
 
@@ -421,7 +472,7 @@ mod tests {
             &program,
             String::from("日a"),
             None,
-            ast.source_type(),
+            ast.program().source_type,
         )
         .expect("read-back succeeds");
 
@@ -447,7 +498,7 @@ mod tests {
             &program,
             String::from("const a = 1;"),
             Some(input_map.clone()),
-            ast.source_type(),
+            ast.program().source_type,
         )
         .expect("read-back succeeds");
 
@@ -463,11 +514,15 @@ mod tests {
 
         let js: JsAst = ast_to_js(&ast).expect("the AST converts");
 
-        let input: JsAstInput =
-            JsAstInput { program: js.program, code: js.code, map: None };
+        let input: JsAstInput = JsAstInput {
+            program: js.program,
+            code: js.code,
+            map: None,
+            language: Some(js.language),
+        };
 
-        let rebuilt: Ast =
-            js_to_ast(input, ast.source_type()).expect("read-back succeeds");
+        let rebuilt: Ast = js_to_ast(input, ast.program().source_type)
+            .expect("read-back succeeds");
 
         assert_eq!(rebuilt.source().as_ref(), "const a = 1;");
         assert_eq!(ast_to_estree_json(&rebuilt), ast_to_estree_json(&ast));
@@ -489,10 +544,11 @@ mod tests {
             program,
             code: String::from("const a = 1;"),
             map: Some(map),
+            language: None,
         };
 
-        let rebuilt: Ast =
-            js_to_ast(input, ast.source_type()).expect("read-back succeeds");
+        let rebuilt: Ast = js_to_ast(input, ast.program().source_type)
+            .expect("read-back succeeds");
 
         assert!(rebuilt.map().is_some());
     }
@@ -509,6 +565,7 @@ mod tests {
             }),
             code: String::new(),
             map: Some(serde_json::Value::String(String::from("not json"))),
+            language: None,
         };
 
         assert!(
@@ -530,7 +587,7 @@ mod tests {
 
         let ast: Ast = decode("module", source_type);
 
-        assert!(ast.source_type().is_script(), "{:?}", ast.source_type());
+        assert_eq!(ast.source_type(), SourceType::Script);
         assert!(ast.program().source_type.is_script());
     }
 
@@ -543,8 +600,8 @@ mod tests {
         assert!(source_type.is_module());
     }
 
-    // An unambiguous type lets the codec read `program.sourceType`;
-    // `Ast::source_type()` echoes the caller-passed type verbatim.
+    // An unambiguous type lets the codec read `program.sourceType`; the coarse
+    // `Ast::source_type()` then reports the resolved module kind.
 
     #[test]
     fn test_generate_source_type_reads_module_from_program_json() {
@@ -608,15 +665,184 @@ mod tests {
     }
 
     #[test]
-    fn test_ast_source_type_is_the_caller_passed_type() {
-        // Documents the split: the codec resolves the module kind into the
-        // program, but `Ast::source_type()` echoes exactly what the caller
-        // passed (here, unambiguous).
+    fn test_ast_source_type_reports_the_resolved_program_module_kind() {
+        // The coarse getter follows the module kind the codec resolved into
+        // the program; the raw oxc type stays readable through `program()`.
         let passed: OxcSourceType = source_type_for_generate(Language::JS);
 
         let ast: Ast = decode("module", passed);
 
-        assert!(ast.source_type().is_unambiguous(), "{:?}", ast.source_type());
+        assert_eq!(ast.source_type(), SourceType::Module);
         assert!(ast.program().source_type.is_module());
+
+        let explicit_script: OxcSourceType =
+            source_type_for_options("a.ts", None, SourceType::Script);
+
+        let script: Ast = decode("module", explicit_script);
+
+        assert_eq!(script.source_type(), SourceType::Script);
+        assert!(script.program().source_type.is_script());
+    }
+
+    #[test]
+    fn test_ast_to_js_emits_language_for_every_grammar() {
+        let cases: [(Language, &str); 5] = [
+            (Language::JS, "const a = 1;"),
+            (Language::TS, "const a: number = 1;"),
+            (Language::DTS, "declare const a: string;"),
+            (Language::JSX, "const x = <div />;"),
+            (Language::TSX, "const x: JSX.Element = <div />;"),
+        ];
+
+        for (language, code) in cases {
+            let ast: Ast = parse_fixture(code, language);
+
+            let js: JsAst = ast_to_js(&ast).expect("the AST converts");
+
+            assert_eq!(js.language, language.as_str(), "{language:?}");
+        }
+    }
+
+    #[test]
+    fn test_js_ast_input_round_trips_language() {
+        let ast: Ast = parse_fixture("const x = <div />;", Language::JSX);
+
+        let js: JsAst = ast_to_js(&ast).expect("the AST converts");
+
+        let input: JsAstInput = JsAstInput {
+            program: js.program.clone(),
+            code: js.code.clone(),
+            map: None,
+            language: Some(js.language.clone()),
+        };
+
+        let outbound: crate::_types::ast::JsAst = js.into();
+
+        assert_eq!(outbound.language, "jsx");
+
+        let inbound: crate::_types::ast::JsAstInput =
+            crate::_types::ast::JsAstInput {
+                program: input.program,
+                code: input.code,
+                map: None,
+                language: input.language,
+            };
+
+        let input: JsAstInput = inbound.into();
+
+        assert_eq!(input.language.as_deref(), Some("jsx"));
+
+        let rebuilt: Ast =
+            js_to_ast(input, source_type_for_generate(Language::JSX))
+                .expect("read-back succeeds");
+
+        assert_eq!(rebuilt.language(), Language::JSX);
+    }
+
+    #[test]
+    fn test_js_ast_input_absent_language_is_unset() {
+        let inbound: crate::_types::ast::JsAstInput =
+            crate::_types::ast::JsAstInput {
+                program: serde_json::json!({
+                    "type": "Program",
+                    "sourceType": "module",
+                    "body": [],
+                    "start": 0,
+                    "end": 0,
+                }),
+                code: String::new(),
+                map: None,
+                language: None,
+            };
+
+        let input: JsAstInput = inbound.into();
+
+        assert!(input.language.is_none());
+
+        let rebuilt: Ast =
+            js_to_ast(input, source_type_for_generate(Language::JS))
+                .expect("read-back succeeds");
+
+        assert_eq!(rebuilt.language(), Language::JS);
+    }
+
+    #[test]
+    fn test_effective_language_orders_explicit_ast_then_file() {
+        let resolved: telarel_common::ResolvedOptions =
+            telarel_common::resolve_options(
+                telarel_common::ResolvableOptions::default(),
+                Vec::new(),
+            );
+
+        assert_eq!(resolved.language, Language::TS, "index.ts inference");
+
+        assert_eq!(
+            effective_language(
+                Some(Language::JS),
+                Some(Language::JSX),
+                resolved.language,
+            ),
+            Language::JS
+        );
+
+        assert_eq!(
+            effective_language(None, Some(Language::JSX), resolved.language),
+            Language::JSX
+        );
+
+        assert_eq!(
+            effective_language(None, None, resolved.language),
+            Language::TS
+        );
+    }
+
+    #[test]
+    fn test_parse_ast_language_labels() {
+        let cases: [(&str, Language); 5] = [
+            ("js", Language::JS),
+            ("ts", Language::TS),
+            ("dts", Language::DTS),
+            ("jsx", Language::JSX),
+            ("tsx", Language::TSX),
+        ];
+
+        for (text, language) in cases {
+            assert_eq!(
+                parse_ast_language(Some(text)).expect("the label parses"),
+                Some(language),
+                "{text}"
+            );
+        }
+
+        assert_eq!(parse_ast_language(None).expect("absent is unset"), None);
+
+        let error: napi::Error =
+            parse_ast_language(Some("json")).expect_err("invalid labels error");
+
+        assert_eq!(error.status, napi::Status::InvalidArg);
+    }
+
+    #[test]
+    fn test_source_type_for_generate_grammar_for_every_language() {
+        let cases: [(Language, bool, bool, bool); 5] = [
+            (Language::JS, false, false, false),
+            (Language::TS, true, false, false),
+            (Language::DTS, true, false, true),
+            (Language::JSX, false, true, false),
+            (Language::TSX, true, true, false),
+        ];
+
+        for (language, typescript, jsx, definition) in cases {
+            let source_type: OxcSourceType = source_type_for_generate(language);
+
+            assert_eq!(source_type.is_typescript(), typescript, "{language:?}");
+            assert_eq!(source_type.is_jsx(), jsx, "{language:?}");
+            assert_eq!(
+                source_type.is_typescript_definition(),
+                definition,
+                "{language:?}"
+            );
+            assert!(source_type.is_unambiguous(), "{language:?}");
+        }
     }
 }

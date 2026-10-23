@@ -2,15 +2,19 @@ use std::sync::Arc;
 
 use oxc::allocator::{Allocator, CloneIn};
 use oxc::ast::ast::Program;
-use oxc::span::SourceType;
 
+use crate::_types::grammar::language::Language;
+use crate::_types::grammar::source_type::SourceType;
+use crate::helpers::resolve::{from_oxc_language, from_oxc_module_kind};
 use crate::sourcemap::SourceMap;
 
 struct AstOwner {
-    source: Arc<str>,
     allocator: Allocator,
+    source: Arc<str>,
+    // Constructor metadata; public accessors report the program's resolved state.
+    language: Language,
     source_type: SourceType,
-    map: Option<SourceMap>,
+    source_map: Option<SourceMap>,
 }
 
 struct AstDependent<'cell> {
@@ -29,19 +33,18 @@ self_cell::self_cell!(
 impl AstInner {
     fn deep_clone(
         &self,
-        map: Option<SourceMap>,
+        source_map: Option<SourceMap>,
     ) -> AstInner {
         let owner: &AstOwner = self.borrow_owner();
 
-        let source: Arc<str> = Arc::clone(&owner.source);
-        let source_type: SourceType = owner.source_type;
         let capacity: usize = owner.allocator.used_bytes();
 
         let owner: AstOwner = AstOwner {
-            source,
             allocator: Allocator::with_capacity(capacity),
-            source_type,
-            map,
+            source: Arc::clone(&owner.source),
+            language: owner.language,
+            source_type: owner.source_type,
+            source_map,
         };
 
         AstInner::new(owner, |owner: &AstOwner| AstDependent {
@@ -52,7 +55,7 @@ impl AstInner {
 
 impl Clone for AstInner {
     fn clone(&self) -> AstInner {
-        self.deep_clone(self.borrow_owner().map.clone())
+        self.deep_clone(self.borrow_owner().source_map.clone())
     }
 }
 
@@ -112,12 +115,17 @@ pub struct Ast {
 impl Ast {
     /// Build an owned AST whose `Program::source_text` borrows the owner's source.
     ///
+    /// `language` and `source_type` describe the requested grammar and module
+    /// kind of the program `build` produces. `source_type` may be
+    /// [`SourceType::Unambiguous`]; the parsed program resolves it.
+    ///
     /// `build` must return a program whose `Program::source_text` is `source`.
     ///
     /// `input_map` is the map describing how `source` was produced from
     /// upstream originals, if any (see [`Ast::map`]).
     pub fn from_source<F>(
         source: Arc<str>,
+        language: Language,
         source_type: SourceType,
         input_map: Option<SourceMap>,
         build: F,
@@ -126,10 +134,11 @@ impl Ast {
         F: for<'a> FnOnce(&'a str, &'a Allocator) -> Program<'a>,
     {
         let owner: AstOwner = AstOwner {
-            source,
             allocator: Allocator::default(),
+            source,
+            language,
             source_type,
-            map: input_map,
+            source_map: input_map,
         };
 
         let inner: AstInner = AstInner::new(owner, |owner: &AstOwner| {
@@ -142,6 +151,7 @@ impl Ast {
     /// Fallible variant of [`Ast::from_source`] (parse / ESTree read-back).
     pub fn try_from_source<F, E>(
         source: Arc<str>,
+        language: Language,
         source_type: SourceType,
         input_map: Option<SourceMap>,
         build: F,
@@ -150,10 +160,11 @@ impl Ast {
         F: for<'a> FnOnce(&'a str, &'a Allocator) -> Result<Program<'a>, E>,
     {
         let owner: AstOwner = AstOwner {
-            source,
             allocator: Allocator::default(),
+            source,
+            language,
             source_type,
-            map: input_map,
+            source_map: input_map,
         };
 
         let inner: AstInner = AstInner::try_new(owner, |owner: &AstOwner| {
@@ -175,15 +186,23 @@ impl Ast {
         &self.inner.borrow_owner().source
     }
 
-    /// The resolved source type.
+    /// The grammar of the parsed program.
+    pub fn language(&self) -> Language {
+        from_oxc_language(self.program().source_type)
+    }
+
+    /// The resolved module kind of the parsed program.
+    ///
+    /// `Unambiguous` is a parser input; a normally parsed AST resolves to
+    /// `Script`, `CommonJS`, or `Module`.
     pub fn source_type(&self) -> SourceType {
-        self.inner.borrow_owner().source_type
+        from_oxc_module_kind(self.program().source_type)
     }
 
     /// The input source map describing how `source` was produced from
     /// upstream originals, if any.
     pub fn map(&self) -> Option<&SourceMap> {
-        self.inner.borrow_owner().map.as_ref()
+        self.inner.borrow_owner().source_map.as_ref()
     }
 
     /// Rebuild this AST with a different input map.
@@ -192,9 +211,9 @@ impl Ast {
     /// source `Arc` is shared.
     pub fn with_input_map(
         &self,
-        map: Option<SourceMap>,
+        source_map: Option<SourceMap>,
     ) -> Ast {
-        Ast { inner: Arc::new(self.inner.deep_clone(map)) }
+        Ast { inner: Arc::new(self.inner.deep_clone(source_map)) }
     }
 
     /// The only path to the arena.
@@ -243,11 +262,16 @@ impl Clone for Ast {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use std::sync::Arc;
 
     use oxc::parser::Parser;
     use oxc::span::SourceType as OxcSourceType;
     use oxc_sourcemap::SourceMapBuilder;
+
+    use crate::_types::grammar::language::grammar_source_type;
+    use crate::_types::grammar::source_type::with_module_kind;
+    use crate::ast::parse::{ParseAstOptions, parse_ast};
 
     use super::*;
 
@@ -261,7 +285,29 @@ mod tests {
     fn owner_from_code(code: &str) -> Ast {
         let source: Arc<str> = Arc::from(code);
 
-        Ast::from_source(source, OxcSourceType::ts(), None, build_program)
+        Ast::from_source(
+            source,
+            Language::TS,
+            SourceType::Script,
+            None,
+            build_program,
+        )
+    }
+
+    fn parse_code(
+        code: &str,
+        language: Option<Language>,
+        source_type: Option<SourceType>,
+    ) -> Ast {
+        let options: ParseAstOptions = ParseAstOptions {
+            cwd: PathBuf::new(),
+            file: String::from("index.ts"),
+            language,
+            source_type,
+            input_map: None,
+        };
+
+        parse_ast(code.to_string(), options).expect("valid source parses")
     }
 
     fn sample_map() -> SourceMap {
@@ -283,14 +329,160 @@ mod tests {
 
         assert!(!ast.program().body.is_empty());
         assert_eq!(ast.source().as_ref(), "const a = 1;");
-        assert!(ast.source_type().is_typescript());
+        assert_eq!(ast.language(), Language::TS);
+        assert_eq!(ast.source_type(), SourceType::Script);
+        assert!(ast.program().source_type.is_typescript());
+    }
+
+    #[test]
+    fn test_from_source_uses_semantic_source_metadata() {
+        let ast: Ast = Ast::from_source(
+            Arc::from("const a: number = <Button />;"),
+            Language::TSX,
+            SourceType::Module,
+            None,
+            |source: &str, allocator: &Allocator| {
+                let raw: OxcSourceType = with_module_kind(
+                    grammar_source_type(Language::TSX),
+                    SourceType::Module,
+                );
+
+                Parser::new(allocator, source, raw).parse().program
+            },
+        );
+
+        let raw: OxcSourceType = ast.program().source_type;
+
+        assert_eq!(ast.language(), Language::TSX);
+        assert_eq!(ast.source_type(), SourceType::Module);
+        assert!(raw.is_typescript());
+        assert!(raw.is_jsx());
+        assert!(raw.is_module());
+    }
+
+    #[test]
+    fn test_from_source_accepts_unambiguous_source_type() {
+        let ast: Ast = Ast::from_source(
+            Arc::from("export const a = 1;"),
+            Language::TS,
+            SourceType::Unambiguous,
+            None,
+            |source: &str, allocator: &Allocator| {
+                let raw: OxcSourceType = with_module_kind(
+                    grammar_source_type(Language::TS),
+                    SourceType::Unambiguous,
+                );
+
+                Parser::new(allocator, source, raw).parse().program
+            },
+        );
+
+        assert_eq!(ast.source_type(), SourceType::Module);
+    }
+
+    #[test]
+    fn test_language_maps_every_grammar() {
+        let cases: [(Language, &str); 5] = [
+            (Language::JS, "const a = 1;"),
+            (Language::TS, "const a: number = 1;"),
+            (Language::DTS, "declare const a: string;"),
+            (Language::JSX, "const x = <div>hi</div>;"),
+            (Language::TSX, "const x = <div>hi</div>;"),
+        ];
+
+        for (language, code) in cases {
+            let ast: Ast = parse_code(code, Some(language), None);
+
+            assert_eq!(ast.language(), language, "grammar {language:?}");
+        }
+    }
+
+    #[test]
+    fn test_source_type_maps_every_resolved_module_kind() {
+        let cases: [(SourceType, &str); 3] = [
+            (SourceType::Script, "const a = 1;"),
+            (SourceType::CommonJS, "const a = 1;"),
+            (SourceType::Module, "export const a = 1;"),
+        ];
+
+        for (module_kind, code) in cases {
+            let ast: Ast =
+                parse_code(code, Some(Language::JS), Some(module_kind));
+
+            assert_eq!(
+                ast.source_type(),
+                module_kind,
+                "module kind {module_kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_unambiguous_parse_reports_the_resolved_module_kind() {
+        let module: Ast = parse_code(
+            "export const a = 1;",
+            Some(Language::TS),
+            Some(SourceType::Unambiguous),
+        );
+
+        assert_eq!(module.source_type(), SourceType::Module);
+
+        let script: Ast = parse_code(
+            "const a = 1;",
+            Some(Language::TS),
+            Some(SourceType::Unambiguous),
+        );
+
+        assert_eq!(script.source_type(), SourceType::Script);
+    }
+
+    #[test]
+    fn test_program_exposes_the_raw_oxc_source_type() {
+        let ast: Ast =
+            parse_code("export const a = 1;", Some(Language::TSX), None);
+
+        let raw: OxcSourceType = ast.program().source_type;
+
+        assert!(raw.is_typescript());
+        assert!(raw.is_jsx());
+        assert!(raw.is_module());
+        assert_eq!(ast.language(), Language::TSX);
+        assert_eq!(ast.source_type(), SourceType::Module);
+    }
+
+    #[test]
+    fn test_deep_clone_preserves_language_and_source_type() {
+        let ast: Ast =
+            parse_code("export const a = 1;", Some(Language::TSX), None);
+
+        let mut clone: Ast = ast.clone();
+
+        clone.with_mut(|_allocator: &Allocator, program: &mut Program<'_>| {
+            program.body.clear();
+        });
+
+        assert!(!Arc::ptr_eq(&ast.inner, &clone.inner));
+        assert_eq!(clone.language(), Language::TSX);
+        assert_eq!(clone.source_type(), SourceType::Module);
+    }
+
+    #[test]
+    fn test_with_input_map_preserves_language_and_source_type() {
+        let ast: Ast =
+            parse_code("export const a = 1;", Some(Language::TSX), None);
+
+        let rebuilt: Ast = ast.with_input_map(Some(sample_map()));
+
+        assert_eq!(rebuilt.language(), Language::TSX);
+        assert_eq!(rebuilt.source_type(), SourceType::Module);
     }
 
     #[test]
     fn test_try_from_source_propagates_error() {
         let result: Result<Ast, &'static str> = Ast::try_from_source(
             Arc::from("const a = 1;"),
-            OxcSourceType::ts(),
+            Language::TS,
+            SourceType::Script,
             None,
             |_source: &str, _allocator: &Allocator| Err("boom"),
         );
@@ -302,7 +494,8 @@ mod tests {
     fn test_try_from_source_builds_program() {
         let result: Result<Ast, &'static str> = Ast::try_from_source(
             Arc::from("const a = 1;"),
-            OxcSourceType::ts(),
+            Language::TS,
+            SourceType::Script,
             None,
             |source: &str, allocator: &Allocator| {
                 Ok(build_program(source, allocator))
@@ -341,6 +534,7 @@ mod tests {
 
         assert_eq!(clone.program().source_text, ast.program().source_text);
         assert_eq!(clone.program().body.len(), ast.program().body.len());
+        assert_eq!(clone.language(), ast.language());
         assert_eq!(clone.source_type(), ast.source_type());
     }
 
@@ -403,7 +597,8 @@ mod tests {
 
         let ast: Ast = Ast::from_source(
             source,
-            OxcSourceType::ts(),
+            Language::TS,
+            SourceType::Script,
             Some(map.clone()),
             build_program,
         );
@@ -421,7 +616,8 @@ mod tests {
 
         let ast: Ast = Ast::from_source(
             source,
-            OxcSourceType::ts(),
+            Language::TS,
+            SourceType::Script,
             Some(map.clone()),
             build_program,
         );
@@ -460,6 +656,7 @@ mod tests {
 
         assert!(Arc::ptr_eq(rebuilt.source(), ast.source()));
 
+        assert_eq!(rebuilt.language(), ast.language());
         assert_eq!(rebuilt.source_type(), ast.source_type());
     }
 
@@ -483,7 +680,8 @@ mod tests {
 
         let ast: Ast = Ast::from_source(
             source,
-            OxcSourceType::ts(),
+            Language::TS,
+            SourceType::Script,
             Some(sample_map()),
             build_program,
         );

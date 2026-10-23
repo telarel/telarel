@@ -11,7 +11,8 @@ pub struct CommonPluginContext {}
 pub struct ModuleInfo<'a> {
     /// The file being compiled.
     pub file: &'a str,
-    /// The grammar of the code, inferred from the file extension.
+    /// The grammar of the code, resolved from options, the AST, or the file
+    /// extension.
     pub language: Language,
     /// The module system of the code, resolved from the grammar.
     pub source_type: SourceType,

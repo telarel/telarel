@@ -27,10 +27,11 @@ The public JavaScript surface is documented in `docs/content/apis/javascript`. I
 
 ## AST boundary
 
-- `parse` / `generate` hooks use the normalized object `{ program, code, map? }`.
-- `prepare` / `transform` / `finalize` use a JSON-serialized ESTree string (`astJson`) via `oxc_estree_codec`, plus the AST's `code` and optional `map`. The JS wrapper rebuilds the normalized `Ast` from those fields.
+- `parse` / `generate` hooks use the normalized object `{ program, code, map?, language? }`; outbound `JsAst.language` is required, while inbound `JsAstInput.language` is optional.
+- `prepare` / `transform` / `finalize` use a JSON-serialized ESTree string (`astJson`) via `oxc_estree_codec`, plus the AST's `code`, optional `map`, and language label. The JS wrapper rebuilds the normalized `Ast` from those fields. Transform read-back uses the returned language when present, otherwise the input AST's language; `program.sourceType` owns the module kind.
+- A `parse` hook replacement keeps the parser options' grammar authority; the returned AST's language does not override them.
 - Outbound ESTree serialization debug-asserts that `Program::source_text` is still content-equal to `Ast::source` before building the UTF-16 `SpanMap`.
-- The JS `transform` return is compared in its UTF-16 JSON form plus `code` and `map`; an unchanged AST short-circuits to `None`. Rebuilt programs anchor to the returned `code`/`map` and reattach the original comments, because the ESTree codec skips `Program.comments`.
+- The JS `transform` return is compared in its UTF-16 JSON form plus `code`, `map`, and language; an unchanged AST short-circuits to `None`. Rebuilt programs anchor to the returned `code`/`map` and reattach the original comments, because the ESTree codec skips `Program.comments`.
 - No `Ast` or pipeline future crosses the JS/worker boundary. The worker closure produces the JS-facing value directly.
 
 ## JS plugins
@@ -68,3 +69,7 @@ The public plugin API is documented in `docs/content/apis/plugin/javascript`. In
 The JS integration suite lives in `tests/telarel` and runs against both native and WASI backends.
 
 Run `just test-js-native` for the native suite; `just test-js` runs both native and WASI.
+
+```sh
+cargo test -p telarel_binding
+```

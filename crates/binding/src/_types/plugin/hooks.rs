@@ -7,15 +7,16 @@ use telarel_common::{
     SourceMapOptions,
 };
 
-use crate::_types::ast::JsAst;
+use crate::_types::ast::{JsAst, JsAstInput};
 use crate::_types::options::JsOutputOptions;
 use crate::_types::path::path_label;
 use crate::_types::sourcemap::JsSourceMap;
 use crate::plugin::options::{language_label, source_type_label};
 
 /// Args for the `transform`, `prepare` and `finalize` hooks: the current AST
-/// as an ESTree JSON string plus the source text and input map it anchors to.
-/// The JS wrapper reconstructs the normalized AST before calling the user hook.
+/// as an ESTree JSON string plus the source text, input map and grammar it
+/// anchors to. The JS wrapper reconstructs the normalized AST before calling
+/// the user hook.
 pub struct JsAstArgs {
     /// AST serialized as JSON for the JS bridge.
     pub ast_json: String,
@@ -23,6 +24,8 @@ pub struct JsAstArgs {
     pub code: String,
     /// The input source map, when the AST carries one.
     pub map: Option<JsSourceMap>,
+    /// The grammar of the AST, as its canonical label.
+    pub language: String,
 }
 
 impl ToNapiValue for JsAstArgs {
@@ -42,6 +45,8 @@ impl ToNapiValue for JsAstArgs {
             object.set("map", map)?;
         }
 
+        object.set("language", val.language)?;
+
         Ok(JsValue::raw(&object))
     }
 }
@@ -58,6 +63,8 @@ pub struct JsTransformOutput {
     pub code: String,
     /// The input source map, when the AST carries one.
     pub map: Option<JsSourceMap>,
+    /// The grammar of the returned AST; absent means unset.
+    pub language: Option<String>,
 }
 
 /// Output of the `options` hook: the fields of the options bag after the JS
@@ -329,8 +336,9 @@ pub struct JsParseArgs {
 /// Return of the `parse` hook: the replacement AST, `null`/`void` (defer).
 #[napi_derive::napi(object)]
 pub struct JsParseOutput {
-    /// Parsed or rewritten AST.
-    pub ast: JsAst,
+    /// The replacement AST input; an absent language is unset and ignored
+    /// for grammar, which parser options own.
+    pub ast: JsAstInput,
 }
 
 /// Args for the `generate` hook: the AST to generate from and the resolved

@@ -1,6 +1,7 @@
 import type { Program } from "@oxc-project/types";
 
 import type { DeepReadonly } from "#/@types/common";
+import type { Language, SourceType } from "#/@types/grammar";
 import type { SourceMap } from "#/@types/sourcemap/map";
 
 /**
@@ -15,6 +16,11 @@ type AstOptions = {
      * The source text the program's spans anchor to.
      */
     source: string;
+    /**
+     * The grammar of the program; `undefined` means unknown because ESTree
+     * cannot carry grammar.
+     */
+    language?: Language;
     /**
      * An optional incremental source map.
      */
@@ -32,11 +38,13 @@ type AstOptions = {
 class Ast {
     readonly #program: Program;
     readonly #source: string;
+    readonly #language?: Language;
     readonly #map?: SourceMap;
 
     public constructor(options: AstOptions) {
         this.#program = options.program;
         this.#source = options.source;
+        this.#language = options.language;
         this.#map = options.map;
     }
 
@@ -52,6 +60,20 @@ class Ast {
      */
     public get source(): Readonly<string> {
         return this.#source;
+    }
+
+    /**
+     * The grammar of the program, or `undefined` when it is unknown.
+     */
+    public get language(): Language | void {
+        return this.#language;
+    }
+
+    /**
+     * The module kind of the program, read through from `program.sourceType`.
+     */
+    public get sourceType(): SourceType {
+        return this.#program.sourceType;
     }
 
     /**

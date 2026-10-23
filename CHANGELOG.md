@@ -18,10 +18,13 @@
 
 #### Breaking
 
+- change `Ast::from_source` and `Ast::try_from_source` to accept `Language` and `SourceType` instead of `oxc::span::SourceType`
+- change `Ast::source_type` to return `telarel::SourceType` instead of `oxc::span::SourceType`
 - change `Ast::with_mut` to require `Program::source_text` to stay content-equal to `Ast::source`
 - change `CompileContext.cwd` to `&Path`
 - change `CompileError` to carry a message and optional source
 - change `CompileOptions`, `CompileFromAstOptions`, and `GenerateOptions` to carry `output`
+- change `GenerateOptions` to carry `language`
 - change `OutputSourceMapOptions` to carry an optional external map `url`
 - change `ParseOptions` and `RewriteOptions` to accept `input_source_map` instead of `source_map`
 - change `ResolvableOptions` and `ResolvedOptions` to carry `output`
@@ -36,6 +39,7 @@
 
 #### Features
 
+- add `Ast::language`
 - add an optional input source map to `Ast`
 - add `AstResult` and `CodeResult`
 - add `ErrorSource`
@@ -120,6 +124,8 @@
 #### Features
 
 - add NAPI entry points for `parse`, `rewrite`, `generate`, `compileFromAst`, `compile`, `builtinParse`, and `builtinGenerate`
+- add `language` to `JsAst`, `JsAstInput`, and AST hook payloads
+- add `language` to `JsGenerateOptions`
 - add `output` to the resolved options payload
 - add `output.file` to the compile, compileFromAst, and generate options and to the plugin options bag
 - add `{ mode, path }` input and `{ mode, url }` output source-map options to `sourceMap`, and the flat input mode or `{ mode, path }` options to `inputSourceMap`; an input `mode` accepts a source-map value or a literal mode
@@ -131,6 +137,8 @@
 
 #### Breaking
 
+- change the re-exported `Ast::from_source` and `Ast::try_from_source` to accept `Language` and `SourceType`
+- change the re-exported `Ast::source_type` to return `SourceType`
 - change the re-exported `CompileContext.cwd` to `&Path`
 - change the re-exported `CompileOptions`, `CompileFromAstOptions`, and `GenerateOptions` to carry `output`
 - change the re-exported `InputSourceMapMode` to remove `Path`; use `External` with `InputSourceMapOptions.path`, which resolves a relative `path` against the source file's directory instead of `cwd`
@@ -142,6 +150,7 @@
 #### Features
 
 - add re-exports of `parse`, `rewrite`, `generate`, `compile_from_ast`, and `compile`
+- add re-exports for `Ast::language` and `GenerateOptions.language`
 - add an `InputSourceMapOptions` re-export
 - add `OutputOptions` and `ResolvedOutputOptions` re-exports
 - add `PluginError` and `ErrorSource` re-exports
@@ -174,10 +183,13 @@
 - add exports for `parse`, `rewrite`, `generate`, `compileFromAst`, `createParser`, `createGenerator`, and `transform`
 - add exports for `Ast`, `AstResult`, `CodeResult`, the per-entry options, and the source-map types
 - add `Ast.mutate` for synchronous and asynchronous program mutation
+- add `Ast.sourceType` read-through accessor
 - add `AstOptions`
+- add `AstOptions.language` and `Ast.language`
 - add `CompileError`, `PluginError`, and `ErrorSource`
 - add `CompileError.render` and `PluginError.render` to render a code frame for a message
 - add `CompleteOutputOptions` and `OutputOptions` for the intended output file
+- add `GenerateOptions.language` and language precedence for `generate`, `createGenerator`, `rewrite`, and `compileFromAst`
 - add `InputSourceMapOptions` for custom external input map paths
 - add `output.file` to the compile, compileFromAst, and generate options
 - add an output `url` option for external `sourceMappingURL` comments

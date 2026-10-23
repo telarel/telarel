@@ -27,14 +27,16 @@ Because the stages run inline, `options`, `start`, and `end` fire exactly once.
 
 Every field is optional and resolved against defaults before use.
 
-| Field         | Type                       | Default             | Description                                                             |
-| ------------- | -------------------------- | ------------------- | ----------------------------------------------------------------------- |
-| `cwd`         | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                         |
-| `file`        | `Option<String>`           | `index.ts`          | The file being compiled. The language is inferred from its extension.   |
-| `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.             |
-| `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind.     |
-| `output`      | `Option<OutputOptions>`    | `file`              | Output code settings. `output.file` derives the default source-map URL. |
-| `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the run.                |
+| Field         | Type                       | Default                   | Description                                                                                                              |
+| ------------- | -------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `cwd`         | `Option<PathBuf>`          | process working dir       | Filesystem root used to resolve relative paths.                                                                          |
+| `file`        | `Option<String>`           | `index.ts`                | The file being compiled; used for option resolution and source-map defaults. Does not change the AST grammar.            |
+| `language`    | `Option<Language>`         | AST language, then `file` | The grammar recorded in the resolved step options and visible to plugins. Does not change the input AST grammar.         |
+| `source_type` | `Option<SourceType>`       | inferred                  | The module kind recorded in the resolved step options and visible to plugins. Does not change the input AST module kind. |
+| `output`      | `Option<OutputOptions>`    | `file`                    | Output code settings. `output.file` derives the default source-map URL.                                                  |
+| `source_map`  | `Option<SourceMapOptions>` | off                       | The source-map inputs and outputs requested for the run.                                                                 |
+
+The explicit values are visible to the `options` hook; after resolution the values (explicit or inferred) are visible to `start` and later hooks through the resolved options and `PluginContext.module`. When `language` is omitted, the resolved language falls back to the input AST grammar, then the file extension. `compile_from_ast` does not reparse the AST; the rewrite stages return the input AST or a plugin replacement, and builtin generation emits from that AST's own `Program.source_type`.
 
 ## Returns
 

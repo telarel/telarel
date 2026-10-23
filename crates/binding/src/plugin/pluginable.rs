@@ -12,7 +12,8 @@ use napi::{Env, Result, Status};
 use oxc::span::SourceType;
 
 use telarel_common::{
-    Ast, AstResult, CodeResult, HookUsage, ResolvableOptions, SourceMap,
+    Ast, AstResult, CodeResult, HookUsage, Language, ResolvableOptions,
+    SourceMap,
 };
 use telarel_plugin::__internal::HookFuture;
 use telarel_plugin::{
@@ -32,8 +33,8 @@ use crate::_types::plugin::hooks::{
 use crate::_types::plugin::order::read_hook_meta;
 use crate::_types::sourcemap::JsSourceMap;
 use crate::ast::{
-    ast_from_json, ast_from_program, ast_to_estree_json,
-    js_source_map_to_owned, source_map_to_js, source_type_for_options,
+    ast_from_json, ast_to_estree_json, js_source_map_to_owned, js_to_ast,
+    source_map_to_js, source_type_for_generate, source_type_for_options,
 };
 use crate::errors::plugin::decode_plugin_error;
 use crate::plugin::build::NAME_REQUIRED;
@@ -161,14 +162,28 @@ fn anyhow_to_plugin_error(error: anyhow::Error) -> PluginError {
     PluginError::new(format!("{error:#}"))
 }
 
-/// Serialize the AST for a tree hook: the UTF-16 ESTree JSON, its source
-/// text, and its input map.
-fn ast_hook_parts(ast: &Ast) -> (String, String, Option<JsSourceMap>) {
+/// Tree-hook payload: JSON, source, input map, grammar label.
+fn ast_hook_parts(ast: &Ast) -> (String, String, Option<JsSourceMap>, String) {
     (
         ast_to_estree_json(ast),
         ast.source().to_string(),
         ast.map().map(source_map_to_js),
+        ast.language().as_str().to_string(),
     )
+}
+
+/// The transform read-back grammar: a returned label wins; absent means the
+/// input AST's grammar still anchors the rebuild.
+fn transform_read_back_language(
+    returned: Option<&str>,
+    input: Language,
+) -> std::result::Result<Language, PluginError> {
+    let returned: Option<Language> = match returned {
+        | Some(text) => parse_language(text).map_err(hook_error)?,
+        | None => None,
+    };
+
+    Ok(returned.unwrap_or(input))
 }
 
 /// Unmarshal an `options` hook return into the pipeline bag ON the JS thread,
@@ -533,28 +548,17 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             };
 
-            // The returned AST's spans anchor to its own `code`, so resolve the
-            // grammar from the hook's parser options (the same resolution the
-            // builtin parser applies) and rebuild the tree against it.
+            // Parser options own the grammar: a returned AST's language label
+            // is deliberately ignored here, because its spans must be read
+            // under the grammar the builtin parser resolved.
             let source_type: SourceType = source_type_for_options(
                 &args.options.file,
                 Some(args.options.language),
                 args.options.source_type,
             );
 
-            let JsAst { program, code, map } = replaced.ast;
-
-            let input_map: Option<SourceMap> = match map {
-                | Some(map) => Some(
-                    js_source_map_to_owned(&map)
-                        .map_err(anyhow_to_plugin_error)?,
-                ),
-                | None => None,
-            };
-
-            let ast: Ast =
-                ast_from_program(&program, code, input_map, source_type)
-                    .map_err(anyhow_to_plugin_error)?;
+            let ast: Ast = js_to_ast(replaced.ast.into(), source_type)
+                .map_err(anyhow_to_plugin_error)?;
 
             Ok(Some(AstResult { ast }))
         })
@@ -574,8 +578,12 @@ impl Pluginable for JsPlugin {
                 return Ok(());
             };
 
-            let (ast_json, code, map): (String, String, Option<JsSourceMap>) =
-                ast_hook_parts(args.ast);
+            let (ast_json, code, map, ast_language): (
+                String,
+                String,
+                Option<JsSourceMap>,
+                String,
+            ) = ast_hook_parts(args.ast);
 
             let call: ObserveCall = ObserveCall {
                 cwd: SharedStr::new(&path_label(ctx.cwd)),
@@ -589,6 +597,7 @@ impl Pluginable for JsPlugin {
                 ast_json,
                 code,
                 map,
+                ast_language,
             };
 
             let output: Either<Promise<Undefined>, Undefined> =
@@ -616,17 +625,14 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             };
 
-            // Capture the source type BEFORE serializing; the read-back needs
-            // it to anchor the JSON tree.
-            let source_type: SourceType = args.ast.source_type();
-
             // The UTF-16 map is anchored to the AST's own source (the parse
             // input), NOT the module's original code, so it matches the byte
             // spans the codec emits.
-            let (ast_json_utf16, source_code, source_map): (
+            let (ast_json_utf16, source_code, source_map, ast_language): (
                 String,
                 String,
                 Option<JsSourceMap>,
+                String,
             ) = ast_hook_parts(&args.ast);
 
             // The ESTree codec skips `Program.comments`; keep the parser-owned
@@ -647,6 +653,7 @@ impl Pluginable for JsPlugin {
                 ast_json: ast_json_utf16.clone(),
                 code: source_code.clone(),
                 map: source_map.clone(),
+                ast_language: ast_language.clone(),
             };
 
             let output: Either<
@@ -663,15 +670,28 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             };
 
+            // A returned grammar wins; absent means the input AST's grammar
+            // still anchors the read-back.
+            let language: Language = transform_read_back_language(
+                replaced.language.as_deref(),
+                args.ast.language(),
+            )?;
+
             // Defense in depth: a pass-through sends the tree back unchanged,
             // so compare every AST field in the form the plugin saw and skip
-            // the read-back.
+            // the read-back. The language comparison keeps a grammar-only
+            // change from being short-circuited.
             if replaced.ast_json == ast_json_utf16
                 && replaced.code == source_code
                 && replaced.map == source_map
+                && language == args.ast.language()
             {
                 return Ok(None);
             }
+
+            // The returned program's `sourceType` owns the module kind; the
+            // chosen grammar only supplies the unambiguous parser input.
+            let source_type: SourceType = source_type_for_generate(language);
 
             let input_map: Option<SourceMap> = match replaced.map {
                 | Some(map) => Some(
@@ -729,8 +749,12 @@ impl Pluginable for JsPlugin {
                 return Ok(());
             };
 
-            let (ast_json, code, map): (String, String, Option<JsSourceMap>) =
-                ast_hook_parts(args.ast);
+            let (ast_json, code, map, ast_language): (
+                String,
+                String,
+                Option<JsSourceMap>,
+                String,
+            ) = ast_hook_parts(args.ast);
 
             let call: ObserveCall = ObserveCall {
                 cwd: SharedStr::new(&path_label(ctx.cwd)),
@@ -744,6 +768,7 @@ impl Pluginable for JsPlugin {
                 ast_json,
                 code,
                 map,
+                ast_language,
             };
 
             let output: Either<Promise<Undefined>, Undefined> =
@@ -868,6 +893,8 @@ mod tests {
         Language, OutputOptions, SourceMapOptions, SourceType,
     };
 
+    use crate::_types::ast::JsAstInput;
+    use crate::ast::ast_from_program;
     use crate::plugin::hooks::RefList;
 
     use super::*;
@@ -1187,5 +1214,128 @@ mod tests {
             outcome.expect_err("an invalid source type is the hook error");
 
         assert!(error.to_string().contains("invalid source type"), "{error}");
+    }
+
+    #[test]
+    fn test_transform_read_back_returned_language_wins() {
+        let language: Language =
+            transform_read_back_language(Some("jsx"), Language::TS)
+                .expect("a returned language parses");
+
+        assert_eq!(language, Language::JSX);
+    }
+
+    #[test]
+    fn test_transform_read_back_absent_language_falls_back_to_input() {
+        let language: Language =
+            transform_read_back_language(None, Language::TSX)
+                .expect("absent language is unset");
+
+        assert_eq!(language, Language::TSX);
+    }
+
+    #[test]
+    fn test_transform_read_back_empty_language_is_unset() {
+        let language: Language =
+            transform_read_back_language(Some(""), Language::JS)
+                .expect("an empty label is unset");
+
+        assert_eq!(language, Language::JS);
+    }
+
+    #[test]
+    fn test_transform_read_back_invalid_language_errors() {
+        let error: PluginError =
+            transform_read_back_language(Some("json"), Language::JS)
+                .expect_err("an invalid label is the hook error");
+
+        assert!(error.to_string().contains("invalid language"), "{error}");
+    }
+
+    #[test]
+    fn test_transform_read_back_defers_module_kind_to_program_source_type() {
+        let language: Language =
+            transform_read_back_language(Some("tsx"), Language::JS)
+                .expect("the returned language parses");
+
+        let source_type: oxc::span::SourceType =
+            source_type_for_generate(language);
+
+        assert!(source_type.is_unambiguous(), "{source_type:?}");
+
+        let program: serde_json::Value = serde_json::json!({
+            "type": "Program",
+            "sourceType": "module",
+            "body": [],
+            "start": 0,
+            "end": 0,
+        });
+
+        let ast: Ast =
+            ast_from_program(&program, String::new(), None, source_type)
+                .expect("the program decodes");
+
+        assert_eq!(ast.language(), Language::TSX);
+        assert_eq!(ast.source_type(), SourceType::Module);
+        assert!(ast.program().source_type.is_module());
+    }
+
+    fn parse_output(
+        program: serde_json::Value,
+        language: Option<String>,
+    ) -> JsParseOutput {
+        JsParseOutput {
+            ast: JsAstInput {
+                program,
+                code: String::new(),
+                map: None,
+                language,
+            },
+        }
+    }
+
+    fn empty_module_program() -> serde_json::Value {
+        serde_json::json!({
+            "type": "Program",
+            "sourceType": "module",
+            "body": [],
+            "start": 0,
+            "end": 0,
+        })
+    }
+
+    #[test]
+    fn test_parse_output_ast_without_language_rebuilds_with_parser_options() {
+        let output: JsParseOutput = parse_output(empty_module_program(), None);
+
+        let source_type: oxc::span::SourceType = source_type_for_options(
+            "index.ts",
+            Some(Language::TS),
+            SourceType::Unambiguous,
+        );
+
+        let ast: Ast = js_to_ast(output.ast.into(), source_type)
+            .expect("an absent returned language is unset");
+
+        assert_eq!(ast.language(), Language::TS);
+        assert_eq!(ast.source_type(), SourceType::Module);
+    }
+
+    #[test]
+    fn test_parse_output_ast_language_is_ignored_for_grammar() {
+        let output: JsParseOutput =
+            parse_output(empty_module_program(), Some(String::from("jsx")));
+
+        let source_type: oxc::span::SourceType = source_type_for_options(
+            "index.ts",
+            Some(Language::TS),
+            SourceType::Unambiguous,
+        );
+
+        let ast: Ast = js_to_ast(output.ast.into(), source_type)
+            .expect("a returned language does not block read-back");
+
+        assert_eq!(ast.language(), Language::TS);
+        assert!(ast.program().source_type.is_typescript());
     }
 }

@@ -4,7 +4,7 @@ use crate::_types::sourcemap::JsSourceMap;
 use crate::ast;
 
 /// The JS-facing normalized AST: the ESTree program, the source text it spans
-/// anchor to, and an optional input source map.
+/// anchor to, an optional input source map, and the grammar label.
 #[napi_derive::napi(object)]
 pub struct JsAst {
     /// The ESTree program produced by parsing or rewriting.
@@ -13,6 +13,8 @@ pub struct JsAst {
     pub code: String,
     /// The input source map, when the AST carries one.
     pub map: Option<JsSourceMap>,
+    /// The grammar of the program, as its canonical label.
+    pub language: String,
 }
 
 impl JsAst {
@@ -24,7 +26,12 @@ impl JsAst {
 
 impl From<ast::JsAst> for JsAst {
     fn from(value: ast::JsAst) -> Self {
-        Self { program: value.program, code: value.code, map: value.map }
+        Self {
+            program: value.program,
+            code: value.code,
+            map: value.map,
+            language: value.language,
+        }
     }
 }
 
@@ -37,11 +44,18 @@ pub struct JsAstInput {
     pub code: String,
     /// The input source map object, when the caller supplied one.
     pub map: Option<serde_json::Value>,
+    /// The grammar of the program; absent means unset.
+    pub language: Option<String>,
 }
 
 impl From<JsAstInput> for ast::JsAstInput {
     fn from(value: JsAstInput) -> Self {
-        Self { program: value.program, code: value.code, map: value.map }
+        Self {
+            program: value.program,
+            code: value.code,
+            map: value.map,
+            language: value.language,
+        }
     }
 }
 

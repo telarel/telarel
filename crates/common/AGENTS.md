@@ -4,27 +4,30 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 
 ## Key files
 
-| Path                           | Responsibility                                                                   |
-| ------------------------------ | -------------------------------------------------------------------------------- |
-| `src/_types/options/`          | Per-entry options structs, `ResolvableOptions`, `ResolvedOptions`                |
-| `src/_types/options/sourcemap` | Input and output source-map modes                                                |
-| `src/ast/ast.rs`               | `Ast`: owned, self-referential AST bundling its allocator, source, and input map |
-| `src/ast/generator.rs`         | Builtin generator; produces code and an output map                               |
-| `src/ast/parser.rs`            | Builtin parser; resolves the requested input source map during parsing           |
-| `src/ast/result.rs`            | `AstResult` and `CodeResult`                                                     |
-| `src/contexts/compile.rs`      | `CompileContext`                                                                 |
-| `src/errors/compile.rs`        | `CompileError` and code-frame rendering                                          |
-| `src/errors/plugin.rs`         | `PluginError`                                                                    |
-| `src/errors/source/mod.rs`     | `ErrorSource`                                                                    |
-| `src/helpers/path.rs`          | Centralized process-cwd and path-resolution helpers                              |
-| `src/helpers/resolve.rs`       | Option resolution helpers                                                        |
-| `src/sourcemap/mode.rs`        | Applies the resolved output mode after code generation                           |
-| `src/sourcemap/resolve.rs`     | Input map resolution: `Value`, `Inline`, `External`, `Auto`                      |
+| Path                           | Responsibility                                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `src/_types/options/`          | Per-entry options structs, `ResolvableOptions`, `ResolvedOptions`                                                        |
+| `src/_types/options/sourcemap` | Input and output source-map modes                                                                                        |
+| `src/ast/ast.rs`               | `Ast`: owned, self-referential AST; `AstOwner` keeps the allocator, source, semantic language/source type, and input map |
+| `src/ast/generator.rs`         | Builtin generator; produces code and an output map                                                                       |
+| `src/ast/parser.rs`            | Builtin parser; resolves the requested input source map during parsing                                                   |
+| `src/ast/result.rs`            | `AstResult` and `CodeResult`                                                                                             |
+| `src/contexts/compile.rs`      | `CompileContext`                                                                                                         |
+| `src/errors/compile.rs`        | `CompileError` and code-frame rendering                                                                                  |
+| `src/errors/plugin.rs`         | `PluginError`                                                                                                            |
+| `src/errors/source/mod.rs`     | `ErrorSource`                                                                                                            |
+| `src/helpers/path.rs`          | Centralized process-cwd and path-resolution helpers                                                                      |
+| `src/helpers/resolve.rs`       | Option resolution helpers                                                                                                |
+| `src/sourcemap/mode.rs`        | Applies the resolved output mode after code generation                                                                   |
+| `src/sourcemap/resolve.rs`     | Input map resolution: `Value`, `Inline`, `External`, `Auto`                                                              |
 
 ## AST invariants
 
 - `Ast` shares ownership of its allocator and source through `Arc`; `program()` borrows a tree whose spans anchor to that source.
 - `Ast` wraps `Arc<AstInner>`; `Clone` is O(1) and shares the arena.
+- `AstOwner` owns the allocator, source, semantic `Language`/`SourceType`, and input source map.
+- `Ast::language()` derives grammar from the parsed program; `Ast::source_type()` returns the coarse `telarel_common::SourceType` resolved from the program, never the parser-input `Unambiguous` for a normal parsed AST.
+- The raw oxc source type remains reachable through `ast.program().source_type`; `from_source` / `try_from_source` accept the Telarel `Language` and `SourceType`, not oxc's raw type.
 - `with_mut` is the only path to the arena. It takes `&mut self` and copy-on-writes through `Arc::make_mut` when another handle is alive, so mutating a clone never mutates the original.
 - `with_mut` debug-asserts that `Program::source_text` stays content-equal to `Ast::source`; span conversion, codegen source maps, and error frames depend on it. Public contract: `docs/content/apis/rust/Ast.mdx`.
 - `with_input_map` is a deep rebuild into a fresh allocator; it shares the source `Arc` and carries the requested input map.

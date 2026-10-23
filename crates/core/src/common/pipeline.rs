@@ -10,7 +10,7 @@
 
 use telarel_common::{
     Ast, AstResult, CodeResult, CompileError, Generator, GeneratorOptions,
-    OutputSourceMap, OutputSourceMapOptions, Parser, ParserOptions,
+    Language, OutputSourceMap, OutputSourceMapOptions, Parser, ParserOptions,
     ResolvableOptions, ResolvedOptions, apply_output_source_map_mode,
     resolve_input_source_map, resolve_options,
 };
@@ -24,6 +24,11 @@ use telarel_plugin::{
 /// The stage plan of one public entry point.
 pub trait Stage {
     type Output;
+
+    /// The grammar of the stage's AST, when the stage enters from an AST.
+    fn ast_language(&self) -> Option<Language> {
+        None
+    }
 
     /// Run this entry point's configured stages over the settled pipeline.
     async fn run(
@@ -199,6 +204,10 @@ pub struct RewriteStage {
 impl Stage for RewriteStage {
     type Output = AstResult;
 
+    fn ast_language(&self) -> Option<Language> {
+        Some(self.ast.language())
+    }
+
     async fn run(
         self,
         driver: &PluginDriver,
@@ -220,6 +229,10 @@ pub struct GenerateStage {
 impl Stage for GenerateStage {
     type Output = CodeResult;
 
+    fn ast_language(&self) -> Option<Language> {
+        Some(self.ast.language())
+    }
+
     async fn run(
         self,
         driver: &PluginDriver,
@@ -238,6 +251,10 @@ pub struct CompileFromAstStage {
 
 impl Stage for CompileFromAstStage {
     type Output = CodeResult;
+
+    fn ast_language(&self) -> Option<Language> {
+        Some(self.ast.language())
+    }
 
     async fn run(
         self,
@@ -297,8 +314,16 @@ pub async fn run<S: Stage>(
     // resolution.
     let driver: PluginDriver = PluginDriver::new(settled);
 
-    let resolved: ResolvedOptions =
+    let requested_language: Option<Language> = args.options.language;
+
+    let mut resolved: ResolvedOptions =
         resolve_options(args.options, driver.settled_names().to_vec());
+
+    if requested_language.is_none()
+        && let Some(language) = stage.ast_language()
+    {
+        resolved.language = language;
+    }
 
     let module: ModuleInfo<'_> = ModuleInfo {
         file: &resolved.file,
