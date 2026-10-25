@@ -52,6 +52,9 @@ The public plugin API is documented in `docs/content/apis/plugin/javascript`. In
 
 - `JsPlugin::from_object` validates `name` and scans the hook slots into TSFNs; `read_hook_meta` reads the `<hook>Meta` siblings produced by the JS wrapper.
 - Hook usage is inferred from the TSFNs present on the adapter.
+- The wrapper assigns each original plugin object an internal id through a `WeakMap` and attaches it to the generated raw descriptor as a non-enumerable `__telarelPluginId` property. The id is internal and is not serialized, and a spread does not copy it.
+- `to_plugins` keeps a per-compile `RefList` memo from id to adapter and reuses the adapter when the same id appears again, so an unchanged plugin's `options` hook runs once. `RefList::release` clears the memo to break the `RefList -> JsPlugin -> RefList` cycle (`JsPlugin` holds the `RefList`).
+- A plugin object mutated after its first bridge keeps the adapter created on that first bridge; identity is the instance.
 - The `options` hook is special: it is an async function returning a promise. Its resolution is bridged on the JS thread, because late plugin descriptors must be rooted and wrapped where JS objects are reachable.
 - The pre-resolution `options` payload omits unset `cwd` and `file`; absent means unset. Resolved hook payloads always carry both. Do not reintroduce empty-string sentinels.
 - Rooted descriptors live on the compile's `RefList` and are drained in `FunctionTask::finally`. Do not leak or double-release them.
@@ -67,7 +70,8 @@ The public plugin API is documented in `docs/content/apis/plugin/javascript`. In
 
 - A plugin is dispatched to Rust only when it carries the explicit `__builtin: true` property. No name prefix is reserved.
 - The descriptor is plain data: `{ __builtin: true, name, options }`.
-- The constructed Rust plugin is renamed to the builtin's JS name (for transform, `builtin:transform`) so pipeline errors and identity use the JS-facing name.
+- The constructed Rust plugin is named after the builtin's JS name (for transform, `builtin:transform`) so pipeline errors use the JS-facing name. Identity is the adapter instance, not the name.
+- Builtins use the same `__telarelPluginId` and `RefList` adapter memo path as JS hook plugins.
 - The same dispatch applies mid-fixpoint for plugins injected by `options`.
 
 ## Execution model

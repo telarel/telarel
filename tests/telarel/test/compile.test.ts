@@ -547,9 +547,157 @@ describe("compile", (): void => {
             ],
         });
 
-        // The injector runs before `late` on every pass, so it never observes
-        // the flag `late` flips.
-        expect(seen).toEqual(["in:false", "in:false", "late.options"]);
+        // The injector runs once; `late` joins on the next pass, after the
+        // injector has already been skipped as an already-run instance.
+        expect(seen).toEqual(["in:false", "late.options"]);
+    });
+
+    it("runs a same-name replacement plugin's options hook on the next pass", async (): Promise<void> => {
+        let isSwapped: boolean = false;
+        const seen: Array<string> = [];
+
+        const oldProbe: Plugin = {
+            name: "same",
+            options: (): void => {
+                seen.push("old.options");
+            },
+            start: (): void => {
+                seen.push("old.start");
+            },
+        };
+
+        const newProbe: Plugin = {
+            name: "same",
+            options: (): void => {
+                seen.push("new.options");
+            },
+            start: (): void => {
+                seen.push("new.start");
+            },
+        };
+
+        const swapper: Plugin = {
+            name: "swapper",
+            options: (
+                _ctx: CommonPluginContext,
+                args: OptionsArgs,
+            ): OptionsArgs | null | void => {
+                seen.push("swapper.options");
+
+                if (isSwapped) {
+                    return null;
+                }
+                isSwapped = true;
+
+                return {
+                    options: {
+                        ...args.options,
+                        plugins: [swapper, newProbe],
+                    },
+                };
+            },
+        };
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [swapper, oldProbe],
+        });
+
+        // The same-name instance is new work on the next pass; the settled
+        // list no longer contains the old probe.
+        expect(seen).toEqual([
+            "swapper.options",
+            "old.options",
+            "new.options",
+            "new.start",
+        ]);
+    });
+
+    it("does not re-run options when the original plugin instance is returned again", async (): Promise<void> => {
+        let runs: number = 0;
+
+        const self: Plugin = {
+            name: "self",
+            options: (
+                _ctx: CommonPluginContext,
+                args: OptionsArgs,
+            ): OptionsArgs | null | void => {
+                runs++;
+
+                if (runs > 1) {
+                    return null;
+                }
+
+                return {
+                    options: {
+                        ...args.options,
+                        plugins: [...(args.options.plugins ?? []), self],
+                    },
+                };
+            },
+        };
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [self],
+        });
+
+        expect(runs).toBe(1);
+    });
+
+    it("runs options once for duplicate entries of the same instance", async (): Promise<void> => {
+        let runs: number = 0;
+        const seen: Array<Array<string>> = [];
+
+        const plugin: Plugin = {
+            name: "dup",
+            options: (): void => {
+                runs++;
+            },
+            start: (_ctx: PluginContext, args: StartArgs): void => {
+                seen.push(args.options.plugins);
+            },
+        };
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [plugin, plugin],
+        });
+
+        expect(runs).toBe(1);
+        expect(seen).toEqual([
+            ["dup", "dup"],
+            ["dup", "dup"],
+        ]);
+    });
+
+    it("runs options for distinct same-name plugin instances", async (): Promise<void> => {
+        const seen: Array<string> = [];
+
+        const first: Plugin = {
+            name: "same",
+            options: (): void => {
+                seen.push("first.options");
+            },
+        };
+
+        const second: Plugin = {
+            name: "same",
+            options: (): void => {
+                seen.push("second.options");
+            },
+        };
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [first, second],
+        });
+
+        expect(seen).toEqual(["first.options", "second.options"]);
     });
 
     it("rejects on hook errors with plugin context", async (): Promise<void> => {

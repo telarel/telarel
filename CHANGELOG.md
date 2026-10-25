@@ -84,6 +84,7 @@
 - change `PluginContext.cwd` to `&Path`
 - change `TransformArgs` to own a cheap `Ast`; it loses its lifetime and `Copy`
 - change the `options` hook to receive `ResolvableOptions` before defaults are resolved
+- change the `options` fixpoint identity to the plugin instance instead of the plugin name
 - change `prepare` and `finalize` from carried code folds to read-only AST observers
 - change transform hooks to mutate through `Ast::with_mut` and return the AST; `None` still leaves the carried AST untouched
 - change every fallible hook to return `Result<_, PluginError>`
@@ -134,6 +135,10 @@
 - add structured NAPI rejection data with UTF-16 spans
 - add bridges for the new options, source-map types, and `parse` and `generate` hooks
 
+#### Fixes
+
+- change the JS plugin bridge to reuse the adapter for the same plugin object so unchanged plugins do not re-run `options`
+
 ### Telarel (Crate)
 
 #### Breaking
@@ -172,6 +177,7 @@
 - change `PrepareArgs`, `FinalizeArgs`, and `GenerateArgs` to carry `Ast` instead of `Program`; `TransformArgs` and `TransformResult` carry `Ast`
 - change entry-point rejections to `CompileError`
 - change external output mode to append a default `sourceMappingURL` derived from `output.file` when `url` is absent
+- change the `options` fixpoint to run once per plugin instance: a same-name replacement runs, an unchanged plugin does not re-run `options`, and duplicate entries are preserved
 - remove plain-object `Ast` inputs; construct `new Ast({ program, source })` instead
 - remove the `PrepareResult` and `FinalizeResult` exports
 - rename `Ast.code` to `Ast.source`

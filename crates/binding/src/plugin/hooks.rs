@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use napi::bindgen_prelude::{
@@ -8,6 +9,8 @@ use napi::bindgen_prelude::{
 use napi::sys;
 use napi::threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunction};
 use napi::{Env, Error, Result, Status};
+
+use telarel_plugin::SharedPluginable;
 
 use crate::_types::ast::JsAst;
 use crate::_types::plugin::context::JsPluginContext;
@@ -213,8 +216,8 @@ pub fn release_refs(
 
 /// A dynamic, per-compile registry of rooted JS object references.
 ///
-/// Two roles share this handle (it is `Arc`-shared into every site that
-/// needs either):
+/// Three roles share this handle (it is `Arc`-shared into every site that
+/// needs any of them):
 ///
 /// - `refs` — the RELEASE list. Starts with the entry-time references (plugin
 ///   array, each plugin object). The `options` hook APPENDS late plugins'
@@ -227,12 +230,18 @@ pub fn release_refs(
 ///   `SharedRef` clones that SHARE the same roots as the release list (the
 ///   table never owns or releases a reference); the view is replaced whole by
 ///   [`RefList::set_bag`] (entry seed, then each returned bag).
+/// - `bridged_plugins` — the ADAPTER MEMO mapping the JS wrapper's internal
+///   plugin id to its already-bridged adapter for the CURRENT compile, so an
+///   echoed descriptor reuses the same `SharedPluginable`.
 #[derive(Default)]
 pub struct RefList {
     /// Rooted references drained in `FunctionTask::finally`.
     refs: Mutex<Vec<SharedRef>>,
     /// The current bag's descriptor view; see the type's docs.
     bag_descriptors: Mutex<Vec<SharedRef>>,
+    /// Bridged adapters by the JS wrapper's internal plugin id; see the
+    /// type's docs.
+    bridged_plugins: Mutex<HashMap<u32, SharedPluginable>>,
 }
 
 unsafe impl Send for RefList {}
@@ -267,6 +276,30 @@ impl RefList {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
+    }
+
+    /// The already-bridged adapter memoized for `id`, if any.
+    pub fn bridged_plugin(
+        &self,
+        id: u32,
+    ) -> Option<SharedPluginable> {
+        self.bridged_plugins
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&id)
+            .cloned()
+    }
+
+    /// Memoize a bridged adapter under the JS wrapper's internal plugin id.
+    pub fn remember_bridged(
+        &self,
+        id: u32,
+        adapter: SharedPluginable,
+    ) {
+        self.bridged_plugins
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id, adapter);
     }
 
     /// Root a JS object and push its reference onto the release list.
@@ -314,12 +347,21 @@ impl RefList {
         *bag = descriptors;
     }
 
-    /// Release every reference on the release list; first release error wins.
+    /// Release every reference on the release list and clear the adapter memo;
+    /// first release error wins.
     pub fn release(
         &self,
         env: &Env,
     ) -> Result<()> {
         let refs: Vec<SharedRef> = self.refs();
+
+        // A memoized adapter holds this `RefList`, so clear the memo before
+        // releasing references: a failed release must not leave the
+        // `RefList -> JsPlugin -> RefList` cycle behind.
+        self.bridged_plugins
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
 
         release_refs(env, &refs)
     }
@@ -829,6 +871,11 @@ pub(crate) use hook_scan;
 mod tests {
     use super::*;
 
+    fn test_adapter() -> SharedPluginable {
+        crate::plugin::builtin::to_builtin_plugin("builtin:transform", None)
+            .expect("builtin:transform dispatches")
+    }
+
     #[test]
     fn test_hook_slots_are_sequential() {
         assert_eq!(options::SLOT, 0);
@@ -874,6 +921,33 @@ mod tests {
     fn test_shared_str_debug() {
         let shared: SharedStr = SharedStr::new("x");
         assert_eq!(format!("{shared:?}"), r#"SharedStr("x")"#);
+    }
+
+    #[test]
+    fn test_bridged_plugin_memo_round_trip() {
+        let refs: RefList = RefList::new();
+        let adapter: SharedPluginable = test_adapter();
+
+        refs.remember_bridged(7, Arc::clone(&adapter));
+
+        let found: SharedPluginable =
+            refs.bridged_plugin(7).expect("memoized adapter is returned");
+
+        assert!(Arc::ptr_eq(&adapter, &found));
+        assert!(refs.bridged_plugin(8).is_none());
+    }
+
+    #[test]
+    fn test_release_clears_bridged_plugin_memo() {
+        let refs: RefList = RefList::new();
+        // The release list is empty, so `release` never dereferences the env.
+        let env: Env = napi::Env::from_raw(std::ptr::null_mut());
+
+        refs.remember_bridged(7, test_adapter());
+
+        refs.release(&env).expect("empty release list releases");
+
+        assert!(refs.bridged_plugin(7).is_none());
     }
 
     #[test]

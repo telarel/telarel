@@ -6,8 +6,9 @@
 //! `rewrite`, `generate`, `compile_from_ast`, and `compile`. Each converts its
 //! options to [`ResolvableOptions`](telarel_common::ResolvableOptions), runs
 //! the `options` fixpoint, resolves the settled options, runs `start`, executes
-//! the stages its entry point declares, and runs `end` — so the `options`,
-//! `start`, and `end` hooks fire exactly once per invocation.
+//! the stages its entry point declares, and runs `end`. The pipeline invokes
+//! each stage once per invocation; `options` runs per plugin instance, while
+//! `start` and `end` run per settled entry, duplicates included.
 
 mod common;
 mod functions;

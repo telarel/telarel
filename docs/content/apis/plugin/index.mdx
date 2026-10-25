@@ -24,7 +24,20 @@ Rust plugins are coupled to the bundled oxc version, while JavaScript plugins re
 
 ### Hook semantics
 
-**`options` — fixpoint replace.** Runs before the options are resolved, as a sequential fixpoint over the plugin list. A returned value replaces the whole options bag — this is a struct-level replace, not a patch: fields the returned value omits are dropped and fall back to their defaults. Returning nothing keeps the current bag. The payload carries the resolvable options and the plugin list, never the source. An unset field stays unset until the fixpoint settles; defaults are applied only when the options are resolved.
+**`options` — fixpoint replace.** Runs before options are resolved, as a sequential fixpoint over the plugin list. Identity is the instance, not the name: each distinct instance runs once, a same-name replacement counts as new work, and duplicates of one instance are preserved.
+
+```mermaid
+flowchart TD
+    A["Start with the plugin list"] --> B["Run options on each instance not yet run"]
+    B --> C["Replace the bag with any returned value"]
+    C --> D{"Any instance not yet run?"}
+    D -- "yes" --> B
+    D -- "no" --> E["Settle and resolve defaults"]
+```
+
+- **Return.** A returned bag replaces the whole bag at struct level, so omitted fields fall back to defaults. Returning nothing keeps the current bag.
+- **Payload.** Resolvable options and the plugin list, never the source. Unset fields stay unset until the fixpoint settles.
+- **Depth.** An instance created every pass is new work every pass and reaches `MAX_OPTIONS_DEPTH`.
 
 **`start` — notify.** Runs on every settled plugin with the fully resolved, read-only options. Return values are ignored; the first error aborts.
 
@@ -40,7 +53,11 @@ Rust plugins are coupled to the bundled oxc version, while JavaScript plugins re
 
 ### Usage gating
 
-The `options`, `start`, and `end` hooks run on every settled plugin. The partitioned stages — `parse`, `prepare`, `transform`, `finalize`, and `generate` — only run on the plugins that declare them.
+| Hooks                                                   | Runs on                                  |
+| ------------------------------------------------------- | ---------------------------------------- |
+| `options`                                               | each distinct instance, once             |
+| `start`, `end`                                          | every settled entry, duplicates included |
+| `parse`, `prepare`, `transform`, `finalize`, `generate` | only plugins that declare the hook       |
 
 Parsing and code generation always run: a stage that no plugin declares falls back to the builtin parser or generator.
 

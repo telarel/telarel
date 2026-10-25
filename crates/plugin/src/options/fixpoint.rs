@@ -12,22 +12,24 @@ use crate::plugin_driver::sort_plugins_by_hook_meta;
 /// loop naturally; only plugin cycles reach this guard.
 const MAX_OPTIONS_DEPTH: usize = 10;
 
-/// Compares by content, not identity: a bridge may return fresh handles for
-/// the same plugins every pass, so identity never matches while the work is
-/// already done.
-fn structurally_same(
+/// Compares by instance identity: a same-name replacement is a new instance,
+/// while duplicates of an already-run instance are the same work.
+fn same_instances(
     left: &[SharedPluginable],
     right: &[SharedPluginable],
 ) -> bool {
     left.len() == right.len()
-        && left.iter().zip(right).all(|(a, b)| a.call_name() == b.call_name())
+        && left.iter().zip(right).all(|(a, b)| Arc::ptr_eq(a, b))
 }
 
 /// Run the `options` hook as a fixpoint over the plugin list.
 ///
-/// `Some` replaces the entire settled list and `None` keeps it; each plugin
-/// runs once, in per-pass `options_meta` order. The loop ends when a pass adds
-/// nothing, and [`MAX_OPTIONS_DEPTH`] guards cycles.
+/// `Some` replaces the entire settled list and `None` keeps it. `options` runs
+/// once per plugin instance, in per-pass `options_meta` order; both the
+/// already-run check and termination compare instance identity. A same-name
+/// replacement is a new instance and runs on a later pass, while the settled
+/// list is not deduplicated and may repeat an instance. [`MAX_OPTIONS_DEPTH`]
+/// guards cycles.
 pub async fn options_fixpoint(
     ctx: &CommonPluginContext,
     args: &OptionsArgs,
@@ -85,7 +87,7 @@ pub async fn options_fixpoint(
 
         list = args.plugins.clone();
 
-        if !ran_any || structurally_same(&list, &pass_start) {
+        if !ran_any || same_instances(&list, &pass_start) {
             break;
         }
 
@@ -982,6 +984,95 @@ mod tests {
                 "probe-b".to_string(),
             ],
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_same_length_same_name_swap_runs_new_instance() {
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let new_probe: SharedPluginable = Plugin::new_shared(
+            MetaRecordingOptionsPlugin::new("same", None, &log),
+        );
+
+        let replacement: Arc<Mutex<Vec<SharedPluginable>>> =
+            Arc::new(Mutex::new(vec![Arc::clone(&new_probe)]));
+
+        let replacer: SharedPluginable = Plugin::new_shared(
+            ReturnsListOptionsPlugin::new("replacer", &replacement, &log),
+        );
+
+        replacement.lock().unwrap().insert(0, Arc::clone(&replacer));
+
+        let old_probe: SharedPluginable = Plugin::new_shared(
+            MetaRecordingOptionsPlugin::new("same", None, &log),
+        );
+
+        let plugins: Vec<SharedPluginable> = vec![replacer, old_probe];
+
+        let args: OptionsArgs = make_args(plugins);
+
+        let (_settled, list): (OptionsArgs, Vec<SharedPluginable>) =
+            options_fixpoint(&common_ctx(), &args).await.unwrap();
+
+        // The replacement keeps the list length and the probe name, but a new
+        // instance is new work and runs on the next pass.
+        assert_eq!(log.lock().unwrap().len(), 3);
+
+        assert!(Arc::ptr_eq(&list[1], &new_probe));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_same_instance_duplicate_runs_options_once() {
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugin: SharedPluginable = Plugin::new_shared(
+            MetaRecordingOptionsPlugin::new("same", None, &log),
+        );
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Arc::clone(&plugin), Arc::clone(&plugin)];
+
+        let args: OptionsArgs = make_args(plugins);
+
+        let (_settled, list): (OptionsArgs, Vec<SharedPluginable>) =
+            options_fixpoint(&common_ctx(), &args).await.unwrap();
+
+        assert_eq!(log.lock().unwrap().clone(), vec!["same".to_string()]);
+
+        assert_eq!(list.len(), 2);
+
+        assert!(Arc::ptr_eq(&list[0], &plugin));
+
+        assert!(Arc::ptr_eq(&list[1], &plugin));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_distinct_same_name_instances_both_run() {
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let first: SharedPluginable = Plugin::new_shared(
+            MetaRecordingOptionsPlugin::new("same", None, &log),
+        );
+
+        let second: SharedPluginable = Plugin::new_shared(
+            MetaRecordingOptionsPlugin::new("same", None, &log),
+        );
+
+        let plugins: Vec<SharedPluginable> = vec![first, second];
+
+        let args: OptionsArgs = make_args(plugins);
+
+        let (_settled, list): (OptionsArgs, Vec<SharedPluginable>) =
+            options_fixpoint(&common_ctx(), &args).await.unwrap();
+
+        assert_eq!(
+            log.lock().unwrap().clone(),
+            vec!["same".to_string(), "same".to_string()],
+        );
+
+        assert_eq!(list.len(), 2);
+
+        assert!(!Arc::ptr_eq(&list[0], &list[1]));
     }
 
     #[tokio::test(flavor = "current_thread")]

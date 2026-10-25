@@ -35,7 +35,7 @@ Each hook has its own optional `PluginHookMeta { order }`. `sort_plugins_by_hook
 - `Some(OptionsArgs)` replaces the entire args bag at struct level: omitted fields fall back to defaults, not to the previous values.
 - The returned plugin list replaces the settled list wholesale, including same-length swaps, reorders, and truncations.
 - Newly injected plugins get their own `options` hook run on a later pass.
-- A plugin already run is never re-run (tracked by identity).
+- Identity is the plugin instance (`Arc::ptr_eq` on `SharedPluginable`), not the name; see the [plugin hook semantics](../../docs/content/apis/plugin/index.mdx#hook-semantics) for the public consequences.
 - Each pass re-ranks a copy of the current list by `options_meta` to drive execution order only; the persisted/returned list keeps append/registration order.
 - `MAX_OPTIONS_DEPTH` (10) guards cycles and reports the growing chain.
 - Errors are propagated unchanged.

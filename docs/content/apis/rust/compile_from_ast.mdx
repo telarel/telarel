@@ -13,7 +13,7 @@ pub async fn compile_from_ast(
 
 Compiles an existing `ast` through rewrite and generation.
 
-Because the stages run inline, `options`, `start`, and `end` fire exactly once.
+Because the stages run inline, the pipeline invokes each stage once per invocation. The hooks themselves follow the shared [hook semantics](/apis/plugin#hook-semantics): `options` runs once per plugin instance, while `start` and `end` run per settled entry.
 
 ## Parameters
 

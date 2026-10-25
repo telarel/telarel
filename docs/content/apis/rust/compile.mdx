@@ -13,7 +13,7 @@ pub async fn compile(
 
 Compiles `code` from source to generated output.
 
-Because the stages run inline, `options`, `start`, and `end` fire exactly once. The builtin parser resolves any requested input source map.
+Because the stages run inline, the pipeline invokes each stage once per invocation. The hooks themselves follow the shared [hook semantics](/apis/plugin#hook-semantics): `options` runs once per plugin instance, while `start` and `end` run per settled entry. The builtin parser resolves any requested input source map.
 
 ## Parameters
 

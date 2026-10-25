@@ -29,7 +29,7 @@ Every invocation runs:
 
 AST-entry stages resolve language as explicit options, then AST language, then the file extension; `ModuleInfo` and post-resolution hooks see that language.
 
-`options`, `start`, and `end` fire exactly once per invocation. No entry point re-enters another.
+Each stage runs once per invocation. `options` runs per plugin instance, while `start` and `end` run per settled entry, duplicates included. No entry point re-enters another.
 
 `end` runs on every path after the options fixpoint settles, including stage and `start` failures. The only path that skips `end` is an options-fixpoint failure, because no driver exists yet. On a stage failure, a failing `end` returns its own error instead of the stage error; on a success path it is the error.
 

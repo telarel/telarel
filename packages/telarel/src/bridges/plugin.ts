@@ -178,6 +178,29 @@ const RAW_PLUGIN_MARKER: unique symbol = Symbol("telarel.bridge.rawPlugin");
 const isWrappedPlugin = (plugin: Plugin | BuiltinPlugin): boolean =>
     RAW_PLUGIN_MARKER in plugin;
 
+// Must match `PLUGIN_ID` in `crates/binding/src/plugin/build.rs`.
+const PLUGIN_ID: string = "__telarelPluginId";
+
+const pluginIds: WeakMap<Plugin | BuiltinPlugin, number> = new WeakMap();
+
+let nextPluginId: number = 1;
+
+const tagPluginId = (
+    raw: RawPlugin,
+    plugin: Plugin | BuiltinPlugin,
+): RawPlugin => {
+    let id: number | undefined = pluginIds.get(plugin);
+
+    if (id === void 0) {
+        id = nextPluginId++;
+        pluginIds.set(plugin, id);
+    }
+
+    Object.defineProperty(raw, PLUGIN_ID, { value: id, enumerable: false });
+
+    return raw;
+};
+
 const isBuiltinPlugin = (
     plugin: Plugin | BuiltinPlugin,
 ): plugin is BuiltinPlugin => {
@@ -373,7 +396,7 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
         Object.defineProperty(builtin, RAW_PLUGIN_MARKER, { value: true });
 
-        return builtin;
+        return tagPluginId(builtin, plugin);
     }
 
     const raw: RawHookPlugin = { name };
@@ -687,7 +710,7 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
         }
     }
 
-    return raw;
+    return tagPluginId(raw, plugin);
 };
 
 const toRawPlugins = async ({

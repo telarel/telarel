@@ -91,6 +91,8 @@ The options bag is shared by every entry point and always uses `sourceMap`. `par
 
 The `options` hook observes the bag before resolution. An unset `cwd` or `file` is absent from `args.options` (read it as `undefined`), not `""`; the defaults (`process.cwd()` and `"index.ts"`) are applied only after the fixpoint settles, so `start` and later hooks see the resolved values. Returning `{ ...args.options }` therefore preserves unset fields and cannot turn them into explicit empty strings.
 
+Identity is the plugin object, not its `name`; the same object does not re-run its `options` hook. Duplicates and the depth guard follow the [shared fixpoint rules](/apis/plugin#hook-semantics).
+
 All hook AST values are [Ast](/apis/javascript/Ast) instances; see that page for construction, mutation, and snapshot behavior. Every AST-bearing hook receives an `Ast` whose `language` is the current grammar. A `transform` may return an `Ast` with a different language, and read-back uses the returned language. A `parse` hook replacement keeps the parser options' grammar authority: the returned AST's language does not override the parser options.
 
 ### Errors
