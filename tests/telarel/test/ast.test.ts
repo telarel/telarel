@@ -6,6 +6,7 @@ import type {
     Parser,
     SourceMap,
 } from "telarel";
+import type { OxcProgram, Program as AstProgram } from "telarel/ast";
 
 import type { ProgramFixture } from "#/functions/ast";
 
@@ -239,6 +240,19 @@ describe("Ast", (): void => {
 
             expect(generated.code).toBe(sample.code);
         }
+    });
+
+    it("exports Program and OxcProgram from telarel/ast", (): void => {
+        const oxcProgram: OxcProgram = makeProgram();
+        const program: AstProgram = oxcProgram;
+        const ast: Ast = new Ast({
+            program,
+            source: "const a = 1;",
+        });
+
+        expect(oxcProgram.type).toBe("Program");
+        expect(program.comments).toBeUndefined();
+        expect(ast.program.type).toBe("Program");
     });
 
     it("rejects plain-object AST inputs", async (): Promise<void> => {

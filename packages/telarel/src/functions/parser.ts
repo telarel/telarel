@@ -1,8 +1,7 @@
-import type { Program } from "@oxc-project/types";
-
 import type { AstResult } from "#/@types/ast";
 import type { Language } from "#/@types/grammar";
 import type { ParserOptions } from "#/@types/parser";
+import type { Program } from "#/@types/program";
 
 import { builtinParse } from "#/binding";
 import { Ast } from "#/classes/ast";

@@ -1,5 +1,6 @@
 mod _types;
 pub mod ast;
+mod comment;
 mod errors;
 mod functions;
 mod plugin;

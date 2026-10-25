@@ -1,5 +1,3 @@
-import type { Program } from "@oxc-project/types";
-
 import type { AstResult, CodeResult } from "#/@types/ast";
 import type { BuiltinPlugin } from "#/@types/builtin";
 import type { GeneratorOptions } from "#/@types/generator";
@@ -27,6 +25,7 @@ import type {
     PluginOption,
     ResolvableOptions,
 } from "#/@types/plugin/options";
+import type { Program } from "#/@types/program";
 import type { SourceMapOptions } from "#/@types/sourcemap";
 import type { SourceMap } from "#/@types/sourcemap/map";
 import type { NormalizedHook } from "#/bridges/normalize-hook";

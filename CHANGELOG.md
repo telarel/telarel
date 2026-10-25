@@ -128,6 +128,7 @@
 - add `language` to `JsGenerateOptions`
 - add `output` to the resolved options payload
 - add `output.file` to the compile, compileFromAst, and generate options and to the plugin options bag
+- add `program.comments` and comment preservation across AST round-trips
 - add `{ mode, path }` input and `{ mode, url }` output source-map options to `sourceMap`, and the flat input mode or `{ mode, path }` options to `inputSourceMap`; an input `mode` accepts a source-map value or a literal mode
 - add the JS-to-Rust `PluginError` transport
 - add structured NAPI rejection data with UTF-16 spans
@@ -186,6 +187,7 @@
 - add `Ast.sourceType` read-through accessor
 - add `AstOptions`
 - add `AstOptions.language` and `Ast.language`
+- add `Comment`, `CommentContent`, `CommentPosition`, `CommentType`, `OxcProgram`, and `Program` types, and comment preservation across AST round-trips
 - add `CompileError`, `PluginError`, and `ErrorSource`
 - add `CompileError.render` and `PluginError.render` to render a code frame for a message
 - add `CompleteOutputOptions` and `OutputOptions` for the intended output file

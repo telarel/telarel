@@ -1,8 +1,7 @@
-import type { Program } from "@oxc-project/types";
-
 import type { AstResult } from "#/@types/ast";
 import type { Language } from "#/@types/grammar";
 import type { ParseOptions } from "#/@types/plugin/options";
+import type { Program } from "#/@types/program";
 import type { RawPlugin } from "#/bridges/plugin";
 
 import { parse as bindingParse } from "#/binding";

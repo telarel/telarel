@@ -1,5 +1,4 @@
-import type { Program } from "@oxc-project/types";
-
+import type { Program } from "#/@types/program";
 import type { Ast } from "#/classes/ast";
 
 import { isAst } from "#/bridges/plugin";

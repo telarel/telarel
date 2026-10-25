@@ -36,6 +36,7 @@ use crate::ast::{
     ast_from_json, ast_to_estree_json, js_source_map_to_owned, js_to_ast,
     source_map_to_js, source_type_for_generate, source_type_for_options,
 };
+use crate::comment;
 use crate::errors::plugin::decode_plugin_error;
 use crate::plugin::build::NAME_REQUIRED;
 use crate::plugin::build::to_plugins;
@@ -635,12 +636,6 @@ impl Pluginable for JsPlugin {
                 String,
             ) = ast_hook_parts(&args.ast);
 
-            // The ESTree codec skips `Program.comments`; keep the parser-owned
-            // comments to reattach them to the rebuilt program (a JS plugin
-            // cannot supply its own).
-            let comments: Vec<oxc::ast::ast::Comment> =
-                args.ast.program().comments.iter().cloned().collect();
-
             let call: TransformCall = TransformCall {
                 cwd: SharedStr::new(&path_label(ctx.cwd)),
                 file: SharedStr::new(ctx.module.file),
@@ -686,6 +681,15 @@ impl Pluginable for JsPlugin {
                 && replaced.map == source_map
                 && language == args.ast.language()
             {
+                // A pass-through keeps parser anchors, which are token
+                // boundaries rather than codegen print sites. Sanitize the
+                // owned AST in place to keep oxc-only annotation flags.
+                let mut ast: Ast = args.ast;
+
+                if comment::reanchor_ast(&mut ast) {
+                    return Ok(Some(TransformOutput { ast }));
+                }
+
                 return Ok(None);
             }
 
@@ -705,31 +709,13 @@ impl Pluginable for JsPlugin {
             // allocates into the new AST's arena and anchors spans against the
             // returned source and map, so the replacement travels as `Some`
             // exactly like a Rust plugin's replacement.
-            let mut ast: Ast = ast_from_json(
+            let ast: Ast = ast_from_json(
                 &replaced.ast_json,
                 Arc::from(replaced.code),
                 input_map,
                 source_type,
             )
             .map_err(anyhow_to_plugin_error)?;
-
-            // The rebuilt program's comments are empty: reattach the original
-            // set so codegen still emits them.
-            if !comments.is_empty() {
-                ast.with_mut(
-                    |allocator: &oxc::allocator::Allocator,
-                     program: &mut oxc::ast::ast::Program<'_>| {
-                        let mut rebuilt: oxc::allocator::Vec<
-                            '_,
-                            oxc::ast::ast::Comment,
-                        > = oxc::allocator::Vec::new_in(&allocator);
-
-                        rebuilt.extend(comments.iter().cloned());
-
-                        program.comments = rebuilt;
-                    },
-                );
-            }
 
             Ok(Some(TransformOutput { ast }))
         })

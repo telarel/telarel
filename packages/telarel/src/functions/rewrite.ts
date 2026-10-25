@@ -1,8 +1,7 @@
-import type { Program } from "@oxc-project/types";
-
 import type { AstResult } from "#/@types/ast";
 import type { Language } from "#/@types/grammar";
 import type { RewriteOptions } from "#/@types/plugin/options";
+import type { Program } from "#/@types/program";
 import type { RawPlugin } from "#/bridges/plugin";
 
 import { rewrite as bindingRewrite } from "#/binding";

@@ -3,7 +3,7 @@ title: Ast
 description: An AST with its source text, optional language metadata and source map, and mutable program access.
 ---
 
-`Ast` carries an ESTree `Program`, the source text its spans anchor to, optional language metadata, and an optional incremental source map. Every AST-bearing hook receives an `Ast`.
+`Ast` carries an Oxc-backed `Program`, the source text its spans anchor to, optional language metadata, and an optional incremental source map. Every AST-bearing hook receives an `Ast`.
 
 ```ts
 type AstOptions = {
@@ -55,6 +55,35 @@ When an entry point resolves a grammar, explicit `options.language` wins over `A
 The `program` getter is typed as `DeepReadonly<Program>`, so nested nodes and arrays cannot be changed through it.
 
 `mutate` returns `void` for a synchronous callback and `Promise<void>` for an asynchronous one. The returned value matches the callback, so `await ast.mutate(fn)` works in both cases.
+
+## Comments
+
+`Program` is the Oxc program plus optional comments:
+
+```ts
+type Program = OxcProgram & { comments?: Comment[] };
+
+type Comment = {
+    type: "Line" | "Block";
+    value: string;
+    start: number;
+    end: number;
+    attachedTo?: number;
+    position?: "leading" | "trailing";
+    newlines?: { leading: boolean; trailing: boolean };
+    content?: CommentContent;
+};
+```
+
+`start`, `end`, and `attachedTo` are UTF-16 code-unit offsets. `start` and `end` must be UTF-16 boundaries; non-boundaries, mid-surrogate offsets, reversed spans, and missing spans reject. `type` must be `"Line"` or `"Block"` and match the source delimiter. An invalid or stale `attachedTo` is ignored and re-derived from a codegen anchor rather than rejected. Absent `comments` and `comments: []` both mean no comments; a present non-array `comments` value rejects. `value` is derived from the source text and ignored on input.
+
+Comments survive AST round-trips. A returned parse or transform AST owns its comments, and returning an AST without comments drops them.
+
+Comments carried out of `parse` may report oxc's parser position (`"trailing"` for inline comments). Inbound `position` is normalized to `"leading"`; oxc codegen emits only leading comments, so placement is codegen-defined.
+
+The `content` label is one of `"none"`, `"legal"`, `"jsdoc"`, `"jsdoc-legal"`, `"pure"`, `"pure-not-applied"`, `"no-side-effects"`, `"no-side-effects-not-applied"`, `"webpack"`, `"vite"`, `"turbopack"`, `"coverage-ignore"`, `"coverage-ignore-file"`, and `"property-key"`. An unknown `position` or `content` label rejects. Applied `pure` or `no-side-effects` comments keep their text but are demoted to `content: "none"` when rebuilt.
+
+`Comment`, `CommentContent`, `CommentPosition`, `CommentType`, `OxcProgram`, and `Program` are exported from both `telarel` and `telarel/ast`.
 
 ## Mutation
 

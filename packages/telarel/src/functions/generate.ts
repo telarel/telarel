@@ -1,7 +1,6 @@
-import type { Program } from "@oxc-project/types";
-
 import type { CodeResult } from "#/@types/ast";
 import type { GenerateOptions } from "#/@types/plugin/options";
+import type { Program } from "#/@types/program";
 import type { RawPlugin } from "#/bridges/plugin";
 import type { Ast } from "#/classes/ast";
 

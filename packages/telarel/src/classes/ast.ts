@@ -1,7 +1,6 @@
-import type { Program } from "@oxc-project/types";
-
 import type { DeepReadonly } from "#/@types/common";
 import type { Language, SourceType } from "#/@types/grammar";
+import type { Program } from "#/@types/program";
 import type { SourceMap } from "#/@types/sourcemap/map";
 
 /**

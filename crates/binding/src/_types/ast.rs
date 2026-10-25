@@ -7,7 +7,8 @@ use crate::ast;
 /// anchor to, an optional input source map, and the grammar label.
 #[napi_derive::napi(object)]
 pub struct JsAst {
-    /// The ESTree program produced by parsing or rewriting.
+    /// The ESTree program produced by parsing or rewriting; it carries the
+    /// top-level `comments` array when the AST has comments.
     pub program: serde_json::Value,
     /// Source code text.
     pub code: String,
@@ -38,7 +39,8 @@ impl From<ast::JsAst> for JsAst {
 /// The JS-facing normalized AST input, the read side of [`JsAst`].
 #[napi_derive::napi(object)]
 pub struct JsAstInput {
-    /// The ESTree program supplied as input.
+    /// The ESTree program supplied as input; a top-level `comments` array
+    /// preserves comments, and an absent array means none.
     pub program: serde_json::Value,
     /// Source code text.
     pub code: String,

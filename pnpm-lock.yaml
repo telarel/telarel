@@ -208,8 +208,8 @@ importers:
         specifier: 2.0.0-alpha.5
         version: 2.0.0-alpha.5
       '@napi-rs/wasm-runtime':
-        specifier: ^1.2.5
-        version: 1.2.5(@emnapi/core@2.0.0-alpha.5)(@emnapi/runtime@2.0.0-alpha.5)
+        specifier: ^1.2.6
+        version: 1.2.6(@emnapi/core@2.0.0-alpha.5)(@emnapi/runtime@2.0.0-alpha.5)
 
   packages/telarel/npm/win32-arm64-msvc: {}
 
@@ -976,8 +976,8 @@ packages:
       '@emnapi/core': 2.0.0-alpha.5
       '@emnapi/runtime': 2.0.0-alpha.5
 
-  '@napi-rs/wasm-runtime@1.2.5':
-    resolution: {integrity: sha512-HshSvXzmBxNzqejd3k/KemgQ3hdREUYFRRrgxOZ+gPljDIsO2SDZrVZMd4Z/HsxudQbE62OVyVFE8z9BCurfjA==}
+  '@napi-rs/wasm-runtime@1.2.6':
+    resolution: {integrity: sha512-mRyDmEw9/fCDXCGfL1sbgIw/GUK0PVxRW4YwgPN61F3LQ+fSyoBFarJVzgGyhF6kRzEQZ0FejDqm4WLXSeqQmw==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
     peerDependencies:
       '@emnapi/core': 2.0.0-alpha.5
@@ -4674,7 +4674,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@napi-rs/wasm-runtime@1.2.5(@emnapi/core@2.0.0-alpha.5)(@emnapi/runtime@2.0.0-alpha.5)':
+  '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@2.0.0-alpha.5)(@emnapi/runtime@2.0.0-alpha.5)':
     dependencies:
       '@emnapi/core': 2.0.0-alpha.5
       '@emnapi/runtime': 2.0.0-alpha.5

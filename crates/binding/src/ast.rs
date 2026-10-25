@@ -27,6 +27,8 @@ use telarel_common::{
 
 use crate::_types::options::parse_language_option;
 use crate::_types::sourcemap::JsSourceMap;
+use crate::comment;
+use crate::comment::adapted::NormalizedComment;
 use crate::plugin::spans::{SpanMap, spans_to_bytes, spans_to_utf16};
 
 /// The JS-facing normalized AST: the ESTree `program`, its `code`, its input
@@ -75,7 +77,9 @@ pub fn ast_to_estree_json(ast: &Ast) -> String {
 
     let spans: SpanMap = SpanMap::new(ast.source());
 
-    spans_to_utf16(&spans, &json)
+    let json: String = spans_to_utf16(&spans, &json);
+
+    comment::inject(ast, &spans, json)
 }
 
 /// Convert an input source map into its JS-facing v3 object.
@@ -136,12 +140,15 @@ pub fn ast_from_json(
 ) -> anyhow::Result<Ast> {
     let spans: SpanMap = SpanMap::new(&source);
 
+    let comments: Vec<NormalizedComment> =
+        comment::extract(program_json, &source, &spans)?;
+
     let bytes: String = spans_to_bytes(&spans, program_json);
 
     let language: Language = from_oxc_language(source_type);
     let module_kind: SourceType = from_oxc_module_kind(source_type);
 
-    Ast::try_from_source(
+    let mut ast: Ast = Ast::try_from_source(
         source,
         language,
         module_kind,
@@ -157,7 +164,18 @@ pub fn ast_from_json(
             )
         },
     )
-    .map_err(anyhow::Error::from)
+    .map_err(anyhow::Error::from)?;
+
+    if !comments.is_empty() {
+        ast.with_mut(
+            |allocator: &oxc::allocator::Allocator,
+             program: &mut oxc::ast::ast::Program<'_>| {
+                comment::attach(allocator, program, comments);
+            },
+        );
+    }
+
+    Ok(ast)
 }
 
 /// Rebuild an owned [`Ast`] from an ESTree program value.
@@ -240,8 +258,10 @@ mod tests {
     use std::path::PathBuf;
 
     use oxc::allocator::Allocator;
-    use oxc::ast::ast::Program;
-    use telarel_common::{ParseAstOptions, parse_ast};
+    use oxc::ast::ast::{CommentContent, Program};
+    use telarel_common::{
+        GenerateCodeOptions, ParseAstOptions, generate_code, parse_ast,
+    };
 
     use super::*;
 
@@ -820,6 +840,148 @@ mod tests {
             parse_ast_language(Some("json")).expect_err("invalid labels error");
 
         assert_eq!(error.status, napi::Status::InvalidArg);
+    }
+
+    #[test]
+    fn test_comments_survive_a_nested_trailing_round_trip() {
+        // The comment sits after the last statement in a function body, so its
+        // next printable anchor is the program end; the text must survive even
+        // though its position changes.
+        let code: &str = "function f() {\n  const a = 1; // tail\n}\n";
+        let ast: Ast = parse_fixture(code, Language::JS);
+        let json: String = ast_to_estree_json(&ast);
+
+        let program: serde_json::Value =
+            serde_json::from_str(&json).expect("the serialized program parses");
+
+        let rebuilt: Ast = ast_from_program(
+            &program,
+            code.to_string(),
+            None,
+            ast.program().source_type,
+        )
+        .expect("read-back succeeds");
+
+        let generated: String = generate_code(
+            &rebuilt,
+            GenerateCodeOptions { file: String::from("index.ts") },
+        )
+        .code;
+
+        assert!(generated.contains("// tail"), "{generated}");
+    }
+
+    #[test]
+    fn test_comments_survive_inner_position_round_trips() {
+        let cases: [(&str, &str); 7] = [
+            ("function f(/* c */ a) {}", "/* c */"),
+            ("const x = /* c */ 1;", "/* c */"),
+            ("const x = [/* c */ 1];", "/* c */"),
+            ("const { /* c */ a } = x;", "/* c */"),
+            ("const [/* c */ a] = x;", "/* c */"),
+            ("import { /* c */ x } from \"y\";", "/* c */"),
+            ("function f(/** jsdoc */ a) {}", "/** jsdoc */"),
+        ];
+
+        for (code, expected) in cases {
+            let ast: Ast = parse_fixture(code, Language::JS);
+            let json: String = ast_to_estree_json(&ast);
+            let program: serde_json::Value = serde_json::from_str(&json)
+                .expect("the serialized program parses");
+
+            let rebuilt: Ast = ast_from_program(
+                &program,
+                code.to_string(),
+                None,
+                ast.program().source_type,
+            )
+            .expect("read-back succeeds");
+
+            let generated: String = generate_code(
+                &rebuilt,
+                GenerateCodeOptions { file: String::from("index.ts") },
+            )
+            .code;
+
+            assert!(
+                generated.contains(expected),
+                "{expected} missing from {generated} for {code}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_pure_annotation_text_survives_a_json_rebuild() {
+        let code: &str = "/*#__PURE__*/ f();";
+        let ast: Ast = parse_fixture(code, Language::JS);
+        let json: String = ast_to_estree_json(&ast);
+        let program: serde_json::Value =
+            serde_json::from_str(&json).expect("the serialized program parses");
+
+        let rebuilt: Ast = ast_from_program(
+            &program,
+            code.to_string(),
+            None,
+            ast.program().source_type,
+        )
+        .expect("read-back succeeds");
+
+        assert_eq!(
+            rebuilt.program().comments[0].content,
+            CommentContent::None,
+            "the rebuild demotes the annotation to a normal comment"
+        );
+
+        let generated: String = generate_code(
+            &rebuilt,
+            GenerateCodeOptions { file: String::from("index.ts") },
+        )
+        .code;
+
+        assert!(generated.contains("/*#__PURE__*/"), "{generated}");
+    }
+
+    #[test]
+    fn test_comments_survive_estree_round_trip() {
+        let code: &str = concat!(
+            "// line\n",
+            "const a = 1;\n",
+            "/* block */\n",
+            "/** jsdoc */\n",
+            "function f() {}\n",
+            "//! legal\n",
+        );
+        let ast: Ast = parse_fixture(code, Language::JS);
+        let json: String = ast_to_estree_json(&ast);
+
+        assert!(json.starts_with("{\"comments\":"), "{json}");
+
+        let program: serde_json::Value =
+            serde_json::from_str(&json).expect("the serialized program parses");
+
+        let rebuilt: Ast = ast_from_program(
+            &program,
+            code.to_string(),
+            None,
+            ast.program().source_type,
+        )
+        .expect("read-back succeeds");
+
+        assert_eq!(rebuilt.program().comments.len(), 4);
+
+        let generated: String = generate_code(
+            &rebuilt,
+            GenerateCodeOptions { file: String::from("index.ts") },
+        )
+        .code;
+
+        for expected in ["// line", "/* block */", "/** jsdoc */", "//! legal"]
+        {
+            assert!(
+                generated.contains(expected),
+                "{expected} missing from {generated}"
+            );
+        }
     }
 
     #[test]

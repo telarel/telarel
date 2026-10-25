@@ -1,5 +1,11 @@
 export type { AstResult, CodeResult } from "#/@types/ast";
 export type { BuiltinPlugin } from "#/@types/builtin";
+export type {
+    Comment,
+    CommentContent,
+    CommentPosition,
+    CommentType,
+} from "#/@types/comment";
 export type { DeepReadonly } from "#/@types/common";
 export type { GeneratorOptions } from "#/@types/generator";
 export type { Language, SourceType } from "#/@types/grammar";
@@ -35,6 +41,7 @@ export type {
     ResolvedOptions,
     RewriteOptions,
 } from "#/@types/plugin/options";
+export type { OxcProgram, Program } from "#/@types/program";
 export type { SourceMapOptions } from "#/@types/sourcemap";
 export type {
     InputSourceMap,

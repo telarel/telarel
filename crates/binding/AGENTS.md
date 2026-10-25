@@ -16,6 +16,7 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 | `src/tasks/function.rs`    | `FunctionTask`; the worker closure and reference release in `finally` |
 | `src/tasks/mod.rs`         | Thread-local current-thread Tokio runtime and `block_on_compile`      |
 | `src/ast.rs`               | AST normalization and ESTree JSON codec                               |
+| `src/comment/`             | Comment normalization and injection layer                             |
 
 ## JS API surface
 
@@ -31,8 +32,19 @@ The public JavaScript surface is documented in `docs/content/apis/javascript`. I
 - `prepare` / `transform` / `finalize` use a JSON-serialized ESTree string (`astJson`) via `oxc_estree_codec`, plus the AST's `code`, optional `map`, and language label. The JS wrapper rebuilds the normalized `Ast` from those fields. Transform read-back uses the returned language when present, otherwise the input AST's language; `program.sourceType` owns the module kind.
 - A `parse` hook replacement keeps the parser options' grammar authority; the returned AST's language does not override them.
 - Outbound ESTree serialization debug-asserts that `Program::source_text` is still content-equal to `Ast::source` before building the UTF-16 `SpanMap`.
-- The JS `transform` return is compared in its UTF-16 JSON form plus `code`, `map`, and language; an unchanged AST short-circuits to `None`. Rebuilt programs anchor to the returned `code`/`map` and reattach the original comments, because the ESTree codec skips `Program.comments`.
+- The JS `transform` return is compared in its UTF-16 JSON form plus `code`, `map`, and language; an unchanged AST short-circuits to `None` unless its comments need re-anchoring, in which case the sanitized AST returns as `Some`. Comments live inside `programJson` and flow through `ast_from_json`; rebuilt programs anchor to the returned `code`/`map`, and a returned transform AST owns its comments. `comments: []` or an absent key drops them.
 - No `Ast` or pipeline future crosses the JS/worker boundary. The worker closure produces the JS-facing value directly.
+
+## Comment layer
+
+`src/comment/` normalizes inbound comments and injects outbound ones at the AST boundary. The public contract is documented in [Ast](/apis/javascript/Ast).
+
+- Adapters are `CANONICAL` and `START_END`, folded first-`Some`-per-field. `CANONICAL` owns `attachedTo`, `position`, `newlines`, and `content`, and validates the `position` and `content` labels; `START_END` supplies the `start`/`end` pair. Normalization overwrites the requested position with leading.
+- `inject` splices the top-level `comments` array into the outbound UTF-16 program JSON as its first key, returning it unchanged when there are no comments.
+- `extract` reads comments from inbound UTF-16 program JSON, collects anchors from object `start` fields while skipping the top-level `comments` value, and normalizes the entries against them.
+- `attach` allocates the normalized comments into the rebuilt program's arena and re-anchors them to the starts codegen queries: program start/end, directives, and non-block/non-empty statements.
+- The transform pass-through re-anchors the existing AST in place and leaves pure/no-side-effects annotations to oxc's annotation stash.
+- Normalization errors identify the comment index and, when known, its offsets; deserialization errors identify only the index; a non-array top-level `comments` value names the field.
 
 ## JS plugins
 
