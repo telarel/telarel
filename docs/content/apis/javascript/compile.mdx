@@ -30,6 +30,8 @@ Compiles `code` from source to generated output, with plugins, in memory.
 
 An empty `output.file` or `sourceMap.output.url` is treated as unset, same as absent.
 
+The pipeline attaches any requested input source map to the AST returned by the winning `parse` hook when that AST carries none; an AST's own map wins, and the builtin parser is the fallback when every `parse` hook defers.
+
 ## Returns
 
 `Promise<CodeResult>`:

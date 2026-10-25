@@ -41,7 +41,7 @@ flowchart TD
 
 **`start` — notify.** Runs on every settled plugin with the fully resolved, read-only options. Return values are ignored; the first error aborts.
 
-**`parse` — first-win.** Runs over the plugins that implement it. The first plugin returning an AST wins and the rest are skipped; returning nothing defers to the next plugin; when every hook defers the builtin parser runs.
+**`parse` — first-win.** Runs over the plugins that implement it. The first plugin returning an AST wins and the rest are skipped; returning nothing defers to the next plugin; when every hook defers the builtin parser runs. After a `parse` hook wins, the pipeline attaches the requested input source map when the returned AST carries none; an AST's own input map wins.
 
 **`prepare` / `finalize` — observers.** Each runs as a read-only observer of the AST — the parsed AST for `prepare`, the final AST for `finalize`. Return values are ignored; they cannot change the tree. In JavaScript these hooks, and `generate`, receive an `Ast` snapshot whose mutations stay local to the hook.
 

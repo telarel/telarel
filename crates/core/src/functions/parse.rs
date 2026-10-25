@@ -7,9 +7,10 @@ use crate::common::pipeline::{ParseStage, run};
 
 /// Parse `code` into an AST.
 ///
-/// Runs `options`, `start`, `parse`, and `end` — the builtin parser resolves
-/// any requested input source map and is the terminal fallback after every
-/// `parse` hook defers.
+/// Runs `options`, `start`, `parse`, and `end`. After a `parse` hook wins, the
+/// pipeline attaches the requested input source map when the returned AST
+/// carries none; an AST's own map wins. The builtin parser is the terminal
+/// fallback after every `parse` hook defers.
 pub async fn parse(
     code: String,
     options: ParseOptions,
@@ -20,15 +21,20 @@ pub async fn parse(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
 
-    use telarel_common::{AstResult, CompileError, ParseOptions, SourceMap};
+    use telarel_common::{
+        AstResult, CompileError, InputSourceMap, InputSourceMapMode,
+        ParseOptions, SourceMap,
+    };
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
         EndObserverPlugin, FailPlugin, FailStage, ParseOutcome,
-        ParseOutcomePlugin, SpyPlugin, assert_same_map, input_map, sample_map,
+        ParseOutcomePlugin, ParseWithMapPlugin, SpyPlugin, assert_same_map,
+        input_map, sample_map,
     };
 
     use super::parse;
@@ -77,6 +83,94 @@ mod tests {
                 .expect("parse succeeds");
 
         assert_same_map(result.ast.map().expect("map attached"), &map);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_parse_attaches_input_map_after_winning_parse_hook() {
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let map: SourceMap = sample_map("upstream.ts", 5);
+
+        let options: ParseOptions = ParseOptions {
+            input_source_map: Some(input_map(map.clone())),
+            ..ParseOptions::default()
+        };
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(ParseOutcomePlugin::new(
+                "winning-parse",
+                ParseOutcome::Win("let b;"),
+                &log,
+            ))];
+
+        let result: AstResult =
+            parse(String::from("let builtin;"), options, plugins)
+                .await
+                .expect("parse succeeds");
+
+        assert_eq!(result.ast.source().as_ref(), "let b;");
+        assert_same_map(result.ast.map().expect("map attached"), &map);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_parse_keeps_winning_parse_hook_ast_map() {
+        let own: SourceMap = sample_map("own.ts", 1);
+        let requested: SourceMap = sample_map("requested.ts", 2);
+
+        let options: ParseOptions = ParseOptions {
+            input_source_map: Some(input_map(requested)),
+            ..ParseOptions::default()
+        };
+        let plugins: Vec<SharedPluginable> = vec![Plugin::new_shared(
+            ParseWithMapPlugin::new("let b;", own.clone()),
+        )];
+
+        let result: AstResult =
+            parse(String::from("let builtin;"), options, plugins)
+                .await
+                .expect("parse succeeds");
+
+        assert_same_map(result.ast.map().expect("map carried"), &own);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_parse_reports_input_map_errors_from_winning_parse_hook() {
+        let ended: Arc<Mutex<Vec<Option<String>>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let options: ParseOptions = ParseOptions {
+            cwd: Some(PathBuf::from("/definitely/missing")),
+            input_source_map: Some(InputSourceMap::Mode(
+                InputSourceMapMode::External,
+            )),
+            ..ParseOptions::default()
+        };
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(EndObserverPlugin::new(&ended)),
+            Plugin::new_shared(ParseOutcomePlugin::new(
+                "winning-parse",
+                ParseOutcome::Win("let b;"),
+                &log,
+            )),
+        ];
+
+        let error: CompileError =
+            parse(String::from("let builtin;"), options, plugins)
+                .await
+                .expect_err("missing external map fails");
+
+        assert!(
+            error.to_string().contains("cannot read source map"),
+            "{error}"
+        );
+
+        let observed: Vec<Option<String>> = ended.lock().unwrap().clone();
+        assert_eq!(observed.len(), 1);
+        assert!(
+            observed[0]
+                .as_deref()
+                .expect("end saw the error")
+                .contains("cannot read source map"),
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

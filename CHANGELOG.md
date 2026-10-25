@@ -72,6 +72,7 @@
 
 #### Fixes
 
+- change `parse` and `compile` to attach the requested input source map after a winning `parse` hook
 - change the pipeline to run the `options` fixpoint before the driver and to call `start` and `end` exactly once per invocation
 - change parser/generator selection to fall back to the builtin after every plugin hook defers
 - change stage failures to return hook errors unchanged instead of adding stage prefixes
@@ -204,6 +205,7 @@
 
 #### Fixes
 
+- change `parse` and `compile` to attach `inputSourceMap` after a winning `parse` hook
 - change empty `output.file` and `sourceMap.output.url` to be treated as unset instead of rejected
 - change the `options` hook to omit unset `cwd` and `file` instead of sending empty strings
 - change external input source-map lookup to ignore `?query`/`#hash` suffixes in `file`

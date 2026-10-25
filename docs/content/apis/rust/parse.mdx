@@ -13,7 +13,7 @@ pub async fn parse(
 
 Parses `code` into an AST.
 
-The builtin parser resolves any requested input source map and is the terminal fallback after every `parse` hook defers.
+The pipeline attaches any requested input source map to the AST returned by the winning `parse` hook when that AST carries none. An AST's own input map wins. The builtin parser is the terminal fallback after every `parse` hook defers.
 
 ## Parameters
 

@@ -12,7 +12,7 @@ import type {
 import * as Fsp from "node:fs/promises";
 import * as Path from "node:path";
 
-import { CompileError, generate, parse } from "telarel";
+import { Ast, CompileError, generate, parse } from "telarel";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -171,6 +171,102 @@ describe("parse", (): void => {
 
         expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
         expect(result.ast.map?.mappings).toBe("AASA");
+    });
+
+    it("attaches a requested input map when a parse hook wins", async (): Promise<void> => {
+        const hooked: AstResult = await parse("let b;", {
+            cwd: "/repo",
+            file: "index.ts",
+        });
+
+        const result: AstResult = await parse("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            inputSourceMap: upstreamMap(),
+            plugins: [
+                {
+                    name: "parse-winner",
+                    parse: (): AstResult => ({
+                        ast: new Ast({
+                            program: hooked.ast
+                                .program as unknown as AstOptions["program"],
+                            source: hooked.ast.source,
+                        }),
+                    }),
+                },
+            ],
+        });
+
+        expect(result.ast.source).toBe("let b;");
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+        expect(result.ast.map?.mappings).toBe("AASA");
+    });
+
+    it("resolves an inline input map from a winning parse hook's source", async (): Promise<void> => {
+        const hooked: AstResult = await parse(
+            appendInlineMap("let b;", upstreamMap()),
+            {
+                cwd: "/repo",
+                file: "index.ts",
+            },
+        );
+
+        const result: AstResult = await parse("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            inputSourceMap: "inline",
+            plugins: [
+                {
+                    name: "parse-winner",
+                    parse: (): AstResult => ({
+                        ast: new Ast({
+                            program: hooked.ast
+                                .program as unknown as AstOptions["program"],
+                            source: hooked.ast.source,
+                        }),
+                    }),
+                },
+            ],
+        });
+
+        expect(result.ast.source).toBe(hooked.ast.source);
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+    });
+
+    it("keeps a winning parse hook AST's own map", async (): Promise<void> => {
+        const ownMap: ReturnType<typeof buildMap> = buildMap({
+            file: "own.ts",
+            mappings: "AAAA",
+            names: [],
+            sources: ["own.ts"],
+        });
+
+        const hooked: AstResult = await parse("let b;", {
+            cwd: "/repo",
+            file: "index.ts",
+        });
+
+        const result: AstResult = await parse("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            inputSourceMap: upstreamMap(),
+            plugins: [
+                {
+                    name: "parse-winner",
+                    parse: (): AstResult => ({
+                        ast: new Ast({
+                            program: hooked.ast
+                                .program as unknown as AstOptions["program"],
+                            source: hooked.ast.source,
+                            map: ownMap,
+                        }),
+                    }),
+                },
+            ],
+        });
+
+        expect(result.ast.map?.sources).toEqual(["own.ts"]);
+        expect(result.ast.map?.mappings).toBe("AAAA");
     });
 
     it("attaches a value input map from options and ignores its path", async (): Promise<void> => {

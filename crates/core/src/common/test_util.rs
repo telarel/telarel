@@ -521,6 +521,43 @@ impl Plugin for ParseOutcomePlugin {
     }
 }
 
+/// A parse hook that wins with an AST carrying `map`.
+#[derive(Debug)]
+pub struct ParseWithMapPlugin {
+    code: &'static str,
+    map: SourceMap,
+}
+
+impl ParseWithMapPlugin {
+    pub fn new(
+        code: &'static str,
+        map: SourceMap,
+    ) -> Self {
+        Self { code, map }
+    }
+}
+
+impl Plugin for ParseWithMapPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        "parse-with-map".into()
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Parse
+    }
+
+    fn parse<'a>(
+        &'a self,
+        _ctx: &'a PluginContext<'_>,
+        _args: ParseArgs<'a>,
+    ) -> impl Future<Output = ParseReturn> + Send + 'a {
+        let code: &'static str = self.code;
+        let map: SourceMap = self.map.clone();
+
+        async move { Ok(Some(AstResult { ast: parse_with_map(code, map) })) }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum GenerateOutcome {
     Defer,

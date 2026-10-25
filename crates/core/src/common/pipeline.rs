@@ -78,7 +78,8 @@ fn attach_input_map(
 }
 
 /// The `parse` stage: the builtin parser is the terminal fallback after every
-/// `parse` hook defers, and it resolves the input source map itself.
+/// `parse` hook defers. The resolved input map is attached to the winning AST
+/// when it carries none; an AST's own map wins.
 async fn parse_stage(
     driver: &PluginDriver,
     ctx: &PluginContext<'_>,
@@ -86,10 +87,12 @@ async fn parse_stage(
     code: &str,
 ) -> Result<AstResult, CompileError> {
     let options: ParserOptions = ParserOptions::from(resolved);
-
     let builtin: Parser = Parser::new(code.to_string(), options.clone());
 
-    driver.parse(ctx, code, &options, &builtin).await
+    let result: AstResult = driver.parse(ctx, code, &options, &builtin).await?;
+    let ast: Ast = attach_input_map(result.ast, resolved)?;
+
+    Ok(AstResult { ast })
 }
 
 async fn rewrite_stages(

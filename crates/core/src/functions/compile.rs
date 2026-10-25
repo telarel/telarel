@@ -9,7 +9,9 @@ use crate::common::pipeline::{CompileStage, run};
 ///
 /// Runs the full chain — `options`, `start`, `parse`, `prepare`, `transform`,
 /// `finalize`, `generate`, and `end` — inline, so `options`/`start`/`end` fire
-/// exactly once. The builtin parser resolves any requested input source map.
+/// exactly once. After a `parse` hook wins, the pipeline attaches the requested
+/// input source map when the returned AST carries none; an AST's own map wins.
+/// The builtin parser is the fallback when every `parse` hook defers.
 pub async fn compile(
     code: String,
     options: CompileOptions,
@@ -35,8 +37,8 @@ mod tests {
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
-        SpyPlugin, StartObserverPlugin, first_token, input_value, path_buf,
-        sample_map, temp_dir, write_file,
+        ParseOutcome, ParseOutcomePlugin, SpyPlugin, StartObserverPlugin,
+        first_token, input_value, path_buf, sample_map, temp_dir, write_file,
     };
 
     use super::compile;
@@ -97,6 +99,32 @@ mod tests {
             (0, 0, 9, 0),
             "generated (0, 0) must map to the upstream original (9, 0)"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_attaches_input_map_after_winning_parse_hook() {
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let map: SourceMap = sample_map("upstream.ts", 9);
+
+        let options: CompileOptions = CompileOptions {
+            file: Some(String::from("index.ts")),
+            source_map: Some(input_value(map)),
+            ..CompileOptions::default()
+        };
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(ParseOutcomePlugin::new(
+                "winning-parse",
+                ParseOutcome::Win("const a = 1;"),
+                &log,
+            ))];
+
+        let result: CodeResult =
+            compile(String::from("const a = 1;"), options, plugins)
+                .await
+                .expect("compile succeeds");
+
+        let generated: SourceMap = result.map.expect("output map present");
+        assert_eq!(first_token(&generated), (0, 0, 9, 0));
     }
 
     #[tokio::test(flavor = "current_thread")]

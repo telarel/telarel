@@ -40,7 +40,7 @@ The public modes are defined by `InputSourceMapMode` and `OutputSourceMapMode` i
 
 - The AST's own input map always wins. The pipeline only attaches a resolved input map when the AST carries none.
 - Input path overrides resolve through `source_dir` and `external_map_path_for`; public path semantics: `docs/content/apis/rust/Parser.mdx` and `docs/content/apis/javascript/createParser.mdx`.
-- Code-entry functions (`parse`, `compile`) resolve the input map inside the builtin parser.
+- Code-entry functions (`parse`, `compile`) attach the resolved input map after a winning `parse` hook when the AST carries none; the builtin parser still resolves and attaches its own map.
 - Output options are applied uniformly after the winning `generate` hook, regardless of whether the builtin or a plugin generated the code. Public output semantics: `docs/content/apis/rust/compile.mdx#compileoptions` and `docs/content/apis/rust/generate.mdx#generateoptions`.
 - When no map was produced, the code is returned byte-identical in every mode. Never fabricate an identity map.
 
