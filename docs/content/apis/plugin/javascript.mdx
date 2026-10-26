@@ -9,6 +9,8 @@ For the hook contract shared by both languages, see the [Plugin API](/apis/plugi
 
 ## The `Plugin` type
 
+<PeekCode>
+
 ```ts
 type Plugin = {
     name: string;
@@ -54,6 +56,8 @@ type Plugin = {
     >;
 };
 ```
+
+</PeekCode>
 
 Hooks are return-based. A hook returns the new value to replace the current value, or `null` / `void` to make no change. The `start`, `prepare`, `finalize`, and `end` hooks are observers. The compiler ignores their return values.
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { CodeBlock, Pre } from "fumadocs-ui/components/codeblock";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import * as React from "react";
 
 import { PeekContext } from "#/contexts/peek-context";
@@ -10,9 +10,16 @@ const PEEK_CLASS: string = "peek-code";
 const DETECTED_CLASS: string = "peek-detected";
 const EXPANDED_CLASS: string = "peek-expanded";
 
+// Mirrors the 18rem collapsed height in app.css; the cap only applies after detection.
+const PEEK_HEIGHT: number = 18 * 16;
+
 const BAR_CLASS: string =
     "absolute inset-x-0 bottom-0 z-2 flex h-11 cursor-pointer items-center justify-center gap-1.5 rounded-b-xl border-t border-fd-border bg-fd-card/85 text-sm font-medium text-fd-muted-foreground backdrop-blur-sm transition-colors hover:bg-fd-accent/60 hover:text-fd-accent-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fd-ring focus-visible:outline-none";
+
 const CHEVRON_CLASS: string = "size-4 shrink-0";
+
+const COLLAPSE_CLASS: string =
+    "inline-flex size-6 items-center justify-center rounded-md text-fd-muted-foreground transition-colors hover:text-fd-accent-foreground focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:outline-none";
 
 const countLines = (region: HTMLElement): number => {
     const text: string = region.querySelector("pre")?.textContent ?? "";
@@ -37,6 +44,25 @@ const PeekBar = ({ lines, onExpand }: PeekBarProps): React.JSX.Element => (
     </button>
 );
 
+type CollapseButtonProps = {
+    onCollapse: () => void;
+};
+
+const CollapseButton = ({
+    onCollapse,
+}: CollapseButtonProps): React.JSX.Element => (
+    <button
+        type={"button"}
+        title={"Collapse code"}
+        aria-expanded
+        onClick={onCollapse}
+        className={COLLAPSE_CLASS}
+    >
+        <ChevronUp className={CHEVRON_CLASS} />
+        <span className={"sr-only"}>{"Collapse code"}</span>
+    </button>
+);
+
 type CodeProps = React.HTMLAttributes<HTMLPreElement> & {
     icon?: React.ReactNode;
 };
@@ -58,7 +84,7 @@ const PeekedCodeBlock = ({
         const region: HTMLElement | null =
             figureRef.current?.querySelector('[role="region"]') ?? null;
 
-        if (region === null || region.scrollHeight <= region.clientHeight) {
+        if (region === null || region.scrollHeight <= PEEK_HEIGHT) {
             return;
         }
 
@@ -84,7 +110,18 @@ const PeekedCodeBlock = ({
                 children: actionChildren,
             }: ActionProps) => (
                 <>
-                    <div className={actionClassName}>{actionChildren}</div>
+                    <div
+                        className={[actionClassName, "flex items-center gap-1"]
+                            .filter(Boolean)
+                            .join(" ")}
+                    >
+                        {lineCount !== null && isExpanded && (
+                            <CollapseButton
+                                onCollapse={() => setIsExpanded(false)}
+                            />
+                        )}
+                        {actionChildren}
+                    </div>
                     {lineCount !== null && !isExpanded && (
                         <PeekBar
                             lines={lineCount}
@@ -111,7 +148,8 @@ const PeekCode = ({ children }: PeekCodeProps): React.JSX.Element => (
 );
 
 /**
- * Renders a code block, capping and expanding it when it overflows.
+ * Renders a code block and opts it into the peek behavior when wrapped by
+ * `PeekCode`.
  */
 const PeekCodeBlock = (props: CodeProps): React.JSX.Element => {
     const isPeeked: boolean = React.use(PeekContext);

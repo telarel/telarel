@@ -41,8 +41,8 @@
     height: 100%;
 }
 
-/* The code viewport scrolls, so it must fill that figure too; otherwise it
-   keeps its content height and its scrollbar sits mid-block. */
+/* The code viewport must fill that figure too; otherwise it keeps its content
+   height and leaves a card-colored gap below the shorter tab. */
 .hero-code [role="tabpanel"] > figure > [role="region"] {
     height: 100%;
 }
@@ -53,16 +53,19 @@
     max-width: 64rem;
 }
 
-/* An opted-in `<PeekCode>` block is capped to a peek height. Once JavaScript
-   confirms the block really overflows, the scrollbar is removed and the last
-   lines fade out; the `PeekBar` button then expands the block to its full
-   height. Without JavaScript the cap still applies, but the block stays
-   scrollable, so the code is never unreachable. */
-.peek-code > [role="region"] {
-    max-height: 18rem;
+/* Fumadocs caps every code viewport at 600px and scrolls it. Docs blocks show
+   their full height instead. Only an opted-in `<PeekCode>` block is capped,
+   and JavaScript applies that cap after it detects overflow. Without
+   JavaScript the cap never applies, so the code stays reachable. */
+.shiki > [role="region"] {
+    max-height: none;
 }
 
+/* A detected overflow collapses to the peek height. The overflow is hidden
+   and the last lines fade out; `PeekBar` expands the block, and the collapse
+   action caps it again. */
 .peek-code.peek-detected > [role="region"] {
+    max-height: 18rem;
     overflow-y: hidden;
     mask-image: linear-gradient(to bottom, #000 calc(100% - 5rem), transparent);
     -webkit-mask-image: linear-gradient(
