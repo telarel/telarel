@@ -28,8 +28,8 @@ pub type HookFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Object-safe mirror of [`Plugin`].
 ///
-/// Each hook is exposed as a `call_*` method returning a boxed future, so the
-/// driver can store heterogeneous plugins behind [`SharedPluginable`].
+/// Each hook is exposed as a `call_*` method that returns a boxed future. Thus
+/// the driver can store heterogeneous plugins behind [`SharedPluginable`].
 pub trait Pluginable: Any + Send + Sync + 'static {
     /// The plugin name.
     fn call_name(&self) -> Cow<'static, str>;
@@ -37,7 +37,7 @@ pub trait Pluginable: Any + Send + Sync + 'static {
     /// Query which hooks the plugin implements.
     fn call_register_hook_usage(&self) -> HookUsage;
 
-    /// Call the `options` hook; a returned bag replaces the whole bag.
+    /// Call the `options` hook. A returned bag replaces the whole bag.
     fn call_options<'a>(
         &'a self,
         ctx: &'a CommonPluginContext,
@@ -49,7 +49,7 @@ pub trait Pluginable: Any + Send + Sync + 'static {
         None
     }
 
-    /// Call the `start` hook; notify-only.
+    /// Call the `start` hook. The hook is notify-only.
     fn call_start<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
@@ -73,7 +73,7 @@ pub trait Pluginable: Any + Send + Sync + 'static {
         None
     }
 
-    /// Call the `prepare` hook; notify-only.
+    /// Call the `prepare` hook. The hook is notify-only.
     fn call_prepare<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
@@ -97,7 +97,7 @@ pub trait Pluginable: Any + Send + Sync + 'static {
         None
     }
 
-    /// Call the `finalize` hook; notify-only.
+    /// Call the `finalize` hook. The hook is notify-only.
     fn call_finalize<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
@@ -121,7 +121,7 @@ pub trait Pluginable: Any + Send + Sync + 'static {
         None
     }
 
-    /// Call the `end` hook; notify-only.
+    /// Call the `end` hook. The hook is notify-only.
     fn call_end<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,

@@ -27,25 +27,29 @@ type TransformOptions = {
      */
     jsx?: JsxOptions;
     /**
-     * Auto-injected imports for otherwise-free identifiers, keyed by the local
-     * binding name. Dotted keys like `"Object.assign"` are allowed and replaced
-     * as member chains. A string value is a module source imported as a named
-     * specifier with no imported name; a `[source, imported]` pair imports
-     * `imported` from `source`; the object form selects the specifier
-     * explicitly.
+     * Auto-injected imports for identifiers that are otherwise free, keyed by
+     * the local binding name.
      *
-     * Injected imports run after all transforms, before `define`.
+     * Dotted keys like `"Object.assign"` are allowed and replaced as member
+     * chains.
+     *
+     * A string value is a module source. It is imported as a named specifier
+     * with no imported name. A `[source, imported]` pair imports `imported`
+     * from `source`. The object form selects the specifier explicitly.
+     *
+     * Injected imports run after all transforms and before `define`.
      */
     inject?: Record<string, InjectShorthand | InjectObject>;
     /**
      * Compile-time replacements for free identifiers and member chains, keyed
      * by the replaced source.
      *
-     * Each value is an expression source string: quote string literals yourself
-     * (`API_URL: '"https://x"'`), while scalars are stringified (`true` becomes
-     * `true`, `1.5` becomes `1.5`). String values pass through verbatim. Keys
-     * are processed in alphabetical order; duplicate keys are unreachable via
-     * object literals.
+     * Each value is an expression source string. Quote string literals yourself
+     * (`API_URL: '"https://x"'`). Scalars are stringified (`true` becomes
+     * `true`, `1.5` becomes `1.5`). String values pass through verbatim.
+     *
+     * Keys are processed in alphabetical order. Duplicate keys are unreachable
+     * through object literals.
      *
      * Replacements run last, after `inject` and all transforms.
      */

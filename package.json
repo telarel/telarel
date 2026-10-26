@@ -4,7 +4,7 @@
     "devDependencies": {
         "@apst/oxfmt": "~0.2.0",
         "@apst/oxlint": "~0.5.0",
-        "@apst/tsconfig": "~0.3.0",
+        "@apst/tsconfig": "~1.0.0",
         "@apst/tsdown": "~0.5.0",
         "@decimalturn/toml-patch": "^3.3.1",
         "@emnapi/core": "2.0.0-alpha.5",
@@ -17,8 +17,8 @@
         "emnapi": "2.0.0-alpha.5",
         "oxfmt": "~0.74.0",
         "oxlint": "^1.89.0",
-        "oxlint-tsgolint": "^7.0.2004",
-        "tsdown": "~0.23.1",
+        "oxlint-tsgolint": "^7.0.2005",
+        "tsdown": "~0.23.2",
         "typescript": "^7.0.2"
     }
 }

@@ -501,9 +501,10 @@ describe("transform", (): void => {
     });
 
     it("anchors UTF-16 spans to the parse-hook-returned source", async (): Promise<void> => {
-        // A `parse` hook supplies the AST; its spans anchor to the `code` the
-        // hook returns, not to the compile call's source. Capture a real AST
-        // for the rewritten source from a first compile, then hand it back.
+        // A `parse` hook supplies the AST, so its spans anchor to the `code`
+        // that the hook returns, not to the source of the compile call. The
+        // test takes a real AST for the rewritten source from a first compile,
+        // then returns it from the `parse` hook.
         const rewritten: string = "const µ = 1; const b = 2;";
 
         let snapshot: unknown;

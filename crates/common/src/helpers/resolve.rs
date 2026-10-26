@@ -18,8 +18,8 @@ pub fn source_type_for_module_id(module_id: &str) -> OxcSourceType {
     OxcSourceType::from_path(path).unwrap_or_default()
 }
 
-/// The oxc grammar for a file: an explicit language wins;
-/// otherwise infer from the file.
+/// The oxc grammar for a file. An explicit language wins. Otherwise, infer
+/// the grammar from the file.
 pub fn resolve_grammar(
     file: &str,
     language: Option<Language>,

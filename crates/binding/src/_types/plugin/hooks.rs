@@ -13,10 +13,10 @@ use crate::_types::path::path_label;
 use crate::_types::sourcemap::JsSourceMap;
 use crate::plugin::options::{language_label, source_type_label};
 
-/// Args for the `transform`, `prepare` and `finalize` hooks: the current AST
-/// as an ESTree JSON string plus the source text, input map and grammar it
-/// anchors to. The JS wrapper reconstructs the normalized AST before calling
-/// the user hook.
+/// Args for the `transform`, `prepare`, and `finalize` hooks. The payload
+/// holds the current AST as an ESTree JSON string. It also holds the source
+/// text, input map, and grammar that the AST anchors to. The JS wrapper
+/// reconstructs the normalized AST before it calls the user hook.
 pub struct JsAstArgs {
     /// AST serialized as JSON for the JS bridge.
     pub ast_json: String,
@@ -52,7 +52,7 @@ impl ToNapiValue for JsAstArgs {
 }
 
 /// Output of the `transform` hook: the replacement AST. The JS wrapper sends
-/// `null` when the hook returns `null`/`void` (no change); the baseline
+/// `null` when the hook returns `null` or `void` (no change). The baseline
 /// equality skip is defense in depth for raw plugin objects.
 #[napi_derive::napi(object)]
 pub struct JsTransformOutput {
@@ -63,57 +63,57 @@ pub struct JsTransformOutput {
     pub code: String,
     /// The input source map, when the AST carries one.
     pub map: Option<JsSourceMap>,
-    /// The grammar of the returned AST; absent means unset.
+    /// The grammar of the returned AST. Absent means unset.
     pub language: Option<String>,
 }
 
 /// Output of the `options` hook: the fields of the options bag after the JS
-/// hook. Omitted fields stay `None` ("leave unspecified"); resolution defaults
-/// apply later. The plugins array is the returned bag's plugin list, as raw
-/// plugin descriptor objects.
+/// hook. Omitted fields stay `None` (leave unspecified), and resolution
+/// defaults apply later. The plugins array is the returned bag's plugin list,
+/// as raw descriptor objects for plugins.
 #[derive(Default)]
 #[napi_derive::napi(object)]
 pub struct JsOptionsOutput {
     /// Working directory used to resolve relative paths.
     pub cwd: Option<String>,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: Option<String>,
     /// Source language of the file.
     pub language: Option<String>,
     /// Module system used for code generation.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
-    /// The output code settings after the hook.
+    /// The output code options after the hook.
     pub output: Option<JsOutputOptions>,
-    /// The source-map inputs and outputs after the hook; unspecified (`None`)
-    /// is omitted from the wire.
+    /// The source-map inputs and outputs after the hook. `None` means
+    /// unspecified, and Telarel omits it from the wire.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
-    /// The bag's plugins after the hook, as raw descriptor objects; missing
-    /// means the default (empty) list.
+    /// The bag's plugins after the hook, as raw descriptor objects. A missing
+    /// value means the default empty list.
     pub plugins: Option<Vec<napi::bindgen_prelude::ObjectRef<false>>>,
 }
 
-/// JS-facing resolved output options, as presented to the `start` hook.
+/// Resolved output options for the JS side, as presented to the `start` hook.
 #[napi_derive::napi(object)]
 pub struct JsResolvedOutputOptions {
-    /// The file the generated code is intended for.
+    /// The intended file for the generated code.
     pub file: String,
 }
 
-/// JS-facing resolved options, as presented to the `start` hook.
+/// Resolved options for the JS side, as presented to the `start` hook.
 #[napi_derive::napi(object)]
 pub struct JsResolvedOptions {
     /// Working directory used to resolve relative paths.
     pub cwd: String,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: String,
     /// Source language of the file.
     pub language: String,
     /// Module system used for code generation.
     #[napi(js_name = "sourceType")]
     pub source_type: String,
-    /// The output code settings.
+    /// The output code options.
     pub output: JsResolvedOutputOptions,
     /// The source-map inputs and outputs requested for the run.
     #[napi(js_name = "sourceMap")]
@@ -125,11 +125,11 @@ pub struct JsResolvedOptions {
 /// Args for the `start` hook: the resolved, read-only options.
 #[napi_derive::napi(object)]
 pub struct JsStartArgs {
-    /// Options resolved for the hook/stage.
+    /// Options resolved for the hook or stage.
     pub options: JsResolvedOptions,
 }
 
-/// The JS-facing label for an output source map mode.
+/// The JS label for a mode of an output source map.
 fn output_mode_label(mode: OutputSourceMapMode) -> &'static str {
     match mode {
         | OutputSourceMapMode::Inline => "inline",
@@ -214,7 +214,8 @@ fn output_source_map_to_js(output: &OutputSourceMap) -> serde_json::Value {
     }
 }
 
-/// Convert the source-map inputs/outputs into the JS `SourceMapOptions` union.
+/// Convert the source-map inputs and outputs into the JS `SourceMapOptions`
+/// union.
 fn source_map_options_to_js(options: &SourceMapOptions) -> serde_json::Value {
     serde_json::json!({
         "input": options.input.as_ref().map(input_source_map_to_js),
@@ -239,10 +240,10 @@ impl From<&ResolvedOptions> for JsResolvedOptions {
     }
 }
 
-/// Convert output settings into the pre-resolution JS bag shape.
+/// Convert output options into the pre-resolution JS bag shape.
 ///
-/// An unspecified request (`None`) stays `None` and is omitted from the wire;
-/// a present request (even `{}`) is transmitted.
+/// An unspecified request (`None`) stays `None`, and Telarel omits it from
+/// the wire. Telarel transmits a present request, even `{}`.
 pub fn optional_output_options_to_js(
     options: Option<&OutputOptions>
 ) -> Option<serde_json::Value> {
@@ -263,8 +264,8 @@ pub fn optional_output_options_to_js(
 
 /// Convert an optional source-map request into its JS union value.
 ///
-/// An unspecified request (`None`) stays `None` and is omitted from the wire;
-/// a present request (even an empty `{}`) is transmitted.
+/// An unspecified request (`None`) stays `None`, and Telarel omits it from
+/// the wire. Telarel transmits a present request, even an empty `{}`.
 pub fn optional_source_map_options_to_js(
     options: Option<&SourceMapOptions>
 ) -> Option<serde_json::Value> {
@@ -276,7 +277,7 @@ pub fn optional_source_map_options_to_js(
 pub struct JsParserHookOptions {
     /// Working directory used to resolve relative paths.
     pub cwd: String,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: String,
     /// Source language of the file.
     pub language: String,
@@ -306,7 +307,7 @@ impl From<&ParserOptions> for JsParserHookOptions {
 pub struct JsGeneratorHookOptions {
     /// Current working directory (reserved).
     pub cwd: String,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: String,
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
@@ -329,15 +330,16 @@ impl From<&GeneratorOptions> for JsGeneratorHookOptions {
 pub struct JsParseArgs {
     /// Source code text.
     pub code: String,
-    /// Options resolved for the hook/stage.
+    /// Options resolved for the hook or stage.
     pub options: JsParserHookOptions,
 }
 
-/// Return of the `parse` hook: the replacement AST, `null`/`void` (defer).
+/// Return of the `parse` hook: the replacement AST. `null` or `void` means no
+/// change.
 #[napi_derive::napi(object)]
 pub struct JsParseOutput {
-    /// The replacement AST input; an absent language is unset and ignored
-    /// for grammar, which parser options own.
+    /// The replacement AST input. An absent language is unset and ignored for
+    /// grammar, which parser options own.
     pub ast: JsAstInput,
 }
 
@@ -347,7 +349,7 @@ pub struct JsParseOutput {
 pub struct JsGenerateArgs {
     /// Parsed or rewritten AST.
     pub ast: JsAst,
-    /// Options resolved for the hook/stage.
+    /// Options resolved for the hook or stage.
     pub options: JsGeneratorHookOptions,
 }
 
@@ -364,7 +366,7 @@ pub struct JsCodeOutput {
 /// Args for the `end` hook: the rendered compile error, or `null` on success.
 #[napi_derive::napi(object)]
 pub struct JsEndArgs {
-    /// Error raised by an earlier hook.
+    /// An error that an earlier hook raised.
     pub error: Option<String>,
 }
 

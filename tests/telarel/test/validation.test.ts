@@ -11,10 +11,9 @@ import { describe, expect, it } from "vitest";
 
 describe("validation", (): void => {
     it("rejects on a parse error with file context", async (): Promise<void> => {
-        // A plugin declaring `transform` is irrelevant here: parse always
-        // runs. The error keeps the bare parser message; render() adds the
-        // code-frame style diagnostic including the file name and caret
-        // position.
+        // A plugin that declares `transform` is irrelevant here, because parse
+        // always runs. The error keeps the bare parser message. render() adds
+        // the code-frame style diagnostic with the file name and caret position.
         const options = {
             cwd: "/repo",
             file: "index.ts",
@@ -38,9 +37,9 @@ describe("validation", (): void => {
     });
 
     it("rejects invalid code with a parse error when no transform plugin exists", async (): Promise<void> => {
-        // Parse always runs now: without any plugin, syntactically invalid
-        // code fails with the builtin parser's diagnostic instead of passing
-        // through verbatim.
+        // Parse always runs. Without a plugin, syntactically invalid code
+        // fails with the builtin parser diagnostic instead of passing
+        // unchanged.
         await expect(
             compile("const = ;", { cwd: "/repo", file: "index.ts" }),
         ).rejects.toSatisfy(
@@ -65,8 +64,10 @@ describe("validation", (): void => {
     });
 
     it("leaves options unchanged when an options hook returns null", async (): Promise<void> => {
-        // `null` = no change: the returned-bag fold keeps the current bag;
-        // the compile options are carried over unchanged.
+        // The options bag is `args.options`, the `ResolvableOptions` value.
+        // `OptionsArgs` is the argument object that holds it. A `null` return
+        // means no change, so the current bag and the compile options stay
+        // unchanged.
         const plugin: unknown = {
             name: "null-options",
             options: (): null => null,
@@ -97,9 +98,9 @@ describe("validation", (): void => {
     });
 
     it("applies a returned options bag to the resolved file", async (): Promise<void> => {
-        // Return-based contract: the hook returns the replacement bag; the
-        // later stage observes the new `file`. The bag never carries `code`,
-        // so the options hook cannot retarget the source.
+        // The options hook returns the replacement bag, and the later stage
+        // observes the new `file`. The bag never carries `code`, so the options
+        // hook cannot retarget the source.
         let stage: string = "__NONE__";
 
         const plugin: unknown = {
@@ -135,10 +136,10 @@ describe("validation", (): void => {
     });
 
     it("applies a returned bag that omits plugins as full-bag replace", async (): Promise<void> => {
-        // Full-bag semantics: a returned bag replaces the whole bag, so a bag
-        // that omits `plugins` drops the plugin list (default: the EMPTY
-        // list). The bag cannot carry a `code` rewrite; the compile uses the
-        // untouched source and an explicit `file`.
+        // A returned bag replaces the whole bag. A bag that omits `plugins`
+        // drops the plugin list, so the default empty list applies. The bag
+        // cannot carry a `code` rewrite, so the compile uses the untouched
+        // source and the explicit `file`.
         const plugin: unknown = {
             name: "returned-bag",
             options: (): OptionsArgs => ({

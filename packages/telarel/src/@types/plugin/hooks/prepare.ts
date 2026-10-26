@@ -3,7 +3,7 @@ import type { Ast } from "#/classes/ast";
 /**
  * Arguments for the `prepare` hook.
  *
- * The `prepare` hook observes the parsed AST: its return value is ignored.
+ * The `prepare` hook observes the parsed AST. Its return value is ignored.
  */
 type PrepareArgs = {
     /**

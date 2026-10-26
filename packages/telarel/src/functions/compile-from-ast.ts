@@ -13,8 +13,8 @@ import { normalizeAstInput } from "#/functions/ast-input";
  * Compiles an existing AST through rewrite and generation, with plugins, in
  * memory.
  *
- * Accepts a normalized {@link Ast}, or a bare ESTree program together with its
- * source text.
+ * Accepts an {@link Ast}, or a bare ESTree program together with its source
+ * text.
  */
 function compileFromAst(
     ast: Ast,

@@ -51,9 +51,9 @@ use crate::plugin::options::{
 
 /// A JS plugin object bridged into the Rust plugin layer.
 ///
-/// Every hook TSFN the object carries is scanned at bridge time and kept on
-/// the adapter itself, so late plugins (wrapped during the `options`
-/// fixpoint) keep their own hook functions independent of the entry plugins.
+/// The bridge scans every hook TSFN on the object at bridge time and keeps it
+/// on the adapter. A late plugin, wrapped during the `options` fixpoint,
+/// therefore keeps its own hook functions independent of the entry plugins.
 pub struct JsPlugin {
     name: String,
     tsfn_options: Option<OptionsTsfn>,
@@ -72,14 +72,14 @@ pub struct JsPlugin {
     hook_meta_finalize: Option<PluginHookMeta>,
     hook_meta_generate: Option<PluginHookMeta>,
     hook_meta_end: Option<PluginHookMeta>,
-    /// The compile's dynamic release list, shared with every JS plugin and
-    /// with the compile task's `finally`.
+    /// The dynamic release list of the compile, shared with every JS plugin
+    /// and with the compile task's `finally`.
     refs: Arc<RefList>,
 }
 
 impl JsPlugin {
-    /// Bridge a raw JS plugin object: validate `name` and scan the hook
-    /// slots, wrapping present hook functions into TSFNs.
+    /// Bridge a raw JS plugin object into a JS plugin adapter. Returns
+    /// `InvalidArg` when `name` is absent.
     pub fn from_object(
         object: &Object<'static>,
         refs: &Arc<RefList>,
@@ -146,9 +146,9 @@ impl JsPlugin {
     }
 }
 
-/// Convert a napi error raised by a hook call into a plugin error.
+/// Convert a napi error that a hook call raised into a plugin error.
 ///
-/// A JS `PluginError` travels as a private envelope in the message; ordinary
+/// A JS `PluginError` travels as a private envelope in the message. Ordinary
 /// throwables keep their existing `napi::Error` rendering.
 fn hook_error(error: napi::Error) -> PluginError {
     match decode_plugin_error(&error.reason) {
@@ -157,13 +157,12 @@ fn hook_error(error: napi::Error) -> PluginError {
     }
 }
 
-/// Convert a read-back failure into a plugin error without an `anyhow`
-/// conversion impl in the plugin crate.
+/// Convert a read-back failure into a plugin error. The plugin crate has no
+/// `anyhow` conversion impl.
 fn anyhow_to_plugin_error(error: anyhow::Error) -> PluginError {
     PluginError::new(format!("{error:#}"))
 }
 
-/// Tree-hook payload: JSON, source, input map, grammar label.
 fn ast_hook_parts(ast: &Ast) -> (String, String, Option<JsSourceMap>, String) {
     (
         ast_to_estree_json(ast),
@@ -173,8 +172,8 @@ fn ast_hook_parts(ast: &Ast) -> (String, String, Option<JsSourceMap>, String) {
     )
 }
 
-/// The transform read-back grammar: a returned label wins; absent means the
-/// input AST's grammar still anchors the rebuild.
+/// The transform read-back grammar: a returned label wins. An absent label
+/// means the input AST's grammar still anchors the rebuild.
 fn transform_read_back_language(
     returned: Option<&str>,
     input: Language,
@@ -187,11 +186,12 @@ fn transform_read_back_language(
     Ok(returned.unwrap_or(input))
 }
 
-/// Unmarshal an `options` hook return into the pipeline bag ON the JS thread,
-/// where the returned plugin descriptors are reachable. `null`/`undefined` is
-/// no change; a returned object is the FULL bag: omitted scalars stay
-/// unspecified and every `plugins` entry is bridged (rooted descriptors join
-/// the compile's release list).
+/// Unmarshal an `options` hook return into the pipeline bag on the JS thread,
+/// where the returned plugin descriptors are reachable.
+///
+/// `null` or `undefined` means no change. A returned object is the full bag:
+/// omitted scalars stay unspecified, and the bridge wraps every `plugins`
+/// entry. Rooted descriptors join the compile's release list.
 fn unmarshal_options(
     output: Option<JsOptionsOutput>,
     env: &Env,
@@ -201,21 +201,21 @@ fn unmarshal_options(
         return Ok(None);
     };
 
-    // The descriptor references arrive ALREADY rooted: the `Option<
-    // JsOptionsOutput>` conversion (`ObjectRef`'s `FromNapiValue`) created a
-    // `napi_create_reference` root per descriptor, owned by `ctx.value` in
-    // the resolution callback. They must move onto the release list AS-IS:
-    // re-rooting them with `SharedRef::new` (`create_ref`) would leave the
-    // conversion-created root un-unref'd when the callback's value drops
-    // (`ObjectRef`'s `Drop` is a no-op), LEAKING one napi_ref per descriptor
-    // per options call. `to_plugins` wraps the SAME roots (the entry bridge
-    // in `compile` does the same).
+    // The descriptor references arrive already rooted. The `Option<
+    // JsOptionsOutput>` conversion (`ObjectRef`'s `FromNapiValue`) created one
+    // `napi_create_reference` root per descriptor, owned by `ctx.value` in the
+    // resolution callback. These roots must move onto the release list as-is.
+    // Re-rooting them with `SharedRef::new` (`create_ref`) would leak one
+    // `napi_ref` per descriptor per options call. `ObjectRef`'s `Drop` is a
+    // no-op, so the conversion-created root would stay un-unref'd when the
+    // callback's value drops. `to_plugins` wraps the same roots, as does the
+    // entry bridge in `compile`.
     //
-    // Parse the scalar fields BEFORE touching the descriptor table: the
-    // returned bag is the new CURRENT bag, and its table is only replaced
-    // once every fallible step has succeeded, so any error leaves the view
-    // untouched (the compile aborts and the release list still drains every
-    // rooted descriptor).
+    // Parse the scalar fields before touching the descriptor table. The
+    // returned bag is the new current bag, and `to_plugins` replaces its
+    // table only after every fallible step succeeds. Any error therefore
+    // leaves the view untouched: the compile aborts and the release list
+    // still drains every rooted descriptor.
     let language: Option<telarel_common::Language> = match &output.language {
         | Some(text) => parse_language(text).map_err(hook_error)?,
         | None => None,
@@ -240,10 +240,10 @@ fn unmarshal_options(
             | None => None,
         };
 
-    // The returned bag REPLACES the whole plugin list (the wrapper echoes
-    // the payload's `plugins` array): an omitted field means the default
-    // EMPTY list (see `JsOptionsOutput`'s docs). `to_plugins` bridges the
-    // whole bag and REPLACES the current descriptor view; on failure it
+    // The returned bag replaces the whole plugin list, because the wrapper
+    // echoes the payload's `plugins` array. An omitted field means the default
+    // empty list (see `JsOptionsOutput`'s docs). `to_plugins` bridges the
+    // whole bag and replaces the current descriptor view. On failure it
     // releases the rooted references and leaves the view untouched.
     let plugins: Vec<telarel_plugin::SharedPluginable> =
         to_plugins(env, output.plugins.into_iter().flatten().collect(), refs)
@@ -264,15 +264,18 @@ fn unmarshal_options(
     Ok(Some(args))
 }
 
-/// The raw return value of the TSFN bridging an `options` hook.
+/// The raw return value of the TSFN that bridges an `options` hook.
 ///
-/// The RAW `options` hook is an async function returning
-/// `Promise<Option<JsOptionsOutput>>`; the TSFN delivers the RAW promise
-/// object to the JS-thread callback, which wires the resolution bridging.
+/// The raw `options` hook is an async function that returns
+/// `Promise<Option<JsOptionsOutput>>`. The TSFN delivers the raw promise
+/// object to the JS-thread callback, and the callback wires the resolution
+/// bridging.
 pub type OptionsReturn = Unknown<'static>;
 
-/// Bridge a promise's resolution on the JS thread. Every failure settles the
-/// outcome channel first; an escaping napi error here aborts the process.
+/// Bridge a promise's resolution on the JS thread.
+///
+/// Every failure settles the outcome channel first, because an escaping napi
+/// error here aborts the process.
 fn await_options_promise(
     value: Unknown,
     env: Env,
@@ -281,8 +284,8 @@ fn await_options_promise(
 ) -> napi::Result<()> {
     use napi::bindgen_prelude::{CallbackContext, JsValue, PromiseRaw};
 
-    // The conversion is the JS-value passthrough (infallible in practice);
-    // a failure must STILL settle the channel (see this function's docs).
+    // The conversion is the JS-value passthrough (infallible in practice). A
+    // failure must still settle the channel. See this function's docs.
     let raw_value: sys::napi_value = match unsafe {
         <Unknown as ToNapiValue>::to_napi_value(env.raw(), value)
     } {
@@ -294,7 +297,8 @@ fn await_options_promise(
         },
     };
 
-    // Validate BEFORE wiring: `PromiseRaw::new` performs NO promise check.
+    // Make sure that the value is a promise before wiring. `PromiseRaw::new`
+    // performs no promise check.
     let is_promise: bool = value.is_promise().unwrap_or(false);
 
     if !is_promise {
@@ -331,9 +335,9 @@ fn await_options_promise(
         Ok(())
     };
 
-    // `then`/`catch` failures leave the worker's `recv` hanging and, surfaced
-    // from this callback, become a fatal exception: error the channel and
-    // swallow the napi error instead.
+    // `then`/`catch` failures leave the worker's `recv` hanging. When they
+    // surface from this callback, they become a fatal exception. Error the
+    // channel and swallow the napi error instead.
     if let Err(error) = raw.then(resolve).and_then(|wired| wired.catch(reject))
     {
         let _ = sender.send(Err(hook_error(error)));
@@ -342,23 +346,23 @@ fn await_options_promise(
     Ok(())
 }
 
-/// The `options` hook call. It resolves on the JS thread because a returned
-/// bag's plugin descriptors must be bridged where JS objects are reachable;
-/// the outcome travels back to the worker through a channel.
+/// The `options` hook call.
+///
+/// It resolves on the JS thread because the bridge must wrap a returned bag's
+/// plugin descriptors where JS objects are reachable. The outcome travels
+/// back to the worker through a channel.
 async fn call_options_tsfn(
     tsfn: &OptionsTsfn,
     call: OptionsCall,
     refs: &Arc<RefList>,
 ) -> std::result::Result<Option<OptionsArgs>, PluginError> {
-    // The options outcome channel: multi-producer (the resolve and reject
-    // callbacks each hold a sender), single-consumer (the worker).
     type OptionsOutcome = std::result::Result<Option<OptionsArgs>, PluginError>;
 
     let (sender, receiver): (Sender<OptionsOutcome>, _) =
         std::sync::mpsc::channel();
 
-    // The closure outlives this call (it runs when the promise resolves),
-    // so the SHARED list moves in as an owned handle.
+    // The closure outlives this call, because it runs when the promise
+    // resolves. The shared list therefore moves in as an owned handle.
     let refs: Arc<RefList> = Arc::clone(refs);
 
     let status: napi::Status = tsfn.call_with_return_value(
@@ -367,9 +371,9 @@ async fn call_options_tsfn(
         move |output: napi::Result<OptionsReturn>, env: Env| {
             match output {
                 | Err(error) => {
-                    // The promise was never created (a synchronous throw
-                    // inside the raw hook surfaced as a pending exception):
-                    // surface it as the hook error.
+                    // The promise was never created, because a synchronous
+                    // throw inside the raw hook surfaced as a pending
+                    // exception. Surface it as the hook error.
                     let _ = sender.send(Err(hook_error(error)));
 
                     Ok(())
@@ -385,10 +389,10 @@ async fn call_options_tsfn(
         ));
     }
 
-    // The outcome arrives via the JS thread's promise machinery; a plain
-    // blocking receive on the worker thread is safe (the SINGLE-task
-    // worker's runtime is parked inside `block_on`, and the JS thread is
-    // free to drive the promise to resolution).
+    // The outcome arrives through the promise machinery on the JS thread. A
+    // plain blocking receive on the worker thread is safe. The single-task
+    // worker's runtime is parked inside `block_on`, and the JS thread is free
+    // to drive the promise to resolution.
     std::sync::mpsc::Receiver::recv(&receiver).map_err(|_| {
         PluginError::new("options hook: callback channel closed")
     })?
@@ -549,9 +553,9 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             };
 
-            // Parser options own the grammar: a returned AST's language label
-            // is deliberately ignored here, because its spans must be read
-            // under the grammar the builtin parser resolved.
+            // Parser options own the grammar. The bridge deliberately ignores
+            // a returned AST's language label, because it must read the spans
+            // under the grammar that the builtin parser resolved.
             let source_type: SourceType = source_type_for_options(
                 &args.options.file,
                 Some(args.options.language),
@@ -626,9 +630,9 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             };
 
-            // The UTF-16 map is anchored to the AST's own source (the parse
-            // input), NOT the module's original code, so it matches the byte
-            // spans the codec emits.
+            // The bridge anchors the UTF-16 map to the AST's own source, the
+            // parse input, not the module's original code. It therefore
+            // matches the byte spans that the codec emits.
             let (ast_json_utf16, source_code, source_map, ast_language): (
                 String,
                 String,
@@ -665,17 +669,17 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             };
 
-            // A returned grammar wins; absent means the input AST's grammar
-            // still anchors the read-back.
+            // A returned grammar wins. An absent grammar means the input AST's
+            // grammar still anchors the read-back.
             let language: Language = transform_read_back_language(
                 replaced.language.as_deref(),
                 args.ast.language(),
             )?;
 
-            // Defense in depth: a pass-through sends the tree back unchanged,
-            // so compare every AST field in the form the plugin saw and skip
-            // the read-back. The language comparison keeps a grammar-only
-            // change from being short-circuited.
+            // Defense in depth: a pass-through sends the tree back unchanged.
+            // Compare every AST field in the form that the plugin saw, and
+            // skip the read-back. The language comparison keeps a grammar-only
+            // change from short-circuiting.
             if replaced.ast_json == ast_json_utf16
                 && replaced.code == source_code
                 && replaced.map == source_map
@@ -693,7 +697,7 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             }
 
-            // The returned program's `sourceType` owns the module kind; the
+            // The returned program's `sourceType` owns the module kind. The
             // chosen grammar only supplies the unambiguous parser input.
             let source_type: SourceType = source_type_for_generate(language);
 
@@ -705,10 +709,10 @@ impl Pluginable for JsPlugin {
                 | None => None,
             };
 
-            // Rebuild the returned tree into a fresh owned AST: the read-back
+            // Rebuild the returned tree into a fresh owned AST. The read-back
             // allocates into the new AST's arena and anchors spans against the
-            // returned source and map, so the replacement travels as `Some`
-            // exactly like a Rust plugin's replacement.
+            // returned source and map. The replacement therefore travels as
+            // `Some`, exactly like a Rust plugin's replacement.
             let ast: Ast = ast_from_json(
                 &replaced.ast_json,
                 Arc::from(replaced.code),
@@ -864,13 +868,15 @@ impl Pluginable for JsPlugin {
     }
 }
 
-/// Tests for the ENV-FREE parts of the hook marshaling: the options
-/// unmarshalling (no full-bag scalar defaulting; omitted-`plugins` = empty
-/// list) and the bag/release-list bookkeeping. The ESTree serialization and
-/// map parsing live in `crate::ast` and are tested there. The descriptor-loop /
-/// promise-wiring paths touch napi FFI (reference rooting, `napi_is_promise`)
-/// and are only observable through a JS runtime — that surface is exercised by
-/// the options-injection tests in `tests/telarel/test/compile.test.ts`.
+/// Tests for the env-free parts of the hook marshaling: the options
+/// unmarshalling and the bag and release-list bookkeeping.
+///
+/// The tests cover no full-bag scalar defaulting and the omitted-`plugins`
+/// empty list. The ESTree serialization and map parsing live in `crate::ast`,
+/// where tests cover them. Only a JS runtime can observe the descriptor-loop and
+/// promise-wiring paths, because they touch napi FFI (reference rooting,
+/// `napi_is_promise`). The options-injection tests in
+/// `tests/telarel/test/compile.test.ts` exercise that surface.
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -885,9 +891,9 @@ mod tests {
 
     use super::*;
 
-    // The loop over descriptors only runs when the bag CARRIES plugins, so
-    // the env is never dereferenced here; `Env::from_raw(null)` keeps the
-    // test free of a JS runtime.
+    // The descriptor loop runs only when the bag carries plugins, so the env
+    // is never dereferenced here. `Env::from_raw(null)` keeps the test free of
+    // a JS runtime.
     fn env() -> Env {
         napi::Env::from_raw(std::ptr::null_mut())
     }
@@ -1129,16 +1135,16 @@ mod tests {
         assert_eq!(refs.bag_snapshot().len(), 0);
     }
 
-    /// The contract: the `options` payload is the CURRENT bag's descriptor
-    /// list, NOT the accumulating release list. Two fixpoint passes echo the
-    /// SAME two descriptors; the release list grows every pass, but the bag
-    /// snapshot stays at two.
+    /// The contract: the `options` payload is the descriptor list of the
+    /// current bag, not the accumulating release list. Two fixpoint passes
+    /// echo the same two descriptors. The release list grows every pass, but
+    /// the bag snapshot stays at two.
     ///
     /// Limitation: the descriptor-loop half of `unmarshal_options` touches
-    /// napi FFI (`materialize` → `get_value`) and cannot run without a JS
-    /// runtime, so the returned-bag table update is modelled with the same
-    /// `set_bag` calls the loop makes. The omitted-`plugins` reset is
-    /// exercised through the real `unmarshal_options` above.
+    /// napi FFI (`materialize` -> `get_value`) and cannot run without a JS
+    /// runtime. The test therefore models the returned-bag table update with
+    /// the same `set_bag` calls that the loop makes. The omitted-`plugins`
+    /// test exercises the reset through the real `unmarshal_options` above.
     #[test]
     fn test_bag_table_tracks_current_bag_not_release_list() {
         let refs: RefList = RefList::new();

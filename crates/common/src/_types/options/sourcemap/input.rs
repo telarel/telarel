@@ -31,7 +31,7 @@ impl Default for InputSourceMapMode {
 
 /// A full input source-map request.
 ///
-/// `mode` selects the strategy; `path` overrides the external map location
+/// `mode` selects the strategy. `path` overrides the external map location
 /// for `External` and the `Auto` fallback.
 #[derive(Debug, Clone, Default)]
 pub struct InputSourceMapOptions {
@@ -39,9 +39,9 @@ pub struct InputSourceMapOptions {
     pub mode: InputSourceMapMode,
     /// Local filesystem path to an external map file.
     ///
-    /// Absolute paths are used as-is; relative paths resolve against the
-    /// source file's directory. Used by `External` and the `Auto` fallback;
-    /// ignored by other modes.
+    /// Absolute paths are used as-is. Relative paths resolve against the
+    /// source file's directory. The field applies to `External` and the `Auto`
+    /// fallback, and other modes ignore it.
     pub path: Option<PathBuf>,
 }
 

@@ -4,7 +4,7 @@ use telarel_common::{Language, SourceType};
 
 /// Deserialize a JS-facing language string into the Rust enum.
 ///
-/// An empty string maps to `None` (the JS hook did not set the field).
+/// An empty string maps to `None`, because the JS hook did not set the field.
 pub fn parse_language(text: &str) -> Result<Option<Language>> {
     match text {
         | "" => Ok(None),
@@ -19,9 +19,9 @@ pub fn parse_language(text: &str) -> Result<Option<Language>> {
     }
 }
 
-/// Deserialize a JS-facing source type string into the Rust enum.
+/// Deserialize a JS source-type string into the Rust enum.
 ///
-/// An empty string maps to `None` (the JS hook did not set it).
+/// An empty string maps to `None`, because the JS hook did not set the field.
 pub fn parse_source_type(text: &str) -> Result<Option<SourceType>> {
     match text {
         | "script" => Ok(Some(SourceType::Script)),
@@ -38,7 +38,7 @@ pub fn parse_source_type(text: &str) -> Result<Option<SourceType>> {
     }
 }
 
-/// The JS-facing label for a grammar, `""` when unspecified.
+/// The JS-facing label for a grammar. The label is `""` when unspecified.
 pub fn language_label(language: Option<Language>) -> &'static str {
     match language {
         | Some(language) => language.as_str(),
@@ -46,7 +46,8 @@ pub fn language_label(language: Option<Language>) -> &'static str {
     }
 }
 
-/// The JS-facing label for a module system, `""` when unspecified.
+/// The JS-facing label for a module system. The label is `""` when
+/// unspecified.
 pub fn source_type_label(source_type: Option<SourceType>) -> &'static str {
     match source_type {
         | Some(SourceType::Script) => "script",

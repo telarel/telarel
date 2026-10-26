@@ -9,7 +9,7 @@ function parse(code: string, options?: ParseOptions): Promise<AstResult>;
 
 Parses `code` with plugins, in memory.
 
-The pipeline attaches any requested input source map to the AST returned by the winning `parse` hook when that AST carries none. An AST's own input map wins. The builtin parser is the terminal fallback after every `parse` hook defers.
+The AST's own input map wins. Otherwise, the pipeline attaches the requested input map to the AST that the winning `parse` hook returns. The builtin parser is the terminal fallback when every `parse` hook defers.
 
 ## Parameters
 
@@ -20,26 +20,26 @@ The pipeline attaches any requested input source map to the AST returned by the 
 
 ### `ParseOptions`
 
-| Field            | Type             | Default         | Description                                                         |
-| ---------------- | ---------------- | --------------- | ------------------------------------------------------------------- |
-| `cwd`            | `string`         | `process.cwd()` | Current working directory.                                          |
-| `file`           | `string`         | `index.ts`      | The file being parsed. The language is inferred from its extension. |
-| `language`       | `Language`       | inferred        | The grammar of the code. Overrides the extension inference.         |
-| `sourceType`     | `SourceType`     | inferred        | The module system of the code. Overrides the grammar's module kind. |
-| `inputSourceMap` | `InputSourceMap` | off             | The input source-map request for the step.                          |
-| `plugins`        | `PluginOption[]` | `[]`            | The plugins to run.                                                 |
+| Field            | Type             | Default         | Description                                                                 |
+| ---------------- | ---------------- | --------------- | --------------------------------------------------------------------------- |
+| `cwd`            | `string`         | `process.cwd()` | Current working directory.                                                  |
+| `file`           | `string`         | `index.ts`      | The file being parsed. The compiler infers the language from its extension. |
+| `language`       | `Language`       | inferred        | The grammar of the code. Overrides the extension inference.                 |
+| `sourceType`     | `SourceType`     | inferred        | The module system of the code. Overrides the grammar's module kind.         |
+| `inputSourceMap` | `InputSourceMap` | off             | The input source-map request for the step.                                  |
+| `plugins`        | `PluginOption[]` | `[]`            | The plugins to run.                                                         |
 
 `Language` is one of `"js"`, `"ts"`, `"dts"`, `"jsx"`, or `"tsx"`.
 
 `SourceType` is one of `"script"`, `"commonjs"`, `"module"`, or `"unambiguous"`.
 
-`InputSourceMap` is a `SourceMap` value, a literal input mode (`"inline"`, `"external"`, or `"auto"`), or `{ mode, path? }`; in the options form, `mode` accepts a `SourceMap` value or a literal input mode.
+`InputSourceMap` is a `SourceMap` value, a literal input mode (`"inline"`, `"external"`, or `"auto"`), or `{ mode, path? }`. In the options form, `mode` accepts a `SourceMap` value or a literal input mode.
 
-`parse` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `sourceMap.input`; a plugin-set `sourceMap.output` or top-level `output` is ignored by `parse`.
+`parse` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `sourceMap.input`. `parse` ignores a plugin-set `sourceMap.output` or top-level `output`.
 
 ## Returns
 
-`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }`. `ast.language` is the resolved grammar: an explicit `language` option, or file-extension inference otherwise.
+`Promise<AstResult>`, where `AstResult` is `{ ast: Ast }`. `ast.language` is the resolved grammar. It comes from an explicit `language` option or from file-extension inference.
 
 ## Example
 

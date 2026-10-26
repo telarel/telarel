@@ -63,7 +63,7 @@ impl CompileError {
 
 ## Rendering
 
-`Display` writes the bare message when no source is attached. With a source, it writes a graphical code frame containing the file, the message, and the marked span. `message()` always returns the bare message; `Display` is the code-frame rendering path.
+When the error carries no source, `Display` writes the bare message. When the error carries a source, `Display` writes a graphical code frame that contains the file, the message, and the marked span. `message()` always returns the bare message. `Display` is the code-frame rendering path.
 
 `Debug` shows the error's message, file, and span. It never prints the source text.
 

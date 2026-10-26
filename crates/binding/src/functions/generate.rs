@@ -30,9 +30,9 @@ pub fn generate(
 {
     let options_rust: GenerateOptions = options.to_generate_options()?;
 
-    // Explicit options win, then the input AST's grammar, then the grammar
-    // inferred from the resolved file. The module kind stays absent so the
-    // generated program's own `sourceType` settles it.
+    // The precedence is explicit options, then the input AST's grammar, then
+    // the grammar inferred from the resolved file. The module kind stays
+    // absent so the generated program's own `sourceType` settles it.
     let resolved: ResolvedOptions = resolve_options(
         ResolvableOptions::from(options_rust.clone()),
         Vec::new(),

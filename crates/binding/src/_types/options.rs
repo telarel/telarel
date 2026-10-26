@@ -13,29 +13,29 @@ use telarel_common::{
 /// JS-facing options for `parse`.
 #[napi_derive::napi(object)]
 pub struct JsParseOptions {
-    /// Current working directory;
-    /// omitted on the JS side resolves to the process working directory.
+    /// Current working directory. When the JS side omits it, the value
+    /// resolves to the process working directory.
     pub cwd: Option<String>,
-    /// The file being parsed;
-    /// omitted on the JS side resolves to a default filename.
+    /// The file being parsed. When the JS side omits it, the value resolves
+    /// to a default filename.
     pub file: Option<String>,
-    /// The grammar of the source;
-    /// omitted on the JS side infers the grammar from the file extension.
+    /// The grammar of the source. When the JS side omits it, the grammar
+    /// comes from the file extension.
     pub language: Option<String>,
-    /// The module system of the source;
-    /// omitted on the JS side keeps the module kind resolved from the grammar.
+    /// The module system of the source. When the JS side omits it, the module
+    /// kind stays the one that the grammar resolves.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
-    /// The input source-map request for the step;
-    /// omitted on the JS side means no input-map lookup.
+    /// The input source-map request for the step. When the JS side omits it,
+    /// Telarel performs no input-map lookup.
     #[napi(js_name = "inputSourceMap")]
     pub input_source_map: Option<serde_json::Value>,
-    /// Raw JS plugin objects, rooted as references;
-    /// bridged by `JsPlugin::from_object`.
+    /// Raw objects for JS plugins, rooted as references.
+    /// `JsPlugin::from_object` bridges them.
     pub plugins: Vec<ObjectRef<false>>,
 }
 
-/// JS-facing output code options.
+/// JS-facing options for output code.
 #[napi_derive::napi(object)]
 pub struct JsOutputOptions {
     /// The intended path of the generated code.
@@ -45,121 +45,118 @@ pub struct JsOutputOptions {
 /// JS-facing options for `compile`.
 #[napi_derive::napi(object)]
 pub struct JsCompileOptions {
-    /// Current working directory;
-    /// omitted on the JS side resolves to the process working directory.
+    /// Current working directory. When the JS side omits it, the value
+    /// resolves to the process working directory.
     pub cwd: Option<String>,
-    /// The file being compiled;
-    /// omitted on the JS side resolves to a default filename.
+    /// The file being compiled. When the JS side omits it, the value resolves
+    /// to a default filename.
     pub file: Option<String>,
-    /// The grammar of the source;
-    /// omitted on the JS side infers the grammar from the file extension.
+    /// The grammar of the source. When the JS side omits it, the grammar
+    /// comes from the file extension.
     pub language: Option<String>,
-    /// The module system of the source;
-    /// omitted on the JS side keeps the module kind resolved from the grammar.
+    /// The module system of the source. When the JS side omits it, the module
+    /// kind stays the one that the grammar resolves.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
-    /// The output code settings.
+    /// The output code options.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
-    /// Raw JS plugin objects, rooted as references;
-    /// bridged by `JsPlugin::from_object`.
+    /// Raw objects for JS plugins, rooted as references.
+    /// `JsPlugin::from_object` bridges them.
     pub plugins: Vec<ObjectRef<false>>,
 }
 
 /// JS-facing options for `rewrite`.
 #[napi_derive::napi(object)]
 pub struct JsRewriteOptions {
-    /// Current working directory;
-    /// omitted on the JS side resolves to the process working directory.
+    /// Current working directory. When the JS side omits it, the value
+    /// resolves to the process working directory.
     pub cwd: Option<String>,
-    /// The file being rewritten;
-    /// omitted on the JS side resolves to a default filename.
+    /// The file being rewritten. When the JS side omits it, the value
+    /// resolves to a default filename.
     pub file: Option<String>,
-    /// The grammar of the source;
-    /// omitted on the JS side falls back to the AST language, then the file
-    /// extension.
+    /// The grammar of the source. When the JS side omits it, the value falls
+    /// back to the AST language, then the file extension.
     pub language: Option<String>,
-    /// The module system of the source;
-    /// omitted on the JS side keeps the module kind resolved from the grammar.
+    /// The module system of the source. When the JS side omits it, the module
+    /// kind stays the one that the grammar resolves.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
-    /// The input source-map request for the step;
-    /// omitted on the JS side means no input-map lookup.
+    /// The input source-map request for the step. When the JS side omits it,
+    /// Telarel performs no input-map lookup.
     #[napi(js_name = "inputSourceMap")]
     pub input_source_map: Option<serde_json::Value>,
-    /// Raw JS plugin objects, rooted as references;
-    /// bridged by `JsPlugin::from_object`.
+    /// Raw objects for JS plugins, rooted as references.
+    /// `JsPlugin::from_object` bridges them.
     pub plugins: Vec<ObjectRef<false>>,
 }
 
 /// JS-facing options for `compileFromAst`.
 #[napi_derive::napi(object)]
 pub struct JsCompileFromAstOptions {
-    /// Current working directory;
-    /// omitted on the JS side resolves to the process working directory.
+    /// Current working directory. When the JS side omits it, the value
+    /// resolves to the process working directory.
     pub cwd: Option<String>,
-    /// The file being compiled;
-    /// omitted on the JS side resolves to a default filename.
+    /// The file being compiled. When the JS side omits it, the value resolves
+    /// to a default filename.
     pub file: Option<String>,
-    /// The grammar of the source;
-    /// omitted on the JS side falls back to the AST language, then the file
-    /// extension.
+    /// The grammar of the source. When the JS side omits it, the value falls
+    /// back to the AST language, then the file extension.
     pub language: Option<String>,
-    /// The module system of the source;
-    /// omitted on the JS side keeps the module kind resolved from the grammar.
+    /// The module system of the source. When the JS side omits it, the module
+    /// kind stays the one that the grammar resolves.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
-    /// The output code settings.
+    /// The output code options.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
-    /// Raw JS plugin objects, rooted as references;
-    /// bridged by `JsPlugin::from_object`.
+    /// Raw objects for JS plugins, rooted as references.
+    /// `JsPlugin::from_object` bridges them.
     pub plugins: Vec<ObjectRef<false>>,
 }
 
-/// JS-facing options for `generate`: the module kind is absent because the
+/// JS-facing options for `generate`. The module kind is absent because the
 /// generated program's own `sourceType` settles it.
 #[napi_derive::napi(object)]
 pub struct JsGenerateOptions {
-    /// Current working directory;
-    /// omitted on the JS side resolves to the process working directory.
+    /// Current working directory. When the JS side omits it, the value
+    /// resolves to the process working directory.
     pub cwd: Option<String>,
-    /// The file being generated;
-    /// omitted on the JS side resolves to a default filename.
+    /// The file being generated. When the JS side omits it, the value
+    /// resolves to a default filename.
     pub file: Option<String>,
-    /// The grammar of the generated code;
-    /// omitted on the JS side falls back to the AST language, then the file
-    /// extension.
+    /// The grammar of the generated code. When the JS side omits it, the
+    /// value falls back to the AST language, then the file extension.
     pub language: Option<String>,
-    /// The output code settings.
+    /// The output code options.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
-    /// Raw JS plugin objects, rooted as references;
-    /// bridged by `JsPlugin::from_object`.
+    /// Raw objects for JS plugins, rooted as references.
+    /// `JsPlugin::from_object` bridges them.
     pub plugins: Vec<ObjectRef<false>>,
 }
 
-/// JS-facing options for `builtinParse` (the builtin `createParser`): no
-/// plugins, since the builtin parser never runs the plugin chain.
+/// JS-facing options for `builtinParse` (the builtin `createParser`). There
+/// are no plugins, because the builtin parser never runs the plugin chain.
 #[napi_derive::napi(object)]
 pub struct JsParserOptions {
-    /// Current working directory;
-    /// omitted on the JS side resolves to the process working directory.
+    /// Current working directory. When the JS side omits it, the value
+    /// resolves to the process working directory.
     pub cwd: Option<String>,
-    /// The file being parsed;
-    /// omitted on the JS side resolves to a default filename.
+    /// The file being parsed. When the JS side omits it, the value resolves
+    /// to a default filename.
     pub file: Option<String>,
-    /// The grammar of the source;
-    /// omitted on the JS side infers the grammar from the file extension.
+    /// The grammar of the source. When the JS side omits it, the grammar
+    /// comes from the file extension.
     pub language: Option<String>,
-    /// The module system of the source;
-    /// omitted on the JS side keeps the module kind resolved from the grammar.
+    /// The module system of the source. When the JS side omits it, the module
+    /// kind stays the one that the grammar resolves.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
     /// The source-map inputs and outputs requested for the step.
@@ -167,27 +164,25 @@ pub struct JsParserOptions {
     pub source_map: Option<serde_json::Value>,
 }
 
-/// JS-facing options for `builtinGenerate` (the builtin `createGenerator`):
-/// no plugins, no grammar and no module kind.
+/// JS-facing options for `builtinGenerate` (the builtin `createGenerator`).
+/// There are no plugins, no grammar, and no module kind.
 #[napi_derive::napi(object)]
 pub struct JsGeneratorOptions {
-    /// Current working directory;
-    /// omitted on the JS side resolves to the process working directory.
+    /// Current working directory. When the JS side omits it, the value
+    /// resolves to the process working directory.
     pub cwd: Option<String>,
-    /// The file being generated;
-    /// omitted on the JS side resolves to a default filename.
+    /// The file being generated. When the JS side omits it, the value
+    /// resolves to a default filename.
     pub file: Option<String>,
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
 }
 
-/// Wrap a validation message in an `InvalidArg` error.
 fn invalid_arg(message: String) -> Error {
     Error::new(Status::InvalidArg, message)
 }
 
-/// Parse a JS-facing source type string into the Rust enum.
 fn parse_source_type(text: &str) -> std::result::Result<SourceType, String> {
     match text {
         | "script" => Ok(SourceType::Script),
@@ -200,7 +195,6 @@ fn parse_source_type(text: &str) -> std::result::Result<SourceType, String> {
     }
 }
 
-/// Parse an optional JS grammar label.
 pub(crate) fn parse_language_option(
     language: Option<&str>
 ) -> Result<Option<Language>> {
@@ -212,7 +206,6 @@ pub(crate) fn parse_language_option(
     }
 }
 
-/// Parse an optional JS module-kind label.
 fn parse_source_type_option(
     source_type: Option<&str>
 ) -> Result<Option<SourceType>> {
@@ -222,7 +215,6 @@ fn parse_source_type_option(
     }
 }
 
-/// Parse a JS source-map object into an owned [`SourceMap`].
 fn parse_source_map_object(
     value: &serde_json::Value,
     label: &str,
@@ -238,7 +230,7 @@ fn parse_source_map_object(
         })
 }
 
-/// Parse an optional non-empty string field from an options object.
+/// Parse an optional string field that must not be empty.
 fn parse_optional_string<'a>(
     object: &'a serde_json::Map<String, serde_json::Value>,
     key: &str,
@@ -255,10 +247,10 @@ fn parse_optional_string<'a>(
     }
 }
 
-/// Parse an optional output source-map URL field from an options object.
+/// Parse an optional `url` field for output source maps.
 ///
 /// An absent, `null`, or empty-string URL is unset, matching the resolved
-/// contract; any other non-string value is invalid.
+/// contract. Any other non-string value is invalid.
 fn parse_optional_url<'a>(
     object: &'a serde_json::Map<String, serde_json::Value>,
     key: &str,
@@ -276,7 +268,6 @@ fn parse_optional_url<'a>(
     }
 }
 
-/// Parse an input source-map mode label.
 fn parse_input_source_map_mode(
     text: &str,
     label: &str,
@@ -291,7 +282,6 @@ fn parse_input_source_map_mode(
     }
 }
 
-/// Parse an input source-map mode: a literal label or a source-map value.
 fn parse_input_source_map_mode_value(
     value: &serde_json::Value,
     label: &str,
@@ -309,7 +299,6 @@ fn parse_input_source_map_mode_value(
     }
 }
 
-/// Parse an input source-map options object.
 fn parse_input_source_map_options(
     object: &serde_json::Map<String, serde_json::Value>,
     label: &str,
@@ -330,8 +319,6 @@ fn parse_input_source_map_options(
     Ok(InputSourceMap::Options(InputSourceMapOptions { mode, path }))
 }
 
-/// Parse an input source-map request: a source-map object, an options object,
-/// or one of `"inline"` / `"external"` / `"auto"`.
 fn parse_input_source_map(
     value: &serde_json::Value,
     label: &str,
@@ -363,7 +350,6 @@ fn parse_input_source_map(
     }
 }
 
-/// Parse one output source-map mode label.
 fn parse_output_source_map_mode(text: &str) -> Result<OutputSourceMapMode> {
     match text {
         | "inline" => Ok(OutputSourceMapMode::Inline),
@@ -376,7 +362,6 @@ fn parse_output_source_map_mode(text: &str) -> Result<OutputSourceMapMode> {
     }
 }
 
-/// Parse the `sourceMap.output` union: a mode string or `{ mode, url? }`.
 fn parse_output_source_map(
     value: &serde_json::Value
 ) -> Result<OutputSourceMap> {
@@ -420,7 +405,7 @@ fn parse_output_source_map(
 
 /// Parse the JS `sourceMap` union into the Rust option family.
 ///
-/// `null` and absent keys are "off" (`None`) — never `"auto"`. A malformed
+/// `null` and absent keys are "off" (`None`), never `"auto"`. A malformed
 /// shape is a hard `InvalidArg` error, never a silent default.
 pub fn parse_source_map_options(
     value: &serde_json::Value
@@ -445,7 +430,6 @@ pub fn parse_source_map_options(
     Ok(SourceMapOptions { input, output })
 }
 
-/// Parse the JS `output` object into the Rust output options.
 pub fn parse_output_options(
     output: Option<&JsOutputOptions>
 ) -> Result<Option<OutputOptions>> {
@@ -462,9 +446,9 @@ pub fn parse_output_options(
     }
 }
 
-/// The parsed, shared scalar fields of an entry-point option struct.
+/// The shared scalar fields of an entry-point option struct, after parsing.
 ///
-/// `compile` and `compileFromAst` carry these six scalars on the wire; the
+/// `compile` and `compileFromAst` carry these six scalars on the wire. The
 /// builtin parser options carry all of them except `output`. Each entry point
 /// bridges its own plugins array.
 struct SharedOptions {
@@ -477,8 +461,6 @@ struct SharedOptions {
 }
 
 impl SharedOptions {
-    /// Parse the shared scalars, validating the grammar and module-kind
-    /// labels and the `sourceMap` union.
     fn parse(
         cwd: Option<String>,
         file: Option<String>,
@@ -511,8 +493,8 @@ impl SharedOptions {
 
 /// The parsed scalar fields of an entry-point option struct.
 ///
-/// `parse` and `rewrite` carry the shared scalars plus a flat input source-map
-/// request; output maps do not apply to AST-producing entry points.
+/// `parse` and `rewrite` carry the shared scalars plus a flat `inputSourceMap`
+/// request. Output maps do not apply to AST-producing entry points.
 struct SharedInputOptions {
     cwd: Option<PathBuf>,
     file: Option<String>,
@@ -522,7 +504,6 @@ struct SharedInputOptions {
 }
 
 impl SharedInputOptions {
-    /// Parse the shared scalars and the flat `inputSourceMap` request.
     fn parse(
         cwd: Option<String>,
         file: Option<String>,
@@ -552,7 +533,8 @@ impl SharedInputOptions {
 }
 
 impl JsParseOptions {
-    /// Convert the JS-facing options into the Rust [`ParseOptions`].
+    /// Convert the JS-facing options into the Rust [`ParseOptions`]. Invalid
+    /// labels or malformed source maps return `InvalidArg`.
     pub fn to_parse_options(&self) -> Result<ParseOptions> {
         let shared: SharedInputOptions = SharedInputOptions::parse(
             self.cwd.clone(),
@@ -573,7 +555,8 @@ impl JsParseOptions {
 }
 
 impl JsCompileOptions {
-    /// Convert the JS-facing options into the Rust [`CompileOptions`].
+    /// Convert the JS-facing options into the Rust [`CompileOptions`]. Invalid
+    /// labels or malformed source maps return `InvalidArg`.
     pub fn to_compile_options(&self) -> Result<CompileOptions> {
         let shared: SharedOptions = SharedOptions::parse(
             self.cwd.clone(),
@@ -596,7 +579,8 @@ impl JsCompileOptions {
 }
 
 impl JsRewriteOptions {
-    /// Convert the JS-facing options into the Rust [`RewriteOptions`].
+    /// Convert the JS-facing options into the Rust [`RewriteOptions`]. Invalid
+    /// labels or malformed source maps return `InvalidArg`.
     pub fn to_rewrite_options(&self) -> Result<RewriteOptions> {
         let shared: SharedInputOptions = SharedInputOptions::parse(
             self.cwd.clone(),
@@ -618,6 +602,7 @@ impl JsRewriteOptions {
 
 impl JsCompileFromAstOptions {
     /// Convert the JS-facing options into the Rust [`CompileFromAstOptions`].
+    /// Invalid labels or malformed source maps return `InvalidArg`.
     pub fn to_compile_from_ast_options(&self) -> Result<CompileFromAstOptions> {
         let shared: SharedOptions = SharedOptions::parse(
             self.cwd.clone(),
@@ -640,7 +625,8 @@ impl JsCompileFromAstOptions {
 }
 
 impl JsGenerateOptions {
-    /// Convert the JS-facing options into the Rust [`GenerateOptions`].
+    /// Convert the JS-facing options into the Rust [`GenerateOptions`]. Invalid
+    /// labels or malformed source maps return `InvalidArg`.
     pub fn to_generate_options(&self) -> Result<GenerateOptions> {
         let language: Option<Language> =
             parse_language_option(self.language.as_deref())?;
@@ -661,8 +647,9 @@ impl JsGenerateOptions {
 }
 
 impl JsParserOptions {
-    /// Convert the JS-facing options into the resolvable form the builtin
-    /// parser's options are derived from.
+    /// Convert the JS-facing options into the resolvable form for the builtin
+    /// parser. The builtin parser derives its options from that form. Invalid
+    /// labels or malformed source maps return `InvalidArg`.
     pub fn to_resolvable(&self) -> Result<ResolvableOptions> {
         let shared: SharedOptions = SharedOptions::parse(
             self.cwd.clone(),
@@ -685,9 +672,11 @@ impl JsParserOptions {
 }
 
 impl JsGeneratorOptions {
-    /// Convert the JS-facing options into the resolvable form the builtin
-    /// generator's options are derived from. The grammar is inferred from the
-    /// resolved file, so no grammar or module-kind field is carried.
+    /// Convert the JS-facing options into the resolvable form for the builtin
+    /// generator. The form carries no grammar or module-kind field. The
+    /// builtin generator resolves the grammar from the input AST's language,
+    /// then from the resolved file. Invalid labels or malformed source maps
+    /// return `InvalidArg`.
     pub fn to_resolvable(&self) -> Result<ResolvableOptions> {
         let source_map: Option<SourceMapOptions> = match &self.source_map {
             | Some(value) => Some(parse_source_map_options(value)?),

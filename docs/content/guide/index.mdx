@@ -1,10 +1,10 @@
 ---
 title: Overview
-description: Telarel, An extensible JavaScript compiler written in Rust, and built around plugin hooks.
+description: Telarel, an extensible JavaScript compiler written in Rust, and built around plugin hooks.
 ---
 
-Telarel is an extensible JavaScript compiler written in Rust, and built around plugin hooks.
+Telarel is an extensible JavaScript compiler written in Rust and built around plugin hooks.
 
-The compiler exposes five entry points — `parse`, `rewrite`, `generate`, `compileFromAst`, and `compile`. Each takes its source (text or an owned AST), an options value, and a list of plugins, and returns an AST result or a code result with an optional source map.
+The compiler exposes five entry points: `parse`, `rewrite`, `generate`, `compileFromAst`, and `compile`. Each entry point takes a source text or an owned AST, an options value, and a list of plugins. It returns an AST result or a code result with an optional source map.
 
 Read the [Getting Started](/guide/getting-started) guide to install Telarel and run your first compile.

@@ -6,19 +6,18 @@ use oxc_sourcemap::SourceMap as OxcSourceMap;
 pub struct JsSourceMap {
     /// Version of the source map format.
     pub version: u32,
-    /// An optional name of the generated code that this source map is
-    /// associated with.
+    /// An optional name of the generated code that this source map describes.
     pub file: Option<String>,
     /// A string with the encoded mapping data.
     pub mappings: String,
     /// An optional source root, prepended to the individual entries in
     /// `sources`.
     pub source_root: Option<String>,
-    /// A list of original sources used by the `mappings` entry.
+    /// A list of original sources that the `mappings` entry uses.
     pub sources: Vec<String>,
     /// An optional list of source contents, in the same order as `sources`.
     pub sources_content: Option<Vec<Option<String>>>,
-    /// A list of symbol names used by the `mappings` entry.
+    /// A list of symbol names that the `mappings` entry uses.
     pub names: Vec<String>,
     /// Indices of the `sources` entries known to be third-party code,
     /// allowing developer tools to ignore-list them.

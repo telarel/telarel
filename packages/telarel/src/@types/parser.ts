@@ -6,11 +6,13 @@ import type { SourceMapOptions } from "#/@types/sourcemap";
  */
 type ParserOptions = {
     /**
-     * Current working directory.
+     * The working directory for relative paths. It anchors a relative `file`
+     * and resolves the default path of an external input map.
      */
     cwd: string;
     /**
-     * The file being parsed.
+     * The parsed file's path. It labels diagnostics and locates the external
+     * input map by default.
      */
     file: string;
     /**

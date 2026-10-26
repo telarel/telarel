@@ -1,9 +1,9 @@
 use std::path::Path;
 
-/// Render a Rust path as the string label the JS boundary exposes.
+/// Render a Rust path as the string label that the JS boundary exposes.
 ///
-/// Rust paths may be non-UTF-8 on Unix while JS strings cannot represent them,
-/// so the conversion is lossy by design: non-UTF-8 bytes become `U+FFFD`.
+/// Rust paths may be non-UTF-8 on Unix. JS strings cannot represent them, so
+/// the conversion is lossy by design. Non-UTF-8 bytes become `U+FFFD`.
 /// Internal resolution stays on `Path`.
 pub fn path_label(path: &Path) -> String {
     path.to_string_lossy().into_owned()

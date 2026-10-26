@@ -3,7 +3,7 @@ title: ErrorSource
 description: A source location attached to CompileError and PluginError.
 ---
 
-`ErrorSource` is the shared source-location type attached to different errors. It carries a file name, the source text, and a `Span`.
+`ErrorSource` is the shared source-location type for `CompileError` and `PluginError`. It carries a file name, the source text, and a `Span`.
 
 ```ts
 import type { Span } from "telarel";
@@ -39,4 +39,4 @@ Use `fromCode` with a hook's code or `fromAst` with an [Ast](/apis/javascript/As
 
 `span` returns a copy, so mutating the result does not mutate the source.
 
-Use `CompileError.render()` or `PluginError.render()` to turn a source into a code frame.
+Use `CompileError.render()` or `PluginError.render()` to render a code frame from a source.

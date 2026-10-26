@@ -20,16 +20,16 @@ type PluginOption = MaybePromise<
 >;
 
 /**
- * Output code settings.
+ * Output code options.
  */
 type CompleteOutputOptions = {
     /**
      * The intended path of the generated code.
      *
      * The compiler does not write the file. The resolved path derives the
-     * default external source-map URL by appending `.map`.
+     * default URL for an external source map by appending `.map`.
      *
-     * An empty string is treated as unset, same as an absent `file`.
+     * An empty string is treated as unset, the same as an absent `file`.
      *
      * By default, it is the resolved `file`.
      */
@@ -44,7 +44,7 @@ type OutputOptions = Partial<CompleteOutputOptions>;
 /**
  * The full, resolved shape of a compile run's options.
  *
- * The source text is deliberately absent: it belongs to the call, never to the
+ * The source text is deliberately absent. It belongs to the call, never to the
  * options bag.
  */
 type CompleteOptions = {
@@ -62,12 +62,12 @@ type CompleteOptions = {
      */
     language: Language;
     /**
-     * The module system of the code. By default, it is kept resolved from the
-     * grammar.
+     * The module system of the code. By default, the compiler keeps it resolved
+     * from the grammar.
      */
     sourceType: SourceType;
     /**
-     * The output code settings.
+     * The output code options.
      */
     output: CompleteOutputOptions;
     /**
@@ -119,15 +119,15 @@ type RewriteOptions = Partial<
 /**
  * Options for `generate`.
  *
- * The module kind is absent: the generated program's own `sourceType` settles
- * it. The grammar falls back from `language` to the AST language, then the file
- * extension.
+ * The module kind is absent. The generated program's own `sourceType` settles
+ * it. The grammar precedence is `language`, then the AST language, then the
+ * file extension.
  */
 type GenerateOptions = Partial<
     Pick<CompleteOptions, "cwd" | "file" | "language" | "sourceMap" | "plugins">
 > & {
     /**
-     * The output code settings.
+     * The output code options.
      */
     output?: OutputOptions;
 };
@@ -142,7 +142,7 @@ type CompileFromAstOptions = Partial<
     >
 > & {
     /**
-     * The output code settings.
+     * The output code options.
      */
     output?: OutputOptions;
 };
@@ -157,7 +157,7 @@ type CompileOptions = Partial<
     >
 > & {
     /**
-     * The output code settings.
+     * The output code options.
      */
     output?: OutputOptions;
 };
@@ -167,7 +167,7 @@ type CompileOptions = Partial<
  */
 type Options = Partial<Omit<CompleteOptions, "output">> & {
     /**
-     * The output code settings.
+     * The output code options.
      */
     output?: OutputOptions;
 };
@@ -181,7 +181,7 @@ type Options = Partial<Omit<CompleteOptions, "output">> & {
  */
 type ResolvableOptions = Partial<Omit<CompleteOptions, "output">> & {
     /**
-     * The output code settings.
+     * The output code options.
      */
     output?: OutputOptions;
 };

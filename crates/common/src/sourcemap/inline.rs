@@ -10,12 +10,10 @@ const DATA_URI_PREFIX: &str = "data:";
 
 const SOURCE_MAPPING_COMMENT_PREFIX: &str = "//# sourceMappingURL=";
 
-/// The last line with non-whitespace content, if any.
 fn last_non_empty_line(code: &str) -> Option<&str> {
     code.lines().rev().find(|line: &&str| !line.trim().is_empty())
 }
 
-/// The URL following `sourceMappingURL=` on `line`, if present.
 fn source_mapping_url(line: &str) -> Option<&str> {
     let marker: usize = line.find(SOURCE_MAPPING_URL)?;
     let rest: &str = &line[marker + SOURCE_MAPPING_URL.len()..];
@@ -25,7 +23,6 @@ fn source_mapping_url(line: &str) -> Option<&str> {
     (!url.is_empty()).then_some(url)
 }
 
-/// The base64 payload of a `data:...;base64,<payload>` URI, if it is one.
 fn decode_data_uri_payload(url: &str) -> Option<&str> {
     let rest: &str = url.strip_prefix(DATA_URI_PREFIX)?;
     let comma: usize = rest.find(',')?;
@@ -38,7 +35,6 @@ fn decode_data_uri_payload(url: &str) -> Option<&str> {
     is_base64.then_some(payload)
 }
 
-/// Decode a base64 data-URI payload into an owned source map.
 fn decode_payload(payload: &str) -> Result<SourceMap, CompileError> {
     let bytes: Vec<u8> = STANDARD.decode(payload.trim()).map_err(
         |error: base64::DecodeError| {

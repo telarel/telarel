@@ -9,7 +9,7 @@ use crate::common::pipeline::{ParseStage, run};
 ///
 /// Runs `options`, `start`, `parse`, and `end`. After a `parse` hook wins, the
 /// pipeline attaches the requested input source map when the returned AST
-/// carries none; an AST's own map wins. The builtin parser is the terminal
+/// carries none. An AST's own map wins. The builtin parser is the terminal
 /// fallback after every `parse` hook defers.
 pub async fn parse(
     code: String,

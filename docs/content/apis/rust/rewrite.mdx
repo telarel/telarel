@@ -11,9 +11,9 @@ pub async fn rewrite(
 ) -> Result<AstResult, CompileError>
 ```
 
-Rewrites `ast` through the plugin chain. An empty plugin list runs no transform hooks, so the AST is returned without modification.
+Rewrites `ast` through the plugin chain. An empty plugin list runs no transform hooks. The pipeline returns the AST without modification.
 
-The AST's own input map wins; otherwise the resolved input source map is attached before the stages run.
+An AST's own input source map wins. When the AST carries none, the pipeline attaches the requested input source map before the stages run.
 
 ## Parameters
 
@@ -25,19 +25,21 @@ The AST's own input map wins; otherwise the resolved input source map is attache
 
 ### `RewriteOptions`
 
-Every field is optional and resolved against defaults before use.
+Every field is optional. The pipeline resolves each field against defaults before use.
 
-| Field              | Type                     | Default                   | Description                                                                                                              |
-| ------------------ | ------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `cwd`              | `Option<PathBuf>`        | process working dir       | Filesystem root used to resolve relative paths.                                                                          |
-| `file`             | `Option<String>`         | `index.ts`                | The file being rewritten; used for option resolution. Does not change the AST grammar.                                   |
-| `language`         | `Option<Language>`       | AST language, then `file` | The grammar recorded in the resolved step options and visible to plugins. Does not change the input AST grammar.         |
-| `source_type`      | `Option<SourceType>`     | inferred                  | The module kind recorded in the resolved step options and visible to plugins. Does not change the input AST module kind. |
-| `input_source_map` | `Option<InputSourceMap>` | off                       | The input source-map request for the step.                                                                               |
+| Field              | Type                     | Default                   | Description                                                                                                                 |
+| ------------------ | ------------------------ | ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `cwd`              | `Option<PathBuf>`        | process working dir       | Filesystem root used to resolve relative paths.                                                                             |
+| `file`             | `Option<String>`         | `index.ts`                | The file being rewritten. It is used for option resolution. It does not change the AST grammar.                             |
+| `language`         | `Option<Language>`       | AST language, then `file` | The grammar recorded in the resolved step options and visible to plugins. It does not change the input AST grammar.         |
+| `source_type`      | `Option<SourceType>`     | inferred                  | The module kind recorded in the resolved step options and visible to plugins. It does not change the input AST module kind. |
+| `input_source_map` | `Option<InputSourceMap>` | off                       | The input source-map request for the step.                                                                                  |
 
-The explicit values are visible to the `options` hook; after resolution the values (explicit or inferred) are visible to `start` and later hooks through the resolved options and `PluginContext.module`. When `language` is omitted, the resolved language falls back to the input AST grammar, then the file extension. `rewrite` does not reparse the input AST or change its grammar or module kind. The returned AST is the input AST or a plugin replacement, with the grammar and module kind that AST was built with.
+The explicit values are visible to the `options` hook. After resolution, the explicit or inferred values are visible to `start` and later hooks. They are available through the resolved options and `PluginContext.module`.
 
-`rewrite` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `source_map.input`; a plugin-set `source_map.output` or top-level `output` is ignored by `rewrite`.
+When `language` is omitted, the resolved language falls back to the input AST grammar, then the file extension. `rewrite` does not reparse the input AST or change its grammar or module kind. The returned AST is the input AST or a plugin replacement. It keeps the grammar and module kind of that AST.
+
+`rewrite` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `source_map.input`. `rewrite` ignores a plugin-set `source_map.output` or top-level `output`.
 
 ## Returns
 

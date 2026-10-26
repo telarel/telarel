@@ -19,13 +19,13 @@ pub fn parse(
     code: String,
     options: JsParseOptions,
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<FunctionTask<JsAstResult>>> {
-    // Convert the options before rooting anything: a validation failure must
-    // not leak rooted references.
+    // Convert the options before rooting anything so a validation failure
+    // cannot leak rooted references.
     let options_rust: ParseOptions = options.to_parse_options()?;
 
-    // The dynamic release list of this call: seeded with every entry
-    // descriptor, extended by the `options` hook, drained in the task's
-    // `finally`.
+    // The dynamic release list for this call. It starts with every entry
+    // descriptor, the `options` hook extends it, and the task's `finally`
+    // drains it.
     let refs: Arc<RefList> = Arc::new(RefList::new());
 
     let plugins: Vec<SharedPluginable> =

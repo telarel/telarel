@@ -8,7 +8,7 @@ use crate::plugin::spans::SpanMap;
 /// The private marker a JS `PluginError` encodes into its message.
 const PLUGIN_ERROR_MARKER: &str = "__TELAREL_PLUGIN_ERROR__:";
 
-/// The payload carried by [`PLUGIN_ERROR_MARKER`].
+/// The payload that [`PLUGIN_ERROR_MARKER`] carries.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PluginErrorPayload {
     /// The bare error message.
@@ -28,12 +28,12 @@ fn utf16_to_byte(
     u32::try_from(map.utf16_to_byte(offset)).unwrap_or(u32::MAX)
 }
 
-/// Decode a JS `PluginError` envelope carried by an error message.
+/// Decode a JS `PluginError` envelope from an error message.
 ///
-/// Returns `None` when the marker is absent or the payload is malformed, so
-/// callers can fall back to the plain message. The payload's UTF-16 span is
-/// converted to byte offsets against its own `code` before constructing the
-/// [`PluginError`].
+/// The function returns `None` when the marker is absent or the payload is
+/// malformed, so callers can fall back to the plain message. It converts the
+/// payload's UTF-16 span to byte offsets against its own `code` before it
+/// constructs the [`PluginError`].
 pub fn decode_plugin_error(reason: &str) -> Option<PluginError> {
     let reason: &str = reason.strip_prefix("Error: ").unwrap_or(reason);
 

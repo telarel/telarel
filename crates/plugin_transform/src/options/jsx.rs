@@ -11,19 +11,19 @@ pub enum JsxRuntime {
     Automatic,
 }
 
-/// The JSX options.
+/// Controls the JSX transform.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JsxOptions {
     /// Selects the classic or automatic JSX transform.
     pub runtime: Option<JsxRuntime>,
-    /// Module imported for automatic-runtime helpers; defaults to `react`.
+    /// Module imported for automatic-runtime helpers. Defaults to `react`.
     #[serde(default)]
     pub import_source: Option<String>,
-    /// Function used for JSX elements by the classic runtime; defaults to `React.createElement`.
+    /// Function used for JSX elements by the classic runtime. Defaults to `React.createElement`.
     #[serde(default)]
     pub pragma: Option<String>,
-    /// Component used for JSX fragments by the classic runtime; defaults to `React.Fragment`.
+    /// Component used for JSX fragments by the classic runtime. Defaults to `React.Fragment`.
     #[serde(default)]
     pub pragma_frag: Option<String>,
     /// Adds development-only `__source` and `__self` metadata to JSX elements.
@@ -34,7 +34,8 @@ pub struct JsxOptions {
     pub refresh: Option<bool>,
 }
 
-/// Overlay `Some` JSX fields onto the oxc base, field-wise.
+/// Apply the `Some` JSX fields to the oxc base. Fields set to `None` keep the
+/// base value.
 pub fn overlay_jsx(
     base: &mut OxcJsxOptions,
     jsx: &JsxOptions,

@@ -5,7 +5,7 @@ import type { ResolvedOptions } from "#/@types/plugin/options";
  */
 type StartArgs = {
     /**
-     * Read-only.
+     * The resolved options. Read-only.
      */
     options: ResolvedOptions;
 };

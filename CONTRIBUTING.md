@@ -2,7 +2,7 @@
 
 Thanks for your interest!
 
-This is a guideline for contributing to this repository.
+This guide explains how to contribute to this repository.
 
 ## Before the Contribution
 
@@ -27,7 +27,7 @@ just
 
 ## Committing
 
-When committing changes to the code, use the following prefixes:
+Use these prefixes in commit messages:
 
 - `chore`: updates in dependencies/tools
 - `build`: changes to the build system

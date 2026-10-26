@@ -31,7 +31,7 @@ type CaptureProgramOptions = {
 };
 
 /**
- * JS tests have no parser; capture an AST via a pass-through compile.
+ * Capture an AST with a pass-through compile for these hook tests.
  */
 const captureProgram = async ({
     code,

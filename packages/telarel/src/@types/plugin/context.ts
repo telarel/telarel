@@ -1,7 +1,7 @@
 import type { Language, SourceType } from "#/@types/grammar";
 
 /**
- * Common plugin context: available to every hook, including `options`.
+ * Common plugin context. It is available to every hook, including `options`.
  */
 type CommonPluginContext = Record<never, never>;
 
@@ -19,8 +19,8 @@ type ModuleInfo = {
      */
     language: Language | void;
     /**
-     * The module system of the source code. By default, it is resolved from the
-     * language.
+     * The module system of the source code. By default, the compiler resolves
+     * it from the language.
      */
     sourceType: SourceType | void;
 };
@@ -30,7 +30,7 @@ type ModuleInfo = {
  */
 type PluginContext = CommonPluginContext & {
     /**
-     * Current working directory. By default, it is `process.cwd()`.
+     * The current working directory. By default, it is `process.cwd()`.
      */
     cwd: string;
     /**

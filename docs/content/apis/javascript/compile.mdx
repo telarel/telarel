@@ -7,7 +7,7 @@ description: Compile source text from parse to generate.
 function compile(code: string, options?: CompileOptions): Promise<CodeResult>;
 ```
 
-Compiles `code` from source to generated output, with plugins, in memory.
+Compiles `code` from source text into generated output, with plugins, in memory.
 
 ## Parameters
 
@@ -18,28 +18,28 @@ Compiles `code` from source to generated output, with plugins, in memory.
 
 ### `CompileOptions`
 
-| Field        | Type               | Default          | Description                                                             |
-| ------------ | ------------------ | ---------------- | ----------------------------------------------------------------------- |
-| `cwd`        | `string`           | `process.cwd()`  | Current working directory.                                              |
-| `file`       | `string`           | `index.ts`       | The file being compiled. The language is inferred from its extension.   |
-| `language`   | `Language`         | inferred         | The grammar of the code. Overrides the extension inference.             |
-| `sourceType` | `SourceType`       | inferred         | The module system of the code. Overrides the grammar's module kind.     |
-| `output`     | `OutputOptions`    | `{ file: file }` | Output code settings. `output.file` derives the default source-map URL. |
-| `sourceMap`  | `SourceMapOptions` | off              | The source-map inputs and outputs requested for the run.                |
-| `plugins`    | `PluginOption[]`   | `[]`             | The plugins to run.                                                     |
+| Field        | Type               | Default          | Description                                                                   |
+| ------------ | ------------------ | ---------------- | ----------------------------------------------------------------------------- |
+| `cwd`        | `string`           | `process.cwd()`  | Current working directory.                                                    |
+| `file`       | `string`           | `index.ts`       | The file being compiled. The compiler infers the language from its extension. |
+| `language`   | `Language`         | inferred         | The grammar of the code. Overrides the extension inference.                   |
+| `sourceType` | `SourceType`       | inferred         | The module system of the code. Overrides the grammar's module kind.           |
+| `output`     | `OutputOptions`    | `{ file: file }` | Output code configuration. `output.file` derives the default source-map URL.  |
+| `sourceMap`  | `SourceMapOptions` | off              | The source-map inputs and outputs requested for the run.                      |
+| `plugins`    | `PluginOption[]`   | `[]`             | The plugins to run.                                                           |
 
-An empty `output.file` or `sourceMap.output.url` is treated as unset, same as absent.
+The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
 
-The pipeline attaches any requested input source map to the AST returned by the winning `parse` hook when that AST carries none; an AST's own map wins, and the builtin parser is the fallback when every `parse` hook defers.
+The AST's own input map wins. Otherwise, the pipeline attaches the requested input map to the AST that the winning `parse` hook returns. The builtin parser is the terminal fallback when every `parse` hook defers.
 
 ## Returns
 
 `Promise<CodeResult>`:
 
-| Field  | Type                | Description                                                   |
-| ------ | ------------------- | ------------------------------------------------------------- |
-| `code` | `string`            | The generated code.                                           |
-| `map`  | `SourceMap \| null` | The source map for the generated code, when one was produced. |
+| Field  | Type                | Description                                                          |
+| ------ | ------------------- | -------------------------------------------------------------------- |
+| `code` | `string`            | The generated code.                                                  |
+| `map`  | `SourceMap \| null` | The source map for the generated code, or `null` when no map exists. |
 
 ## Example
 

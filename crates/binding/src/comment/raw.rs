@@ -1,4 +1,4 @@
-/// Raw newline flags around a comment; a missing flag is `false`.
+/// Raw newline flags around a comment. A missing flag is `false`.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(default)]
 pub struct RawNewlines {
@@ -10,8 +10,8 @@ pub struct RawNewlines {
 
 /// A raw comment as supplied across the JS boundary.
 ///
-/// Every field is optional because the accepted shapes vary by producer;
-/// unknown keys (for example ESLint extras) are ignored.
+/// Every field is optional because the accepted shapes vary by producer.
+/// The deserializer ignores unknown keys, for example ESLint extras.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RawComment {

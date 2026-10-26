@@ -1,19 +1,20 @@
 //! The single source of truth for `Ast` ⇄ JS conversions.
 //!
-//! Every NAPI function and the plugin bridge convert between the internal
-//! [`Ast`] and the JS-facing normalized form
-//! (`{ program, code, map?, language }`) through this module. The ESTree spans
-//! crossing the boundary are UTF-16 code units (JS string indices); the
-//! internal [`Ast`] keeps byte spans.
+//! Every NAPI function and the plugin bridge use this module. The module
+//! converts between the internal [`Ast`] and the JS-facing normalized form
+//! (`{ program, code, map?, language }`). The ESTree spans that cross the
+//! boundary are UTF-16 code units (JS string indices). The internal [`Ast`]
+//! keeps byte spans.
 //!
-//! The `SourceType` of a decoded program is always computed by the caller and
-//! passed in:
+//! The caller always computes the `SourceType` of a decoded program and
+//! passes it in:
 //!
-//! - [`source_type_for_options`] mirrors the pipeline's explicit resolution
-//!   (grammar from `file`/`language`, overlaid with an explicit module kind).
+//! - [`source_type_for_options`] mirrors the pipeline's explicit resolution:
+//!   the grammar from `file` or `language`, overlaid with an explicit module
+//!   kind.
 //! - [`source_type_for_generate`] keeps the module kind unambiguous, so the
-//!   codec resolves it from the program JSON's `sourceType` (the generate path,
-//!   where only the grammar is chosen from options/AST/file).
+//!   codec resolves it from the program JSON's `sourceType`. This is the
+//!   generate path, where only the grammar comes from options, AST, or file.
 
 use std::sync::Arc;
 
@@ -44,15 +45,16 @@ pub struct JsAst {
     pub language: String,
 }
 
-/// The JS-facing normalized AST input, the read side of [`JsAst`].
+/// The JS-facing input form of the normalized AST. This is the read side of
+/// [`JsAst`].
 pub struct JsAstInput {
     /// The ESTree program.
     pub program: serde_json::Value,
     /// The source text the program spans anchor to.
     pub code: String,
-    /// The input source map object, when the caller supplied one.
+    /// The source map object for the input, when the caller supplied one.
     pub map: Option<serde_json::Value>,
-    /// The grammar of the program; absent means unset.
+    /// The grammar of the program. Absent means unset.
     pub language: Option<String>,
 }
 
@@ -65,8 +67,8 @@ fn debug_assert_source_anchored(ast: &Ast) {
     );
 }
 
-/// Serialize `ast` to the ESTree JSON string the JS side receives: byte spans
-/// are rewritten to UTF-16 code units so they match JS string indices.
+/// Serialize `ast` to the ESTree JSON string that the JS side receives. Byte
+/// spans become UTF-16 code units, so they match JS string indices.
 pub fn ast_to_estree_json(ast: &Ast) -> String {
     debug_assert_source_anchored(ast);
 
@@ -87,7 +89,7 @@ pub fn source_map_to_js(map: &SourceMap) -> JsSourceMap {
     JsSourceMap::from(map.clone())
 }
 
-/// Build the JS-facing normalized AST object from `ast`.
+/// Build the normalized AST object for the JS side from `ast`.
 pub fn ast_to_js(ast: &Ast) -> anyhow::Result<JsAst> {
     let json: String = ast_to_estree_json(ast);
 
@@ -116,7 +118,7 @@ pub fn js_source_map_to_owned(map: &JsSourceMap) -> anyhow::Result<SourceMap> {
     oxc_sourcemap::SourceMap::from_json(json).map_err(anyhow::Error::msg)
 }
 
-/// Parse a hook's JSON-string source map into an owned map.
+/// Parse a source map that a hook sends as a JSON string into an owned map.
 pub fn parse_json_map(json: &str) -> anyhow::Result<SourceMap> {
     Ok(oxc_sourcemap::OwnedSourceMap::from_json_string(json)
         .map_err(anyhow::Error::msg)?
@@ -128,10 +130,9 @@ pub fn parse_map_value(value: &serde_json::Value) -> anyhow::Result<SourceMap> {
     parse_json_map(&serde_json::to_string(value)?)
 }
 
-/// Rebuild an owned [`Ast`] from a UTF-16-spanned ESTree program JSON string.
-///
-/// The spans are mapped back to byte offsets against `source` before the codec
-/// rebuilds the program into a fresh arena.
+/// Rebuild an owned [`Ast`] from ESTree JSON that carries UTF-16 spans. The
+/// rebuilt AST anchors to `source` and `map`, and it carries the comments from
+/// the JSON.
 pub fn ast_from_json(
     program_json: &str,
     source: Arc<str>,
@@ -196,10 +197,9 @@ pub fn ast_from_program(
 /// Rebuild an owned [`Ast`] from the normalized `{ program, code, map? }`
 /// input.
 ///
-/// `source_type` is computed by the caller: [`source_type_for_options`] for
-/// parse/rewrite/compile-from-ast, or [`source_type_for_generate`] for the
-/// generate path, whose unambiguous module kind lets the codec resolve it from
-/// `program.sourceType`.
+/// The caller computes `source_type`. Use [`source_type_for_options`] for an
+/// explicit source type, or [`source_type_for_generate`] when the program JSON
+/// owns the module kind.
 pub fn js_to_ast(
     input: JsAstInput,
     source_type: OxcSourceType,
@@ -212,11 +212,8 @@ pub fn js_to_ast(
     ast_from_program(&input.program, input.code, map, source_type)
 }
 
-/// The explicit source type: the grammar resolved from `file`/`language`,
+/// The explicit source type: the grammar resolved from `file` or `language`,
 /// overlaid with an explicit module kind.
-///
-/// Mirrors the plugin bridge's parse read-back; used by parse, rewrite,
-/// compile-from-ast and `builtinParse`.
 pub fn source_type_for_options(
     file: &str,
     language: Option<Language>,
@@ -226,15 +223,15 @@ pub fn source_type_for_options(
 }
 
 /// The generate-path source type: the caller-resolved grammar with an
-/// UNAMBIGUOUS module kind, so the codec resolves the module kind from the
+/// unambiguous module kind, so the codec resolves the module kind from the
 /// program JSON's `sourceType`.
 pub fn source_type_for_generate(language: Language) -> OxcSourceType {
     with_module_kind(grammar_source_type(language), SourceType::Unambiguous)
 }
 
-/// Parse the optional grammar label carried by an inbound JS AST.
+/// Parse the optional grammar label that an inbound JS AST carries.
 ///
-/// An absent label stays `None`; the caller applies the precedence fallbacks.
+/// An absent label stays `None`. The caller applies the precedence fallbacks.
 pub fn parse_ast_language(
     language: Option<&str>
 ) -> napi::Result<Option<Language>> {
@@ -243,8 +240,9 @@ pub fn parse_ast_language(
 
 /// Resolve the effective grammar: explicit options, then AST, then file.
 ///
-/// `file_language` is the grammar already inferred from the resolved
-/// options/file, so the last rung keeps extension inference as the fallback.
+/// The caller passes `file_language` already inferred from the resolved
+/// options or file, so the last rung keeps extension inference as the
+/// fallback.
 pub fn effective_language(
     explicit: Option<Language>,
     ast: Option<Language>,
@@ -499,7 +497,7 @@ mod tests {
         assert_eq!(rebuilt.source().as_ref(), "日a");
 
         // A correct read-back re-serializes to the exact UTF-16 JSON it came
-        // from; a byte/UTF-16 mix-up would shift every span after `日`.
+        // from. A byte to UTF-16 mix-up would shift every span after `日`.
         assert_eq!(ast_to_estree_json(&rebuilt), json);
     }
 
@@ -595,8 +593,9 @@ mod tests {
 
     #[test]
     fn test_explicit_source_type_wins_over_program_json() {
-        // A non-unambiguous explicit source type is passed through verbatim,
-        // which is why the generate path needs the unambiguous helper.
+        // The codec passes a non-unambiguous explicit source type through
+        // verbatim, which is why the generate path needs the unambiguous
+        // helper.
         let source_type: OxcSourceType = source_type_for_options(
             "a.js",
             Some(Language::JS),
@@ -620,7 +619,7 @@ mod tests {
         assert!(source_type.is_module());
     }
 
-    // An unambiguous type lets the codec read `program.sourceType`; the coarse
+    // An unambiguous type lets the codec read `program.sourceType`. The coarse
     // `Ast::source_type()` then reports the resolved module kind.
 
     #[test]
@@ -669,7 +668,7 @@ mod tests {
 
     #[test]
     fn test_generate_source_type_dts_overrides_its_module_kind() {
-        // `d_ts()` is an explicit module; the generate path must still defer
+        // `d_ts()` is an explicit module. The generate path must still defer
         // the module kind to the program JSON.
         let source_type: OxcSourceType =
             source_type_for_generate(Language::DTS);
@@ -686,8 +685,9 @@ mod tests {
 
     #[test]
     fn test_ast_source_type_reports_the_resolved_program_module_kind() {
-        // The coarse getter follows the module kind the codec resolved into
-        // the program; the raw oxc type stays readable through `program()`.
+        // The coarse getter follows the module kind that the codec resolved
+        // into the program. The raw oxc type stays readable through
+        // `program()`.
         let passed: OxcSourceType = source_type_for_generate(Language::JS);
 
         let ast: Ast = decode("module", passed);
@@ -845,7 +845,7 @@ mod tests {
     #[test]
     fn test_comments_survive_a_nested_trailing_round_trip() {
         // The comment sits after the last statement in a function body, so its
-        // next printable anchor is the program end; the text must survive even
+        // next printable anchor is the program end. The text must survive even
         // though its position changes.
         let code: &str = "function f() {\n  const a = 1; // tail\n}\n";
         let ast: Ast = parse_fixture(code, Language::JS);

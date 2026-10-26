@@ -1,14 +1,15 @@
 /**
- * The comment kind: `"Line"` for line comments and `"Block"` for block
- * comments.
+ * The comment kind.
+ *
+ * `"Line"` is a line comment. `"Block"` is a block comment.
  */
 type CommentType = "Line" | "Block";
 
 /**
- * The annotation classification derived from a comment's text.
+ * The annotation classification derived from the comment text.
  *
- * `"none"` when no annotation applies. The applied `"pure"` and
- * `"no-side-effects"` labels demote to `"none"` when the program is rebuilt.
+ * `"none"` means that no annotation applies. An applied `"pure"` or
+ * `"no-side-effects"` label demotes to `"none"` when the program is rebuilt.
  */
 type CommentContent =
     | "none"
@@ -29,8 +30,8 @@ type CommentContent =
 /**
  * Where a comment sits relative to its attached code boundary.
  *
- * - `"leading"` — before the boundary
- * - `"trailing"` — after the boundary
+ * - `"leading"`: before the boundary.
+ * - `"trailing"`: after the boundary.
  */
 type CommentPosition = "leading" | "trailing";
 
@@ -60,15 +61,15 @@ type Comment = {
     /**
      * The UTF-16 offset of the code boundary this comment attaches to.
      *
-     * Stale or invalid values are ignored and re-derived from a codegen anchor.
+     * A stale or invalid value is ignored and re-derived from a codegen anchor.
      */
     attachedTo?: number;
     /**
      * The placement relative to the attached boundary.
      *
-     * Parser output may report `"trailing"` for inline comments. Comments read
-     * back from a JavaScript AST are normalized to `"leading"`, and codegen
-     * emits only leading comments.
+     * Parser output can report `"trailing"` for inline comments. Comments read
+     * from a JavaScript AST are normalized to `"leading"`. Codegen emits only
+     * leading comments.
      */
     position?: CommentPosition;
     /**

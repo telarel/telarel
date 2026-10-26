@@ -21,7 +21,6 @@ use crate::helpers::rewriter::Rewriter;
 use crate::helpers::sources::HelperSource;
 use crate::helpers::sources::lookup;
 
-/// Whether the module export name is the default export (`default`).
 pub fn is_default_export_name(name: &ModuleExportName<'_>) -> bool {
     match name {
         | ModuleExportName::IdentifierName(name) => name.name == "default",
@@ -32,7 +31,6 @@ pub fn is_default_export_name(name: &ModuleExportName<'_>) -> bool {
     }
 }
 
-/// Extract the local name exported as `default` by `export { x as default };`.
 fn default_export_local_name(body: &[Statement<'_>]) -> Option<String> {
     for statement in body {
         let Statement::ExportNamedDeclaration(export) = statement else {
@@ -58,9 +56,9 @@ fn default_export_local_name(body: &[Statement<'_>]) -> Option<String> {
     None
 }
 
-/// The vendored default-export statements are exactly `export { x as default };`
-/// — a specifier-only named export re-exporting the default. Anything else is
-/// a vendoring error and fails loudly.
+/// The vendored default-export statements are exactly `export { x as default };`.
+/// That is a specifier-only named export that re-exports the default.
+/// Anything else is a vendoring error and fails loudly.
 fn validate_default_export_statement(
     export: &ExportNamedDeclaration<'_>
 ) -> Result<(), PluginError> {
@@ -85,24 +83,21 @@ fn validate_default_export_statement(
     Ok(())
 }
 
-/// Accumulated state for inlining helper sources: claimed names, resolved
-/// bindings, and statements to splice into the program.
 pub struct Inliner<'a, 's> {
     pub allocator: &'a Allocator,
-    /// Scoping of the transformed program; used to deconflict fresh uid names.
+    /// Scoping of the transformed program. It is used to deconflict fresh uid
+    /// names.
     pub scoping: &'s Scoping,
-    /// Binding names claimed by this pass (primary uid names and fresh names).
     pub claimed: HashSet<String>,
-    /// Final binding name per inlined helper name.
     pub resolved: HashMap<&'static str, String>,
     /// Inlined statements in emission order (dependencies before dependents).
     pub emitted: Vec<Statement<'a>>,
 }
 
 impl<'a, 's> Inliner<'a, 's> {
-    /// Whether `name` is taken by any binding in the program, any unresolved
-    /// (global) reference, or any name claimed by this pass — the same
-    /// catalogue oxc's uid generator checks.
+    /// Whether `name` is taken by a program binding, an unresolved (global)
+    /// reference, or a name claimed by this pass. This is the same set that
+    /// oxc's uid generator checks.
     fn name_taken(
         &self,
         name: &str,
@@ -140,8 +135,8 @@ impl<'a, 's> Inliner<'a, 's> {
 
     /// Inline `helper` so its default export binds as `target_name`.
     ///
-    /// Idempotent per helper: the first call fixes the binding name; later
-    /// calls (from other helpers' dependency closures) are no-ops.
+    /// Idempotent per helper. The first call fixes the binding name. Later
+    /// calls from other helpers' dependency closures are no-ops.
     pub fn ensure_inlined(
         &mut self,
         helper: &'static HelperSource,

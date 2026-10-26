@@ -1,6 +1,6 @@
 # Telarel Crate (`telarel`)
 
-The public Rust API surface. It re-exports the pipeline, plugin system, and shared types, and exposes feature-gated oxc modules. It contains no compiler behavior.
+The crate is the public Rust API surface. It re-exports the pipeline, the plugin system, and shared types. It also exposes feature-gated oxc modules. It contains no compiler behavior.
 
 ## Key files
 
@@ -10,11 +10,11 @@ The public Rust API surface. It re-exports the pipeline, plugin system, and shar
 
 ## Re-export rules
 
-- Add public API items as re-exports here; do not add wrapper logic.
+- Add public API items as re-exports here. Do not add wrapper logic.
 - Keep each re-export tied to its owning crate: `telarel_common`, `telarel_plugin`, or `telarel_core`.
-- `ast_visit`, `semantic`, and `traverse` are feature-gated; `traverse` also enables `ast_visit` and `semantic`.
+- `ast_visit`, `semantic`, and `traverse` are feature-gated. `traverse` also enables `ast_visit` and `semantic`.
 - `allocator`, `span`, `str`, `syntax`, `ast`, and `sourcemap` are always exposed.
 
 ## Testing
 
-There are no crate-local tests. Consumer examples live in `examples/rust`; JavaScript integration tests live in `tests/telarel`. Verify re-export changes with `cargo check -p telarel`.
+There are no crate-local tests. Consumer examples live in `examples/rust`. JavaScript integration tests live in `tests/telarel`. To make sure that re-export changes compile, run `cargo check -p telarel`.

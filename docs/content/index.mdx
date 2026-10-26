@@ -74,26 +74,26 @@ let result: CodeResult = compile(
     <Card
         icon={<Puzzle />}
         title="Hook-based pipeline"
-        description="Different return-based hooks — options, start, parse, prepare, transform, finalize, generate, and end — over one shared pipeline. A plugin implements any subset; the rest are skipped."
+        description="One shared pipeline provides return-based hooks: options, start, parse, prepare, transform, finalize, generate, and end. A plugin implements any subset, and the pipeline skips the rest."
     />
     <Card
         icon={<Blocks />}
         title="Plugins in JavaScript & Rust"
-        description="Extend the pipeline from either side: JavaScript plugin objects bridge to the same Rust contract, and both languages set per-hook pre, normal, or post order."
+        description="Extend the pipeline from JavaScript or Rust. JavaScript plugin objects bridge to the same Rust contract. Both languages set pre, normal, or post order for each hook."
     />
     <Card
         icon={<Wand2 />}
         title="Opt-in Transform"
-        description="Lower TypeScript, JSX, and modern syntax with the built-in transform plugin — or leave it out. compile without it still parses and regenerates your source unchanged."
+        description="Lower TypeScript, JSX, and modern syntax with the builtin transform plugin, or leave it out. Without the plugin, compile still parses and regenerates your source unchanged."
     />
     <Card
         icon={<Braces />}
         title="JavaScript and Rust APIs"
-        description="The same compiler is exposed as the telarel crate and as the telarel npm package via a NAPI binding, with the same functions and shared types."
+        description="The same compiler powers the telarel crate and the telarel npm package. The npm package uses a NAPI binding to the Rust core, and both expose the same functions and shared types."
     />
     <Card
         icon={<Route />}
         title="Composable entry points"
-        description="parse, rewrite, generate, compileFromAst, and compile share one pipeline, each running only the stages it owns, so you can stop at an AST and resume later."
+        description="parse, rewrite, generate, compileFromAst, and compile share one pipeline. Each entry point runs only the stages it owns, so you can stop at an AST and resume later."
     />
 </Cards>

@@ -1,6 +1,7 @@
-/// A boundary table mapping UTF-8 byte offsets to UTF-16 code-unit offsets
-/// for one source text, so the Rust `Span` type keeps its byte semantics
-/// across the JS bridge.
+/// A boundary table for one source text.
+///
+/// It maps UTF-8 byte offsets to UTF-16 code-unit offsets, so the Rust `Span`
+/// type keeps its byte semantics across the JS bridge.
 pub struct SpanMap {
     boundaries: Vec<(usize, usize)>,
 }
@@ -47,9 +48,11 @@ impl SpanMap {
     }
 }
 
-/// Rewrite the integer value following every `start` or `end` key in a
-/// serialized JSON string, mapping each through `convert`. Values that happen
-/// to read `"start"`/`"end"` are left alone because only a key is recognized.
+/// Rewrite the integer value after every `start` or `end` key in a serialized
+/// JSON string, and map each value through `convert`.
+///
+/// A value that reads `"start"` or `"end"` stays unchanged, because the
+/// function recognizes only a key.
 fn rewrite_spans(
     json: &str,
     convert: impl Fn(usize) -> usize,
@@ -61,7 +64,7 @@ fn rewrite_spans(
     while index < bytes.len() {
         if bytes[index] != b'"' {
             // Copy bytes up to the next quote. A UTF-8 continuation byte is
-            // always >= 0x80, so 0x22 can only be a real quote: the run ends
+            // always >= 0x80, so 0x22 can only be a real quote. The run ends
             // on a char boundary and the slice stays valid UTF-8.
             let run_start: usize = index;
 
@@ -129,7 +132,6 @@ fn rewrite_spans(
     output
 }
 
-/// Convert every `start`/`end` span from byte offsets to UTF-16 code units.
 pub fn spans_to_utf16(
     map: &SpanMap,
     json: &str,
@@ -137,7 +139,6 @@ pub fn spans_to_utf16(
     rewrite_spans(json, |byte: usize| map.byte_to_utf16(byte))
 }
 
-/// Convert every `start`/`end` span from UTF-16 code units back to byte offsets.
 pub fn spans_to_bytes(
     map: &SpanMap,
     json: &str,

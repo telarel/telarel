@@ -12,7 +12,8 @@ type OxcProgram = Oxc.Program;
  */
 type Program = OxcProgram & {
     /**
-     * The comments carried by the program; absent and `[]` both mean none.
+     * The comments carried by the program. An absent value and `[]` both mean
+     * no comments.
      */
     comments?: Comment[];
 };

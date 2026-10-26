@@ -3,7 +3,7 @@ use telarel_common::ResolvedOptions;
 /// Arguments for the `start` hook.
 #[derive(Debug, Clone)]
 pub struct StartArgs {
-    /// Resolved options; read-only.
+    /// Resolved options, read-only.
     pub options: ResolvedOptions,
 }
 

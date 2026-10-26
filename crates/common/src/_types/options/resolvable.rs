@@ -10,30 +10,34 @@ use crate::_types::options::output::OutputOptions;
 use crate::_types::options::sourcemap::SourceMapOptions;
 use crate::_types::options::sourcemap::input::InputSourceMap;
 
-/// The union of every step's optional settings, resolved once per compile
-/// run; every field is optional.
+/// The union of every step's options, resolved once per compile run.
+///
+/// Every field is optional.
 #[derive(Debug, Clone, Default)]
 pub struct ResolvableOptions {
-    /// Current working directory;
+    /// Current working directory.
+    ///
     /// `None` resolves to the process working directory.
     pub cwd: Option<PathBuf>,
-    /// The file being compiled;
+    /// The file being compiled.
+    ///
     /// `None` resolves to the default file name.
     pub file: Option<String>,
-    /// The grammar of the code;
+    /// The grammar of the code.
+    ///
     /// `None` leaves the grammar to be resolved from the AST, then the file
     /// extension.
     pub language: Option<Language>,
-    /// The module system of the code;
+    /// The module system of the code.
+    ///
     /// `None` keeps the module kind resolved from the grammar.
     pub source_type: Option<SourceType>,
-    /// The output code settings.
+    /// The output code configuration.
     pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the run.
     pub source_map: Option<SourceMapOptions>,
 }
 
-/// Normalize a flat input request into the shared source-map bag.
 fn wrap_input_source_map(
     input: Option<InputSourceMap>
 ) -> Option<SourceMapOptions> {

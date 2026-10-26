@@ -33,7 +33,7 @@ pub struct BindingTransformPluginOptions {
     pub inject: Option<serde_json::Value>,
     /// Compile-time define replacements, when requested.
     pub define: Option<serde_json::Value>,
-    /// Raw oxc transform options passed through unchanged.
+    /// Raw transform options for oxc, passed through unchanged.
     pub oxc: Option<serde_json::Value>,
 }
 
@@ -247,8 +247,8 @@ mod tests {
 
         assert_eq!(oxc.jsx.pragma.as_deref(), Some("h"));
         // Optional chaining landed in Chrome 91, so targeting Chrome 80
-        // enables its lowering; class properties (Chrome 74+) are already
-        // supported and their options stay unset.
+        // enables its lowering. Class properties (Chrome 74+) are already
+        // supported, so their options stay unset.
         assert!(oxc.env.es2020.optional_chaining);
     }
 
@@ -298,9 +298,9 @@ mod tests {
         );
         assert_eq!(helper.module_name.as_deref(), Some("my-runtime"));
 
-        // The oxc passthrough base keeps oxc's own defaults (`Runtime`);
-        // the telarel helper options are carried separately and overlay the
-        // base at transform time.
+        // The oxc passthrough base keeps oxc's own defaults (`Runtime`).
+        // Telarel carries the helper options separately and overlays them on
+        // the base at transform time.
         let oxc: oxc::transformer::TransformOptions =
             parsed.oxc.expect("oxc layer");
 

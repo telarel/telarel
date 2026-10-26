@@ -3,7 +3,7 @@ use oxc_transformer_plugins::{InjectGlobalVariablesConfig, InjectImport};
 /// How a symbol is bound from an inject source module.
 #[derive(Debug, Clone)]
 pub enum InjectSpecifier {
-    /// `import { imported as local } from "source"`;
+    /// `import { imported as local } from "source"`.
     /// `imported: None` lowers to `import { default as local }`.
     Named { imported: Option<String>, local: String },
     /// `import local from "source"`.
@@ -12,8 +12,8 @@ pub enum InjectSpecifier {
     Namespace { local: String },
 }
 
-/// A single inject entry: import `specifier` from `source` when `specifier`'s
-/// local binding is referenced.
+/// A single inject entry. It imports `specifier` from `source` when the
+/// specifier's local binding is referenced.
 #[derive(Debug, Clone)]
 pub struct InjectEntry {
     /// Module specifier the injected import is loaded from.
@@ -22,7 +22,7 @@ pub struct InjectEntry {
     pub specifier: InjectSpecifier,
 }
 
-/// The `inject` options: import injection for unresolved globals.
+/// The `inject` options. They inject imports for unresolved globals.
 #[derive(Debug, Clone, Default)]
 pub struct InjectOptions {
     /// Imports to inject when their local bindings would otherwise be unresolved.
@@ -30,8 +30,7 @@ pub struct InjectOptions {
 }
 
 impl InjectOptions {
-    /// Resolve into the oxc config, mapping each entry to its
-    /// [`InjectImport`] constructor.
+    /// Resolve into the oxc configuration.
     pub fn resolve(&self) -> InjectGlobalVariablesConfig {
         let injects: Vec<InjectImport> = self
             .entries

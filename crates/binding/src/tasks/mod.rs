@@ -7,12 +7,13 @@ use tokio::runtime::Runtime;
 
 use crate::errors::compile::encode_compile_error;
 
-// Reused, thread-local current-thread Tokio runtime.
+// Thread-local Tokio runtime with the current-thread scheduler, reused across
+// calls.
 //
 // NAPI async tasks (`Task::compute`) run on libuv worker threads, one task
-// at a time per thread. A current-thread runtime parked here is therefore
-// single-user at any moment: no concurrent `block_on` is possible on the
-// same runtime.
+// at a time per thread. A current-thread runtime parked here therefore has a
+// single user at any moment: no concurrent `block_on` is possible on the same
+// runtime.
 thread_local! {
     static RUNTIME: RefCell<Option<Runtime>> = const { RefCell::new(None) };
 }
@@ -97,11 +98,12 @@ mod tests {
     #[test]
     fn test_block_on_compile_reuses_runtime_across_calls() {
         // Two compiles on the same thread must hit the same runtime instance:
-        // the second call must not construct a new runtime. Runtime identity
-        // is observed directly by reading the private RUNTIME thread-local
-        // and comparing the stored runtime's address across calls. The
-        // `yield_now` futures additionally prove the reused runtime still
-        // drives futures that go pending and are re-polled by the executor.
+        // the second call must not construct a new runtime. The test observes
+        // runtime identity directly by reading the private RUNTIME
+        // thread-local and comparing the stored runtime's address across
+        // calls. The `yield_now` futures additionally prove the reused runtime
+        // still drives futures that go pending and that the executor
+        // re-polls.
         let done: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 
         let first: Arc<AtomicUsize> = Arc::clone(&done);
@@ -146,9 +148,10 @@ mod tests {
 
     #[test]
     fn test_block_on_compile_drives_pending_future() {
-        // The reused runtime must drive a future that goes pending and is
-        // woken again: the sender runs as a spawned task, so the receive
-        // is polled first, goes pending, and is re-polled after the wake.
+        // The reused runtime must drive a future that goes pending and wakes
+        // again. The sender runs as a spawned task, so the executor polls the
+        // receive first, it goes pending, and the executor re-polls it after
+        // the wake.
         let (sender, receiver) = oneshot::channel::<u32>();
 
         let result: u32 = block_on_compile(async move {

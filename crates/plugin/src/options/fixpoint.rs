@@ -8,12 +8,12 @@ use crate::plugin_driver::sort_plugins_by_hook_meta;
 
 /// Maximum number of fixpoint iterations before aborting.
 ///
-/// Constant and non-configurable: a pass that adds nothing terminates the
-/// loop naturally; only plugin cycles reach this guard.
+/// Constant and not configurable. A pass that adds nothing ends the loop. Only
+/// plugin cycles reach this guard.
 const MAX_OPTIONS_DEPTH: usize = 10;
 
-/// Compares by instance identity: a same-name replacement is a new instance,
-/// while duplicates of an already-run instance are the same work.
+/// Compares by instance identity. A same-name replacement is a new instance.
+/// Duplicates of an already-run instance are the same work.
 fn same_instances(
     left: &[SharedPluginable],
     right: &[SharedPluginable],
@@ -25,11 +25,11 @@ fn same_instances(
 /// Run the `options` hook as a fixpoint over the plugin list.
 ///
 /// `Some` replaces the entire settled list and `None` keeps it. `options` runs
-/// once per plugin instance, in per-pass `options_meta` order; both the
+/// once per plugin instance, in per-pass `options_meta` order. Both the
 /// already-run check and termination compare instance identity. A same-name
-/// replacement is a new instance and runs on a later pass, while the settled
-/// list is not deduplicated and may repeat an instance. [`MAX_OPTIONS_DEPTH`]
-/// guards cycles.
+/// replacement is a new instance and runs on a later pass. The settled list is
+/// not deduplicated and may repeat an instance. `MAX_OPTIONS_DEPTH` guards
+/// cycles.
 pub async fn options_fixpoint(
     ctx: &CommonPluginContext,
     args: &OptionsArgs,
@@ -48,8 +48,8 @@ pub async fn options_fixpoint(
     loop {
         let pass_start: Vec<SharedPluginable> = list.clone();
 
-        // Rank a COPY of the accumulator to drive this pass's iteration:
-        // `pre`/`post` options meta affects EXECUTION order only. The
+        // Rank a copy of the accumulator to drive this pass's iteration. The
+        // `pre` and `post` options meta affects EXECUTION order only. The
         // persisted `list` stays in append/registration order.
         let ranked: Vec<SharedPluginable> =
             sort_plugins_by_hook_meta(&list, |plugin| {
@@ -76,10 +76,9 @@ pub async fn options_fixpoint(
                 args = replaced;
             }
 
-            // Returned args replace the whole set; per-plugin chain
-            // attribution: only a plugin whose returned args GREW `plugins`
-            // (args that truncate below `before` add nothing) records
-            // its name in the chain.
+            // Returned args replace the whole set. Only a plugin whose return
+            // GREW `plugins` records its name in the chain. A return that
+            // truncates below `before` adds nothing.
             if args.plugins.len() > before {
                 chain.push(plugin.call_name().into_owned());
             }
@@ -94,8 +93,8 @@ pub async fn options_fixpoint(
         iterations += 1;
 
         // The guard fires when the TENTH consecutive pass that changed the
-        // list completes: a converged fixpoint terminates before this; only
-        // plugin cycles reach it.
+        // list completes. A converged fixpoint ends before this. Only plugin
+        // cycles reach it.
         if iterations == MAX_OPTIONS_DEPTH {
             return Err(PluginError::new(format!(
                 "plugin depth exceeded (chain: {})",
@@ -287,7 +286,7 @@ mod tests {
         }
     }
 
-    /// Appends its plugins to the args' plugin list on the first `times`
+    /// Appends its plugins to the args' plugin list on the first `remaining`
     /// invocations only, so the fixpoint can converge after them.
     #[derive(Debug)]
     struct AppendingOptionsPlugin {
@@ -381,11 +380,10 @@ mod tests {
         }
     }
 
-    /// Appends ONE fresh instance of itself to the args' EXISTING plugins
-    /// on every invocation: the plugin list grows by one per pass, so the
-    /// fixpoint never converges and the depth guard must abort at pass
-    /// [`MAX_OPTIONS_DEPTH`]. Growth-by-one (not doubling) keeps the
-    /// guarded run fast while genuinely exercising ten adding passes.
+    /// Appends one fresh instance of itself on every invocation, so the
+    /// plugin list grows by one per pass. The fixpoint never converges, and
+    /// the depth guard must abort at pass `MAX_OPTIONS_DEPTH`. Growth by one
+    /// keeps the guarded run fast. It still exercises ten adding passes.
     #[derive(Debug)]
     struct SelfAppendingPlugin {
         name: &'static str,
@@ -521,7 +519,7 @@ mod tests {
             ObserveOptionsPlugin::new(Arc::clone(&observed)),
         );
 
-        // The root plugin appends the injected plugin once; the injected
+        // The root plugin appends the injected plugin once. The injected
         // plugin must get its own `options` hook run in the next pass.
         let root: SharedPluginable =
             Plugin::new_shared(AppendingOptionsPlugin {
@@ -548,9 +546,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_added_plugin_late_in_list_keeps_fold_order() {
-        // A plugin that appends a rewrite plugin: the appended plugin's
-        // `options` hook must run in the pass after it joins the list, so
-        // its rewrite is visible in the settled args.
+        // The appended plugin's `options` hook must run in the pass after it
+        // joins the list. Its rewrite must then be visible in the settled args.
         let appended: SharedPluginable =
             Plugin::new_shared(RewriteFileOptionsPlugin);
 
@@ -585,13 +582,13 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_cycle_guarded_by_depth_error_naming_chain() {
         // A plugin that appends a fresh copy of itself on every pass: the
-        // fixpoint never converges, so the depth guard must abort at the
-        // TENTH consecutive pass (not the eleventh) with the offending
-        // chain named in the message. The runner runs on a helper thread
-        // behind a 30 recv_timeout: a guard firing even one pass late
-        // bloats the run super-linearly (the self-referential args clone
-        // doubles per pass), so an over-deep run FAILS via the timeout
-        // instead of creeping past a minute.
+        // fixpoint never converges. The depth guard must abort at the TENTH
+        // consecutive pass (not the eleventh), and the message must name the
+        // offending chain. The runner uses a helper thread behind a 30 second
+        // recv_timeout. A guard that fires one pass late bloats the run
+        // super-linearly because the self-referential args clone doubles per
+        // pass. An over-deep run then FAILS through the timeout instead of
+        // creeping past a minute.
         let (tx, rx): (
             std::sync::mpsc::Sender<PluginError>,
             std::sync::mpsc::Receiver<PluginError>,
@@ -663,10 +660,10 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_options_some_replaces_whole_args_drops_fields() {
-        // Struct-level replace: returned args REPLACE the whole set, so
-        // every field they do not carry falls back to `ResolvableOptions`'s
-        // own defaults (`None`); the input args' `file: Some("a.ts")` is
-        // NOT preserved.
+        // Struct-level replace: returned args REPLACE the whole set. Every
+        // field they do not carry falls back to `ResolvableOptions`'s own
+        // defaults (`None`). The input args' `file: Some("a.ts")` is NOT
+        // preserved.
         let plugins: Vec<SharedPluginable> =
             vec![Plugin::new_shared(ReplaceArgsDroppingFieldsOptionsPlugin)];
 
@@ -731,7 +728,7 @@ mod tests {
         }
     }
 
-    /// Records its own name, and on the first `times` invocations appends
+    /// Records its own name, and on the first `remaining` invocations appends
     /// `append` to the args' plugin list so the fixpoint runs another pass.
     #[derive(Debug)]
     struct MetaAppendingOptionsPlugin {
@@ -889,7 +886,7 @@ mod tests {
         let (_settled, list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        // pass 1 runs `root` alone; pass 2 re-ranks the joined list so the
+        // Pass 1 runs `root` alone. Pass 2 re-ranks the joined list, so the
         // injected `Pre` plugin runs before the normal `root`. `root` was
         // already processed by identity, so it is NOT re-run.
         assert_eq!(
@@ -897,9 +894,9 @@ mod tests {
             vec!["root".to_string(), "injected-pre".to_string()],
         );
 
-        // The RETURNED list stays in append/registration order: the injected
-        // plugin was appended after `root`, so it follows it here even though
-        // it executed first in pass 2.
+        // The RETURNED list stays in append/registration order. The injected
+        // plugin was appended after `root`, so it follows `root` here even
+        // though it ran first in pass 2.
         let names: Vec<String> =
             list.iter().map(|plugin| plugin.call_name().into_owned()).collect();
 
@@ -1104,7 +1101,7 @@ mod tests {
 
         assert_eq!(names, vec!["b".to_string(), "a".to_string()]);
 
-        // Both identities were already processed in pass 1; the reorder
+        // Both identities were already processed in pass 1. The reorder
         // introduces no unprocessed entry, so neither is re-run.
         assert_eq!(
             log.lock().unwrap().clone(),
@@ -1145,8 +1142,8 @@ mod tests {
 
         assert_eq!(names, vec!["trunc".to_string()]);
 
-        // The dropped plugins were processed before the truncating return,
-        // so no error; the settled list simply excludes them.
+        // The dropped plugins were processed before the truncating return, so
+        // no error occurs. The settled list simply excludes them.
         assert_eq!(
             log.lock().unwrap().clone(),
             vec![

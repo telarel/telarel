@@ -14,11 +14,8 @@ pub struct GenerateCodeOptions {
     pub file: String,
 }
 
-/// Strip a trailing `\n`, then a trailing `\r`, so `\n`, `\r\n`, and
-/// lone `\r` terminators disappear while interior line endings survive.
-///
-/// Input is owned, so the terminator is removed in place rather than
-/// copying the whole string into a fresh `String`.
+/// Input is owned, so the terminator is removed in place rather than copying
+/// the whole string into a fresh `String`.
 fn strip_trailing_newline(mut source: String) -> String {
     let new_len: usize =
         source.trim_end_matches('\n').trim_end_matches('\r').len();
@@ -204,8 +201,8 @@ mod tests {
 
         let map: SourceMap = result.map.expect("map always produced");
 
-        // The input map resolves parse-input (0, 0) to original (9, 0);
-        // composition must carry that through the codegen map's src side.
+        // The input map resolves parse-input (0, 0) to original (9, 0).
+        // Composition must carry that through the codegen map's src side.
         let token: oxc_sourcemap::Token =
             map.get_token(0).expect("first token exists");
 

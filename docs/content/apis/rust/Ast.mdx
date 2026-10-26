@@ -3,7 +3,7 @@ title: Ast
 description: An owned AST with its source text, language metadata, input source map, and mutable program access.
 ---
 
-`Ast` bundles an oxc `Program` with the source text its spans anchor to, language metadata derived from that program, and an optional input source map.
+`Ast` holds an oxc `Program`, the source text its spans anchor to, language metadata derived from that program, and an optional input source map.
 
 ```rust
 pub struct Ast { /* private fields */ }
@@ -46,7 +46,7 @@ impl Ast {
 
 ## Construction
 
-`parse` is the normal way to obtain an `Ast`. `from_source` and `try_from_source` are lower-level constructors for building one from an existing oxc `Program`: the closure receives the source text and allocator that the program must borrow, and must return a program whose `source_text` is that source.
+`parse` is the normal way to obtain an `Ast`. `from_source` and `try_from_source` are lower-level constructors that build an `Ast` from an existing oxc `Program`. The closure receives the source text and the allocator that the program must borrow. The closure must return a program whose `source_text` is that source.
 
 ## Accessors
 
@@ -58,29 +58,29 @@ impl Ast {
 | `ast.source_type()` | `SourceType`         | The resolved module kind of the parsed program: `Script`, `CommonJS`, or `Module`. |
 | `ast.map()`         | `Option<&SourceMap>` | The input source map, if any.                                                      |
 
-`Language` and `SourceType` are the Telarel enums. `source_type()` never reports `Unambiguous` for a normally parsed AST: that value is a parser input, and a parsed program resolves to `Script`, `CommonJS`, or `Module`.
+`Language` and `SourceType` are the Telarel enums. `source_type()` never reports `Unambiguous` for a normally parsed AST. `Unambiguous` is a parser input. A parsed program resolves to `Script`, `CommonJS`, or `Module`.
 
 Program spans are UTF-8 byte offsets into `source()`, matching `oxc::span::Span`.
 
 ## Input source map
 
-`ast.map()` is the **input** source map: it describes how this AST's source was produced from upstream originals. It is not the map generated from this AST.
+`ast.map()` is the **input** source map. It describes how this AST's source was produced from upstream originals. It is not the source map generated from this AST.
 
-`with_input_map` rebuilds the AST with a different input map: the program is cloned into a fresh allocator and the source text is shared.
+`with_input_map` rebuilds the AST with a different input source map. It clones the program into a fresh allocator. It shares the source text.
 
 ## Mutation
 
-`with_mut` is the only path to the arena. The closure receives the allocator and a mutable program, so new nodes can be allocated while mutating.
+`with_mut` is the only path to the arena. The closure receives the allocator and a mutable program. The closure can allocate new nodes while it mutates.
 
-The closure may rewrite the tree, but not the source text: `Program::source_text` must stay content-equal to `Ast::source`. Debug builds assert this. Build a new `Ast` to change the source text.
+The closure may rewrite the tree but cannot change the source text. `Program::source_text` must stay content-equal to `Ast::source`. Debug builds assert this. To change the source text, build a new `Ast`.
 
-`Ast` clones are O(1): they share the same arena. `with_mut` copies the arena first when another clone is still alive, so mutating a clone never mutates the original.
+`Ast` clones are O(1). They share the same arena. When another clone is still alive, `with_mut` copies the arena first. Mutating a clone never mutates the original.
 
-Only the `transform` hook carries mutations forward. `prepare`, `finalize`, and `generate` receive a borrowed `&Ast`, so they cannot mutate the program through `with_mut`.
+Only the `transform` hook lets its mutations reach later stages. The `prepare`, `finalize`, and `generate` hooks receive a borrowed `&Ast`. They cannot mutate the program through `with_mut`.
 
 ## Thread safety
 
-`Ast` is `Send + Sync` so plugin futures can move owned handles or borrow the AST across threads. Sharing `&Ast` across threads is read-only: `Program` exposes interior-mutable `Cell` fields, so mutating them through a shared `&Ast` is a data race and is forbidden.
+`Ast` is `Send + Sync`. Plugin futures can move owned handles or borrow the AST across threads. Sharing `&Ast` across threads is read-only. `Program` exposes interior-mutable `Cell` fields. Mutating them through a shared `&Ast` is a data race and is forbidden.
 
 ## Example
 

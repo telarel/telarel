@@ -34,12 +34,14 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
     /// The plugin name.
     fn name(&self) -> Cow<'static, str>;
 
-    /// Which hooks this plugin implements; hooks not declared are never called.
+    /// The hooks this plugin implements. `options`, `start`, and `end` run
+    /// regardless of this declaration. `parse`, `prepare`, `transform`,
+    /// `finalize`, and `generate` run only on plugins that declare the hook.
     fn register_hook_usage(&self) -> HookUsage;
 
     /// Run the `options` hook over the pipeline options args. Returning
-    /// `Some` replaces the whole set (struct-level replace); `None` keeps
-    /// the args unchanged.
+    /// `Some` replaces the whole set (struct-level replace). Returning `None`
+    /// keeps the args unchanged.
     fn options<'a>(
         &'a self,
         _ctx: &'a CommonPluginContext,
@@ -48,13 +50,13 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(None) }
     }
 
-    /// Ordering for the `options` hook; `None` = normal bucket.
+    /// Ordering for the `options` hook. `None` means the normal bucket.
     fn options_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 
-    /// Run the `start` hook with the fully resolved, read-only options;
-    /// notify-only.
+    /// Run the `start` hook with the fully resolved, read-only options. The
+    /// hook is notify-only.
     fn start<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
@@ -63,13 +65,14 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(()) }
     }
 
-    /// Ordering for the `start` hook; `None` = normal bucket.
+    /// Ordering for the `start` hook. `None` means the normal bucket.
     fn start_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 
-    /// Run the `parse` hook. Returning `Some` wins the parse stage and the
-    /// rest of the chain is skipped; `None` defers to the next plugin.
+    /// Run the `parse` hook. Returning `Some` wins the parse stage, and the
+    /// driver skips the rest of the chain. Returning `None` defers to the next
+    /// plugin.
     fn parse<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
@@ -78,13 +81,13 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(None) }
     }
 
-    /// Ordering for the `parse` hook; `None` = normal bucket.
+    /// Ordering for the `parse` hook. `None` means the normal bucket.
     fn parse_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 
-    /// Run the `prepare` hook as a read-only observer of the parsed AST;
-    /// notify-only.
+    /// Run the `prepare` hook as a read-only observer of the parsed AST. The
+    /// hook is notify-only.
     fn prepare<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
@@ -93,15 +96,15 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(()) }
     }
 
-    /// Ordering for the `prepare` hook; `None` = normal bucket.
+    /// Ordering for the `prepare` hook. `None` means the normal bucket.
     fn prepare_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 
-    /// Run the `transform` hook. The hook receives an owned cheap AST handle;
-    /// mutating it through `Ast::with_mut` copies on write. Returning
-    /// `Some(TransformOutput)` replaces the carried AST; `None` leaves the
-    /// driver's AST untouched.
+    /// Run the `transform` hook. The hook receives an owned cheap AST handle.
+    /// Mutation through `Ast::with_mut` copies on write. Returning
+    /// `Some(TransformOutput)` replaces the carried AST. Returning `None`
+    /// leaves the driver's AST untouched.
     fn transform<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
@@ -110,13 +113,13 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async move { Ok(None) }
     }
 
-    /// Ordering for the `transform` hook; `None` = normal bucket.
+    /// Ordering for the `transform` hook. `None` means the normal bucket.
     fn transform_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 
-    /// Run the `finalize` hook as a read-only observer of the final AST;
-    /// notify-only.
+    /// Run the `finalize` hook as a read-only observer of the final AST. The
+    /// hook is notify-only.
     fn finalize<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
@@ -125,13 +128,14 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(()) }
     }
 
-    /// Ordering for the `finalize` hook; `None` = normal bucket.
+    /// Ordering for the `finalize` hook. `None` means the normal bucket.
     fn finalize_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 
-    /// Run the `generate` hook. Returning `Some` wins the generate stage and
-    /// the rest of the chain is skipped; `None` defers to the next plugin.
+    /// Run the `generate` hook. Returning `Some` wins the generate stage, and
+    /// the driver skips the rest of the chain. Returning `None` defers to the
+    /// next plugin.
     fn generate<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
@@ -140,13 +144,16 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(None) }
     }
 
-    /// Ordering for the `generate` hook; `None` = normal bucket.
+    /// Ordering for the `generate` hook. `None` means the normal bucket.
     fn generate_meta(&self) -> Option<PluginHookMeta> {
         None
     }
 
-    /// Run the `end` hook with the compile error, if any; notify-only. Core
-    /// must invoke it on success and on every error path.
+    /// Run the `end` hook with the compile error, if any. The hook is
+    /// notify-only. `end` runs on every settled plugin on every path,
+    /// including a compile failure, but not when the `options` stage fails. A
+    /// failing `end` returns its own error instead of the stage error. On the
+    /// success path, the `end` error is the returned error.
     fn end<'a>(
         &'a self,
         _ctx: &'a PluginContext<'_>,
@@ -155,7 +162,7 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
         async { Ok(()) }
     }
 
-    /// Ordering for the `end` hook; `None` = normal bucket.
+    /// Ordering for the `end` hook. `None` means the normal bucket.
     fn end_meta(&self) -> Option<PluginHookMeta> {
         None
     }

@@ -17,7 +17,7 @@ type EsTarget =
     | "esnext";
 
 /**
- * A browser or runtime engine version target, keyed by engine name.
+ * An engine version target for a browser or runtime, keyed by engine name.
  */
 type EngineTarget =
     | { chrome: number }

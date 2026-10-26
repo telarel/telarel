@@ -2,7 +2,8 @@ import type { Ast } from "#/classes/ast";
 import type { Span } from "#/errors/source/span";
 
 /**
- * The source location of an error: a file, its text, and a span within it.
+ * The source location of an error. It holds the file, its text, and a span
+ * within it.
  */
 class ErrorSource {
     readonly #file: string;
@@ -16,7 +17,7 @@ class ErrorSource {
     }
 
     /**
-     * Create a source location from its file text and a UTF-16 span.
+     * Creates a source location from a file name, its text, and a UTF-16 span.
      */
     public static fromCode(
         file: string,
@@ -27,7 +28,8 @@ class ErrorSource {
     }
 
     /**
-     * Create a source location from an AST's source text and a UTF-16 span.
+     * Creates a source location from a file name, an AST's source text, and a
+     * UTF-16 span.
      */
     public static fromAst(file: string, ast: Ast, span: Span): ErrorSource {
         return new ErrorSource(file, ast.source, span);
@@ -48,7 +50,7 @@ class ErrorSource {
     }
 
     /**
-     * A copy of the UTF-16 span, so callers cannot mutate the source.
+     * A copy of the stored span, so callers cannot mutate it.
      */
     public get span(): Span {
         return { start: this.#span.start, end: this.#span.end };

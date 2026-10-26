@@ -12,7 +12,7 @@ use crate::comment::raw::RawComment;
 /// Adapters are pure and return partial data. The normalizer folds them in
 /// registry order with the first `Some` value winning per field.
 pub trait CommentAdapter {
-    /// Adapt one raw comment; unknown labels are errors.
+    /// Adapt one raw comment. Unknown labels are errors.
     fn adapt(
         &self,
         raw: &RawComment,
@@ -20,7 +20,6 @@ pub trait CommentAdapter {
     ) -> anyhow::Result<AdaptedComment>;
 }
 
-/// Parse a JS `content` label into its oxc content kind.
 pub fn content_from_label(label: &str) -> anyhow::Result<CommentContent> {
     let content: CommentContent = match label {
         | "none" => CommentContent::None,
@@ -47,7 +46,6 @@ pub fn content_from_label(label: &str) -> anyhow::Result<CommentContent> {
     Ok(content)
 }
 
-/// The JS label for an oxc content kind.
 pub fn content_label(content: CommentContent) -> &'static str {
     match content {
         | CommentContent::None => "none",

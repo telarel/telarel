@@ -24,9 +24,10 @@ import {
 
 const tempDirs: Array<string> = [];
 
-// NAPI-RS preopens the drive root as a guest path like `D:\`, and wasi-libc
-// only recognizes `/` separators. Filesystem-backed input maps therefore
-// cannot resolve Windows absolute paths under WASI.
+// NAPI-RS preopens the drive root as a guest path such as `D:\`, but
+// wasi-libc recognizes only `/` separators. An input map on the filesystem
+// cannot resolve a Windows absolute path under WASI. Therefore, the
+// external-map tests skip on Windows WASI.
 const isWasiWindows: boolean =
     process.env.NAPI_RS_FORCE_WASI === "error" && process.platform === "win32";
 
@@ -60,7 +61,7 @@ describe("parse", (): void => {
 
         expect(result.ast.source).toBe("const a = 1;");
         expect(result.ast.program.type).toBe("Program");
-        // Input maps are off by default: no map is attached.
+        // Input maps are off by default, so the AST has no map.
         expect(result.ast.map).toBeNull();
     });
 

@@ -4,8 +4,8 @@ use crate::PluginError;
 use crate::plugin::pluginable::SharedPluginable;
 
 /// Run the `prepare` hook on every plugin in meta-ranked order as a
-/// read-only observer of the parsed AST; the first error aborts. Return
-/// values are ignored.
+/// read-only observer of the parsed AST. The first error aborts. The driver
+/// ignores return values.
 pub async fn prepare(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,

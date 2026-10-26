@@ -3,7 +3,7 @@ title: Ast
 description: An AST with its source text, optional language metadata and source map, and mutable program access.
 ---
 
-`Ast` carries an Oxc-backed `Program`, the source text its spans anchor to, optional language metadata, and an optional incremental source map. Every AST-bearing hook receives an `Ast`.
+`Ast` carries an Oxc-backed `Program`, the source text its spans anchor to, optional language metadata, and an optional incremental source map. Every hook that takes an AST receives an `Ast`.
 
 ```ts
 type AstOptions = {
@@ -30,31 +30,31 @@ class Ast {
 
 ## Constructor
 
-| Field      | Type        | Description                                                                                                                     |
-| ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `program`  | `Program`   | The ESTree program.                                                                                                             |
-| `source`   | `string`    | The source text the program's spans anchor to.                                                                                  |
-| `language` | `Language`  | Optional grammar of the program. Omit for `new Ast({ program, source })`: ESTree cannot carry grammar, so it stays `undefined`. |
-| `map`      | `SourceMap` | Optional incremental source map. Omit when unavailable.                                                                         |
+| Field      | Type        | Description                                                                                                                                          |
+| ---------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `program`  | `Program`   | The ESTree program.                                                                                                                                  |
+| `source`   | `string`    | The source text the program's spans anchor to.                                                                                                       |
+| `language` | `Language`  | Optional grammar of the program. When you omit it for `new Ast({ program, source })`, ESTree cannot carry grammar, so the grammar stays `undefined`. |
+| `map`      | `SourceMap` | Optional incremental source map. When no map is available, omit `map`.                                                                               |
 
 ## Members
 
-| Member       | Type                              | Description                                                                                                   |
-| ------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `program`    | `DeepReadonly<Program>`           | A deeply read-only view of the program. Use `mutate` to change it.                                            |
-| `source`     | `string`                          | The source text the program's spans anchor to.                                                                |
-| `language`   | `Language \| void`                | The grammar of the program, or `undefined` when unknown. Populated by `parse`, `rewrite`, and `createParser`. |
-| `sourceType` | `SourceType`                      | The module kind, read through from `program.sourceType`. Values are `"script" \| "module" \| "commonjs"`.     |
-| `map`        | `DeepReadonly<SourceMap> \| null` | The incremental source map, or `null` when the AST carries none.                                              |
-| `mutate`     | `(fn) => Result`                  | Runs `fn` with mutable access to the program and returns its result.                                          |
+| Member       | Type                              | Description                                                                                                  |
+| ------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `program`    | `DeepReadonly<Program>`           | A deeply read-only view of the program. Use `mutate` to change it.                                           |
+| `source`     | `string`                          | The source text the program's spans anchor to.                                                               |
+| `language`   | `Language \| void`                | The grammar of the program, or `undefined` when unknown. `parse`, `rewrite`, and `createParser` populate it. |
+| `sourceType` | `SourceType`                      | The module kind. It reads through `program.sourceType`. Values are `"script" \| "module" \| "commonjs"`.     |
+| `map`        | `DeepReadonly<SourceMap> \| null` | The incremental source map, or `null` when the AST carries none.                                             |
+| `mutate`     | `(fn) => Result`                  | Runs `fn` with mutable access to the program and returns its result.                                         |
 
-`sourceType` is a read-through of `ast.program.sourceType`; it never returns `"unambiguous"`. There is no stored source-type field, so changes made through `Ast.mutate` are reflected immediately.
+`sourceType` reads through `ast.program.sourceType` and never returns `"unambiguous"`. There is no stored source-type field, so changes that `Ast.mutate` makes appear immediately.
 
-When an entry point resolves a grammar, explicit `options.language` wins over `Ast.language`, which wins over the `file` extension.
+When an entry point resolves a grammar, `options.language` wins over `Ast.language`. `Ast.language` wins over the `file` extension.
 
-The `program` getter is typed as `DeepReadonly<Program>`, so nested nodes and arrays cannot be changed through it.
+The `program` getter has type `DeepReadonly<Program>`, so callers cannot change nested nodes or arrays through it.
 
-`mutate` returns `void` for a synchronous callback and `Promise<void>` for an asynchronous one. The returned value matches the callback, so `await ast.mutate(fn)` works in both cases.
+`mutate` returns `void` for a synchronous callback and `Promise<void>` for an asynchronous one. The return value matches the callback, so `await ast.mutate(fn)` works in both cases.
 
 ## Comments
 
@@ -75,19 +75,21 @@ type Comment = {
 };
 ```
 
-`start`, `end`, and `attachedTo` are UTF-16 code-unit offsets. `start` and `end` must be UTF-16 boundaries; non-boundaries, mid-surrogate offsets, reversed spans, and missing spans reject. `type` must be `"Line"` or `"Block"` and match the source delimiter. An invalid or stale `attachedTo` is ignored and re-derived from a codegen anchor rather than rejected. Absent `comments` and `comments: []` both mean no comments; a present non-array `comments` value rejects. `value` is derived from the source text and ignored on input.
+`start`, `end`, and `attachedTo` are UTF-16 code-unit offsets. `start` and `end` must be UTF-16 boundaries. Non-boundaries, mid-surrogate offsets, reversed spans, and missing spans reject. `type` must be `"Line"` or `"Block"` and must match the source delimiter.
 
-Comments survive AST round-trips. A returned parse or transform AST owns its comments, and returning an AST without comments drops them.
+The compiler ignores an invalid or stale `attachedTo` and re-derives it from a codegen anchor instead of rejecting it. Absent `comments` and `comments: []` both mean no comments. A present non-array `comments` value rejects. The compiler derives `value` from the source text and ignores it on input.
 
-Comments carried out of `parse` may report oxc's parser position (`"trailing"` for inline comments). Inbound `position` is normalized to `"leading"`; oxc codegen emits only leading comments, so placement is codegen-defined.
+Comments survive AST round-trips. An AST that `parse` or `transform` returns owns its comments. Returning an AST without comments drops them.
 
-The `content` label is one of `"none"`, `"legal"`, `"jsdoc"`, `"jsdoc-legal"`, `"pure"`, `"pure-not-applied"`, `"no-side-effects"`, `"no-side-effects-not-applied"`, `"webpack"`, `"vite"`, `"turbopack"`, `"coverage-ignore"`, `"coverage-ignore-file"`, and `"property-key"`. An unknown `position` or `content` label rejects. Applied `pure` or `no-side-effects` comments keep their text but are demoted to `content: "none"` when rebuilt.
+`parse` may return comments that report oxc's parser position. Inline comments may report `"trailing"`. The compiler normalizes inbound `position` to `"leading"`. Oxc codegen emits only leading comments, so placement depends on codegen.
 
-`Comment`, `CommentContent`, `CommentPosition`, `CommentType`, `OxcProgram`, and `Program` are exported from both `telarel` and `telarel/ast`.
+The `content` label is one of `"none"`, `"legal"`, `"jsdoc"`, `"jsdoc-legal"`, `"pure"`, `"pure-not-applied"`, `"no-side-effects"`, `"no-side-effects-not-applied"`, `"webpack"`, `"vite"`, `"turbopack"`, `"coverage-ignore"`, `"coverage-ignore-file"`, and `"property-key"`. An unknown `position` or `content` label rejects. When the compiler rebuilds a comment, an applied `pure` or `no-side-effects` comment keeps its text. The rebuild demotes it to `content: "none"`.
+
+`telarel` and `telarel/ast` export `Comment`, `CommentContent`, `CommentPosition`, `CommentType`, `OxcProgram`, and `Program`.
 
 ## Mutation
 
-Only the `transform` hook carries mutations forward: mutate `args.ast` and return `{ ast: args.ast }` to replace the compiler's AST for the rest of the chain. Returning nothing discards the mutation.
+Only the `transform` hook passes mutations to later stages. Mutate `args.ast` and return `{ ast: args.ast }` to replace the compiler's AST for the rest of the chain. Returning nothing discards the mutation.
 
 The `prepare`, `finalize`, and `generate` hooks receive a snapshot of the compiler's AST. Mutating that snapshot changes only the local instance and does not alter the compiler's AST. A `generate` hook can pass a mutated AST to [createGenerator](/apis/javascript/createGenerator) to generate from it.
 

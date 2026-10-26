@@ -9,7 +9,7 @@ import { CompileError } from "#/errors/compile";
 /**
  * Compiles a source text with plugins, in memory.
  *
- * Unset options fall back to their defaults (see {@link CompileOptions}).
+ * Unset options use their defaults (see {@link CompileOptions}).
  */
 const compile = async (
     code: string,

@@ -1,14 +1,16 @@
 /**
- * Env modules.
+ * The module format emitted by the `env` layer.
  */
 type EnvModules = "auto" | "amd" | "umd" | "systemjs" | "commonjs" | "cjs";
 
 /**
  * Babel `preset-env` style options for the oxc `env` layer.
  *
- * Mirrors oxc's `BabelEnvOptions` (camelCase, unknown fields rejected). The
- * deprecated boolean fields are still accepted by the bridge, so they stay;
- * `include` / `exclude` / `useBuiltIns` / `corejs` are opaque on the Rust side
+ * Mirrors oxc's `BabelEnvOptions` with camelCase fields. Unknown fields are
+ * rejected.
+ *
+ * The bridge still accepts the deprecated boolean fields, so they stay.
+ * `include`, `exclude`, `useBuiltIns`, and `corejs` are opaque on the Rust side
  * and stay unknown.
  */
 type OxcEnvOptions = {
@@ -16,8 +18,8 @@ type OxcEnvOptions = {
      * Target engines used to determine which transforms are enabled.
      *
      * Accepts browserslist-style strings (`"chrome 80"`, `"chrome >= 80"`),
-     * arrays of them, or a map of engine name to version string (`{ chrome:
-     * "80" }`).
+     * arrays of them, or a map of engine name to version string (for example,
+     * `{ chrome: "80" }`).
      */
     targets?: string | Array<string> | Record<string, string>;
     /**
@@ -34,7 +36,7 @@ type OxcEnvOptions = {
      */
     loose?: boolean;
     /**
-     * What module code is generated: a Babel `preset-env` module format or a
+     * The module format to generate. Accepts a Babel `preset-env` value or a
      * boolean shorthand.
      */
     modules?: boolean | EnvModules;
@@ -66,7 +68,7 @@ type OxcEnvOptions = {
      */
     forceAllTransforms?: boolean;
     /**
-     * Explicit path to config file. Not implemented by oxc.
+     * Explicit path to a configuration file. Not implemented by oxc.
      */
     configPath?: string;
     /**

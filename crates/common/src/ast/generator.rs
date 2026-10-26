@@ -25,8 +25,8 @@ impl<'a> Generator<'a> {
     /// Generate the composed output: code plus the source map.
     ///
     /// Output delivery modes (`Inline`, `External`, and `Both`) are applied by
-    /// the pipeline, not here. Returns `Ok` today; the `Result` is kept for
-    /// future error paths.
+    /// the pipeline, not here. The method returns `Ok` today. The `Result` is
+    /// kept for future error paths.
     pub fn generate(self) -> Result<CodeResult, CompileError> {
         let result: CodeResult = generate_code(
             self.ast,

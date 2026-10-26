@@ -7,10 +7,10 @@ use crate::plugin::pluginable::SharedPluginable;
 
 /// Run the `parse` hook over every plugin in meta-ranked order.
 ///
-/// First-win: the first `Ok(Some)` result wins and the remaining hooks are
+/// First-win: the first `Ok(Some)` result wins, and the remaining hooks are
 /// skipped. `Ok(None)` defers to the next plugin. The first error aborts and
-/// is propagated unchanged. When every hook defers, the builtin parser runs
-/// and its error is returned as-is.
+/// propagates unchanged. When every hook defers, the builtin parser runs and
+/// its error is returned as-is.
 pub async fn parse(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,

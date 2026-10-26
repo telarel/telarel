@@ -13,7 +13,9 @@ pub async fn compile(
 
 Compiles `code` from source to generated output.
 
-Because the stages run inline, the pipeline invokes each stage once per invocation. The hooks themselves follow the shared [hook semantics](/apis/plugin#hook-semantics): `options` runs once per plugin instance, while `start` and `end` run per settled entry. The pipeline attaches any requested input source map to the AST returned by the winning `parse` hook when that AST carries none; an AST's own map wins. The builtin parser is the fallback when every `parse` hook defers.
+Because the stages run inline, the pipeline invokes each stage once per invocation. The hooks follow the shared [hook semantics](/apis/plugin#hook-semantics). The `options` hook runs once per plugin instance. The `start` and `end` hooks run per settled entry.
+
+When the winning `parse` hook returns an AST with no input source map, the pipeline attaches the requested input source map to that AST. An AST's own input source map wins. The builtin parser is the fallback when every `parse` hook defers.
 
 ## Parameters
 
@@ -25,16 +27,16 @@ Because the stages run inline, the pipeline invokes each stage once per invocati
 
 ### `CompileOptions`
 
-Every field is optional and resolved against defaults before use.
+Every field is optional. The pipeline resolves each field against defaults before use.
 
-| Field         | Type                       | Default             | Description                                                             |
-| ------------- | -------------------------- | ------------------- | ----------------------------------------------------------------------- |
-| `cwd`         | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                         |
-| `file`        | `Option<String>`           | `index.ts`          | The file being compiled. The language is inferred from its extension.   |
-| `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.             |
-| `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind.     |
-| `output`      | `Option<OutputOptions>`    | `file`              | Output code settings. `output.file` derives the default source-map URL. |
-| `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the run.                |
+| Field         | Type                       | Default             | Description                                                                  |
+| ------------- | -------------------------- | ------------------- | ---------------------------------------------------------------------------- |
+| `cwd`         | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                              |
+| `file`        | `Option<String>`           | `index.ts`          | The file being compiled. The language is inferred from its extension.        |
+| `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.                  |
+| `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind.          |
+| `output`      | `Option<OutputOptions>`    | `file`              | Output code configuration. `output.file` derives the default source-map URL. |
+| `source_map`  | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the run.                     |
 
 ## Returns
 
@@ -51,5 +53,5 @@ let result: CodeResult = compile(
     vec![],
 ).await?;
 
-println!("{}", result.code); // const x = 1;
+println!("{}", result.code); // const x: number = 1;
 ```

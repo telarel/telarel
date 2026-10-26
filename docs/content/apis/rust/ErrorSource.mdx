@@ -3,7 +3,7 @@ title: ErrorSource
 description: A source location attached to CompileError and PluginError.
 ---
 
-`ErrorSource` is the shared source-location type attached to different errors. Both error types and `ErrorSource` are re-exported from the `telarel` crate.
+`ErrorSource` is the shared source-location type for `CompileError` and `PluginError`. The `telarel` crate re-exports both error types and `ErrorSource`.
 
 ```rust
 pub struct ErrorSource { /* private fields */ }

@@ -1,7 +1,7 @@
 use oxc::transformer::TypeScriptOptions as OxcTypeScriptOptions;
 use serde::Deserialize;
 
-/// The TypeScript options.
+/// Controls the TypeScript transform.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TypeScriptOptions {
@@ -11,10 +11,10 @@ pub struct TypeScriptOptions {
     /// Allows TypeScript `namespace` declarations to be compiled.
     #[serde(default)]
     pub allow_namespaces: Option<bool>,
-    /// Factory treated as a value when pruning JSX imports; defaults to `React.createElement`.
+    /// Factory treated as a value when pruning JSX imports. Defaults to `React.createElement`.
     #[serde(default)]
     pub jsx_pragma: Option<String>,
-    /// Fragment treated as a value when pruning JSX imports; defaults to `React.Fragment`.
+    /// Fragment treated as a value when pruning JSX imports. Defaults to `React.Fragment`.
     #[serde(default)]
     pub jsx_pragma_frag: Option<String>,
     /// Inlines statically known enum members and drops unused non-exported enums.
@@ -22,7 +22,8 @@ pub struct TypeScriptOptions {
     pub optimize_enums: Option<bool>,
 }
 
-/// Overlay `Some` TypeScript fields onto the oxc base, field-wise.
+/// Apply the `Some` TypeScript fields to the oxc base. Fields set to `None`
+/// keep the base value.
 pub fn overlay_typescript(
     base: &mut OxcTypeScriptOptions,
     typescript: &TypeScriptOptions,

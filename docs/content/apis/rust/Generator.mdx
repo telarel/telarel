@@ -13,29 +13,29 @@ impl<'a> Generator<'a> {
 }
 ```
 
-`Generator` is the builtin generator used by the pipeline as the terminal fallback after every `generate` hook defers. It never runs the plugin chain. Use [`generate`](/apis/rust/generate) when plugins should be able to replace the generated result.
+The pipeline uses `Generator` as the builtin generator and terminal fallback after every `generate` hook defers. It never runs the plugin chain. When plugins should be able to replace the generated result, use [`generate`](/apis/rust/generate).
 
 ## `Generator::new`
 
 Creates a generator over `ast` and its resolved `GeneratorOptions`.
 
-The AST is borrowed because hook arguments are read-only.
+`Generator::new` borrows the AST because hook arguments are read-only.
 
 ### `GeneratorOptions`
 
 Every field is required. In a `generate` hook, the stage options are available as `args.options`.
 
-| Field        | Type               | Description                                               |
-| ------------ | ------------------ | --------------------------------------------------------- |
-| `cwd`        | `PathBuf`          | Filesystem root. Reserved; codegen ignores it.            |
-| `file`       | `String`           | The file being generated.                                 |
-| `source_map` | `SourceMapOptions` | The source-map inputs and outputs requested for the step. |
+| Field        | Type               | Description                                                 |
+| ------------ | ------------------ | ----------------------------------------------------------- |
+| `cwd`        | `PathBuf`          | Filesystem root. The field is reserved. Codegen ignores it. |
+| `file`       | `String`           | The file being generated.                                   |
+| `source_map` | `SourceMapOptions` | The source-map inputs and outputs requested for the step.   |
 
 ## `Generator::generate`
 
-Generates code from the fixed AST and composes the AST's input map into the produced map.
+Generates code from the fixed AST and composes the AST's input source map into the produced source map.
 
-The builtin generator always returns a map. Output delivery modes (`Inline`, `External`, and `Both`) are applied by the pipeline, not by `Generator::generate`.
+The builtin generator always returns a source map. The pipeline applies the resolved output source-map mode (`Inline`, `External`, or `Both`). `Generator::generate` does not apply it.
 
 `CodeResult` is `{ code: String, map: Option<SourceMap> }`.
 

@@ -15,13 +15,11 @@ use crate::helpers::sources::lookup;
 
 /// A helper usage statement found in the transformed program.
 pub struct HelperUsage {
-    /// Index of the usage statement in `program.body`.
     pub statement_index: usize,
-    /// The helper to inline.
     pub helper: &'static HelperSource,
     /// The local binding name oxc generated for the helper (a uid).
     pub binding_name: String,
-    /// The symbol of the local binding, when known; used to rename the
+    /// The symbol of the local binding, when known. It is used to rename the
     /// references of extra usages of an already-inlined helper.
     pub binding_symbol_id: Option<SymbolId>,
 }
@@ -44,11 +42,11 @@ fn helper_from_source(
 
 /// Match the exact oxc `import` form for one helper source.
 ///
-/// Every specifier of the declaration must be a default import, since the
-/// oxc helper loader only ever adds default imports; all the default locals
-/// are returned as usages (oxc merges same-source imports into one
-/// declaration, so a user default import from the same helper path can share
-/// the declaration with an oxc-generated uid).
+/// Every specifier of the declaration must be a default import, because the
+/// oxc helper loader adds only default imports. All the default locals are
+/// returned as usages. oxc merges same-source imports into one declaration, so
+/// a user default import from the same helper path can share the declaration
+/// with an oxc-generated uid.
 fn import_usage(
     import: &ImportDeclaration<'_>,
     module_name: &str,
@@ -147,14 +145,15 @@ fn require_usage(
 ///
 /// Both oxc-emitted shapes are exact:
 ///
-/// * `import <uid> from "<module>/helpers/<name>";` — one declaration per
-///   source, default-import specifier(s) only, `ImportOrExportKind::Value`.
-/// * `var <uid> = require("<module>/helpers/<name>");` — one `var`
+/// * `import <uid> from "<module>/helpers/<name>";` is one declaration per
+///   source, with default-import specifier(s) only and
+///   `ImportOrExportKind::Value`.
+/// * `var <uid> = require("<module>/helpers/<name>");` is one `var`
 ///   declarator whose init is a `require(...)` call with one string literal.
 ///
-/// Declarations that do not match the exact shape (for example user code that
-/// imports from the runtime helpers path with named specifiers, or type-only
-/// imports, which oxc never emits for helpers) are left untouched.
+/// Declarations that do not match the exact shape are left untouched. These
+/// include user code with named specifiers from the runtime helpers path and
+/// type-only imports, which oxc never emits for helpers.
 pub fn collect_usages(
     program: &Program<'_>,
     module_name: &str,

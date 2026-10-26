@@ -3,11 +3,11 @@ use napi::sys;
 
 use crate::plugin::hooks::SharedStr;
 
-/// JS-facing plugin context passed to every ctx-bearing hook.
+/// The JS-facing plugin context that every context-bearing hook receives.
 pub struct JsPluginContext {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,

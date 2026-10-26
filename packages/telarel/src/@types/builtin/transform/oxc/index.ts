@@ -26,12 +26,13 @@ type OxcTransformOptions = {
      */
     decorator?: OxcDecoratorOptions;
     /**
-     * The raw oxc JSX options, with `refresh` narrowed to the object form: the
-     * binding's serde rejects the `boolean` member npm's type allows.
+     * The raw oxc JSX options. The `refresh` field is narrowed to the object
+     * form, because the binding's serde rejects the `boolean` member that npm's
+     * type allows.
      */
     jsx?: Omit<OxcJsxOptions, "refresh"> & {
         /**
-         * The React Refresh options; only the object form is accepted.
+         * The React Refresh options. Only the object form is accepted.
          */
         refresh?: OxcReactRefreshOptions;
     };
@@ -41,16 +42,17 @@ type OxcTransformOptions = {
      */
     env?: OxcEnvOptions;
     /**
-     * Behaviour for runtime helpers.
+     * Behavior for runtime helpers.
      */
     helperLoader?: {
         /**
-         * Strategy used to resolve helper calls. By default, it is `inline`.
+         * The strategy used to resolve helper calls. By default, it is
+         * `inline`.
          */
         mode?: HelperLoaderMode;
         /**
-         * The module to import helper functions from, work in `runtime` mode.
-         * By default, it is `@oxc-project/runtime`.
+         * The module to import helper functions from in `runtime` mode. By
+         * default, it is `@oxc-project/runtime`.
          */
         moduleName?: string;
     };

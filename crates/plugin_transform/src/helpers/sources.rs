@@ -1,7 +1,7 @@
-/// An embedded helper: name and source.
+/// A vendored helper source embedded in the binary.
 #[derive(Debug)]
 pub struct HelperSource {
-    /// The helper name; primary entries match the oxc `Helper` enum names.
+    /// The helper name. Primary entries match the oxc `Helper` enum names.
     pub name: &'static str,
     /// The embedded source vendored from `@oxc-project/runtime`.
     pub source: &'static str,
@@ -128,7 +128,7 @@ pub const HELPERS: &[HelperSource] = &[
 ];
 
 /// The helpers in the transitive dependency closure of [`HELPERS`] that are
-/// not part of the oxc `Helper` enum; [`lookup`] covers both tables.
+/// not part of the oxc `Helper` enum. [`lookup`] covers both tables.
 pub const DEPENDENCY_HELPERS: &[HelperSource] = &[
     HelperSource {
         name: "OverloadYield",

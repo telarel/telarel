@@ -8,11 +8,11 @@ use crate::comment::classify::classify_content;
 use crate::comment::raw::RawComment;
 use crate::plugin::spans::SpanMap;
 
-/// The source-dependent inputs shared by every adapter and the normalizer.
+/// The source-dependent inputs that every adapter and the normalizer share.
 pub struct CommentContext<'a> {
     /// The source text the comment spans refer to.
     pub source: &'a str,
-    /// The byte/UTF-16 boundary table for `source`.
+    /// The byte to UTF-16 boundary table for `source`.
     pub spans: &'a SpanMap,
     /// Printable boundaries in UTF-16 units, sorted and unique.
     pub anchors: &'a [u32],
@@ -290,7 +290,6 @@ fn normalize_comment(
     })
 }
 
-/// Normalize raw comments with an explicit adapter registry.
 pub fn normalize_with_adapters(
     raw: &[RawComment],
     ctx: &CommentContext<'_>,
@@ -314,7 +313,6 @@ pub fn normalize_with_adapters(
     Ok(comments)
 }
 
-/// Normalize raw comments with the default adapter registry.
 pub fn normalize(
     raw: &[RawComment],
     ctx: &CommentContext<'_>,
@@ -414,7 +412,7 @@ mod tests {
         let source: &str = "// 😀\nconst x = 1;";
         let anchors: [u32; 3] = [0, 6, 18];
 
-        // The emoji occupies UTF-16 units 3..5; 4 is mid-surrogate.
+        // The emoji occupies UTF-16 units 3..5. Unit 4 is mid-surrogate.
         let error: anyhow::Error =
             normalize_with(source, &[raw_line(0, 4)], &anchors)
                 .expect_err("mid-surrogate offsets are rejected");
@@ -693,8 +691,8 @@ mod tests {
     #[test]
     fn test_normalize_rejects_malformed_block_spans() {
         let cases: [(&str, u32); 3] = [
-            // The UTF-16 end lands on a byte inside the 3-byte `日`; without a
-            // closing-delimiter check the value slice panics.
+            // The UTF-16 end lands on a byte inside the 3-byte `日`. Without a
+            // closing-delimiter check, the value slice panics.
             ("/*日", 3),
             ("/* unterminated", 15),
             ("/*/", 3),

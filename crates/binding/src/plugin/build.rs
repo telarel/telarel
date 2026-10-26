@@ -12,14 +12,15 @@ use crate::plugin::pluginable::JsPlugin;
 /// The error raised when a JS plugin object carries no `name`.
 pub const NAME_REQUIRED: &str = "plugin `name` is required";
 
-/// Internal descriptor key shared with the JS wrapper; must match
+/// Internal descriptor key shared with the JS wrapper. This key must match
 /// `PLUGIN_ID` in `packages/telarel/src/bridges/plugin.ts`.
 const PLUGIN_ID: &str = "__telarelPluginId";
 
-/// Bridge one raw JS plugin descriptor into a shared adapter; the caller has
-/// already rooted its reference. Builtin markers dispatch to Rust before any
-/// hook scan (entry and mid-fixpoint alike); plain JS plugins become
-/// [`JsPlugin`].
+/// Bridge one raw descriptor for a JS plugin into a shared adapter.
+///
+/// The caller has already rooted the descriptor's reference. Builtin markers
+/// dispatch to Rust before any hook scan, for entry and mid-fixpoint plugins
+/// alike. Plain JS plugins become [`JsPlugin`].
 pub fn bridge_plugin(
     object: &napi::bindgen_prelude::Object<'static>,
     refs: &Arc<RefList>,
@@ -48,10 +49,10 @@ pub fn bridge_plugin(
     Ok(adapter)
 }
 
-/// Bridge every raw JS plugin descriptor into a shared adapter.
+/// Bridge every raw descriptor for a JS plugin into a shared adapter.
 ///
-/// The returned bag REPLACES the current descriptor view via
-/// [`RefList::set_bag`]; a failure mid-list releases every reference already
+/// The returned bag replaces the current descriptor view through
+/// [`RefList::set_bag`]. A failure mid-list releases every reference already
 /// on `refs` and leaves the view untouched. A descriptor whose internal id
 /// already has a bridged adapter reuses that adapter instead of bridging
 /// again.
@@ -66,8 +67,8 @@ pub fn to_plugins(
     let mut bag: Vec<SharedRef> = Vec::with_capacity(descriptors.len());
 
     for descriptor in descriptors {
-        // Root the reference BEFORE materializing: a materialize failure
-        // must still leave the already-rooted descriptor releaseable.
+        // Root the reference before materializing. A materialize failure must
+        // still leave the already-rooted descriptor releaseable.
         let shared: SharedRef = SharedRef::from_ref(descriptor);
 
         refs.push_ref(shared.clone());
@@ -125,7 +126,7 @@ pub fn to_plugins(
 mod tests {
     use super::*;
 
-    // The empty-descriptor path never dereferences the env; `Env::from_raw`
+    // The empty-descriptor path never dereferences the env. `Env::from_raw`
     // keeps the test free of a JS runtime.
     fn env() -> Env {
         napi::Env::from_raw(std::ptr::null_mut())

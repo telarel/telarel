@@ -13,7 +13,7 @@ pub async fn compile_from_ast(
 
 Compiles an existing `ast` through rewrite and generation.
 
-Because the stages run inline, the pipeline invokes each stage once per invocation. The hooks themselves follow the shared [hook semantics](/apis/plugin#hook-semantics): `options` runs once per plugin instance, while `start` and `end` run per settled entry.
+Because the stages run inline, the pipeline invokes each stage once per invocation. The hooks follow the shared [hook semantics](/apis/plugin#hook-semantics). The `options` hook runs once per plugin instance. The `start` and `end` hooks run per settled entry.
 
 ## Parameters
 
@@ -25,18 +25,20 @@ Because the stages run inline, the pipeline invokes each stage once per invocati
 
 ### `CompileFromAstOptions`
 
-Every field is optional and resolved against defaults before use.
+Every field is optional. The pipeline resolves each field against defaults before use.
 
-| Field         | Type                       | Default                   | Description                                                                                                              |
-| ------------- | -------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `cwd`         | `Option<PathBuf>`          | process working dir       | Filesystem root used to resolve relative paths.                                                                          |
-| `file`        | `Option<String>`           | `index.ts`                | The file being compiled; used for option resolution and source-map defaults. Does not change the AST grammar.            |
-| `language`    | `Option<Language>`         | AST language, then `file` | The grammar recorded in the resolved step options and visible to plugins. Does not change the input AST grammar.         |
-| `source_type` | `Option<SourceType>`       | inferred                  | The module kind recorded in the resolved step options and visible to plugins. Does not change the input AST module kind. |
-| `output`      | `Option<OutputOptions>`    | `file`                    | Output code settings. `output.file` derives the default source-map URL.                                                  |
-| `source_map`  | `Option<SourceMapOptions>` | off                       | The source-map inputs and outputs requested for the run.                                                                 |
+| Field         | Type                       | Default                   | Description                                                                                                                 |
+| ------------- | -------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `cwd`         | `Option<PathBuf>`          | process working dir       | Filesystem root used to resolve relative paths.                                                                             |
+| `file`        | `Option<String>`           | `index.ts`                | The file being compiled. It is used for option resolution and source-map defaults. It does not change the AST grammar.      |
+| `language`    | `Option<Language>`         | AST language, then `file` | The grammar recorded in the resolved step options and visible to plugins. It does not change the input AST grammar.         |
+| `source_type` | `Option<SourceType>`       | inferred                  | The module kind recorded in the resolved step options and visible to plugins. It does not change the input AST module kind. |
+| `output`      | `Option<OutputOptions>`    | `file`                    | Output code configuration. `output.file` derives the default source-map URL.                                                |
+| `source_map`  | `Option<SourceMapOptions>` | off                       | The source-map inputs and outputs requested for the run.                                                                    |
 
-The explicit values are visible to the `options` hook; after resolution the values (explicit or inferred) are visible to `start` and later hooks through the resolved options and `PluginContext.module`. When `language` is omitted, the resolved language falls back to the input AST grammar, then the file extension. `compile_from_ast` does not reparse the AST; the rewrite stages return the input AST or a plugin replacement, and builtin generation emits from that AST's own `Program.source_type`.
+The explicit values are visible to the `options` hook. After resolution, the explicit or inferred values are visible to `start` and later hooks. They are available through the resolved options and `PluginContext.module`.
+
+When `language` is omitted, the resolved language falls back to the input AST grammar, then the file extension. `compile_from_ast` does not reparse the AST. The rewrite stages return the input AST or a plugin replacement. Builtin generation emits from that AST's own `Program.source_type`.
 
 ## Returns
 
@@ -66,5 +68,5 @@ let result: CodeResult = compile_from_ast(
     vec![],
 ).await?;
 
-println!("{}", result.code); // const x = 1;
+println!("{}", result.code); // const x: number = 1;
 ```

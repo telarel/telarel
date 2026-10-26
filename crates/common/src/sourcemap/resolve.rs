@@ -60,7 +60,6 @@ fn source_dir(
         .map_or_else(|| cwd.to_path_buf(), |parent: &Path| parent.to_path_buf())
 }
 
-/// The external map path for `file`, or the configured `path` override.
 fn external_map_path_for(
     cwd: &Path,
     file: &str,
@@ -73,7 +72,6 @@ fn external_map_path_for(
     }
 }
 
-/// Resolve the map for a concrete [`InputSourceMapMode`].
 fn resolve_input_source_map_mode(
     code: &str,
     cwd: &Path,
@@ -111,15 +109,15 @@ fn resolve_input_source_map_mode(
 
 /// Resolve the input source map requested by `input`.
 ///
-/// `code` is the source being parsed (`Inline`/`Auto` scan it for an inline
-/// comment). `cwd` is the root used to locate the source file. `External` and
-/// the `Auto` fallback read the configured `path` when set, or `<file>.map`
-/// otherwise; a relative `path` resolves against the source file's directory,
-/// and the default path strips any `?query`/`#hash` suffix.
+/// `code` is the source being parsed. `Inline` and `Auto` scan it for an
+/// inline comment. `cwd` is the root used to locate the source file.
+/// `External` and the `Auto` fallback read the configured `path` when set, or
+/// `<file>.map` otherwise. A relative `path` resolves against the source
+/// file's directory. The default path strips any `?query`/`#hash` suffix.
 ///
-/// Returns `Ok(None)` only when the mode is best-effort (`Inline`/`Auto`) and
-/// no map was found. Explicitly requested but missing maps (`External`) and
-/// corrupt data are `Err`.
+/// `Ok(None)` means the mode is best-effort (`Inline` or `Auto`) and no map
+/// was found. A missing explicitly requested map (`External`) and corrupt
+/// data are `Err`.
 pub fn resolve_input_source_map(
     code: &str,
     cwd: &Path,

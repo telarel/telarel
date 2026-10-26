@@ -4,10 +4,10 @@ use crate::_types::sourcemap::JsSourceMap;
 use crate::ast;
 
 /// The JS-facing normalized AST: the ESTree program, the source text it spans
-/// anchor to, an optional input source map, and the grammar label.
+/// anchor to, an optional source map for the input, and the grammar label.
 #[napi_derive::napi(object)]
 pub struct JsAst {
-    /// The ESTree program produced by parsing or rewriting; it carries the
+    /// The ESTree program that parsing or rewriting produces. It carries the
     /// top-level `comments` array when the AST has comments.
     pub program: serde_json::Value,
     /// Source code text.
@@ -36,17 +36,18 @@ impl From<ast::JsAst> for JsAst {
     }
 }
 
-/// The JS-facing normalized AST input, the read side of [`JsAst`].
+/// The JS-facing input form of the normalized AST. This is the read side of
+/// [`JsAst`].
 #[napi_derive::napi(object)]
 pub struct JsAstInput {
-    /// The ESTree program supplied as input; a top-level `comments` array
-    /// preserves comments, and an absent array means none.
+    /// The ESTree program supplied as input. A top-level `comments` array
+    /// preserves comments, and an absent array means no comments.
     pub program: serde_json::Value,
     /// Source code text.
     pub code: String,
-    /// The input source map object, when the caller supplied one.
+    /// The source map object for the input, when the caller supplied one.
     pub map: Option<serde_json::Value>,
-    /// The grammar of the program; absent means unset.
+    /// The grammar of the program. Absent means unset.
     pub language: Option<String>,
 }
 

@@ -58,10 +58,10 @@ const matchesConstraint = (
 ): boolean => constraint === void 0 || constraint.includes(value);
 
 /**
- * Selects the npm packages whose `os`/`cpu` metadata matches the running
- * platform. An absent constraint is a wildcard, while a `libc` mismatch is
- * ignored on purpose: every matching variant is staged and the generated loader
- * (`src/binding/index.js`) picks the right one at runtime.
+ * Selects the npm packages whose `os` and `cpu` metadata matches the running
+ * platform. An absent constraint acts as a wildcard. The function ignores a
+ * `libc` mismatch on purpose. It stages every matching variant, and the
+ * generated loader (`src/binding/index.js`) picks the right one at runtime.
  */
 const selectPlatformPackages = (
     manifests: ReadonlyArray<PackageManifest>,
@@ -126,9 +126,9 @@ const stageNative = async (): Promise<void> => {
             manifest.main,
         );
 
-        // `create-npm-dirs` scaffolds a package directory for every target,
-        // but the host build only produces the binary for its own target, so
-        // a matching directory can still lack its `.node` file.
+        // `create-npm-dirs` scaffolds a package directory for every target.
+        // However, the host build produces a binary only for its own target.
+        // So a matching directory can still lack its `.node` file.
         if (!(await exists(source))) continue;
 
         await stage({
@@ -203,9 +203,9 @@ const removeStaged = async (): Promise<void> => {
             try {
                 Fs.rmSync(target, { force: true, recursive: true });
             } catch {
-                // Exit-time cleanup runs after the worker processes are closed,
-                // but the OS may still hold the mapping briefly; `stage`
-                // re-clears each target on the next run.
+                // Exit-time cleanup runs after the worker processes close. The
+                // OS can still hold the mapping briefly, so the next run calls
+                // `stage`, which clears each target again.
             }
         }
     });

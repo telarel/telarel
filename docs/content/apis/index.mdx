@@ -5,12 +5,12 @@ description: Function-level reference for Telarel in JavaScript and Rust.
 
 ## Shared pipeline
 
-Telarel exposes almost same compiler pipeline through a JavaScript package and a Rust crate.
+Telarel exposes almost the same compiler pipeline through a JavaScript package and a Rust crate.
 
-- **JavaScript API** — the `telarel` package, with TypeScript types. Backed by a NAPI binding to the Rust core.
-- **Rust API** — the `telarel` crate, re-exporting the public facing API.
+- **JavaScript API**: the `telarel` package, with TypeScript types. It uses a NAPI binding to the Rust core.
+- **Rust API**: the `telarel` crate, which re-exports the public-facing API.
 
-Both expose the same pipeline entry functions. Each call takes the source (text or an owned AST), an options value, and a list of plugins, and returns either an AST result or a code result with an optional source map.
+Both expose the same pipeline entry points. Each call takes a source text or an owned AST, an options value, and a list of plugins. It returns an AST result or a code result with an optional source map.
 
 Both also expose builtin constructors that bypass the plugin chain: [`createParser`](/apis/javascript/createParser) and [`createGenerator`](/apis/javascript/createGenerator) in JavaScript, and [`Parser`](/apis/rust/Parser) and [`Generator`](/apis/rust/Generator) in Rust. Use them inside hooks to delegate to the builtin stage, or directly when plugins are not needed.
 
@@ -18,12 +18,12 @@ They also share the same plugin interface. See the [Plugin API](/apis/plugin) fo
 
 ## Options
 
-Every pipeline entry function accepts the options relevant to the stages it runs. Those options are optional; omitted values are resolved against defaults before the pipeline starts. The builtin constructors instead take fully resolved options. See each page for the exact fields it accepts.
+Every pipeline entry point accepts the options for the stages it runs. You can omit any option. The compiler resolves omitted values against defaults before the stages run. Builtin constructors instead take fully resolved options. See each page for the exact fields.
 
 ## Results
 
-- **AST result** — the parsed or rewritten AST together with the source text its spans anchor to, and an optional source map.
-- **Code result** — the generated code and an optional source map.
+- **AST result**: the parsed or rewritten AST, the source text its spans anchor to, and an optional source map.
+- **Code result**: the generated code and an optional source map.
 
 See the individual function pages for the exact shapes.
 

@@ -3,7 +3,7 @@ title: PluginError
 description: The error returned by fallible plugin hooks.
 ---
 
-Every fallible plugin hook returns `Result<_, PluginError>`. The error has the same message and optional source as [CompileError](/apis/rust/CompileError), and converts into one at the hook boundary.
+Every fallible plugin hook returns `Result<_, PluginError>`. The error has the same message and optional source as [CompileError](/apis/rust/CompileError). It converts into a `CompileError` at the hook boundary.
 
 ```rust
 pub struct PluginError { /* private fields */ }
@@ -69,7 +69,7 @@ impl PluginError {
 }
 ```
 
-`into_compile_error` moves the message and source into a `CompileError`. Use it when a plugin error crosses into a pipeline or API that returns `CompileError`.
+`into_compile_error` moves the message and source into a `CompileError`. When a plugin error crosses into a pipeline or API that returns `CompileError`, use it.
 
 When a hook fails, the error reaches the entry point as a `CompileError` with its message and attached source unchanged.
 

@@ -6,7 +6,7 @@ use oxc::transformer::HelperLoaderOptions as OxcHelperLoaderOptions;
 /// The default helper module name, matching oxc's own default.
 pub const DEFAULT_HELPER_MODULE_NAME: &str = "@oxc-project/runtime";
 
-/// The helper loader mode.
+/// Selects how helper functions are loaded.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum HelperLoaderMode {
     /// Helper functions are directly inserted into the program.
@@ -19,7 +19,7 @@ pub enum HelperLoaderMode {
 }
 
 impl HelperLoaderMode {
-    /// The mode fed to the oxc transformer; `Inline` maps to oxc `Runtime`,
+    /// The mode fed to the oxc transformer. `Inline` maps to oxc `Runtime`,
     /// and the inline helpers pass replaces the emitted runtime imports.
     pub(crate) fn to_oxc_mode(self) -> OxcHelperLoaderMode {
         match self {
@@ -29,21 +29,24 @@ impl HelperLoaderMode {
     }
 }
 
-/// The helper loader options.
+/// Controls how the transform plugin loads helper functions.
+///
+/// Absent values default to [`HelperLoaderMode::Inline`] and
+/// `DEFAULT_HELPER_MODULE_NAME`.
 #[derive(Debug, Clone, Default)]
 pub struct HelperLoaderOptions {
     /// Strategy used to resolve helper calls.
     pub mode: Option<HelperLoaderMode>,
-    /// The module name to import helper functions from, work in [HelperLoaderMode::Runtime].
+    /// The module name to import helper functions from.
+    ///
+    /// Applies to [`HelperLoaderMode::Inline`] and [`HelperLoaderMode::Runtime`].
     pub module_name: Option<String>,
 }
 
 /// The resolved helper-loader state consumed by the inline helpers pass.
 #[derive(Debug, Clone)]
 pub struct ResolvedHelpers {
-    /// The resolved helper loader mode.
     pub mode: HelperLoaderMode,
-    /// The module name helpers are imported from.
     pub module_name: String,
 }
 
@@ -53,7 +56,6 @@ impl ResolvedHelpers {
         matches!(self.mode, HelperLoaderMode::Inline)
     }
 
-    /// The mode fed to the oxc transformer.
     pub fn oxc_mode(&self) -> OxcHelperLoaderMode {
         self.mode.to_oxc_mode()
     }
@@ -61,7 +63,7 @@ impl ResolvedHelpers {
 
 /// Resolve the effective helper state from the telarel layer.
 ///
-/// The raw `oxc` base layer's helper state is ignored entirely; absent
+/// The raw `oxc` base layer's helper state is ignored entirely. Absent
 /// telarel options default to [`HelperLoaderMode::default`] (`Inline`) and
 /// [`DEFAULT_HELPER_MODULE_NAME`].
 pub fn resolve_helpers(
@@ -76,10 +78,11 @@ pub fn resolve_helpers(
     ResolvedHelpers { mode, module_name }
 }
 
-/// Overlay the resolved helper state onto the oxc base; the module name is
-/// kept so the inline helpers pass can find the imports it must replace.
+/// Overlay the resolved helper state onto the oxc base.
 ///
-/// The oxc base's previous helper state is overwritten, never read.
+/// The module name is kept so the inline helpers pass can find the imports it
+/// must replace. The oxc base's previous helper state is overwritten, never
+/// read.
 pub fn overlay_helper_loader(
     base: &mut OxcHelperLoaderOptions,
     helper: Option<&HelperLoaderOptions>,

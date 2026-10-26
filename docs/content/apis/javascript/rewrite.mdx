@@ -15,11 +15,11 @@ function rewrite(
 
 Rewrites an AST with plugins, in memory.
 
-The AST's own input map wins; otherwise the resolved input source map is attached before the stages run.
+The AST's own input map wins. Otherwise, the pipeline attaches the requested input map before the stages run.
 
 ## Parameters
 
-The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare ESTree `Program` together with its source text.
+The function accepts either an [Ast](/apis/javascript/Ast) instance or a bare ESTree `Program` with its source text.
 
 | Name      | Type             | Description               |
 | --------- | ---------------- | ------------------------- |
@@ -45,9 +45,9 @@ The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare E
 
 The grammar precedence is `options.language > Ast.language > file extension`.
 
-`InputSourceMap` is a `SourceMap` value, a literal input mode (`"inline"`, `"external"`, or `"auto"`), or `{ mode, path? }`; in the options form, `mode` accepts a `SourceMap` value or a literal input mode.
+`InputSourceMap` is a `SourceMap` value, a literal input mode (`"inline"`, `"external"`, or `"auto"`), or `{ mode, path? }`. In the options form, `mode` accepts a `SourceMap` value or a literal input mode.
 
-`rewrite` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `sourceMap.input`; a plugin-set `sourceMap.output` or top-level `output` is ignored by `rewrite`.
+`rewrite` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `sourceMap.input`. `rewrite` ignores a plugin-set `sourceMap.output` or top-level `output`.
 
 ## Returns
 

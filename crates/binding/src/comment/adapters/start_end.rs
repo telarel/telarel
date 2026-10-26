@@ -5,7 +5,7 @@ use crate::comment::raw::RawComment;
 
 /// Reads standard `start`/`end` spans (Acorn, oxc, Esprima).
 ///
-/// A lone `start` or `end` is treated as no position at all so that a
+/// The adapter treats a lone `start` or `end` as no position at all, so a
 /// lower-precedence adapter can take over.
 pub struct StartEndAdapter;
 

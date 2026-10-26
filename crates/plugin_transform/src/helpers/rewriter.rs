@@ -127,17 +127,15 @@ macro_rules! visit_span_resets {
     };
 }
 
-/// Renames identifiers bound to a set of symbols and optionally resets every
-/// span it visits to [`SPAN`].
+/// Renames identifiers bound to a set of symbols. It optionally resets every
+/// visited span to [`SPAN`].
 ///
-/// Renaming is symbol-based: identifier references are resolved through the
-/// scoping of the AST being rewritten, so only references that actually bind
-/// to a renamed top-level symbol change — nested shadowing is untouched.
+/// Renaming is symbol-based. Identifier references resolve through the scoping
+/// of the AST being rewritten, so only references that bind to a renamed
+/// top-level symbol change. Nested shadowing is untouched.
 pub struct Rewriter<'a, 's> {
     pub allocator: &'a Allocator,
-    /// Scoping of the AST being rewritten (helper source or main program).
     pub scoping: &'s Scoping,
-    /// Symbol ID to final binding name.
     pub renames: HashMap<SymbolId, String>,
     /// Whether spans must be reset to [`SPAN`] (for spliced helper code).
     pub reset_spans: bool,

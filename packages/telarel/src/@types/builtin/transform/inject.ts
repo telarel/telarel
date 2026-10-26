@@ -1,7 +1,8 @@
 /**
- * The shorthand `inject` value: a module source importing the key as a named
- * specifier with no imported name, or a `[source, imported]` pair for a named
- * import of `imported` from `source`.
+ * The shorthand `inject` value.
+ *
+ * A string is a module source. The key is imported as a named specifier with no
+ * imported name. A `[source, imported]` pair imports `imported` from `source`.
  */
 type InjectShorthand = string | [source: string, imported: string];
 

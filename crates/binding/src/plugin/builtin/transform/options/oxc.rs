@@ -1,15 +1,16 @@
 use telarel_plugin_transform::HelperLoaderMode as TelarelHelperLoaderMode;
 use telarel_plugin_transform::HelperLoaderOptions as TelarelHelperLoaderOptions;
 
-/// The JS-facing helper loader mode.
+/// The JS-facing mode for the helper loader.
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BindingHelperLoaderMode {
-    /// Helper functions are directly inserted into the program.
+    /// The transform inserts helper functions directly into the program.
     Inline,
-    /// Helper functions are accessed from a global `babelHelpers` object.
+    /// The transform reads helper functions from a global `babelHelpers`
+    /// object.
     External,
-    /// Helper functions are imported from the runtime package.
+    /// The transform imports helper functions from the runtime package.
     Runtime,
 }
 
@@ -23,7 +24,7 @@ impl From<BindingHelperLoaderMode> for TelarelHelperLoaderMode {
     }
 }
 
-/// The JS-facing helper loader options.
+/// The helper loader options for the JS side.
 ///
 /// Mirrors oxc's `HelperLoaderOptions` with camelCase keys: oxc's own struct
 /// has no `rename_all`, so its JSON key would be `module_name`.
@@ -43,7 +44,8 @@ impl BindingHelperLoaderOptions {
     }
 }
 
-/// A deserializable subset of oxc's transform options for the raw `oxc` passthrough layer.
+/// A deserializable subset of oxc's transform options for the raw `oxc`
+/// layer.
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OxcPassthrough {
@@ -86,7 +88,8 @@ impl OxcPassthrough {
     }
 }
 
-/// Defined here because the `oxc` module name shadows the oxc crate inside the parent `options` module.
+/// Defined here because the `oxc` module name shadows the oxc crate inside
+/// the parent `options` module.
 pub fn to_oxc_parts(
     passthrough: Option<OxcPassthrough>
 ) -> (
@@ -140,8 +143,8 @@ mod tests {
             Option<telarel_plugin_transform::HelperLoaderOptions>,
         ) = passthrough.into_parts();
 
-        // An absent `helperLoader` stays `None`; telarel's unconfigured
-        // default is then inline, handled by its own post-transform pass.
+        // An absent `helperLoader` stays `None`. Telarel's unconfigured
+        // default is then inline, which its own post-transform pass handles.
         assert!(helper.is_none());
     }
 

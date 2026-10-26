@@ -6,7 +6,6 @@ pub fn get_process_cwd() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
 }
 
-/// Resolve `path` against `cwd` unless `path` is already absolute.
 pub fn resolve_against(
     cwd: &Path,
     path: &Path,
@@ -14,7 +13,6 @@ pub fn resolve_against(
     if path.is_absolute() { path.to_path_buf() } else { cwd.join(path) }
 }
 
-/// Drop the `?query`/`#hash` suffix from a file.
 pub fn strip_file_suffix(file: &str) -> &str {
     let without_hash: &str =
         file.split_once('#').map_or(file, |(path, _)| path);

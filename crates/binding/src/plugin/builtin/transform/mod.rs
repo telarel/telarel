@@ -12,7 +12,7 @@ use crate::plugin::builtin::transform::options::{
 
 /// The transform plugin's JS builtin name.
 ///
-/// The Rust plugin itself is named [`telarel_plugin_transform::NAME`].
+/// The Rust plugin itself has the name [`telarel_plugin_transform::NAME`].
 pub const TRANSFORM_NAME: &str = "builtin:transform";
 
 /// Build the builtin transform plugin from its JSON options.
@@ -84,7 +84,8 @@ mod tests {
 
     #[test]
     fn test_to_transform_plugin_inline_helper_loader_dispatches() {
-        // The mapping to telarel's inline pass is asserted by the option-level tests in `options`.
+        // The option-level tests in `options` assert the mapping to
+        // telarel's inline pass.
         let plugin: telarel_plugin::SharedPluginable = to_transform_plugin(
             Some(json!({ "oxc": { "helperLoader": { "mode": "inline" } } })),
         )

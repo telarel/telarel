@@ -8,8 +8,10 @@ use crate::_types::options::sourcemap::SourceMapOptions;
 /// Resolved options for the builtin [`crate::ast::parser::Parser`].
 #[derive(Debug, Clone)]
 pub struct ParserOptions {
-    /// Resolved working directory used to anchor a relative `file` and derive its
-    /// default external input source-map path.
+    /// Resolved working directory.
+    ///
+    /// It anchors a relative `file` and derives the default path of an
+    /// external input source map.
     pub cwd: PathBuf,
     /// The file being parsed.
     pub file: String,

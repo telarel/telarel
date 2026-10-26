@@ -1,8 +1,8 @@
 //! Comment preservation across the JS boundary.
 //!
-//! The oxc ESTree codec skips `Program.comments`, so this module serializes
-//! comments into the outbound program JSON, normalizes them back on the
-//! inbound side, and attaches them to the rebuilt program's arena.
+//! The oxc ESTree codec skips `Program.comments`. This module serializes the
+//! comments into the outbound program JSON, normalizes them on the inbound
+//! side, and attaches them to the rebuilt program's arena.
 
 pub mod adapted;
 pub mod adapters;
@@ -89,7 +89,8 @@ fn is_safe_anchor(
         && starts.binary_search(&comment.attached_to).is_ok()
 }
 
-/// The guaranteed codegen comment keys of a program, sorted and deduplicated.
+/// The guaranteed comment keys for codegen in a program, sorted and
+/// deduplicated.
 fn printable_starts(program: &Program<'_>) -> Vec<u32> {
     let mut visitor: PrintableStarts =
         PrintableStarts { starts: vec![0, program.span.end] };
@@ -210,8 +211,9 @@ fn json_comment<'a>(
 
 /// Serialize `program.comments` into `program_json` as its first key.
 ///
-/// Returns the input unchanged when there are no comments, so no-comment
-/// output stays byte-identical. `program_json` already carries UTF-16 spans.
+/// The function returns the input unchanged when there are no comments, so
+/// no-comment output stays byte-identical. `program_json` already carries
+/// UTF-16 spans.
 pub fn inject(
     ast: &Ast,
     spans: &SpanMap,
@@ -243,7 +245,8 @@ pub fn inject(
     format!("{prefix}\"comments\":{array}{separator}{body}")
 }
 
-/// Extract and normalize `program.comments` from UTF-16 program JSON.
+/// Extract and normalize `program.comments` from program JSON with UTF-16
+/// spans.
 ///
 /// An absent `comments` key means no comments. A present non-array value is
 /// an error, as is an entry that cannot be normalized.
@@ -294,8 +297,9 @@ pub fn extract(
 
 /// Attach normalized comments to a program using the program's own arena.
 ///
-/// Pure / no-side-effects annotations are demoted to normal comments because
-/// oxc diverts them to a stash that the ESTree codec cannot restore.
+/// The function demotes pure and no-side-effects annotations to normal
+/// comments, because oxc diverts them to a stash that the ESTree codec cannot
+/// restore.
 pub fn attach<'a>(
     allocator: &'a oxc::allocator::Allocator,
     program: &mut Program<'a>,
@@ -328,10 +332,11 @@ pub fn attach<'a>(
     reanchor(program);
 }
 
-/// Re-anchor comments on an existing AST to the starts codegen prints at.
+/// Re-anchor comments on an existing AST to the starts that codegen prints at.
 ///
-/// Returns whether the AST was changed. Pure / no-side-effects annotations are
-/// skipped so the pass-through path keeps oxc's own annotation stash.
+/// The function returns whether the AST changed. It skips pure and
+/// no-side-effects annotations so the pass-through path keeps oxc's own
+/// annotation stash.
 pub fn reanchor_ast(ast: &mut Ast) -> bool {
     if !needs_reanchor(ast.program()) {
         return false;

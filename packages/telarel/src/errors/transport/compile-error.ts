@@ -40,9 +40,6 @@ const toCompileErrorSource = (source: TransportSource): ErrorSource => {
     return ErrorSource.fromCode(source.file, source.code, source.span);
 };
 
-/**
- * Decode a raw binding rejection carrying a structured compile error.
- */
 const decodeRawCompileError = (
     error: unknown,
 ): DecodedCompileError | undefined => {
@@ -70,11 +67,6 @@ const decodeRawCompileError = (
     };
 };
 
-/**
- * Decode the compile error envelope carried by a raw binding error message.
- *
- * Malformed and unknown envelopes are ignored.
- */
 const decodeEnvelopeCompileError = (
     error: unknown,
 ): DecodedCompileError | undefined => {
@@ -127,9 +119,6 @@ const decodeEnvelopeCompileError = (
     };
 };
 
-/**
- * Decode a compile error from a raw binding rejection or its envelope.
- */
 const decodeCompileError = (
     error: unknown,
 ): DecodedCompileError | undefined => {

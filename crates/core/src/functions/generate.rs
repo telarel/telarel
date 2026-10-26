@@ -7,8 +7,8 @@ use crate::common::pipeline::{GenerateStage, run};
 
 /// Generate code from `ast`.
 ///
-/// Runs `options`, `start`, `generate`, and `end` — the builtin generator is
-/// the terminal fallback after every `generate` hook defers, and the resolved
+/// Runs `options`, `start`, `generate`, and `end`. The builtin generator is
+/// the terminal fallback after every `generate` hook defers. The resolved
 /// output source-map mode is applied to the winning result.
 pub async fn generate(
     ast: Ast,

@@ -16,7 +16,7 @@ type AstOptions = {
      */
     source: string;
     /**
-     * The grammar of the program; `undefined` means unknown because ESTree
+     * The grammar of the program. `undefined` means unknown, because ESTree
      * cannot carry grammar.
      */
     language?: Language;
@@ -32,7 +32,7 @@ type AstOptions = {
  *
  * Every hook that carries an AST receives an `Ast`. Mutations made through
  * {@link mutate} are carried forward only when the AST is returned from
- * `transform`; mutations in observer hooks are local to the hook.
+ * `transform`. Mutations in observer hooks are local to the hook.
  */
 class Ast {
     readonly #program: Program;
@@ -84,6 +84,9 @@ class Ast {
 
     /**
      * Runs `fn` with mutable access to the program and returns its result.
+     *
+     * A mutation carries forward only when a `transform` hook returns this AST.
+     * A mutation in an observer hook is local to the hook.
      */
     public mutate<Result extends void | Promise<void>>(
         fn: (program: Program) => Result,

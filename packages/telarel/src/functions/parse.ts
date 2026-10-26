@@ -12,7 +12,7 @@ import { CompileError } from "#/errors/compile";
 /**
  * Parses a source text with plugins, in memory.
  *
- * Unset options fall back to their defaults (see {@link ParseOptions}).
+ * Unset options use their defaults (see {@link ParseOptions}).
  */
 const parse = async (
     code: string,

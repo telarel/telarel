@@ -4,7 +4,7 @@ import { renderCodeFrame } from "#/errors/code-frame/render-code-frame";
 import { CompileError } from "#/errors/compile";
 
 /**
- * A plugin error with an optional source location.
+ * Fully specified options for a plugin error.
  */
 type CompletePluginErrorOptions = {
     /**
@@ -23,8 +23,8 @@ const PLUGIN_MESSAGES: WeakMap<PluginError, string> = new WeakMap();
 /**
  * An error raised by a plugin hook.
  *
- * `message` is the bare message; `render` adds the code frame when a source is
- * attached.
+ * The constructor message is the bare message. `render` adds the code frame
+ * when a source is attached.
  */
 class PluginError extends Error {
     readonly #message: string;

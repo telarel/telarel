@@ -6,10 +6,10 @@ use telarel_common::CompileError;
 use crate::errors::{ErrorSourcePayload, ErrorSpanPayload};
 use crate::plugin::spans::SpanMap;
 
-/// The private marker prefixed to encoded compile errors.
+/// The private marker that prefixes encoded compile errors.
 const COMPILE_ERROR_MARKER: &str = "__TELAREL_COMPILE_ERROR__:";
 
-/// The error payload carried by [`COMPILE_ERROR_MARKER`].
+/// The error payload that [`COMPILE_ERROR_MARKER`] carries.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompileErrorPayload {
     /// The JS error class name.
@@ -23,8 +23,8 @@ pub struct CompileErrorPayload {
 
 /// Encode a compile error into its marker payload.
 ///
-/// Returns `None` when serialization fails; the caller then falls back to the
-/// plain message.
+/// The function returns `None` when serialization fails. The caller then
+/// falls back to the plain message.
 pub fn encode_compile_error(error: &CompileError) -> Option<String> {
     let source: Option<ErrorSourcePayload> = error.source().map(|source| {
         let map: SpanMap = SpanMap::new(source.code());
@@ -56,10 +56,10 @@ pub fn encode_compile_error(error: &CompileError) -> Option<String> {
         .map(|json: String| format!("{COMPILE_ERROR_MARKER}{json}"))
 }
 
-/// Decode a compile error payload carried by an error reason.
+/// Decode a compile error payload from an error reason.
 ///
-/// Returns `None` when the marker is absent or the payload is malformed, so
-/// callers can rethrow the original error unchanged.
+/// The function returns `None` when the marker is absent or the payload is
+/// malformed, so callers can rethrow the original error unchanged.
 pub fn decode_compile_error(reason: &str) -> Option<CompileErrorPayload> {
     let reason: &str = reason.strip_prefix("Error: ").unwrap_or(reason);
 

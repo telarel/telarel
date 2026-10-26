@@ -34,9 +34,6 @@ const isSpan = (value: unknown): value is Span => {
     );
 };
 
-/**
- * Check whether a value is a source location in an error transport payload.
- */
 const isTransportSource = (value: unknown): value is TransportSource => {
     return (
         isRecord(value) &&

@@ -5,8 +5,9 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 
 /**
- * The `//#` inline-map comment marker, split so the literal token never appears
- * contiguously in source (Vite's sourcemap loader warns on it).
+ * This constant holds the inline-map comment marker. The declaration joins two
+ * literals so the literal token never appears contiguously in source, because
+ * Vite's sourcemap loader warns on it.
  */
 const SOURCE_MAPPING_COMMENT: string = "//#" + " sourceMappingURL=";
 

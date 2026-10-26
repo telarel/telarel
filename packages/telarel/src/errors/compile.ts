@@ -5,7 +5,7 @@ import { renderCodeFrame } from "#/errors/code-frame/render-code-frame";
 import { decodeCompileError } from "#/errors/transport/compile-error";
 
 /**
- * A compile error with an optional source location.
+ * Fully specified options for a compile error.
  */
 type CompleteCompileErrorOptions = {
     /**
@@ -25,9 +25,6 @@ const isRecord = (value: unknown): value is RecordValue => {
     return typeof value === "object" && value !== null;
 };
 
-/**
- * Extract the message from an arbitrary thrown value.
- */
 const messageOf = (error: unknown): string => {
     if (isRecord(error) && typeof error.message === "string") {
         return error.message;
@@ -52,8 +49,8 @@ const isPluginErrorLike = (value: unknown): value is PluginErrorLike => {
 /**
  * An error raised while compiling.
  *
- * `message` is the bare message; `render` adds the code frame when a source is
- * attached.
+ * The constructor message is the bare message. `render` adds the code frame
+ * when a source is attached.
  */
 class CompileError extends Error {
     readonly #message: string;
@@ -70,8 +67,10 @@ class CompileError extends Error {
     /**
      * Coerce any thrown value into a compile error.
      *
-     * Existing compile errors are returned unchanged; plugin errors and raw
-     * binding errors keep their message and source.
+     * An existing compile error is returned unchanged. Plugin errors and raw
+     * binding errors keep their message and source. For any other value, `from`
+     * uses the value's `message` property when it is a string. Otherwise,
+     * `from` converts the value with `String`.
      */
     public static from(error: unknown): CompileError {
         if (error instanceof CompileError) {

@@ -29,7 +29,7 @@ describe("sourcemap", (): void => {
 
         expect(typeof result.map).toBe("object");
         expect(result.map?.version).toBe(3);
-        // Parse always runs, so the map is the real codegen map: it names the
+        // Parse always runs, so the map is the real codegen map. It names the
         // input file as its single source and carries the encoded mappings.
         expect(result.map?.file).toBe(void 0);
         expect(result.map?.sourceRoot).toBe(void 0);
@@ -265,18 +265,18 @@ describe("sourcemap", (): void => {
             file: "index.ts",
         });
 
-        // Codegen prints the program, so the leading BOM is dropped from the
-        // output; the WASI code path also strips a leading U+FEFF.
+        // Codegen prints the program, so it drops the leading BOM from the
+        // output. The WASI code path also strips a leading U+FEFF.
         expect(result.code.replace(/^\uFEFF/gu, "")).toBe(
             'const µ = "日本語";',
         );
         expect(result.map?.version).toBe(3);
         expect(result.map?.sources).toEqual(["index.ts"]);
         expect(result.map?.mappings).toBe("AAAC,MAAM,IAAI");
-        // `sourcesContent` mirrors the original text, but the leading BOM's
-        // survival is runtime-dependent (the WASI TextDecoder strips a
-        // leading U+FEFF while the native binding preserves it) — pin only
-        // the runtime-independent remainder.
+        // `sourcesContent` mirrors the original text, but whether the leading
+        // BOM survives depends on the runtime. The WASI TextDecoder strips a
+        // leading U+FEFF, and the native binding preserves it. Pin only the
+        // runtime-independent remainder.
         expect(result.map?.sourcesContent).not.toBe(void 0);
         expect(result.map?.sourcesContent?.[0]?.replace(/^\uFEFF/gu, "")).toBe(
             'const µ = "日本語";',
@@ -307,8 +307,9 @@ describe("sourcemap", (): void => {
 
         expect(result.code).toBe("const a = 1;\nconst b = 2;");
         expect(result.map?.version).toBe(3);
-        // Codegen mappings: one statement per generated line, each naming the
-        // identifier, the literal, and the end of the statement.
+        // Codegen emits one statement per generated line. The three segments on
+        // each line mark the start of the statement, the identifier, and the
+        // literal.
         expect(result.map?.mappings).toBe("AAAA,MAAM,IAAI;AACV,MAAM,IAAI");
     });
 
@@ -321,8 +322,8 @@ describe("sourcemap", (): void => {
             },
         );
 
-        // Codegen prints the program, so CRLF line endings are normalized to
-        // LF in the output; `sourcesContent` keeps the original text.
+        // Codegen prints the program, so it normalizes CRLF line endings to LF
+        // in the output. `sourcesContent` keeps the original text.
         expect(result.code).toBe("const a = 1;\nconst b = 2;");
         expect(result.map?.version).toBe(3);
         expect(result.map?.sourcesContent).toEqual([
@@ -337,8 +338,8 @@ describe("sourcemap", (): void => {
             file: "index.ts",
         });
 
-        // The trailing `\r\n` terminator is stripped by codegen, and the map
-        // still covers the single statement.
+        // Codegen strips the trailing `\r\n` terminator, and the map still
+        // covers the single statement.
         expect(result.code).toBe("const a = 1;");
         expect(result.map?.version).toBe(3);
         expect(result.map?.mappings).toBe("AAAA,MAAM,IAAI");
@@ -411,13 +412,12 @@ describe("sourcemap", (): void => {
         expect(result.code).toBe("const renamed-long = 1;");
         expect(result.map?.version).toBe(3);
         expect(result.map?.sources).toEqual(["index.ts"]);
-        // Codegen records the source identifier name the renamed output maps
-        // back to; the source text still reads `a`.
+        // Codegen records the source identifier name that the renamed output
+        // maps back to. The source text still reads `a`.
         expect(result.map?.names).toEqual(["a"]);
         expect(result.map?.mappings.length).toBeGreaterThan(0);
-        // A changed AST must not produce byte-identical mappings: the
-        // generated identifier is longer, so the later segments' column deltas
-        // shift.
+        // A changed AST must not produce byte-identical mappings. The generated
+        // identifier is longer, so the column deltas of later segments shift.
         expect(result.map?.mappings).not.toBe(baseline.map?.mappings);
     });
 

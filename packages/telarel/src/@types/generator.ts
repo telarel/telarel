@@ -5,11 +5,11 @@ import type { SourceMapOptions } from "#/@types/sourcemap";
  */
 type GeneratorOptions = {
     /**
-     * Current working directory.
+     * The working directory. Builtin codegen does not use it.
      */
     cwd: string;
     /**
-     * The file being generated.
+     * The output file path recorded in the generated source map.
      */
     file: string;
     /**

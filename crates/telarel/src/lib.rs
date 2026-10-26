@@ -2,7 +2,7 @@
 //!
 //! An extensible JavaScript compiler.
 //!
-//! This crate is the public-facing API, re-exporting the compile pipeline,
+//! This crate is the public API. It re-exports the compile pipeline,
 //! the plugin system, and the shared types.
 
 pub use telarel_common::{

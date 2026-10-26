@@ -27,8 +27,8 @@ pub fn rewrite(
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<FunctionTask<JsAstResult>>> {
     let options_rust: RewriteOptions = options.to_rewrite_options()?;
 
-    // Explicit options win, then the input AST's grammar, then the grammar
-    // inferred from the resolved file.
+    // The precedence is explicit options, then the input AST's grammar, then
+    // the grammar inferred from the resolved file.
     let resolved: ResolvedOptions = resolve_options(
         ResolvableOptions::from(options_rust.clone()),
         Vec::new(),

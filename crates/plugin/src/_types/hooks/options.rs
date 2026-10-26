@@ -5,13 +5,14 @@ use crate::plugin::pluginable::SharedPluginable;
 
 /// Arguments for the `options` hook: resolvable options plus the plugin list.
 ///
-/// The `options` hook returns args to replace the whole set — fields not
-/// present are dropped (struct-level replace); returning `None` keeps it.
+/// The `options` hook returns args that replace the whole set. Fields not
+/// present are dropped (struct-level replace). Returning `None` keeps the args
+/// unchanged.
 #[derive(Debug, Clone)]
 pub struct OptionsArgs {
     /// Resolvable compile options.
     pub options: ResolvableOptions,
-    /// Plugins to run, in order; duplicates are allowed.
+    /// Plugins to run, in order. Duplicates are allowed.
     pub plugins: Vec<SharedPluginable>,
 }
 
@@ -76,7 +77,6 @@ mod tests {
 
     #[test]
     fn test_options_args_carry_no_code_field() {
-        // The options payload has no `code`; language/source-type are optional.
         let args: OptionsArgs = OptionsArgs {
             options: ResolvableOptions {
                 cwd: Some(PathBuf::from("/repo")),

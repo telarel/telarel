@@ -13,7 +13,7 @@ impl Parser {
 }
 ```
 
-`Parser` is the builtin parser used by the pipeline as the terminal fallback after every `parse` hook defers. It never runs the plugin chain. Use [`parse`](/apis/rust/parse) when plugins should be able to replace the parse result.
+The pipeline uses `Parser` as the builtin parser and terminal fallback after every `parse` hook defers. It never runs the plugin chain. When plugins should be able to replace the parse result, use [`parse`](/apis/rust/parse).
 
 ## `Parser::new`
 
@@ -23,17 +23,17 @@ Creates a parser over `code` and its resolved `ParserOptions`.
 
 Every field is required. In a `parse` hook, the stage options are available as `args.options`.
 
-| Field         | Type               | Description                                                                                                                                                  |
-| ------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `cwd`         | `PathBuf`          | Filesystem root used to locate the source file; a relative input map `path` resolves against the source file's directory, and absolute paths are used as-is. |
-| `file`        | `String`           | The file being parsed.                                                                                                                                       |
-| `language`    | `Language`         | The grammar of the code.                                                                                                                                     |
-| `source_type` | `SourceType`       | The module system of the code.                                                                                                                               |
-| `source_map`  | `SourceMapOptions` | The source-map inputs and outputs requested for the step.                                                                                                    |
+| Field         | Type               | Description                                                                                                                                                            |
+| ------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cwd`         | `PathBuf`          | Filesystem root used to locate the source file. A relative `path` in the input source map resolves against the source file's directory. Absolute paths are used as-is. |
+| `file`        | `String`           | The file being parsed.                                                                                                                                                 |
+| `language`    | `Language`         | The grammar of the code.                                                                                                                                               |
+| `source_type` | `SourceType`       | The module system of the code.                                                                                                                                         |
+| `source_map`  | `SourceMapOptions` | The source-map inputs and outputs requested for the step.                                                                                                              |
 
 ## `Parser::parse`
 
-Parses the fixed source text and returns the resulting AST. The parser resolves any requested input source map and attaches it to the returned AST; output delivery is applied by the pipeline.
+Parses the fixed source text and returns the resulting AST. The parser resolves a requested input source map and attaches it to the returned AST. The pipeline applies the resolved output source-map mode.
 
 `AstResult` is `{ ast: Ast }`. See [Ast](/apis/rust/Ast) for accessors, clone semantics, and mutation.
 

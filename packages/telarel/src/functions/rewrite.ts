@@ -13,8 +13,8 @@ import { normalizeAstInput } from "#/functions/ast-input";
 /**
  * Rewrites an AST with plugins, in memory.
  *
- * Accepts a normalized {@link Ast}, or a bare ESTree program together with its
- * source text.
+ * Accepts an {@link Ast}, or a bare ESTree program together with its source
+ * text.
  */
 function rewrite(ast: Ast, options?: RewriteOptions): Promise<AstResult>;
 

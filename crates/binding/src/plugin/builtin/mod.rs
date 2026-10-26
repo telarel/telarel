@@ -29,7 +29,7 @@ fn parse_builtin_name(name: &str) -> Result<BindingBuiltinPluginName> {
     }
 }
 
-/// Build the builtin plugin selected by its JS name and options.
+/// Build the builtin plugin for a JS name and options.
 pub fn to_builtin_plugin(
     name: &str,
     options: Option<serde_json::Value>,

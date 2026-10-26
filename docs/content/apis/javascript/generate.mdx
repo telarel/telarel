@@ -15,11 +15,11 @@ function generate(
 
 Generates code from an AST with plugins, in memory.
 
-The builtin generator is the terminal fallback after every `generate` plugin hook defers, and the resolved output source-map mode is applied to the winning result.
+The AST's own input map wins. Otherwise, the pipeline attaches the requested input map before generation. The builtin generator is the terminal fallback when every `generate` hook defers. The pipeline applies the resolved output source-map mode to the winning result.
 
 ## Parameters
 
-The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare ESTree `Program` together with its source text.
+The function accepts either an [Ast](/apis/javascript/Ast) instance or a bare ESTree `Program` with its source text.
 
 | Name      | Type              | Description                |
 | --------- | ----------------- | -------------------------- |
@@ -39,22 +39,22 @@ The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare E
 | `cwd`       | `string`           | `process.cwd()`  | Current working directory.                                                        |
 | `file`      | `string`           | `index.ts`       | The file being generated. Its extension is the final fallback for the grammar.    |
 | `language`  | `Language`         | inferred         | The grammar to generate with. Overrides the AST language and extension inference. |
-| `output`    | `OutputOptions`    | `{ file: file }` | Output code settings. `output.file` derives the default source-map URL.           |
+| `output`    | `OutputOptions`    | `{ file: file }` | Output code configuration. `output.file` derives the default source-map URL.      |
 | `sourceMap` | `SourceMapOptions` | off              | The source-map inputs and outputs requested for the step.                         |
 | `plugins`   | `PluginOption[]`   | `[]`             | The plugins to run.                                                               |
 
-The grammar precedence is `options.language > Ast.language > file extension`. Module kind remains owned by `ast.program.sourceType`: there is no generate `sourceType` option.
+The grammar precedence is `options.language > Ast.language > file extension`. `ast.program.sourceType` owns the module kind. `generate` has no `sourceType` option.
 
-An empty `output.file` or `sourceMap.output.url` is treated as unset, same as absent.
+The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
 
 ## Returns
 
 `Promise<CodeResult>`:
 
-| Field  | Type                | Description                                                   |
-| ------ | ------------------- | ------------------------------------------------------------- |
-| `code` | `string`            | The generated code.                                           |
-| `map`  | `SourceMap \| null` | The source map for the generated code, when one was produced. |
+| Field  | Type                | Description                                                          |
+| ------ | ------------------- | -------------------------------------------------------------------- |
+| `code` | `string`            | The generated code.                                                  |
+| `map`  | `SourceMap \| null` | The source map for the generated code, or `null` when no map exists. |
 
 ## Example
 

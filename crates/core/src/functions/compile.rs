@@ -7,11 +7,12 @@ use crate::common::pipeline::{CompileStage, run};
 
 /// Compile `code` from source to generated output.
 ///
-/// Runs the full chain — `options`, `start`, `parse`, `prepare`, `transform`,
-/// `finalize`, `generate`, and `end` — inline, so `options`/`start`/`end` fire
-/// exactly once. After a `parse` hook wins, the pipeline attaches the requested
-/// input source map when the returned AST carries none; an AST's own map wins.
-/// The builtin parser is the fallback when every `parse` hook defers.
+/// Runs the full chain inline: `options`, `start`, `parse`, `prepare`,
+/// `transform`, `finalize`, `generate`, and `end`. Thus `options`, `start`, and
+/// `end` fire exactly once. After a `parse` hook wins, the pipeline attaches
+/// the requested input source map when the returned AST carries none. An AST's
+/// own map wins. The builtin parser is the fallback when every `parse` hook
+/// defers.
 pub async fn compile(
     code: String,
     options: CompileOptions,

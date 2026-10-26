@@ -23,27 +23,27 @@ use crate::helpers::usage::collect_usages;
 
 /// Inline the used runtime helpers into `program`.
 ///
-/// `module_name` is the resolved helper module name the oxc transformer used
-/// for the runtime import specifiers. Returns `Ok(false)` when the program
-/// contains no helper import/require statements (which includes every
-/// non-inline run, since the pass is only invoked in inline mode) and the
-/// program is left untouched; `Ok(true)` reports that edits were applied.
+/// `module_name` is the resolved helper module name that the oxc transformer
+/// used for the runtime import specifiers. The function returns `Ok(false)`
+/// and leaves the program untouched when it finds no helper import or require
+/// statements. It returns `Ok(true)` when it applies edits.
+///
+/// The plugin calls this pass only in inline mode.
 pub fn run<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
     module_name: &str,
 ) -> Result<bool, PluginError> {
-    // Match the usage statements syntactically first: files without helper
-    // usages return before paying for the semantic rebuild below.
+    // Match helper usages syntactically first. Files without usages return
+    // before the semantic rebuild below.
     let usages: Vec<HelperUsage> = collect_usages(program, module_name);
 
     if usages.is_empty() {
         return Ok(false);
     }
 
-    // The transformed program's scoping is stale; rebuild it so binding
-    // symbols of the usages can be read, then re-collect the usages to pick
-    // up the correct symbol ids.
+    // The transformed program's scoping is stale. Rebuild it to read the usage
+    // binding symbols, then collect the usages again for correct symbol ids.
     let scoping: Scoping =
         SemanticBuilder::new().build(program).semantic.into_scoping();
 
@@ -57,8 +57,8 @@ pub fn run<'a>(
         emitted: Vec::new(),
     };
 
-    // The first usage fixes the binding name (oxc's deconflicted uid); extra
-    // usages are renamed to it.
+    // The first usage fixes the binding name (oxc's deconflicted uid).
+    // Extra usages are renamed to it.
     let mut duplicate_renames: HashMap<SymbolId, String> = HashMap::new();
 
     for usage in &usages {
@@ -185,12 +185,11 @@ mod tests {
 
         let code: String = codegen_program(&program);
 
-        // At this scale a helper can be pulled into an earlier helper's
-        // dependency closure under a fresh uid before its own direct import
-        // is processed, so exact per-name assertions belong to the
-        // plugin-level trigger tests in `plugin.rs`. Here the load-bearing
-        // invariant is that every runtime specifier was consumed and
-        // deconfliction did not panic or drop helpers.
+        // At this scale, a helper can enter an earlier dependency closure under
+        // a fresh uid before its direct import is processed. Exact per-name
+        // assertions live in the plugin trigger tests. Here the invariant is
+        // that every runtime specifier is consumed and deconfliction drops no
+        // helper.
         assert!(
             !code.contains(DEFAULT_HELPER_MODULE_NAME),
             "no runtime specifier may survive: {code}"

@@ -3,7 +3,7 @@ title: Rust plugin API
 description: Implement plugins with the Rust Plugin trait and SharedPluginable.
 ---
 
-The `telarel` crate re-exports the plugin interface from `telarel_plugin`. A Rust plugin implements the `Plugin` trait and is wrapped into a shared, object-safe handle with `Plugin::new_shared`.
+The `telarel` crate re-exports the plugin interface from `telarel_plugin`. A Rust plugin implements the `Plugin` trait. `Plugin::new_shared` wraps it into a shared, object-safe handle.
 
 For the hook contract shared by both languages, see the [Plugin API](/apis/plugin).
 
@@ -24,14 +24,14 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
 ```
 
 - `name` returns the plugin name.
-- `register_hook_usage` declares which hooks the plugin implements. `parse`, `prepare`, `transform`, `finalize`, and `generate` run only when declared. `options` runs once per distinct instance; `start` and `end` run on every settled entry, duplicates included.
-- `new_shared` wraps a sized plugin into a `SharedPluginable` (`Arc<dyn Pluginable>`); the handle, not the name, is the `options` identity. `Pluginable` is the object-safe mirror of the trait and is implemented for every `Plugin`.
+- `register_hook_usage` declares which hooks the plugin implements. `parse`, `prepare`, `transform`, `finalize`, and `generate` run only when declared. `options` runs once per distinct instance. `start` and `end` run on every settled entry, duplicates included. A settled entry is an entry in the plugin list after the `options` stage.
+- `new_shared` wraps a sized plugin into a `SharedPluginable` (`Arc<dyn Pluginable>`). The handle, not the name, is the `options` identity. `Pluginable` is the object-safe mirror of the trait. Every `Plugin` implements it.
 
 Every hook has a default implementation that does nothing, so a plugin only writes the hooks it needs.
 
 ### `HookUsage`
 
-`HookUsage` is a bit flag set with one flag per hook:
+`HookUsage` is a bit flag set with one flag for each hook:
 
 ```rust
 use telarel::HookUsage;
@@ -43,7 +43,7 @@ The flags are `Options`, `Start`, `Parse`, `Prepare`, `Transform`, `Finalize`, `
 
 ## Hooks
 
-Each hook returns an `impl Future`, so its body can be written as an `async` block. The context borrows the pipeline state, and the hook resolves to its return type.
+Each hook returns an `impl Future`, so you can write its body as an `async` block. The context borrows the pipeline state. The hook future resolves to its return type.
 
 | Hook        | Arguments                              | Return            |
 | ----------- | -------------------------------------- | ----------------- |
@@ -69,19 +69,23 @@ Each hook returns an `impl Future`, so its body can be written as an `async` blo
 | `GenerateArgs`  | `ast: &Ast`, `options: &GeneratorOptions`                      |
 | `EndArgs`       | `error: Option<CompileError>`                                  |
 
-The options bag is shared by every entry point and always uses `source_map`. `parse` and `rewrite` expose a flat `input_source_map` at the entry point; it is normalized to `source_map.input` before the `options` hook runs. Those AST-producing entry points ignore `source_map.output` and `output`, so a stage-agnostic plugin may set them for every stage without failing.
+Every entry point uses the options bag, which always uses `source_map`. `parse` and `rewrite` expose a flat `input_source_map` at the entry point. The pipeline normalizes it to `source_map.input` before the `options` hook runs.
 
-A `parse` hook replacement is used as returned: its own `Ast` / `Program.source_type` carries the grammar that later stages and code generation see. `ParserOptions` are passed to the hook, but the driver applies them only to the builtin parser that runs when every hook defers. The JavaScript binding differs: it rebuilds a parse replacement with the parser options' grammar.
+Those AST-producing entry points ignore `source_map.output` and `output`. A stage-agnostic plugin can set them for every stage without failing.
 
-`TransformArgs` owns a cheap [Ast](/apis/rust/Ast) handle: `Ast::clone` is O(1), and `Ast::with_mut` copies the arena on write when the driver still holds the carried AST. `TransformArgs` is `Clone`, not `Copy`. Returning `None` leaves the driver's AST untouched.
+The pipeline uses a `parse` hook replacement exactly as the hook returns it. Its own `Ast` / `Program.source_type` provides the grammar for later stages and code regeneration. The pipeline passes `ParserOptions` to the hook.
 
-`with_mut` may rewrite the tree, but changing the source text requires building a new [Ast](/apis/rust/Ast) and returning it. Debug builds assert that `Program::source_text` still matches `Ast::source`.
+The driver applies these options only to the builtin parser that runs when every hook defers, which means no hook returns a replacement. The builtin is the compiler's own parser or generator. The JavaScript binding differs: it rebuilds a parse replacement with the grammar of the parser options.
 
-`TransformOutput` is the value a `transform` hook returns to replace the carried AST; it wraps the new owned `ast`.
+`TransformArgs` owns a cheap [Ast](/apis/rust/Ast) handle. `Ast::clone` is O(1). `Ast::with_mut` copies the arena on write when the driver still holds the carried AST. The carried AST is the AST that `transform` passes from plugin to plugin. `TransformArgs` is `Clone`, not `Copy`. Returning `None` leaves the driver's AST untouched.
+
+`with_mut` can rewrite the tree. Changing the source text requires a new [Ast](/apis/rust/Ast) that the hook returns. Debug builds assert that `Program::source_text` still matches `Ast::source`.
+
+`TransformOutput` is the value that a `transform` hook returns to replace the carried AST. It wraps the new owned `ast`.
 
 ### Returns
 
-Every fallible hook returns `Result<_, PluginError>`. `NotifyReturn` is `Result<(), PluginError>`; the stages that hand back a value return `Option` inside the result, where `None` means "no change".
+Every fallible hook returns `Result<_, PluginError>`. `NotifyReturn` is `Result<(), PluginError>`. The stages that return a value return `Option` inside the result. `None` means "no change".
 
 | Type              | Definition                                     |
 | ----------------- | ---------------------------------------------- |
@@ -91,7 +95,7 @@ Every fallible hook returns `Result<_, PluginError>`. `NotifyReturn` is `Result<
 | `TransformReturn` | `Result<Option<TransformOutput>, PluginError>` |
 | `GenerateReturn`  | `Result<Option<CodeResult>, PluginError>`      |
 
-Returning `Some` from `options` replaces the whole bag; omitted fields fall back to defaults. Duplicates and the depth guard follow the [shared fixpoint rules](/apis/plugin#hook-semantics).
+Returning `Some` from `options` replaces the whole bag. Omitted fields take their default values. Duplicates and the depth guard follow the [shared fixpoint rules](/apis/plugin#hook-semantics).
 
 ### Errors
 
@@ -99,7 +103,7 @@ A hook reports failure with [PluginError](/apis/rust/PluginError). The error rea
 
 ## Ordering
 
-Each Rust hook exposes a `<hook>_meta` method returning `Option<PluginHookMeta>`, all defaulting to `None`. `PluginOrder` is `Pre` or `Post`.
+Each Rust hook exposes a `<hook>_meta` method that returns `Option<PluginHookMeta>`. All these methods default to `None`. `PluginOrder` is `Pre` or `Post`.
 
 ```rust
 use telarel::{PluginHookMeta, PluginOrder};
@@ -111,7 +115,7 @@ fn transform_meta(&self) -> Option<PluginHookMeta> {
 
 ## Context
 
-- `options` receives `CommonPluginContext`, which carries no fields.
+- `options` receives `CommonPluginContext`, which has no fields.
 - Every later hook receives `PluginContext`:
 
 | Field    | Type         | Description                                     |
@@ -143,7 +147,7 @@ let result: CodeResult = compile(
 
 ## Example
 
-A plugin that rewrites the module specifier `react` to `preact/compat` in `transform`. The hook owns a cheap AST handle; mutating it through `Ast::with_mut` copies the arena on write, and the mutated AST is returned as `TransformOutput`:
+The example plugin rewrites the module specifier `react` to `preact/compat` in `transform`. The hook owns a cheap AST handle and mutates it through `Ast::with_mut`, which copies the arena on write. The hook returns the mutated AST as `TransformOutput`:
 
 <PeekCode>
 

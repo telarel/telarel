@@ -1,12 +1,12 @@
 //! The shared pipeline skeleton behind the five public entry points.
 //!
-//! Every entry point converts its options to [`ResolvableOptions`], runs the
-//! `options` fixpoint exactly once, resolves the settled options, runs `start`
-//! exactly once, executes the stages its [`Stage`] declares, then runs `end`
-//! exactly once. Stages are run inline — never by re-entering another public
-//! function — so `options`, `start`, and `end` fire once per invocation. The
-//! only path that skips `end` is an `options`-fixpoint failure, where no
-//! driver exists yet.
+//! Every entry point converts its options to [`ResolvableOptions`]. It then
+//! runs the `options` fixpoint exactly once and resolves the settled options.
+//! Next it runs `start` exactly once, executes the stages its [`Stage`]
+//! declares, and runs `end` exactly once. Stages run inline, never by
+//! re-entering another public function, so `options`, `start`, and `end` fire
+//! once per invocation. The only path that skips `end` is an
+//! `options`-fixpoint failure, where no driver exists yet.
 
 use telarel_common::{
     Ast, AstResult, CodeResult, CompileError, Generator, GeneratorOptions,
@@ -39,7 +39,7 @@ pub trait Stage {
     ) -> Result<Self::Output, CompileError>;
 }
 
-/// The resolved output options; `None` falls back to the defaults.
+/// The resolved output options. `None` falls back to the defaults.
 fn output_options(output: Option<&OutputSourceMap>) -> OutputSourceMapOptions {
     match output {
         | Some(OutputSourceMap::Mode(mode)) => {
@@ -52,7 +52,7 @@ fn output_options(output: Option<&OutputSourceMap>) -> OutputSourceMapOptions {
 
 /// Attach the resolved input map to `ast` when it carries none.
 ///
-/// The AST's own map always wins; `Ok(None)` from the resolver means there is
+/// The AST's own map always wins. `Ok(None)` from the resolver means there is
 /// nothing to attach.
 fn attach_input_map(
     ast: Ast,
@@ -79,7 +79,7 @@ fn attach_input_map(
 
 /// The `parse` stage: the builtin parser is the terminal fallback after every
 /// `parse` hook defers. The resolved input map is attached to the winning AST
-/// when it carries none; an AST's own map wins.
+/// when it carries none. An AST's own map wins.
 async fn parse_stage(
     driver: &PluginDriver,
     ctx: &PluginContext<'_>,
@@ -124,8 +124,8 @@ async fn rewrite_stages(
 }
 
 /// The `generate` stage: the builtin generator is the terminal fallback after
-/// every `generate` hook defers. The resolved output source-map options are
-/// applied uniformly, regardless of which hook won.
+/// every `generate` hook defers. The pipeline applies the resolved output
+/// source-map options uniformly, regardless of which hook won.
 async fn generate_stage(
     driver: &PluginDriver,
     ctx: &PluginContext<'_>,
@@ -152,8 +152,8 @@ async fn generate_stage(
 
 /// Run `end` around a stage result.
 ///
-/// On success `error` is unset; on a stage failure it carries the original
-/// stage error. A failing `end` replaces the returned error with its own; a
+/// On success, `error` is unset. On a stage failure, it carries the original
+/// stage error. A failing `end` replaces the returned error with its own. A
 /// succeeding `end` leaves the stage error untouched. `end` itself runs on
 /// every path after the settle.
 async fn finish<T>(
@@ -301,7 +301,7 @@ pub async fn run<S: Stage>(
     options: ResolvableOptions,
     plugins: Vec<SharedPluginable>,
 ) -> Result<S::Output, CompileError> {
-    // The `options` fixpoint runs BEFORE any driver exists; plugins injected
+    // The `options` fixpoint runs BEFORE any driver exists. Plugins injected
     // into the args join the settled list.
     let common: CommonPluginContext = CommonPluginContext::default();
 
@@ -312,9 +312,9 @@ pub async fn run<S: Stage>(
             .await
             .map_err(|error: PluginError| error.into_compile_error())?;
 
-    // The driver is built from the SETTLED list: its usage aggregate covers
-    // plugins injected during the `options` stage, and its settled names feed
-    // resolution.
+    // The pipeline builds the driver from the SETTLED list. Its usage aggregate
+    // covers plugins injected during the `options` stage, and its settled names
+    // feed resolution.
     let driver: PluginDriver = PluginDriver::new(settled);
 
     let requested_language: Option<Language> = args.options.language;

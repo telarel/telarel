@@ -364,9 +364,10 @@ describe("ordering", (): void => {
             ],
         });
 
-        // The `pre` hook runs first; the `normal` hook runs last, so its
-        // returned bag wins the fold. The code is never part of the bag, so
-        // the source is untouched.
+        // The `pre` hook runs first, and the `normal` hook runs last. The last
+        // returned options bag replaces the earlier one, so the `normal` hook
+        // sets the final `file`. The bag never carries `code`, so the source
+        // is untouched.
         expect(seen).toEqual(["pre", "normal"]);
         expect(result.code).toBe("const a = 1;");
         expect(result.map?.sources).toEqual(["normal.ts"]);

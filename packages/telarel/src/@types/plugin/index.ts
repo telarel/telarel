@@ -37,20 +37,25 @@ type ObjectHook<T> =
       };
 
 /**
- * Hooks are return-based: return the new value to replace it, or `null`/`void`
- * to make no change. The `start`, `prepare`, `finalize`, and `end` hooks are
- * observers: return values are ignored.
+ * A named plugin with optional hooks for the pipeline.
+ *
+ * Hooks are return-based. Return a new value to replace the current one, or
+ * `null`/`void` to keep it. The `start`, `prepare`, `finalize`, and `end` hooks
+ * are observers. Their return values are ignored.
  */
 type Plugin = {
     /**
-     * The plugin name.
+     * A non-empty string identifying the plugin.
+     *
+     * Resolved options list the names in registration order, duplicates
+     * included.
      */
     name: string;
     /**
-     * The options hook: return the full options args to replace it, or
+     * The options hook. Return the full options bag to replace it, or
      * `null`/`void` for no change. The `code` is never part of the bag.
      *
-     * Runs before resolution, as a fixpoint: plugins added here get their own
+     * Runs before resolution as a fixpoint. Plugins added here get their own
      * `options` hook run too.
      */
     options?: ObjectHook<
@@ -60,16 +65,16 @@ type Plugin = {
         ) => OptionsArgs | null | void | Promise<OptionsArgs | null | void>
     >;
     /**
-     * The start hook: notify on the start of compilation, with resolved
+     * The start hook. Observes the start of compilation with the resolved
      * read-only options.
      */
     start?: ObjectHook<
         (ctx: PluginContext, args: StartArgs) => void | Promise<void>
     >;
     /**
-     * The parse hook: first-win. Return `{ ast }` to supply the AST, or
-     * `null`/`void` to defer to the next `parse` hook and, after all defer, the
-     * builtin parser.
+     * The parse hook. The first non-null result wins. Return `{ ast }` to
+     * supply the AST, or `null`/`void` to defer to the next `parse` hook. After
+     * every hook defers, the builtin parser runs.
      */
     parse?: ObjectHook<
         (
@@ -78,14 +83,14 @@ type Plugin = {
         ) => AstResult | null | void | Promise<AstResult | null | void>
     >;
     /**
-     * The prepare hook: observer on the parsed AST; return values are ignored.
+     * The prepare hook. Observes the parsed AST. Return values are ignored.
      */
     prepare?: ObjectHook<
         (ctx: PluginContext, args: PrepareArgs) => void | Promise<void>
     >;
     /**
-     * The transform hook: chained AST transformation; return `{ ast }` to
-     * replace the AST, or `null`/`void` for no change.
+     * The transform hook. The transform hooks run in a chain. Return `{ ast }`
+     * to replace the AST, or `null`/`void` for no change.
      */
     transform?: ObjectHook<
         (
@@ -98,15 +103,16 @@ type Plugin = {
             | Promise<TransformResult | null | void>
     >;
     /**
-     * The finalize hook: observer on the final AST; return values are ignored.
+     * The finalize hook. Observes the final AST. Return values are ignored.
      */
     finalize?: ObjectHook<
         (ctx: PluginContext, args: FinalizeArgs) => void | Promise<void>
     >;
     /**
-     * The generate hook: first-win. Return `{ code, map? }` to supply the
-     * output, or `null`/`void` to defer to the next `generate` hook and, after
-     * all defer, the builtin generator.
+     * The generate hook. The first non-null result wins. Return a result object
+     * with `code` and an optional `map` to supply the output, or `null`/`void`
+     * to defer to the next `generate` hook. After every hook defers, the
+     * builtin generator runs.
      */
     generate?: ObjectHook<
         (
@@ -115,10 +121,10 @@ type Plugin = {
         ) => CodeResult | null | void | Promise<CodeResult | null | void>
     >;
     /**
-     * The end hook: notify on the end of compilation.
+     * The end hook. Observes the end of compilation.
      *
-     * Runs on every path after the options fixpoint settles, including when the
-     * compile failed. Not run when the options stage itself fails.
+     * Runs on every path after the options fixpoint settles, even when
+     * compilation fails. Does not run when the options stage itself fails.
      */
     end?: ObjectHook<
         (ctx: PluginContext, args: EndArgs) => void | Promise<void>

@@ -14,19 +14,14 @@ use telarel_plugin::{
 use crate::options::TransformOptions;
 use crate::options::helper_loader::ResolvedHelpers;
 
-/// The transform plugin name used on the Rust side.
+/// The default transform plugin name on the Rust side.
 pub const NAME: &str = "telarel_plugin_transform";
 
-/// The resolved, cached plugin state.
 #[derive(Debug, Clone)]
 struct Resolved {
-    /// The oxc transform options for the main transformer pass.
     oxc: OxcTransformOptions,
-    /// The resolved helper-loader state for the inline helpers pass.
     helpers: ResolvedHelpers,
-    /// The resolved `define` config, `None` when not configured.
     define: Option<oxc_transformer_plugins::ReplaceGlobalDefinesConfig>,
-    /// The resolved `inject` config, `None` when not configured.
     inject: Option<oxc_transformer_plugins::InjectGlobalVariablesConfig>,
 }
 
@@ -42,15 +37,14 @@ fn render_diagnostics(
     PluginError::new(rendered)
 }
 
-/// The transform plugin, wrapping the oxc transformer.
+/// The transform plugin. It wraps the oxc transformer and runs the transform
+/// passes.
 #[derive(Debug)]
 pub struct TransformPlugin {
-    /// The name reported to the plugin pipeline.
     name: Cow<'static, str>,
-    /// Transform options.
     options: TransformOptions,
-    /// Lazily resolved oxc options and plugin configs;
-    /// an `Err` caches the config resolution failure so it replays on every call.
+    /// Lazily resolved oxc options and plugin configuration.
+    /// An `Err` caches the resolution failure and replays it on every call.
     resolved: OnceLock<Result<Resolved, PluginError>>,
 }
 
@@ -60,15 +54,13 @@ impl TransformPlugin {
         Self::with_options(TransformOptions::default())
     }
 
-    /// Run the transform pipeline.
     async fn transform_inner<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
         args: TransformArgs,
     ) -> Result<Option<TransformOutput>, PluginError> {
-        // The cached resolution is a pure function of the options; the
-        // per-call `cwd` from the plugin context overlays on a clone so
-        // the cache itself stays cwd-free.
+        // The cache is a pure function of the options. The per-call cwd
+        // overlays a clone so the cache stays cwd-free.
         let resolved: &Result<Resolved, PluginError> =
             self.resolved.get_or_init(|| {
                 let define: Result<
@@ -93,8 +85,8 @@ impl TransformPlugin {
                 })
             });
 
-        // A cached resolution error replays on every call; the program has
-        // not been mutated because resolution precedes the transformer.
+        // A cached resolution error replays on every call.
+        // The program is unmodified because resolution precedes the transformer.
         let resolved: &Resolved = match resolved {
             | Ok(resolved) => resolved,
             | Err(error) => return Err(error.clone()),
@@ -104,14 +96,13 @@ impl TransformPlugin {
 
         TransformOptions::apply_cwd(&mut resolved_oxc, ctx.cwd);
 
-        // The driver retains the carried AST, so `with_mut` copy-on-writes;
-        // the copy is discarded when the passes report no change.
+        // The driver retains the carried AST, so `with_mut` copies on write.
+        // The copy is discarded when the passes report no change.
         let mut ast: Ast = args.ast;
 
-        // Change detection: the main oxc transformer exposes no changed
-        // flag, so its effect is probed exactly by printing the program
-        // before and after the pass; the inject and define passes report
-        // their own `changed`; the helpers pass reports whether it edited
+        // The main oxc transformer has no changed flag. Compare code generation
+        // before and after the pass instead. The inject and define passes report
+        // their own `changed` flag, and the helpers pass reports whether it edited
         // the program.
         let before: String = generate_program(ast.program(), ctx.module.file).0;
 
@@ -143,8 +134,8 @@ impl TransformPlugin {
             changed = changed
                 || generate_program(program, ctx.module.file).0 != before;
 
-            // Replace oxc's runtime helper imports with the vendored bodies
-            // before inject/define run.
+            // Replace oxc runtime helper imports with the vendored bodies
+            // before inject and define run.
             if resolved.helpers.inline() {
                 let inlined: bool = crate::helpers::run(
                     allocator,
@@ -318,8 +309,8 @@ mod tests {
     ) -> String {
         let ast: Ast = parse(file, code);
 
-        // Mirror the driver semantics: `Some` carries the transformed
-        // program; `None` means the read-only input stands.
+        // Mirror the driver semantics. `Some` carries the transformed program,
+        // and `None` means the read-only input stands.
         match run_hook(&plugin, file, &ast).await.expect("transform succeeds") {
             | Some(output) => {
                 telarel_common::generate_program(output.ast.program(), file).0
@@ -417,9 +408,9 @@ mod tests {
 
     /// Every vendored helper, mapped to a snippet that makes the transform
     /// plugin emit it. The dependency-only helpers (`OverloadYield`, `get`,
-    /// `set`, `typeof`, ...) are never loaded directly by oxc; they are pulled
-    /// in transitively, so their entry reuses the dependent snippet and a
-    /// rename-stable marker proves they were inlined.
+    /// `set`, `typeof`, and others) are never loaded directly by oxc. They
+    /// are pulled in transitively, so their entry reuses the dependent
+    /// snippet and a rename-stable marker proves they were inlined.
     const TRIGGERS: &[Trigger] = &[
         Trigger {
             helper: "awaitAsyncGenerator",
@@ -872,7 +863,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_inline_helper_mode_does_not_reach_oxc_inline() {
-        // oxc's `Inline` mode panics at helper load time; telarel maps it to
+        // oxc's `Inline` mode panics at helper load time. telarel maps it to
         // oxc `Runtime` until the inline helpers pass replaces it.
         let plugin: TransformPlugin =
             TransformPlugin::with_options(TransformOptions {
@@ -921,7 +912,7 @@ mod tests {
     async fn test_transform_inline_helpers_user_default_import_from_helper_path()
      {
         // A user default import from a runtime helpers path shares the helper
-        // source with the oxc-generated uid; both bindings must end up on the
+        // source with the oxc-generated uid. Both bindings must end up on the
         // single inlined function.
         let plugin: TransformPlugin = inline_helper_plugin();
 
@@ -949,7 +940,7 @@ mod tests {
     async fn test_transform_inline_helpers_user_named_import_from_helper_path_untouched()
      {
         // A named (non-default) import from a helpers path never matches the
-        // oxc-emitted shape; it is user code and must be left untouched.
+        // oxc-emitted shape. It is user code and must be left untouched.
         let plugin: TransformPlugin = inline_helper_plugin();
 
         let code: String = codegen_after(
@@ -1016,7 +1007,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_context_cwd_applied() {
         // A non-empty plugin context `cwd` must overlay onto the resolved
-        // oxc options; the plugin-level cache stays cwd-free.
+        // oxc options. The plugin-level cache stays cwd-free.
         let plugin: TransformPlugin =
             TransformPlugin::with_options(TransformOptions {
                 targets: vec![TransformTarget::Es2015],
@@ -1468,8 +1459,8 @@ mod tests {
         let plugin: TransformPlugin = inline_helper_plugin();
 
         // The user's own `_typeof` collides with the `typeof` dependency
-        // helper of the objectSpread2 closure; the inlined dependency must be
-        // renamed to a fresh uid and the user binding must be untouched.
+        // helper of the objectSpread2 closure. The inlined dependency must be
+        // renamed to a fresh uid, and the user binding must be untouched.
         let code: String = codegen_after(
             plugin,
             "index.mjs",
@@ -1680,7 +1671,7 @@ mod tests {
     #[test]
     fn test_trigger_table_covers_every_vendored_helper() {
         // A newly vendored (or removed) helper must not silently lose its
-        // trigger; the table is the source of truth for plugin-level coverage.
+        // trigger. The table is the source of truth for plugin-level coverage.
         let expected: Vec<&str> = HELPERS
             .iter()
             .chain(DEPENDENCY_HELPERS.iter())

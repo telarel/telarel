@@ -11,10 +11,9 @@ import { describe, expect, it } from "vitest";
 
 describe("language", (): void => {
     it("compiles ts syntax on a js file with an explicit ts language", async (): Promise<void> => {
-        // A `transform` hook forces the parse path; with the explicit
-        // `language: "ts"` the ts grammar applies despite the `.js`
-        // file, so the annotated declaration parses and compiles to
-        // itself.
+        // A `transform` hook forces the parse path. With the explicit
+        // `language: "ts"`, the ts grammar applies despite the `.js` file, so
+        // the annotated declaration parses and compiles to itself.
         const result: CodeResult = await compile("const a: number = 1;", {
             file: "index.js",
             language: "ts",
@@ -32,11 +31,11 @@ describe("language", (): void => {
     });
 
     it("rejects ts syntax on a ts file with an explicit js language", async (): Promise<void> => {
-        // Explicit `language` wins over extension inference: the js
-        // grammar cannot parse the annotation, so the parse fails despite
-        // the `.ts` file.
-        // The error keeps the bare parser message; render() adds the
-        // code-frame style diagnostic including the file name and caret
+        // An explicit `language` wins over extension inference. The js grammar
+        // cannot parse the annotation, so the parse fails despite the `.ts`
+        // file.
+        // The error keeps the bare parser message. `render()` adds the
+        // diagnostic in code-frame style, with the file name and caret
         // position.
         await expect(
             compile("const a: number = 1;", {
@@ -84,9 +83,8 @@ describe("language", (): void => {
     });
 
     it("defaults extensionless files to plain js when language is omitted", async (): Promise<void> => {
-        // Pinned observed behavior: without an extension the default es
-        // module js grammar applies, so plain js parses while ts-only
-        // syntax is rejected.
+        // Without an extension, the default js grammar applies as an es
+        // module. Plain js parses, and ts-only syntax fails.
         const result: CodeResult = await compile("const a = 1;", {
             file: "index",
             plugins: [
@@ -179,9 +177,8 @@ describe("language", (): void => {
     });
 
     it("rejects a language that is not js, ts, dts, jsx, or tsx", async (): Promise<void> => {
-        // Pinned observed behavior: the napi bridge validates the language
-        // before the pipeline runs, in the same style as the transform
-        // target parser.
+        // The napi bridge validates `language` before the pipeline runs. It
+        // does so in the same style as the transform target parser.
         const json: unknown = {
             file: "index.js",
             language: "json",
@@ -246,8 +243,8 @@ describe("language", (): void => {
 
 describe("source type", (): void => {
     it("rejects top-level await with an explicit script source type", async (): Promise<void> => {
-        // The error keeps the bare parser message; render() adds the
-        // code-frame style diagnostic including the file name and caret
+        // The error keeps the bare parser message. `render()` adds the
+        // diagnostic in code-frame style, with the file name and caret
         // position.
         await expect(
             compile("await Promise.resolve();", {
@@ -297,10 +294,9 @@ describe("source type", (): void => {
     });
 
     it("auto-detects the module goal with an unambiguous source type", async (): Promise<void> => {
-        // Pinned observed behavior: in unambiguous mode the parser upgrades
-        // the file to the module goal when it sees unambiguously-module
-        // syntax (here the top-level await), so the script-only error is
-        // deferred away and the code compiles.
+        // In unambiguous mode, the parser upgrades the file to the module goal
+        // when it sees module-only syntax, here top-level await. The parser
+        // then defers the script-only error, so the code compiles.
         const result: CodeResult = await compile("await Promise.resolve();", {
             file: "index.js",
             sourceType: "unambiguous",
@@ -329,9 +325,9 @@ describe("source type", (): void => {
     });
 
     it("resolves an unambiguous source without module syntax to script", async (): Promise<void> => {
-        // A top-level `return` is only valid in commonjs files; the parse
-        // failing pins that the unambiguous resolution of plain code is
-        // script, not commonjs.
+        // A top-level `return` is valid only in commonjs files. The failed
+        // parse shows that plain code resolves to script in unambiguous mode,
+        // not commonjs.
         await expect(
             compile("if (true) { return; }", {
                 file: "index.js",
@@ -349,10 +345,9 @@ describe("source type", (): void => {
     });
 
     it("allows a top-level return with a commonjs source type", async (): Promise<void> => {
-        // Pinned observed behavior for the `commonjs` module kind: oxc
-        // parses the file as if wrapped in a function body, so a top-level
-        // `return` (and `new.target`) is valid, while `import.meta` and
-        // top-level await are not.
+        // For the `commonjs` module kind, oxc parses the file as if a function
+        // body wraps it. A top-level `return` and `new.target` are valid, while
+        // `import.meta` and top-level await are not.
         const result: CodeResult = await compile("if (true) { return; }", {
             file: "index.js",
             sourceType: "commonjs",
@@ -386,10 +381,10 @@ describe("source type", (): void => {
     });
 
     it("overrides the grammar resolution with an explicit script source type on a ts file", async (): Promise<void> => {
-        // `sourceType` is orthogonal to the grammar: the ts grammar still
-        // applies to the `.ts` file, but the module kind comes from
-        // `sourceType`, so top-level await is rejected where the default
-        // unambiguous resolution would have accepted it.
+        // `sourceType` is independent of the grammar. The ts grammar still
+        // applies to the `.ts` file, but `sourceType` sets the module kind.
+        // Top-level await fails here, even though the default unambiguous
+        // resolution accepts it.
         await expect(
             compile("await Promise.resolve();", {
                 file: "index.ts",
@@ -417,9 +412,9 @@ describe("source type", (): void => {
     });
 
     it("rejects module syntax with an explicit script source type", async (): Promise<void> => {
-        // Pinned observed behavior (oxc 0.153): the parser rejects `import`
-        // / `export` when the file is declared a script, since module
-        // declarations can only be used at the top level of a module.
+        // With oxc 0.153, the parser rejects `import` and `export` when the
+        // file is a script. Module declarations can only appear at the top
+        // level of a module.
         await expect(
             compile("import a from 'mod';\nexport const b = a;", {
                 file: "index.js",
@@ -435,10 +430,9 @@ describe("source type", (): void => {
     });
 
     it("rejects a sourceType that is not script, commonjs, module, or unambiguous", async (): Promise<void> => {
-        // Pinned observed behavior: the napi bridge validates the source
-        // type before the pipeline runs, in the same style as the
-        // transform target parser. The old grammar values are no longer
-        // valid source types.
+        // The napi bridge validates the source type before the pipeline runs.
+        // It does so in the same style as the transform target parser. The old
+        // grammar values are no longer valid source types.
         const js: unknown = {
             file: "index.js",
             sourceType: "js",

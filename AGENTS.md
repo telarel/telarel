@@ -17,12 +17,12 @@ This repository is a TypeScript/Rust monorepo.
 
 | Path                      | Description                                            |
 | ------------------------- | ------------------------------------------------------ |
-| `crates/common`           | Share code across different stage                      |
+| `crates/common`           | Shared code for different pipeline stages              |
 | `crates/plugin`           | The plugin module to provide structs, traits and types |
 | `crates/plugin_transform` | The transform plugin                                   |
 | `crates/core`             | The pipeline orchestrator                              |
 | `crates/binding`          | NAPI bindings for the compiler                         |
-| `crates/telarel`          | Re-export public facing API                            |
+| `crates/telarel`          | Re-exports the public API                              |
 
 ### TypeScript Packages
 
@@ -201,14 +201,15 @@ The repository uses:
 
 `just` is the preferred task runner over the lower-level tools.
 
-Before running an task, inspect the available commands:
+Before running a task, inspect the available commands:
 
 ```sh
 just
 ```
 
-After editing any Rust crate, rebuild with `just build-rs`.
-Therefore, the artifact distribution runs. Avoid invoke `napi build` directly.
+After you edit any Rust crate, rebuild with `just build-rs`.
+This command builds the binding and moves the artifacts into the npm packages.
+Do not invoke `napi build` directly.
 
 ## What NOT to Do
 

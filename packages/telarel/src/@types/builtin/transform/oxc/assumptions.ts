@@ -1,9 +1,11 @@
 /**
  * Compiler assumptions for producing smaller output.
  *
- * Mirrors oxc's `CompilerAssumptions` (camelCase, unknown fields rejected),
- * which the npm `oxc-transform` types describe only partially. Fields marked
- * "Not implemented by oxc." are accepted by the bridge but have no effect.
+ * Mirrors oxc's `CompilerAssumptions` with camelCase fields. Unknown fields are
+ * rejected. The npm `oxc-transform` types describe this shape only partially.
+ *
+ * Fields marked "Not implemented by oxc." are accepted by the bridge but have
+ * no effect.
  */
 type OxcCompilerAssumptions = {
     /**
@@ -90,7 +92,7 @@ type OxcCompilerAssumptions = {
     setComputedProperties?: boolean;
     /**
      * Assume public class fields do not shadow a getter in the class, its
-     * subclasses or its superclass, so it is safe to assign instead of using
+     * subclasses, or its superclass. Direct assignment is then safe instead of
      * `Object.defineProperty`.
      */
     setPublicClassFields?: boolean;

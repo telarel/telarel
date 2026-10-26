@@ -28,16 +28,16 @@ use crate::options::target::TransformTarget;
 use crate::options::typescript::TypeScriptOptions;
 use crate::options::typescript::overlay_typescript;
 
-/// The transform plugin options.
+/// Configures the transform passes and their inputs.
 #[derive(Debug, Clone, Default)]
 pub struct TransformOptions {
-    /// Empty means the ESNext default; targets win over an `oxc` layer env.
+    /// Empty means the ESNext default. Targets win over an `oxc` layer env.
     pub targets: Vec<TransformTarget>,
-    /// TypeScript transform options.
+    /// Controls TypeScript lowering.
     pub typescript: Option<TypeScriptOptions>,
-    /// JSX transform options.
+    /// Controls JSX lowering.
     pub jsx: Option<JsxOptions>,
-    /// Helper loader options; the raw `oxc` base helper state is ignored.
+    /// Helper loader configuration. The raw `oxc` base helper state is ignored.
     pub helper_loader: Option<HelperLoaderOptions>,
     /// Injected imports run after all transforms, before `define`.
     pub inject: Option<InjectOptions>,
@@ -50,8 +50,8 @@ pub struct TransformOptions {
 impl TransformOptions {
     /// Apply the compile context `cwd` onto resolved oxc options.
     ///
-    /// The compile options `cwd` is the run-level source of truth, so it
-    /// always overwrites the oxc base layer's `cwd`.
+    /// The compile options `cwd` is the run-level source of truth. It always
+    /// overwrites the oxc base layer's `cwd`.
     pub(crate) fn apply_cwd(
         base: &mut OxcTransformOptions,
         cwd: &Path,
@@ -79,7 +79,6 @@ impl TransformOptions {
         Some(engine_targets)
     }
 
-    /// Resolve into the oxc transform options.
     pub(crate) fn resolve(&self) -> OxcTransformOptions {
         let mut base: OxcTransformOptions =
             self.oxc.clone().unwrap_or_default();
@@ -106,14 +105,14 @@ impl TransformOptions {
 
     /// Resolve the helper loader state from the telarel layer.
     ///
-    /// The resolved state feeds the inline helpers pass; the same mapping is
-    /// applied to the oxc options by [`TransformOptions::resolve`]. The raw
-    /// `oxc` base helper state is ignored.
+    /// The inline helpers pass consumes this state. [`TransformOptions::resolve`]
+    /// applies the same mapping to the oxc options. The raw `oxc` base helper
+    /// state is ignored.
     pub(crate) fn resolve_helpers(&self) -> ResolvedHelpers {
         resolve_helpers(self.helper_loader.as_ref())
     }
 
-    /// Resolve the `inject` options into the oxc config.
+    /// Resolve the `inject` options into the oxc configuration.
     ///
     /// Returns `None` when no entries are configured.
     pub(crate) fn resolve_inject(&self) -> Option<InjectGlobalVariablesConfig> {
@@ -125,10 +124,10 @@ impl TransformOptions {
         }
     }
 
-    /// Resolve the `define` options into the oxc config.
+    /// Resolve the `define` options into the oxc configuration.
     ///
-    /// Returns `None` when no entries are configured; errors from invalid
-    /// keys or values surface as [`Diagnostics`].
+    /// Returns `None` when no entries are configured. Errors from invalid keys
+    /// or values surface as [`Diagnostics`].
     pub(crate) fn resolve_define(
         &self
     ) -> Result<Option<ReplaceGlobalDefinesConfig>, Diagnostics> {

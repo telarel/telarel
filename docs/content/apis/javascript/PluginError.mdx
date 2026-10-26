@@ -3,7 +3,7 @@ title: PluginError
 description: The error thrown by plugin hooks to fail a compilation.
 ---
 
-Plugin hooks report failure by throwing a `PluginError`. It is transported back to Rust and surfaces at the entry point as a [CompileError](/apis/javascript/CompileError) with the same message and source.
+A plugin hook fails the compile by throwing a `PluginError`. The entry point rejects with a [CompileError](/apis/javascript/CompileError) that carries the same message and source.
 
 ```ts
 import { ErrorSource, PluginError } from "telarel";
@@ -30,9 +30,9 @@ class PluginError extends Error {
 }
 ```
 
-`PluginError` has the same `name`, `message`, `source`, and `render` behavior as `CompileError`. `toCompileError()` converts it while preserving the message and source.
+`PluginError` has the same `name`, `message`, `source`, and `render` behavior as `CompileError`. `toCompileError()` returns a `CompileError` with the same message and source.
 
-Throw a `PluginError` from any hook to fail the compile with a location. Attach an [ErrorSource](/apis/javascript/ErrorSource) from the hook's code, or from an AST whose source text is available. Its span is in UTF-16 code-unit offsets.
+Throw a `PluginError` from any hook to fail the compile with a location. Attach an [ErrorSource](/apis/javascript/ErrorSource) from the hook's code, or from an AST whose source text is available. Its span uses UTF-16 code-unit offsets.
 
 ```ts
 import type { Plugin } from "telarel";

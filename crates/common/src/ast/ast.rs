@@ -11,7 +11,8 @@ use crate::sourcemap::SourceMap;
 struct AstOwner {
     allocator: Allocator,
     source: Arc<str>,
-    // Constructor metadata; public accessors report the program's resolved state.
+    // Constructor metadata. Public accessors report the program's resolved
+    // state.
     language: Language,
     source_type: SourceType,
     source_map: Option<SourceMap>,
@@ -59,55 +60,55 @@ impl Clone for AstInner {
     }
 }
 
-// SAFETY: owner + dependent are heap-boxed together by `self_cell` and move as
-// one; `Allocator` (bumpalo `Bump`), `Arc<str>`, and the owned
-// `Option<SourceMap>` (whose fields are `Cow`/`Vec`/`Box`) are all `Send`, so
-// no thread-affine pointer dangles when the inner value moves. `Arc` may share
-// it between `Ast` handles.
+// SAFETY: `self_cell` heap-boxes the owner and dependent together, and they
+// move as one unit. `Allocator` (bumpalo `Bump`), `Arc<str>`, and the owned
+// `Option<SourceMap>` are all `Send`. The `SourceMap` fields are
+// `Cow`/`Vec`/`Box`. Thus no thread-affine pointer dangles when the inner value
+// moves. `Arc` can share it between `Ast` handles.
 unsafe impl Send for AstInner {}
 
-// SAFETY: two separate guarantees are required, and they are not the same:
+// SAFETY: this impl needs two separate guarantees, and they are not the same.
 //
-// (a) The arena/`Allocator` is safe because it is only reachable through
-//     `with_mut(&mut self, ..)`, an exclusive borrow, and `with_mut` copies the
+// (a) The arena/`Allocator` is safe. It is only reachable through
+//     `with_mut(&mut self, ..)`, an exclusive borrow. `with_mut` copies the
 //     arena first when the `Arc` is shared. There is intentionally no public
-//     `&Allocator` accessor, so this invariant is not bypassable through safe
-//     code.
+//     `&Allocator` accessor, so safe code cannot bypass this invariant.
 //
 // (b) This justification does NOT cover `Program`'s own interior mutability.
 //     `Program` exposes `pub node_id: Cell<NodeId>` and
-//     `pub scope_id: Cell<Option<ScopeId>>`, which safe code can mutate through
-//     the shared reference returned by `program()`. Because `AstInner` is
-//     `Sync`, `Ast` is `Sync` and `&Ast` is `Send`, so such a mutation from two
+//     `pub scope_id: Cell<Option<ScopeId>>`. Safe code can mutate these fields
+//     through the shared reference returned by `program()`. Because `AstInner`
+//     is `Sync`, `Ast` is `Sync` and `&Ast` is `Send`. Such a mutation from two
 //     threads would be a data race. This impl is therefore sound ONLY under the
 //     additional caller-side contract that the AST is shared across threads
-//     read-only: no one mutates `Program`'s pub `Cell` fields through a shared
+//     read-only. No one mutates `Program`'s pub `Cell` fields through a shared
 //     `&Ast`.
 unsafe impl Sync for AstInner {}
 
 /// An owned, self-referential AST that bundles its own allocator.
 ///
-/// The optional [`Ast::map`] is the **input** source map: it describes how
-/// this AST's source was produced from upstream originals, and nothing about
-/// the code generated from this AST.
+/// The optional [`Ast::map`] is the **input** source map. It describes how
+/// this AST's source was produced from upstream originals. It says nothing
+/// about the code generated from this AST.
 ///
-/// `Program::source_text` must stay content-equal to [`Ast::source`];
-/// [`Ast::with_mut`] may rewrite the tree but not the source text. Build a new
-/// `Ast` to change the source text.
+/// `Program::source_text` must stay content-equal to [`Ast::source`].
+/// [`Ast::with_mut`] can rewrite the tree but cannot change the source text.
+/// Build a new `Ast` to change the source text.
 ///
-/// Cloning is O(1): clones share the same arena. [`Ast::with_mut`] copies the
-/// arena into a fresh allocation when another clone is still alive, so
-/// mutating a clone never mutates the original.
+/// Cloning is O(1) because clones share the same arena. [`Ast::with_mut`]
+/// copies the arena into a fresh allocation when another clone is still
+/// alive. Therefore, mutating a clone never mutates the original.
 ///
-/// `Ast` is `Send + Sync` so plugin futures can move owned handles or borrow
+/// `Ast` is `Send + Sync`, so plugin futures can move owned handles or borrow
 /// the AST across threads.
 ///
-/// That `Sync` does not make concurrent mutation safe. `Program`
-/// exposes interior-mutable `Cell` fields (`node_id`, `scope_id`) that safe code
-/// can mutate through the shared reference returned by [`Ast::program`]. Sharing
-/// `&Ast` across threads is sound only under the caller-side contract that it is
-/// used read-only: no thread may mutate `Program`'s `Cell` fields through a
-/// shared `&Ast`. Doing so is a data race and is forbidden.
+/// That `Sync` does not make concurrent mutation safe. `Program` exposes
+/// interior-mutable `Cell` fields (`node_id`, `scope_id`). Safe code can
+/// mutate these fields through the shared reference returned by
+/// [`Ast::program`]. Sharing `&Ast` across threads is sound only under the
+/// caller-side contract that it is used read-only. No thread may mutate
+/// `Program`'s `Cell` fields through a shared `&Ast`. Doing so is a data race
+/// and is forbidden.
 pub struct Ast {
     inner: Arc<AstInner>,
 }
@@ -117,12 +118,12 @@ impl Ast {
     ///
     /// `language` and `source_type` describe the requested grammar and module
     /// kind of the program `build` produces. `source_type` may be
-    /// [`SourceType::Unambiguous`]; the parsed program resolves it.
+    /// [`SourceType::Unambiguous`]. The parsed program resolves it.
     ///
     /// `build` must return a program whose `Program::source_text` is `source`.
     ///
-    /// `input_map` is the map describing how `source` was produced from
-    /// upstream originals, if any (see [`Ast::map`]).
+    /// If present, `input_map` describes how `source` was produced from
+    /// upstream originals. See [`Ast::map`].
     pub fn from_source<F>(
         source: Arc<str>,
         language: Language,
@@ -193,7 +194,7 @@ impl Ast {
 
     /// The resolved module kind of the parsed program.
     ///
-    /// `Unambiguous` is a parser input; a normally parsed AST resolves to
+    /// `Unambiguous` is a parser input. A normally parsed AST resolves to
     /// `Script`, `CommonJS`, or `Module`.
     pub fn source_type(&self) -> SourceType {
         from_oxc_module_kind(self.program().source_type)
@@ -205,10 +206,10 @@ impl Ast {
         self.inner.borrow_owner().source_map.as_ref()
     }
 
-    /// Rebuild this AST with a different input map.
+    /// Return a new AST that carries `source_map` as its input map.
     ///
-    /// A deep rebuild: the program is cloned into a fresh allocator and the
-    /// source `Arc` is shared.
+    /// The new AST preserves the source text, language, and source type of
+    /// `self`.
     pub fn with_input_map(
         &self,
         source_map: Option<SourceMap>,

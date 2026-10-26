@@ -20,9 +20,6 @@ type EncodePluginErrorOptions = {
     source?: ErrorSource;
 };
 
-/**
- * Encode a plugin error into the JS-to-Rust transport envelope.
- */
 const encodePluginError = ({
     message,
     source,

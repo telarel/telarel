@@ -1,6 +1,6 @@
 # Telarel Common
 
-A shared library for the compiler.
+Shared types and utilities for the Telarel compiler.
 
 ## License
 

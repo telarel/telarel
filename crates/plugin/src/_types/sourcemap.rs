@@ -1,5 +1,5 @@
-/// An owned source map crossing hook boundaries;
-/// owned by `common` and re-exported here (the plugin-surface alias).
+/// An owned source map that crosses hook boundaries. `common` owns it, and
+/// this module re-exports it as the plugin-surface alias.
 pub use telarel_common::SourceMap;
 
 #[cfg(test)]

@@ -56,12 +56,12 @@ pub struct PluginDriver {
 impl PluginDriver {
     /// Create a driver from plugins in registration order.
     ///
-    /// `start`/`end` run on every settled plugin; `parse`, `prepare`,
-    /// `transform`, `finalize`, and `generate` are partitioned by declared
-    /// [`HookUsage`]. `parse` and `generate` are first-win, `transform` carries
-    /// the last `Some`, and `prepare`/`finalize` are notify-only observers.
-    /// `options` is not a driver partition: it is the fixpoint runner
-    /// ([`crate::options_fixpoint`]).
+    /// `start` and `end` run on every settled plugin. The driver partitions
+    /// `parse`, `prepare`, `transform`, `finalize`, and `generate` by declared
+    /// [`HookUsage`]. `parse` and `generate` are first-win, and `transform`
+    /// carries the last `Some`. `prepare` and `finalize` are notify-only
+    /// observers. `options` is not a driver partition. It is the fixpoint
+    /// runner ([`crate::options_fixpoint`]).
     pub fn new(plugins: Vec<SharedPluginable>) -> Self {
         let mut usage: HookUsage = HookUsage::default();
 
@@ -155,13 +155,14 @@ impl PluginDriver {
         self.usage
     }
 
-    /// The settled plugin names in registration order; duplicates preserved.
+    /// The settled plugin names in registration order. Duplicates are
+    /// preserved.
     pub fn settled_names(&self) -> &[String] {
         &self.settled_names
     }
 
     /// Run the `start` hook on EVERY settled plugin (not partitioned by
-    /// usage); the first error aborts. Notify-only.
+    /// usage). The first error aborts. The hook is notify-only.
     pub async fn start(
         &self,
         ctx: &PluginContext<'_>,
@@ -172,8 +173,8 @@ impl PluginDriver {
 
     /// Run the `parse` hook over the `parse` partition.
     ///
-    /// First-win: the first `Ok(Some)` result wins and the remaining hooks
-    /// are skipped; `Ok(None)` defers to the next plugin. The first error
+    /// First-win: the first `Ok(Some)` result wins, and the driver skips the
+    /// remaining hooks. `Ok(None)` defers to the next plugin. The first error
     /// aborts. When every hook defers, `builtin` runs and its raw error is
     /// returned.
     pub async fn parse(
@@ -188,8 +189,8 @@ impl PluginDriver {
     }
 
     /// Run the `prepare` hook over the `prepare` partition in meta-ranked
-    /// order, as a read-only observer of the parsed AST; the first error
-    /// aborts. Return values are ignored.
+    /// order, as a read-only observer of the parsed AST. The first error
+    /// aborts. The driver ignores return values.
     pub async fn prepare<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
@@ -198,8 +199,8 @@ impl PluginDriver {
         hooks::prepare::prepare(&self.prepare_plugins, ctx, args).await
     }
 
-    /// Run the `transform` hook chain; `Some` carries the last returned AST,
-    /// `None` = unchanged.
+    /// Run the `transform` hook chain. `Some` carries the last returned AST,
+    /// and `None` means the AST is unchanged.
     pub async fn transform(
         &self,
         ctx: &PluginContext<'_>,
@@ -209,8 +210,8 @@ impl PluginDriver {
     }
 
     /// Run the `finalize` hook over the `finalize` partition in meta-ranked
-    /// order, as a read-only observer of the final AST; the first error
-    /// aborts. Return values are ignored.
+    /// order, as a read-only observer of the final AST. The first error
+    /// aborts. The driver ignores return values.
     pub async fn finalize<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
@@ -221,8 +222,8 @@ impl PluginDriver {
 
     /// Run the `generate` hook over the `generate` partition.
     ///
-    /// First-win: the first `Ok(Some)` result wins and the remaining hooks
-    /// are skipped; `Ok(None)` defers to the next plugin. The first error
+    /// First-win: the first `Ok(Some)` result wins, and the driver skips the
+    /// remaining hooks. `Ok(None)` defers to the next plugin. The first error
     /// aborts. When every hook defers, `builtin` runs and its raw error is
     /// returned.
     pub async fn generate(
@@ -242,9 +243,9 @@ impl PluginDriver {
         .await
     }
 
-    /// Run the `end` hook on EVERY settled plugin (not partitioned by usage);
-    /// every hook runs even after one fails, and the first error is returned
-    /// after the loop. Notify-only.
+    /// Run the `end` hook on EVERY settled plugin (not partitioned by usage).
+    /// Every hook runs even after one fails, and the driver returns the first
+    /// error after the loop. The hook is notify-only.
     pub async fn end(
         &self,
         ctx: &PluginContext<'_>,
@@ -527,7 +528,7 @@ mod tests {
         }
     }
 
-    /// Records every invocation under `name`; optionally fails.
+    /// Records every invocation under `name` and can fail on request.
     #[derive(Debug)]
     struct ObserverPlugin {
         name: &'static str,
@@ -922,7 +923,7 @@ mod tests {
         }
     }
 
-    /// Implements `parse` but declares a non-`Parse` usage; the driver must
+    /// Implements `parse` but declares a non-`Parse` usage. The driver must
     /// never call it.
     #[derive(Debug)]
     struct ParseWithOtherUsagePlugin {
@@ -1878,8 +1879,8 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_driver_aggregates_usage() {
         // An options-only plugin still contributes its declared bit to the
-        // aggregate (no options partition exists — the fixpoint runner owns
-        // the options stage).
+        // aggregate. No options partition exists because the fixpoint runner
+        // owns the options stage.
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let plugins: Vec<SharedPluginable> = vec![

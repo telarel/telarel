@@ -1,6 +1,8 @@
 use std::path::Path;
 
-/// Context carried through a compile run; holds the ORIGINAL inputs.
+/// Context carried through a compile run.
+///
+/// It holds the ORIGINAL inputs.
 #[derive(Debug)]
 pub struct CompileContext<'a> {
     /// Working directory used to resolve relative paths.

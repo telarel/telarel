@@ -2,7 +2,7 @@ use telarel_common::Ast;
 
 /// Arguments for the `finalize` hook: the final AST, read-only.
 ///
-/// `finalize` is an observer; its return value is ignored.
+/// `finalize` is an observer, and its return value is ignored.
 #[derive(Debug, Clone, Copy)]
 pub struct FinalizeArgs<'a> {
     /// The final AST, read-only.

@@ -7,9 +7,13 @@ use crate::_types::options::sourcemap::output::OutputSourceMap;
 /// The source-map inputs and outputs requested for a step.
 #[derive(Debug, Clone, Default)]
 pub struct SourceMapOptions {
-    /// None = off (no input map lookup).
+    /// The input source-map request.
+    ///
+    /// `None` disables input-map lookup.
     pub input: Option<InputSourceMap>,
-    /// None = External at use time.
+    /// The output source-map request.
+    ///
+    /// `None` means `External` at use time.
     pub output: Option<OutputSourceMap>,
 }
 

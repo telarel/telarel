@@ -23,24 +23,24 @@ use crate::_types::sourcemap::JsSourceMap;
 /// A TSFN bridging one JS hook.
 ///
 /// - `Data`: worker-side call data moved to the JS thread.
-/// - `Payload`: JS value(s) the hook receives.
-/// - `Return`: JS value the hook returns directly (sync) or resolves (async);
-///   wrapped in an `Either` over `Promise<Return>` by the hook aliases.
+/// - `Payload`: JS value or values the hook receives.
+/// - `Return`: JS value the hook returns directly (sync) or resolves (async).
+///   The hook aliases wrap it in an `Either` over `Promise<Return>`.
 ///
-/// `CalleeHandled = false`: hook payloads are passed to the JS function as-is
-/// (the `true` variant would prepend a Node-style error argument and shift
-/// every hook parameter by one). A JS throw inside the hook is still captured:
-/// with the `WithCallback` call variant used by `call_async_catch`, the
-/// exception is delivered to the awaiting worker as `Err(napi::Error)` (status
-/// `PendingException`) so the compile promise rejects with the original
-/// message instead of the error escaping as a fatal exception.
+/// `CalleeHandled = false` passes hook payloads to the JS function as-is. The
+/// `true` variant would prepend a Node-style error argument and shift every
+/// hook parameter by one. The bridge still captures a JS throw inside the
+/// hook. `call_async_catch` uses the `WithCallback` call variant, so the
+/// exception reaches the awaiting worker as `Err(napi::Error)` with status
+/// `PendingException`. The compile promise then rejects with the original
+/// message instead of letting the error escape as a fatal exception.
 pub type Tsfn<Data, Payload, Return> =
     ThreadsafeFunction<Data, Return, Payload, napi::Status, false, false, 0>;
 
-/// A cheap-to-clone shared string: one allocation, shared by a hook call's
-/// context and payload through `Arc` refcounts.
+/// A cheap-to-clone shared string.
 ///
-/// Serializes to JS as a plain UTF-8 string, so hook payload shapes are unchanged.
+/// Clones share one `Arc` allocation. The `ToNapiValue` implementation
+/// serializes it as a plain UTF-8 string, so hook payload shapes are unchanged.
 #[derive(Debug, Clone)]
 pub struct SharedStr(Arc<str>);
 
@@ -97,7 +97,7 @@ macro_rules! hook_slots {
 
 macro_rules! hook_slots_rows {
     ({ $(($name:ident, $Name:ident, $args:ty, $ret:ty, $slot:literal)),* $(,)? }) => {
-        $( // Declarative slot metadata; the `options` hook's `Args` is the
+        $( // Declarative slot metadata. The `options` hook's `Args` is the
            // `OptionsCall` payload producer.
             #[allow(dead_code)]
             pub mod $name {
@@ -124,12 +124,12 @@ pub fn materialize(
 
 /// A shared, rooted object reference.
 ///
-/// [`ObjectRef`] is `Send` but not `Sync`; the reference is only dereferenced
-/// (via `get_value`) on the JS thread, so sharing the immutable handle across
-/// threads is sound.
+/// [`ObjectRef`] is `Send` but not `Sync`. The bridge dereferences the
+/// reference (through `get_value`) only on the JS thread, so sharing the
+/// immutable handle across threads is sound.
 ///
-/// The inner reference is released (unrooted) by [`SharedRef::release`], which
-/// the `compile` task calls once the compile finishes; it is idempotent and
+/// [`SharedRef::release`] releases (unroots) the inner reference, and the
+/// `compile` task calls it once the compile finishes. It is idempotent and
 /// safe to call while clones are still alive.
 #[derive(Clone)]
 pub struct SharedRef(Arc<Mutex<Option<ObjectRef<false>>>>);
@@ -151,8 +151,8 @@ impl SharedRef {
         Self(Arc::new(Mutex::new(Some(reference))))
     }
 
-    /// Test-only: an inert placeholder reference with no rooted object, for
-    /// exercising the bag/release-list bookkeeping without a JS runtime.
+    /// An inert placeholder reference for tests, with no rooted object. It
+    /// exercises the bag and release-list bookkeeping without a JS runtime.
     #[cfg(test)]
     pub(crate) fn stub() -> Self {
         Self(Arc::new(Mutex::new(None)))
@@ -175,8 +175,9 @@ impl SharedRef {
         }
     }
 
-    /// Release the rooted reference. Idempotent; clones left behind become
-    /// inert (`get` errors instead of touching the released reference).
+    /// Release the rooted reference. The method is idempotent. Clones that
+    /// remain become inert, so `get` errors instead of touching the released
+    /// reference.
     pub fn release(
         &self,
         env: &Env,
@@ -192,8 +193,9 @@ impl SharedRef {
     }
 }
 
-/// Release every reference; every reference is released even if one release
-/// fails, so no reference leaks on the first-error path.
+/// Release every reference, even after one release fails.
+///
+/// This keeps the first-error path from leaking any reference.
 pub fn release_refs(
     env: &Env,
     refs: &[SharedRef],
@@ -216,31 +218,26 @@ pub fn release_refs(
 
 /// A dynamic, per-compile registry of rooted JS object references.
 ///
-/// Three roles share this handle (it is `Arc`-shared into every site that
-/// needs any of them):
+/// The same `Arc` handle reaches every site that needs one of its three roles:
 ///
-/// - `refs` — the RELEASE list. Starts with the entry-time references (plugin
-///   array, each plugin object). The `options` hook APPENDS late plugins'
-///   references — plugins injected by the fixpoint — as they are wrapped and
-///   registered, BEFORE the driver is built;
-///   [`crate::tasks::function::FunctionTask::finally`] drains the list once
-///   the call settles, so mid-call additions are still released.
-/// - `bag_descriptors` — a VIEW of the CURRENT bag's plugin descriptors, one
-///   per plugin in the `OptionsArgs` being folded. Entries are
-///   `SharedRef` clones that SHARE the same roots as the release list (the
-///   table never owns or releases a reference); the view is replaced whole by
-///   [`RefList::set_bag`] (entry seed, then each returned bag).
-/// - `bridged_plugins` — the ADAPTER MEMO mapping the JS wrapper's internal
-///   plugin id to its already-bridged adapter for the CURRENT compile, so an
-///   echoed descriptor reuses the same `SharedPluginable`.
+/// - `refs`: the release list. It starts with the entry-time references: the
+///   plugin array and each plugin object. The `options` hook appends late
+///   plugin references as the bridge wraps and registers them, before the
+///   driver is built. `FunctionTask::finally` drains the list once the call
+///   settles, so mid-call additions are still released.
+/// - `bag_descriptors`: a view of the plugin descriptors in the current bag,
+///   one per plugin in the `OptionsArgs` being folded. Each entry is a
+///   `SharedRef` clone that shares its root with the release list. The table
+///   never owns or releases a reference. [`RefList::set_bag`] replaces the
+///   view whole: first for the entry seed, then for each returned bag.
+/// - `bridged_plugins`: the adapter memo. It maps the internal plugin id from
+///   the JS wrapper to the already-bridged adapter for the current compile. An
+///   echoed descriptor therefore reuses the same `SharedPluginable`.
 #[derive(Default)]
 pub struct RefList {
     /// Rooted references drained in `FunctionTask::finally`.
     refs: Mutex<Vec<SharedRef>>,
-    /// The current bag's descriptor view; see the type's docs.
     bag_descriptors: Mutex<Vec<SharedRef>>,
-    /// Bridged adapters by the JS wrapper's internal plugin id; see the
-    /// type's docs.
     bridged_plugins: Mutex<HashMap<u32, SharedPluginable>>,
 }
 
@@ -269,7 +266,7 @@ impl RefList {
         self.refs.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
 
-    /// Clone the current bag's descriptor view (one entry per plugin, in
+    /// Clone the descriptor view for the current bag, one entry per plugin in
     /// bag order).
     pub fn bag_snapshot(&self) -> Vec<SharedRef> {
         self.bag_descriptors
@@ -290,7 +287,7 @@ impl RefList {
             .cloned()
     }
 
-    /// Memoize a bridged adapter under the JS wrapper's internal plugin id.
+    /// Memoize a bridged adapter under the JS wrapper's plugin id.
     pub fn remember_bridged(
         &self,
         id: u32,
@@ -326,16 +323,16 @@ impl RefList {
             .push(reference);
     }
 
-    /// Replace the current bag's descriptor view.
+    /// Replace the descriptor view for the current bag.
     ///
-    /// The descriptors are `SharedRef` clones SHARING the release list's
-    /// roots; this table never releases them (the release list owns that
-    /// lifecycle). A returned bag REPLACES the view whole — an empty list is
-    /// the omitted-`plugins` default. On a partial unmarshal failure the
-    /// table is left untouched (the compile aborts and the release list
-    /// still drains every rooted descriptor).
+    /// Each descriptor is a `SharedRef` clone that shares the release list's
+    /// roots. This table never releases them, because the release list owns
+    /// that lifecycle. A returned bag replaces the view whole, and an empty
+    /// list is the omitted-`plugins` default. On a partial unmarshal failure
+    /// the table stays untouched: the compile aborts and the release list
+    /// still drains every rooted descriptor.
     ///
-    /// Rust-native plugins returning bags do not flow through this NAPI
+    /// Rust-native plugins that return bags do not flow through this NAPI
     /// surface, so only the entry bag and `options`-returned bags matter here.
     pub fn set_bag(
         &self,
@@ -347,16 +344,20 @@ impl RefList {
         *bag = descriptors;
     }
 
-    /// Release every reference on the release list and clear the adapter memo;
-    /// first release error wins.
+    /// Release every reference on the release list and clear the adapter memo.
+    ///
+    /// The first release error wins. A memoized adapter holds this `RefList`,
+    /// so the method clears the memo before it releases references. A failed
+    /// release must not leave the `RefList -> JsPlugin -> RefList` cycle
+    /// behind.
     pub fn release(
         &self,
         env: &Env,
     ) -> Result<()> {
         let refs: Vec<SharedRef> = self.refs();
 
-        // A memoized adapter holds this `RefList`, so clear the memo before
-        // releasing references: a failed release must not leave the
+        // A memoized adapter holds this `RefList`. Clear the memo before
+        // releasing references so a failed release does not leave the
         // `RefList -> JsPlugin -> RefList` cycle behind.
         self.bridged_plugins
             .lock()
@@ -369,23 +370,23 @@ impl RefList {
 
 /// Worker-side call data for the `options` hook.
 pub struct OptionsCall {
-    /// Working directory used to resolve relative paths; absent when unset.
+    /// Working directory used to resolve relative paths. Absent when unset.
     pub cwd: Option<SharedStr>,
-    /// The file being parsed/generated; absent when unset.
+    /// The file being parsed or generated. Absent when unset.
     pub file: Option<SharedStr>,
     /// Source language of the file.
     pub language: SharedStr,
     /// Module system used for code generation.
     pub source_type: SharedStr,
-    /// The output code settings requested so far, as the JS object;
-    /// `None` (unspecified) is omitted from the payload.
+    /// The output code options requested so far, as a JS object. `None`
+    /// means unspecified, and Telarel omits it from the payload.
     pub output: Option<serde_json::Value>,
-    /// The source-map inputs and outputs requested so far, as the JS union;
-    /// `None` (unspecified) is omitted from the payload.
+    /// The source-map inputs and outputs requested so far, as the JS union.
+    /// `None` means unspecified, and Telarel omits it from the payload.
     pub source_map: Option<serde_json::Value>,
-    /// The CURRENT bag's plugin descriptors, snapshotted at call time; the
-    /// JS-thread payload materializes the ARRAY from this exact list (NOT
-    /// the accumulating release list — see the binding contract).
+    /// The plugin descriptors of the current bag, snapshotted at call time.
+    /// The JS-thread payload builds the array from this exact list, not from
+    /// the accumulating release list. See the binding contract.
     pub plugins: Vec<SharedRef>,
 }
 
@@ -398,8 +399,8 @@ impl ToNapiValue for OptionsCall {
 
         let mut object: Object<'static> = Object::new(&env)?;
 
-        // Unset values are absent, not empty strings: the pre-resolution bag
-        // must preserve "unset" so a hook echoing it keeps the defaults.
+        // Unset values are absent, not empty strings. The pre-resolution bag
+        // must preserve "unset" so a hook that echoes it keeps the defaults.
         if let Some(cwd) = val.cwd {
             object.set("cwd", cwd)?;
         }
@@ -411,14 +412,14 @@ impl ToNapiValue for OptionsCall {
         object.set("language", val.language)?;
         object.set("sourceType", val.source_type)?;
 
-        // An omitted `output` means "unspecified" on the wire; only a
-        // requested output is transmitted.
+        // An omitted `output` means "unspecified" on the wire. Telarel
+        // transmits only a requested output.
         if let Some(output) = val.output {
             object.set("output", output)?;
         }
 
-        // An omitted `sourceMap` means "unspecified" on the wire; only a
-        // requested map is transmitted.
+        // An omitted `sourceMap` means "unspecified" on the wire. Telarel
+        // transmits only a requested map.
         if let Some(source_map) = val.source_map {
             object.set("sourceMap", source_map)?;
         }
@@ -440,24 +441,26 @@ impl ToNapiValue for OptionsCall {
     }
 }
 
-/// TSFN bridging the `options` hook. Its payload is emitted by
-/// [`OptionsCall`] (the slot table's `Args`); the
-/// `plugins` property is the CURRENT bag's plugin descriptors.
-/// The RAW `options` hook is async: it returns a promise carrying
-/// `Option<JsOptionsOutput>`, delivered RAW (see
-/// [`crate::plugin::pluginable::OptionsReturn`]).
+/// TSFN bridging the `options` hook.
+///
+/// [`OptionsCall`] (the slot table's `Args`) emits its payload, whose
+/// `plugins` property is the plugin descriptors of the current bag. The raw
+/// `options` hook is async and returns a promise that carries
+/// `Option<JsOptionsOutput>`. The TSFN delivers that promise raw. See
+/// [`crate::plugin::pluginable::OptionsReturn`].
 pub type OptionsTsfn =
     Tsfn<OptionsCall, OptionsCall, crate::plugin::pluginable::OptionsReturn>;
 
-/// A worker-side ctx-bearing hook call.
+/// A worker-side hook call that carries a plugin context.
 pub trait HookCall: 'static {
-    /// JS args payload accompanying the context.
+    /// JS args payload that accompanies the context.
     type Payload: ToNapiValue;
 
-    /// JS return type of the hook (before the sync/async `Either`).
+    /// JS return type of the hook, before the sync or async `Either`.
     type Return: FromNapiValue + TypeName + ValidateNapiValue + 'static;
 
-    /// Consume the call data into the JS-facing plugin context and args payload.
+    /// Consume the call data into the JS-facing plugin context and args
+    /// payload.
     fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)>;
 }
 
@@ -471,7 +474,7 @@ pub fn plugin_context(
     Ok(JsPluginContext { cwd, file, language, source_type })
 }
 
-/// A hook payload: the plugin context followed by the hook args.
+/// A hook payload: the plugin context, then the hook args.
 pub struct FnCtx<A>(
     /// Plugin context passed as the first hook argument.
     pub JsPluginContext,
@@ -480,7 +483,7 @@ pub struct FnCtx<A>(
 );
 
 impl<A: ToNapiValue> JsValuesTupleIntoVec for FnCtx<A> {
-    // `env` is a raw napi handle owned by the JS thread; the trait method is
+    // `env` is a raw napi handle that the JS thread owns. The trait method is
     // not `unsafe`, matching napi's own `JsValuesTupleIntoVec` impls.
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn into_vec(
@@ -493,18 +496,18 @@ impl<A: ToNapiValue> JsValuesTupleIntoVec for FnCtx<A> {
     }
 }
 
-/// Worker-side call data for the `start` hook: resolved, read-only options
-/// with the settled plugin-name list.
+/// Worker-side call data for the `start` hook: the resolved, read-only
+/// options with the settled plugin-name list.
 pub struct StartCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,
     /// Module system used for code generation.
     pub source_type: SharedStr,
-    /// Options resolved for the hook/stage.
+    /// Options resolved for the hook or stage.
     pub options: JsResolvedOptions,
 }
 
@@ -530,12 +533,12 @@ impl HookCall for StartCall {
 pub type StartTsfn =
     Tsfn<StartCall, start::Args, Either<Promise<start::Return>, start::Return>>;
 
-/// Worker-side call data for the `parse` hook: the code to parse, the resolved
-/// parser options, and their JS-facing form.
+/// Worker-side call data for the `parse` hook: the code to parse and the
+/// resolved parser options.
 pub struct ParseCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: SharedStr,
     /// Source code text.
     pub code: String,
@@ -543,7 +546,7 @@ pub struct ParseCall {
     pub language: SharedStr,
     /// Module system used for code generation.
     pub source_type: SharedStr,
-    /// Options resolved for the hook/stage.
+    /// Options resolved for the hook or stage.
     pub options: crate::_types::plugin::hooks::JsParserHookOptions,
 }
 
@@ -570,11 +573,11 @@ impl HookCall for ParseCall {
 pub type ParseTsfn =
     Tsfn<ParseCall, parse::Args, Either<Promise<parse::Return>, parse::Return>>;
 
-/// Worker-side call data for the `prepare` / `finalize` observers.
+/// Worker-side call data for the `prepare` and `finalize` observers.
 pub struct ObserveCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,
@@ -631,7 +634,7 @@ pub type FinalizeTsfn = Tsfn<
 pub struct TransformCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,
@@ -681,7 +684,7 @@ pub type TransformTsfn = Tsfn<
 pub struct GenerateCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,
@@ -689,7 +692,7 @@ pub struct GenerateCall {
     pub source_type: SharedStr,
     /// The AST as a normalized object.
     pub ast: JsAst,
-    /// Options resolved for the hook/stage.
+    /// Options resolved for the hook or stage.
     pub options: crate::_types::plugin::hooks::JsGeneratorHookOptions,
 }
 
@@ -724,13 +727,13 @@ pub type GenerateTsfn = Tsfn<
 pub struct EndCall {
     /// Working directory used to resolve relative paths.
     pub cwd: SharedStr,
-    /// The file being parsed/generated.
+    /// The file being parsed or generated.
     pub file: SharedStr,
     /// Source language of the file.
     pub language: SharedStr,
     /// Module system used for code generation.
     pub source_type: SharedStr,
-    /// Error raised by an earlier hook.
+    /// An error that an earlier hook raised.
     pub error: Option<String>,
 }
 
@@ -756,16 +759,17 @@ impl HookCall for EndCall {
 pub type EndTsfn =
     Tsfn<EndCall, end::Args, Either<Promise<end::Return>, end::Return>>;
 
-/// A TSFN bridging one ctx-bearing JS hook: the worker-side call data `C`,
-/// the `FnCtx<C::Payload>` JS payload, and the sync/async `Either` return.
+/// A TSFN bridging one JS hook that carries a context. It carries the
+/// worker-side call data `C`, the `FnCtx<C::Payload>` JS payload, and the sync
+/// or async `Either` return.
 pub type CtxTsfn<C> = Tsfn<
     C,
     FnCtx<<C as HookCall>::Payload>,
     Either<Promise<<C as HookCall>::Return>, <C as HookCall>::Return>,
 >;
 
-/// Scan a ctx-bearing hook slot on a JS plugin object and bridge its function
-/// into a TSFN.
+/// Scan a hook slot that carries a context on a JS plugin object. Bridge the
+/// present function into a TSFN.
 pub fn scan_hook<C>(
     object: &Object<'static>,
     name: &str,
@@ -795,9 +799,11 @@ where
 }
 
 /// Scan the `options` hook slot on a JS plugin object and bridge its function
-/// into a TSFN. The `options` hook runs before any context exists, so its
-/// payload is the `OptionsCall` data itself (carrying the rooted plugin array
-/// instead of a context).
+/// into a TSFN.
+///
+/// The `options` hook runs before any context exists, so its payload is the
+/// `OptionsCall` data itself. That payload carries the rooted plugin array
+/// instead of a context.
 pub fn scan_options(object: &Object<'static>) -> Result<Option<OptionsTsfn>> {
     let Some(function) = object.get::<Function<
         '_,
@@ -816,11 +822,11 @@ pub fn scan_options(object: &Object<'static>) -> Result<Option<OptionsTsfn>> {
     Ok(Some(tsfn))
 }
 
-/// Scan every hook slot of a JS plugin object, bridging present hook
-/// functions into TSFNs.
+/// Scan every hook slot of a JS plugin object, and bridge each present hook
+/// function into a TSFN.
 ///
-/// Returns `(options, start, parse, prepare, transform, finalize, generate,
-/// end)`, in pipeline execution order.
+/// The macro returns `(options, start, parse, prepare, transform, finalize,
+/// generate, end)`, in pipeline execution order.
 macro_rules! hook_scan {
     ($object:expr) => {{
         let options: Option<crate::plugin::hooks::OptionsTsfn> =

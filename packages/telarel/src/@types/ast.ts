@@ -6,7 +6,7 @@ import type { Ast } from "#/classes/ast";
  */
 type AstResult = {
     /**
-     * The parsed AST.
+     * The parsed AST, with its source text and optional input map.
      */
     ast: Ast;
 };

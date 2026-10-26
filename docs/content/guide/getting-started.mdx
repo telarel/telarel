@@ -23,11 +23,11 @@ To use the transform plugin, add its crate as well:
 cargo add telarel_plugin_transform
 ```
 
-The package ships prebuilt native bindings for the common platforms, so no Rust toolchain is required.
+The package ships prebuilt native bindings for the common platforms, so you do not need a Rust toolchain.
 
 ## First Compile
 
-Telarel takes a source text, an options object, and a list of plugins, and returns generated code and an optional source map.
+Telarel takes a source text, an options object, and a list of plugins. It returns generated code and an optional source map.
 
 ### JavaScript
 
@@ -71,4 +71,4 @@ let result: CodeResult = compile(
 println!("{}", result.code); // const x = 1;
 ```
 
-Without the transform plugin, `compile` still parses and re-generates the code — it just leaves the syntax as written. Plugins are what change it.
+Without the transform plugin, `compile` still parses and regenerates the code. It leaves the syntax as written. Plugins change the syntax.

@@ -11,14 +11,14 @@ use crate::plugin::hooks::RefList;
 /// The worker closure a [`FunctionTask`] runs.
 ///
 /// It owns everything the call needs and returns the JS-facing value directly,
-/// so no `Ast` or pipeline future ever crosses the JS/worker boundary.
+/// so no `Ast` or pipeline future ever crosses the JS and worker boundary.
 pub type Run<J> = Box<dyn FnOnce() -> Result<J> + Send + 'static>;
 
-/// A NAPI task running one pipeline function on a libuv worker thread.
+/// A NAPI task that runs one pipeline function on a libuv worker thread.
 ///
-/// Every NAPI entry point shares it; `run` performs the whole call on the
-/// worker. The compile's dynamic release list (when there are bridged
-/// plugins) is drained in [`Task::finally`].
+/// Every NAPI entry point shares it, and `run` performs the whole call on the
+/// worker. `Task::finally` drains the dynamic release list of the compile
+/// when there are bridged plugins.
 pub struct FunctionTask<J> {
     run: Option<Run<J>>,
     refs: Option<Arc<RefList>>,

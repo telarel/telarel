@@ -8,8 +8,8 @@ use crate::common::pipeline::{RewriteStage, run};
 /// Rewrite `ast` through the plugin chain.
 ///
 /// Runs `options`, `start`, `prepare`, `transform`, `finalize`, and `end`. The
-/// AST's own input map wins; otherwise the resolved input source map is
-/// attached before the stages run.
+/// AST's own input map wins. Otherwise, the pipeline attaches the resolved
+/// input source map before the stages run.
 pub async fn rewrite(
     ast: Ast,
     options: RewriteOptions,

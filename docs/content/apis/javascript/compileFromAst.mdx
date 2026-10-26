@@ -20,7 +20,7 @@ Compiles an existing AST through rewrite and generation, with plugins, in memory
 
 ## Parameters
 
-The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare ESTree `Program` together with its source text.
+The function accepts either an [Ast](/apis/javascript/Ast) instance or a bare ESTree `Program` with its source text.
 
 | Name      | Type                    | Description               |
 | --------- | ----------------------- | ------------------------- |
@@ -41,22 +41,22 @@ The function accepts either an [Ast](/apis/javascript/Ast) instance, or a bare E
 | `file`       | `string`           | `index.ts`       | The file being compiled. Its extension is the final fallback for the grammar. |
 | `language`   | `Language`         | inferred         | The grammar of the code. Overrides the AST language and extension inference.  |
 | `sourceType` | `SourceType`       | inferred         | The module system of the code. Overrides the grammar's module kind.           |
-| `output`     | `OutputOptions`    | `{ file: file }` | Output code settings. `output.file` derives the default source-map URL.       |
+| `output`     | `OutputOptions`    | `{ file: file }` | Output code configuration. `output.file` derives the default source-map URL.  |
 | `sourceMap`  | `SourceMapOptions` | off              | The source-map inputs and outputs requested for the run.                      |
 | `plugins`    | `PluginOption[]`   | `[]`             | The plugins to run.                                                           |
 
-The grammar precedence is `options.language > Ast.language > file extension`. `compileFromAst` consumes the AST language but returns only code and an optional map.
+The grammar precedence is `options.language > Ast.language > file extension`. `compileFromAst` reads the AST language but returns only code and an optional map.
 
-An empty `output.file` or `sourceMap.output.url` is treated as unset, same as absent.
+The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
 
 ## Returns
 
 `Promise<CodeResult>`:
 
-| Field  | Type                | Description                                                   |
-| ------ | ------------------- | ------------------------------------------------------------- |
-| `code` | `string`            | The generated code.                                           |
-| `map`  | `SourceMap \| null` | The source map for the generated code, when one was produced. |
+| Field  | Type                | Description                                                          |
+| ------ | ------------------- | -------------------------------------------------------------------- |
+| `code` | `string`            | The generated code.                                                  |
+| `map`  | `SourceMap \| null` | The source map for the generated code, or `null` when no map exists. |
 
 ## Example
 

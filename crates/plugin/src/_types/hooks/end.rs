@@ -2,8 +2,11 @@ use telarel_common::CompileError;
 
 /// Arguments for the `end` hook: the error, when the compile failed.
 ///
-/// The hook is notify-only; its return value is ignored. It is invoked on
-/// every settled plugin, on success and on every error path.
+/// The hook is notify-only, and its return value is ignored. `end` runs on
+/// every settled plugin on every path, including a compile failure, but not
+/// when the `options` stage fails. A failing `end` returns its own error
+/// instead of the stage error. On the success path, the `end` error is the
+/// returned error.
 #[derive(Debug)]
 pub struct EndArgs {
     /// The error, when the compile failed.

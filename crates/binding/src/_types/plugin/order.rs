@@ -15,7 +15,7 @@ pub enum BindingPluginOrder {
 /// The raw `<hook>Meta` shape read from a JS plugin object.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BindingPluginHookMeta {
-    /// The requested bucket; `None` means the normal bucket.
+    /// The requested bucket. `None` means the normal bucket.
     pub order: Option<BindingPluginOrder>,
 }
 
@@ -33,8 +33,8 @@ pub fn parse_order(text: &str) -> Result<BindingPluginOrder> {
     }
 }
 
-/// Map the binding meta onto the plugin-layer ordering meta.
-/// `None` (field absent) and `order: None` both mean the normal bucket.
+/// Map the binding meta onto the plugin-layer ordering meta. An absent field
+/// and `order: None` both mean the normal bucket.
 pub fn to_plugin_hook_meta(
     meta: Option<BindingPluginHookMeta>
 ) -> Option<PluginHookMeta> {
@@ -47,7 +47,8 @@ pub fn to_plugin_hook_meta(
 }
 
 /// Read `<hook>Meta` from a raw plugin object and map it to the plugin-layer
-/// meta. A present meta object without `order` (or a missing meta) is normal.
+/// meta. A present meta object without `order`, or a missing meta, means the
+/// normal bucket.
 pub fn read_hook_meta(
     object: &Object<'static>,
     hook: &str,

@@ -2,7 +2,7 @@ use telarel_common::Ast;
 
 /// Arguments for the `prepare` hook: the parsed AST, read-only.
 ///
-/// `prepare` is an observer; its return value is ignored.
+/// `prepare` is an observer, and its return value is ignored.
 #[derive(Debug, Clone, Copy)]
 pub struct PrepareArgs<'a> {
     /// The parsed AST, read-only.

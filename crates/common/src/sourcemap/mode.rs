@@ -9,9 +9,9 @@ use crate::sourcemap::inline::{
 
 /// Apply the resolved output options to a [`CodeResult`].
 ///
-/// `output_file` derives the default external map URL when `url` is absent;
-/// pass `None` when no output map was explicitly requested. Called by the
-/// pipeline after the winning generate hook (builtin or custom).
+/// `output_file` derives the default external map URL when `url` is absent.
+/// Pass `None` when no output map was explicitly requested. The pipeline calls
+/// this function after the winning generate hook, builtin or custom.
 pub fn apply_output_source_map_mode(
     result: CodeResult,
     options: &OutputSourceMapOptions,

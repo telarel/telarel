@@ -1,20 +1,21 @@
 use oxc::diagnostics::Diagnostics;
 use oxc_transformer_plugins::ReplaceGlobalDefinesConfig;
 
-/// The `define` options: esbuild-style global constant replacements.
+/// The `define` options. They replace global constants with esbuild-style
+/// entries.
 ///
-/// Entries are ordered pairs; the first entry for a duplicate key wins.
+/// Entries are ordered pairs. The first entry for a duplicate key wins.
 #[derive(Debug, Clone, Default)]
 pub struct DefineOptions {
-    /// Global replacement entries as `(key, value)` expression sources; the first duplicate key wins.
+    /// Global replacement entries as `(key, value)` expression sources. The
+    /// first entry for a duplicate key wins.
     pub entries: Vec<(String, String)>,
 }
 
 impl DefineOptions {
-    /// Resolve into the oxc config, validating keys and values.
+    /// Resolve into the oxc configuration.
     ///
-    /// The oxc constructor parses each key and value once for grammatical
-    /// errors, so invalid entries surface here as [`Diagnostics`].
+    /// Returns [`Diagnostics`] when a key or value has a grammatical error.
     pub fn resolve(&self) -> Result<ReplaceGlobalDefinesConfig, Diagnostics> {
         ReplaceGlobalDefinesConfig::new(&self.entries)
     }

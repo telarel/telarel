@@ -17,7 +17,7 @@ pub struct ResolvedOptions {
     pub language: Language,
     /// The module system of the code, resolved from the grammar.
     pub source_type: SourceType,
-    /// The output code settings.
+    /// The output code configuration.
     pub output: ResolvedOutputOptions,
     /// The source-map inputs and outputs requested for the run.
     pub source_map: SourceMapOptions,

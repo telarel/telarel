@@ -4,8 +4,8 @@ use crate::PluginError;
 use crate::plugin::pluginable::SharedPluginable;
 
 /// Run the `finalize` hook on every plugin in meta-ranked order as a
-/// read-only observer of the final AST; the first error aborts. Return
-/// values are ignored.
+/// read-only observer of the final AST. The first error aborts. The driver
+/// ignores return values.
 pub async fn finalize(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,

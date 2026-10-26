@@ -13,7 +13,7 @@ type Generator = {
 
 Creates a builtin generator over `ast` and `options`.
 
-The returned generator calls the builtin generator directly and never runs the plugin chain. Use [generate](/apis/javascript/generate) when plugins should be able to replace the generated result.
+The returned generator calls the builtin generator directly and never runs the plugin chain. When you need plugins to replace the generated result, use [generate](/apis/javascript/generate).
 
 ## Parameters
 
@@ -26,24 +26,24 @@ The returned generator calls the builtin generator directly and never runs the p
 
 Every field is required. In a `generate` hook, the stage options are available as `args.options`.
 
-| Field       | Type               | Description                                               |
-| ----------- | ------------------ | --------------------------------------------------------- |
-| `cwd`       | `string`           | Current working directory. Reserved; codegen ignores it.  |
-| `file`      | `string`           | The file being generated.                                 |
-| `sourceMap` | `SourceMapOptions` | The source-map inputs and outputs requested for the step. |
+| Field       | Type               | Description                                                  |
+| ----------- | ------------------ | ------------------------------------------------------------ |
+| `cwd`       | `string`           | Current working directory. Reserved, and codegen ignores it. |
+| `file`      | `string`           | The file being generated.                                    |
+| `sourceMap` | `SourceMapOptions` | The source-map inputs and outputs requested for the step.    |
 
-Generation uses `ast.language` when present, then the `file` extension. `GeneratorOptions` has no `language` field.
+When `ast.language` is present, generation uses it. Otherwise, generation uses the `file` extension. `GeneratorOptions` has no `language` field.
 
-The builtin generator composes the AST's input map into the produced map and returns that map separately. Output delivery modes (`external`, `inline`, and `both`) are applied by the pipeline, not by the builtin generator.
+The builtin generator composes the AST's own input map into the produced map. It returns that map separately. The pipeline applies output delivery modes (`external`, `inline`, and `both`). The builtin generator does not apply them.
 
 ## Returns
 
 A `Generator` whose `generate()` method returns `Promise<CodeResult>`:
 
-| Field  | Type                | Description                                                   |
-| ------ | ------------------- | ------------------------------------------------------------- |
-| `code` | `string`            | The generated code.                                           |
-| `map`  | `SourceMap \| null` | The source map for the generated code, when one was produced. |
+| Field  | Type                | Description                                                          |
+| ------ | ------------------- | -------------------------------------------------------------------- |
+| `code` | `string`            | The generated code.                                                  |
+| `map`  | `SourceMap \| null` | The source map for the generated code, or `null` when no map exists. |
 
 Generation failures reject with a [CompileError](/apis/javascript/CompileError).
 

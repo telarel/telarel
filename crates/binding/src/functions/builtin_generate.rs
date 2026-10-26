@@ -17,15 +17,15 @@ use crate::tasks::function::{FunctionTask, Run};
 
 /// Generate code from an AST with the builtin generator, in memory.
 ///
-/// Backs the builtin `createGenerator`; no plugin chain runs.
+/// Backs the builtin `createGenerator`. No plugin chain runs.
 #[napi_derive::napi(ts_return_type = "Promise<JsCodeResult>")]
 pub fn builtin_generate(
     ast: JsAstInput,
     options: JsGeneratorOptions,
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<FunctionTask<JsCodeResult>>>
 {
-    // The generator options carry no grammar: the input AST's language wins,
-    // then the resolved file, while the program JSON owns the module kind.
+    // The generator options carry no grammar. The input AST's language wins,
+    // then the resolved file. The program JSON owns the module kind.
     let resolved: ResolvedOptions =
         resolve_options(options.to_resolvable()?, Vec::new());
 

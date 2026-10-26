@@ -12,8 +12,8 @@ import { normalizeAstInput } from "#/functions/ast-input";
 /**
  * Generates code from an AST with plugins, in memory.
  *
- * Accepts a normalized {@link Ast}, or a bare ESTree program together with its
- * source text.
+ * Accepts an {@link Ast}, or a bare ESTree program together with its source
+ * text.
  */
 function generate(ast: Ast, options?: GenerateOptions): Promise<CodeResult>;
 

@@ -30,8 +30,8 @@ pub fn compile_from_ast(
     let options_rust: CompileFromAstOptions =
         options.to_compile_from_ast_options()?;
 
-    // Explicit options win, then the input AST's grammar, then the grammar
-    // inferred from the resolved file.
+    // The precedence is explicit options, then the input AST's grammar, then
+    // the grammar inferred from the resolved file.
     let resolved: ResolvedOptions = resolve_options(
         ResolvableOptions::from(options_rust.clone()),
         Vec::new(),

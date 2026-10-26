@@ -26,11 +26,11 @@ fn is_coverage_ignore_file(source: &[u8]) -> bool {
         || starts_with_directive(source, b"istanbul ignore file")
 }
 
-/// Derive a missing comment content label from its delimiter-free text.
+/// Derive a missing content label for a comment from its delimiter-free text.
 ///
-/// Mirrors oxc's text-only annotation rules. Parser context is unavailable
-/// here, so `@__PURE__` / `@__NO_SIDE_EFFECTS__` classify as the
-/// `*-not-applied` variants rather than their applied counterparts.
+/// This mirrors oxc's text-only annotation rules. Parser context is
+/// unavailable here, so `@__PURE__` and `@__NO_SIDE_EFFECTS__` classify as
+/// the `*-not-applied` variants rather than their applied counterparts.
 pub fn classify_content(
     value: &str,
     kind: CommentKind,

@@ -3,11 +3,11 @@ title: Overview
 description: The plugin interface shared by the JavaScript package and the Rust crate.
 ---
 
-Telarel is built around plugin hooks. A plugin is a value that carries a `name` and any subset of the eight hooks; the hooks it does not implement are simply skipped. It receives the source, the options, and the current pipeline state, and can contribute to each stage of the compiler.
+Telarel organizes the compiler around plugin hooks. A plugin is a value with a `name` and any subset of the eight hooks. The compiler skips any hook that a plugin does not implement. A plugin receives the source, the options, and the current pipeline state. It can contribute to each stage of the compiler.
 
-The core owns all state: a hook observes its stage arguments and returns a value that the core applies. A hook that returns nothing leaves the carried state unchanged. Plugins are passed to every entry point alongside the options.
+The core owns all state. A hook observes its stage arguments and returns a value that the core applies. A hook that returns nothing leaves the current state unchanged. Every entry point accepts plugins alongside the options.
 
-Rust plugins are coupled to the bundled oxc version, while JavaScript plugins remain backend-independent through ESTree.
+Rust plugins use the bundled oxc version. JavaScript plugins remain backend-independent through ESTree.
 
 ## Hooks
 
@@ -24,7 +24,7 @@ Rust plugins are coupled to the bundled oxc version, while JavaScript plugins re
 
 ### Hook semantics
 
-**`options` — fixpoint replace.** Runs before options are resolved, as a sequential fixpoint over the plugin list. Identity is the instance, not the name: each distinct instance runs once, a same-name replacement counts as new work, and duplicates of one instance are preserved.
+**`options`: fixpoint replace.** The pipeline runs this hook first and then resolves options. It runs the hook as a sequential fixpoint over the plugin list. A fixpoint repeats until no instance is new work. It then settles.
 
 ```mermaid
 flowchart TD
@@ -35,21 +35,30 @@ flowchart TD
     D -- "no" --> E["Settle and resolve defaults"]
 ```
 
-- **Return.** A returned bag replaces the whole bag at struct level, so omitted fields fall back to defaults. Returning nothing keeps the current bag.
-- **Payload.** Resolvable options and the plugin list, never the source. Unset fields stay unset until the fixpoint settles.
-- **Depth.** An instance created every pass is new work every pass and reaches `MAX_OPTIONS_DEPTH`.
+- **Identity.** The instance is the identity, not the `name`. Each distinct instance runs once.
+- **Replacement.** A same-name replacement counts as new work. The pipeline preserves duplicate entries of one instance.
+- **Return.** A returned bag replaces the whole bag at struct level. Omitted fields take their default values. Returning nothing keeps the current bag.
+- **Payload.** The payload is the resolvable options and the plugin list. It never includes the source. Unset fields stay absent until the fixpoint settles.
+- **Depth.** An instance created every pass is new work every pass. It reaches `MAX_OPTIONS_DEPTH`.
 
-**`start` — notify.** Runs on every settled plugin with the fully resolved, read-only options. Return values are ignored; the first error aborts.
+**`start`: notify.** The pipeline runs `start` on every settled entry. The hook receives the fully resolved, read-only options. The pipeline ignores return values. The first error aborts.
 
-**`parse` — first-win.** Runs over the plugins that implement it. The first plugin returning an AST wins and the rest are skipped; returning nothing defers to the next plugin; when every hook defers the builtin parser runs. After a `parse` hook wins, the pipeline attaches the requested input source map when the returned AST carries none; an AST's own input map wins.
+**`parse`: first-win.** The pipeline iterates over the plugins that implement this hook. In a first-win stage, the first plugin that returns an AST wins and the pipeline skips the rest. A plugin that returns nothing defers. A deferral passes control to the next plugin.
 
-**`prepare` / `finalize` — observers.** Each runs as a read-only observer of the AST — the parsed AST for `prepare`, the final AST for `finalize`. Return values are ignored; they cannot change the tree. In JavaScript these hooks, and `generate`, receive an `Ast` snapshot whose mutations stay local to the hook.
+If every hook defers, the builtin parser runs. The builtin is the compiler's own parser or generator.
 
-**`transform` — carried fold.** Runs over the plugins that implement it, carrying an owned AST from plugin to plugin. The **last** replacement AST returned wins; returning nothing leaves the carried AST untouched. In Rust the argument is an owned cheap handle and mutation goes through `Ast::with_mut`; in JavaScript the argument is an `Ast` instance, mutation goes through `Ast.mutate`, and the returned `Ast` replaces it.
+After a `parse` hook wins, the pipeline attaches the requested input source map only when the returned AST has no input map. The AST's own input map wins.
 
-**`generate` — first-win.** Runs over the plugins that implement it. The first plugin returning code wins and the rest are skipped; returning nothing defers to the next plugin, and ultimately to the builtin generator.
+**`prepare` / `finalize`: observers.** The pipeline runs each hook as a read-only observer of the AST. `prepare` observes the parsed AST. `finalize` observes the final AST. The pipeline ignores return values, and these hooks cannot change the tree. In JavaScript, these hooks and `generate` receive an `Ast` snapshot. Mutations to the snapshot stay local to the hook.
 
-**`end` — notify.** Runs on every settled plugin on every path, including when the compile failed — but not when the `options` stage itself fails. Return values are ignored.
+**`transform`: carried fold.** The pipeline iterates over the plugins that implement this hook. A carried fold passes one owned AST from plugin to plugin. Each hook can replace that AST. The **last** replacement AST returned wins. Returning nothing leaves the carried AST untouched.
+
+- **Rust.** The argument is an owned cheap handle. The hook calls `Ast::with_mut` to mutate the AST.
+- **JavaScript.** The argument is an `Ast` instance. The hook calls `Ast.mutate` to mutate the AST, and the returned `Ast` replaces the instance.
+
+**`generate`: first-win.** The pipeline iterates over the plugins that implement this hook. The first plugin that returns code wins and the pipeline skips the rest. A plugin that returns nothing defers to the next plugin. If every plugin defers, the builtin generator regenerates the code.
+
+**`end`: notify.** The pipeline runs this hook on every settled entry and on every path. It runs when the compile fails, but it does not run when the `options` stage fails. The pipeline ignores return values.
 
 ### Usage gating
 
@@ -59,11 +68,11 @@ flowchart TD
 | `start`, `end`                                          | every settled entry, duplicates included |
 | `parse`, `prepare`, `transform`, `finalize`, `generate` | only plugins that declare the hook       |
 
-Parsing and code generation always run: a stage that no plugin declares falls back to the builtin parser or generator.
+Parsing and code regeneration always run. If no plugin declares a stage, the builtin parser or generator runs that stage.
 
 ### Entry points
 
-Which hooks each entry point runs:
+The table below shows which hooks each entry point runs.
 
 | Hook        | `parse` | `rewrite` | `generate` | `compileFromAst` | `compile` |
 | ----------- | ------- | --------- | ---------- | ---------------- | --------- |
@@ -76,11 +85,11 @@ Which hooks each entry point runs:
 | `generate`  |         |           | ✓          | ✓                | ✓         |
 | `end`       | ✓       | ✓         | ✓          | ✓                | ✓         |
 
-In Rust, `compileFromAst` is spelled `compile_from_ast`.
+In Rust, the `compileFromAst` entry point is `compile_from_ast`.
 
 ### Ordering
 
-Every hook carries its own optional order, so a single plugin can run `pre` for one hook and `post` for another.
+Each hook has its own optional order. A single plugin can run `pre` for one hook and `post` for another.
 
 | Order  | Runs                              |
 | ------ | --------------------------------- |
@@ -93,4 +102,4 @@ Every hook carries its own optional order, so a single plugin can run `pre` for 
 Every hook receives a context as its first argument.
 
 - `options` receives the `CommonPluginContext`.
-- Every later hook receives the `PluginContext`, carrying the resolved `cwd` and `module` info (`file`, `language`, and `source_type` / `sourceType`).
+- Every later hook receives the `PluginContext`. The context holds the resolved `cwd` and the `module` info. The `module` info is `file`, `language`, and `source_type` / `sourceType`.

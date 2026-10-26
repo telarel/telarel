@@ -1,6 +1,5 @@
 use napi::{Error, Result, Status};
 
-/// Build a napi `InvalidArg` error for a JSON deserialization failure.
 fn invalid_arg(
     context: &str,
     error: serde_json::Error,
@@ -8,8 +7,8 @@ fn invalid_arg(
     Error::new(Status::InvalidArg, format!("invalid {context}: {error}"))
 }
 
-/// Parse a plugin-options JSON value into `T`,
-/// mapping errors to napi `InvalidArg`.
+/// Parse a plugin-options JSON value into `T` and map errors to napi
+/// `InvalidArg`.
 pub fn parse_options<T: serde::de::DeserializeOwned>(
     value: serde_json::Value,
     context: &str,

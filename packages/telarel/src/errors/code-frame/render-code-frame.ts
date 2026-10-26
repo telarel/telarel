@@ -1,8 +1,5 @@
 import type { Span } from "#/errors/source/span";
 
-/**
- * Clamp a JS string index to `[0, max]`, treating non-finite values as zero.
- */
 const clampIndex = (value: number, max: number): number => {
     if (!Number.isFinite(value)) {
         return 0;
@@ -12,10 +9,8 @@ const clampIndex = (value: number, max: number): number => {
 };
 
 /**
- * Render a deterministic code frame for `message` at `span` in `code`.
- *
- * Spans are UTF-16 code-unit offsets and are clamped to the source bounds, so
- * an out-of-range span renders at the nearest edge instead of throwing.
+ * Spans are UTF-16 code-unit offsets. An out-of-range span clamps to the source
+ * bounds and renders at the nearest edge instead of throwing.
  */
 const renderCodeFrame = (
     file: string,

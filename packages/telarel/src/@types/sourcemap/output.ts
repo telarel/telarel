@@ -3,9 +3,9 @@ import type { Partial } from "ts-vista";
 /**
  * Where the output source map is delivered.
  *
- * - `inline` — append a `//# sourceMappingURL=data:...` comment
- * - `external` — return the map separately with comment
- * - `both` — append the data-URI comment and also return the map
+ * - `inline`: append a `//# sourceMappingURL=data:...` comment
+ * - `external`: return the map separately with a comment
+ * - `both`: append the data-URI comment and also return the map
  */
 type OutputSourceMapMode = "inline" | "external" | "both";
 
@@ -22,8 +22,8 @@ type CompleteOutputSourceMapOptions = {
     /**
      * URL written verbatim into the appended `sourceMappingURL` comment.
      *
-     * Used only by `external`; ignored by other modes. An empty string is
-     * treated as unset, same as an absent `url`.
+     * Used only by `external`. Ignored by other modes. An empty string is
+     * treated as unset, the same as an absent `url`.
      */
     url: string;
 };

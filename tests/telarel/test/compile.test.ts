@@ -150,8 +150,8 @@ describe("compile", (): void => {
             ],
         });
 
-        // The bag cannot carry a `code` rewrite, so the source is unchanged;
-        // the last returned bag wins the file.
+        // The options bag cannot carry a `code` rewrite, so the source stays
+        // unchanged. The last returned bag wins the file.
         expect(result.code).toBe("const a = 1;");
         expect(result.map?.sources).toEqual(["c.ts"]);
     });
@@ -255,10 +255,10 @@ describe("compile", (): void => {
     });
 
     it("applies a returned bag as full-bag replace with defaults", async (): Promise<void> => {
-        // Fields the returned bag omits fall back to their defaults. The bag
-        // explicitly carries the current `file` and plugin list: omitting
-        // `plugins` would wholesale-replace the list to `[]` (the documented
-        // `plugins` default) and drop the plugin.
+        // Fields that a returned bag omits take their default values. An
+        // omitted `plugins` field becomes `[]`, the documented default, and the
+        // plugin would drop. So this bag repeats the current `file` and plugin
+        // list.
         const seen: Array<string> = [];
 
         const result: CodeResult = await compile("const a = 1;", {
@@ -294,12 +294,13 @@ describe("compile", (): void => {
     });
 
     it("omits unset cwd and file from the options hook and resolves their defaults", async (): Promise<void> => {
-        // The `options` fixpoint runs BEFORE resolution, so an unset `cwd` or
-        // `file` is absent from the bag (not `""`) — otherwise echoing the bag
-        // would shadow the defaults. The core resolves both for `start` and
-        // later hooks. `cwd` is runtime-dependent (the native binding reports
-        // Node's `process.cwd()` while the WASI runtime starts at `/`), so pin
-        // each runtime's own default.
+        // The `options` fixpoint runs before resolution, so the options bag
+        // has no `cwd` or `file` when the caller omits them. If an unset field
+        // carried `""`, echoing the bag would shadow the defaults. The core
+        // resolves both fields for `start` and later hooks. `cwd` depends on
+        // the runtime: the native binding reports Node's `process.cwd()`, and
+        // the WASI runtime starts at `/`. Pin the default for the active
+        // runtime. To select WASI, set `NAPI_RS_FORCE_WASI=error`.
         const isWasi: boolean = process.env.NAPI_RS_FORCE_WASI === "error";
 
         const expectedCwd: string = isWasi ? "/" : process.cwd();
@@ -356,9 +357,10 @@ describe("compile", (): void => {
     });
 
     it("preserves defaults when an options hook echoes an unset bag", async (): Promise<void> => {
-        // Regression: the raw bag used to carry `""` for unset fields, so a
-        // spread-and-return turned them into explicit empty strings and lost
-        // the `index.ts` default (the empty file also infers the JS grammar).
+        // Regression guard: unset fields stay absent from the raw bag. If the
+        // bag carried `""`, a plugin that spreads and returns it would set
+        // `file` to an explicit empty string. That empty file would lose the
+        // `index.ts` default and infer the JS grammar.
         const isWasi: boolean = process.env.NAPI_RS_FORCE_WASI === "error";
         const expectedCwd: string = isWasi ? "/" : process.cwd();
         const seen: Array<{ cwd: string; file: string }> = [];
@@ -455,10 +457,10 @@ describe("compile", (): void => {
     });
 
     it("injects a plugin through a returned options bag", async (): Promise<void> => {
-        // The options hook replaces the bag incl. `plugins`: the injected
-        // plugin is wrapped, joins the settled list, and runs like any
-        // entry plugin. The injection appends only once, so the fixpoint
-        // converges.
+        // An options hook replaces the whole bag, including `plugins`. The
+        // bridge wraps the injected plugin. Then the plugin joins the settled
+        // list and runs like any entry plugin. The injection appends only
+        // once, so the fixpoint converges.
         let isInjected: boolean = false;
         const seen: Array<string> = [];
 
@@ -547,8 +549,8 @@ describe("compile", (): void => {
             ],
         });
 
-        // The injector runs once; `late` joins on the next pass, after the
-        // injector has already been skipped as an already-run instance.
+        // The injector runs once. `late` joins on the next pass, after the
+        // fixpoint skips the injector as an already-run instance.
         expect(seen).toEqual(["in:false", "late.options"]);
     });
 
@@ -604,8 +606,8 @@ describe("compile", (): void => {
             plugins: [swapper, oldProbe],
         });
 
-        // The same-name instance is new work on the next pass; the settled
-        // list no longer contains the old probe.
+        // The fixpoint treats the same-name instance as new work on the next
+        // pass. The settled list no longer contains the old probe.
         expect(seen).toEqual([
             "swapper.options",
             "old.options",
@@ -1079,8 +1081,8 @@ describe("compile", (): void => {
     });
 
     it("applies an in-place mutation when the mutated tree is returned", async (): Promise<void> => {
-        // Return-based contract: mutating `args.ast` in place only flows
-        // back into Rust when the hook returns the mutated tree.
+        // Return-based contract: an in-place mutation of `args.ast` reaches
+        // Rust only when the hook returns the mutated tree.
         const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
@@ -1159,8 +1161,8 @@ describe("compile", (): void => {
     });
 
     it("applies a returned ast to the compile", async (): Promise<void> => {
-        // The hook returns a NEW tree without mutating `args.ast`; the
-        // returned one is what Rust reads back.
+        // The hook returns a new tree and does not mutate `args.ast`. Rust
+        // reads back the returned tree.
         const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
@@ -1272,9 +1274,9 @@ describe("compile", (): void => {
             }),
         ).rejects.toThrow("boom-string");
 
-        // Pinned observed message: the object payload is not propagated —
-        // the bridge renders any non-Error throwable as `GenericFailure`,
-        // and the plugin name is no longer added by the wrapper.
+        // The object payload does not reach the caller. The bridge renders any
+        // non-Error throwable as `GenericFailure`, and the wrapper no longer
+        // adds the plugin name.
         await expect(
             compile("const a = 1;", {
                 cwd: "/repo",
@@ -1350,8 +1352,8 @@ describe("compile", (): void => {
         expect(result.code).toBe("const a = 1;");
         expect(seen).toHaveLength(1);
         expect(seenFiles).toEqual(["index.ts"]);
-        // Scalars are fully resolved: language inferred from the extension,
-        // sourceType resolved from the language.
+        // The core fully resolves each scalar field. It infers `language`
+        // from the extension and resolves `sourceType` from the language.
         const options: ResolvedOptions = seen[0] as ResolvedOptions;
         expect(options.language).toBe("ts");
         expect(options.sourceType).toBe("unambiguous");
@@ -1514,8 +1516,8 @@ describe("compile", (): void => {
             ],
         });
 
-        // The prepare payload carries only the parsed AST; there is no
-        // rewrite channel, so the return is ignored.
+        // The prepare payload carries only the parsed AST and has no rewrite
+        // channel, so the pipeline ignores the return value.
         expect(seen).toEqual([
             { keys: ["ast"], type: "Program", code: "const a = 1;" },
         ]);
@@ -1656,8 +1658,9 @@ describe("compile", (): void => {
             },
         });
 
-        // The upstream map resolves parse-input (0, 0) to original (9, 0);
-        // composition carries that through the codegen map's src side.
+        // The upstream map resolves parse-input (0, 0) to original (9, 0).
+        // Composition then propagates that result to the src side of the
+        // codegen map.
         expect(result.map?.file).toBe("index.ts");
         expect(result.map?.sources).toEqual(["index.ts"]);
         expect(result.map?.mappings).toBe("AASA,MAAM,IAAI");

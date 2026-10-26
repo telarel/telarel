@@ -6,7 +6,9 @@ use crate::_types::options::sourcemap::SourceMapOptions;
 /// Resolved options for the builtin [`crate::ast::generator::Generator`].
 #[derive(Debug, Clone)]
 pub struct GeneratorOptions {
-    /// Current working directory (reserved; builtin codegen does not use it).
+    /// Current working directory.
+    ///
+    /// The field is reserved and builtin codegen does not use it.
     pub cwd: PathBuf,
     /// The file being generated.
     pub file: String,

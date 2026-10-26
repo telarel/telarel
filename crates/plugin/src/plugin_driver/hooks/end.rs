@@ -5,7 +5,7 @@ use crate::plugin::pluginable::SharedPluginable;
 
 /// Run the `end` hook on every settled plugin in meta-ranked order.
 /// Notify-only: results are ignored. Every plugin's hook runs even after one
-/// fails; the FIRST error is returned only after the loop.
+/// fails. The FIRST error is returned only after the loop.
 pub async fn end(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,

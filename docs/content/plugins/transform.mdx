@@ -5,11 +5,11 @@ description: Lower TypeScript, JSX, and modern syntax with the built-in transfor
 
 ## Introduction
 
-The transform plugin wraps the [oxc](https://oxc.rs) transformer and lowers TypeScript, JSX, and modern JavaScript syntax to a set of compilation targets. It also applies compile-time `define` replacements and `inject`ed imports.
+The transform plugin wraps the [oxc](https://oxc.rs) transformer. It lowers TypeScript, JSX, and modern JavaScript syntax to a set of compilation targets. It also applies `define` replacements and `inject` imports at compile time.
 
 ## Installation
 
-The JS package exposes it as the builtin `builtin:transform`. In Rust it is a regular plugin named `telarel_plugin_transform`; add the crate as a dependency.
+The JavaScript package exposes it as the builtin `builtin:transform`. In Rust, it is a regular plugin named `telarel_plugin_transform`. Add the crate as a dependency.
 
 ```sh
 cargo add telarel_plugin_transform
@@ -72,7 +72,7 @@ The Rust `TransformOptions` additionally exposes `helper_loader` for controlling
 
 ### Define
 
-`define` replaces free identifiers and member chains with expression source strings. Quote string literals yourself, while scalars are stringified:
+`define` replaces free identifiers and member chains with expression source strings. Quote string literals in the value. Scalar values become strings:
 
 ```ts
 transform({
@@ -87,6 +87,6 @@ Replacements run last, after `inject` and every transform.
 
 ### Inject
 
-`inject` adds imports for identifiers that would otherwise be free, keyed by the local binding name. A string value is a module source imported as a named specifier; a `[source, imported]` pair imports `imported` from `source`; the object form selects the specifier explicitly. Dotted keys such as `"Object.assign"` are replaced as member chains.
+`inject` adds imports for identifiers that would otherwise be free. The key is the local binding name. A string value names a module source, and the transform plugin imports it as a named specifier. A `[source, imported]` pair names a source and a specifier, and the transform plugin imports `imported` from `source`. The object form selects the specifier explicitly. The transform plugin replaces dotted keys such as `"Object.assign"` as member chains.
 
 Injected imports run after all transforms, before `define`.

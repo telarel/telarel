@@ -13,7 +13,7 @@ type Parser = {
 
 Creates a builtin parser over `code` and `options`.
 
-The returned parser calls the builtin parser directly and never runs the plugin chain. Use [parse](/apis/javascript/parse) when plugins should be able to replace the parse result.
+The returned parser calls the builtin parser directly and never runs the plugin chain. When you need plugins to replace the parse result, use [parse](/apis/javascript/parse).
 
 ## Parameters
 
@@ -26,15 +26,15 @@ The returned parser calls the builtin parser directly and never runs the plugin 
 
 Every field is required. In a `parse` hook, the stage options are available as `args.options`.
 
-| Field        | Type               | Description                                                                                                                                                            |
-| ------------ | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cwd`        | `string`           | Current working directory used to locate the source file; a relative input map `path` resolves against the source file's directory, and absolute paths are used as-is. |
-| `file`       | `string`           | The file being parsed.                                                                                                                                                 |
-| `language`   | `Language`         | The grammar of the code.                                                                                                                                               |
-| `sourceType` | `SourceType`       | The module system of the code.                                                                                                                                         |
-| `sourceMap`  | `SourceMapOptions` | The source-map inputs and outputs requested for the step.                                                                                                              |
+| Field        | Type               | Description                                                                                                                                                                   |
+| ------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cwd`        | `string`           | The parser uses the current working directory to locate the source file. A relative input map `path` resolves against the source file's directory. Absolute paths stay as-is. |
+| `file`       | `string`           | The file being parsed.                                                                                                                                                        |
+| `language`   | `Language`         | The grammar of the code.                                                                                                                                                      |
+| `sourceType` | `SourceType`       | The module system of the code.                                                                                                                                                |
+| `sourceMap`  | `SourceMapOptions` | The source-map inputs and outputs requested for the step.                                                                                                                     |
 
-The parser resolves `sourceMap.input` and attaches it to the returned AST. Output source-map delivery is applied by the pipeline, not by the builtin parser.
+The builtin parser resolves `sourceMap.input`. It attaches the requested input map to the returned AST. The pipeline applies output source-map delivery. The builtin parser does not apply it.
 
 ## Returns
 

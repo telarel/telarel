@@ -3,7 +3,7 @@ title: JavaScript plugin API
 description: Implement plugins as plain objects with the JavaScript Plugin type.
 ---
 
-A JavaScript plugin is a plain object with a required `name` and any subset of the eight hooks. The hooks present on the object are the hooks the compiler calls; hooks that are absent are skipped.
+A JavaScript plugin is a plain object with a required `name` and any subset of the eight hooks. The compiler calls the hooks present on the object. It skips hooks that are absent.
 
 For the hook contract shared by both languages, see the [Plugin API](/apis/plugin).
 
@@ -55,9 +55,9 @@ type Plugin = {
 };
 ```
 
-Hooks are return-based: a hook returns the new value to replace it, or `null` / `void` to make no change. The `start`, `prepare`, `finalize`, and `end` hooks are observers; their return values are ignored.
+Hooks are return-based. A hook returns the new value to replace the current value, or `null` / `void` to make no change. The `start`, `prepare`, `finalize`, and `end` hooks are observers. The compiler ignores their return values.
 
-Hooks may be `async`. Each hook is resolved before the pipeline moves on.
+A hook can be `async`. The pipeline resolves each hook before it continues.
 
 ## Hooks
 
@@ -72,7 +72,7 @@ Hooks may be `async`. Each hook is resolved before the pipeline moves on.
 | `generate`  | `PluginContext`, `GenerateArgs`      | `CodeResult`      |
 | `end`       | `PluginContext`, `EndArgs`           | `void`            |
 
-Returning `null` or `void` defers. For `parse` and `generate` a deferral hands off to the next hook and, once every hook defers, to the builtin parser or generator. For `options` and `transform` a deferral keeps the current value.
+Returning `null` or `void` defers. For `parse` and `generate`, a deferral passes control to the next hook. If every hook defers, the builtin parser or generator runs. The builtin is the compiler's own parser or generator. For `options` and `transform`, a deferral keeps the current value.
 
 ### Arguments
 
@@ -87,17 +87,19 @@ Returning `null` or `void` defers. For `parse` and `generate` a deferral hands o
 | `GenerateArgs`  | `ast: Ast`, `options: GeneratorOptions`  |
 | `EndArgs`       | `error: string \| null`                  |
 
-The options bag is shared by every entry point and always uses `sourceMap`. `parse` and `rewrite` expose a flat `inputSourceMap` at the entry point; it is normalized to `sourceMap.input` before the `options` hook runs. Those AST-producing entry points ignore `sourceMap.output` and `output`, so a stage-agnostic plugin may set them for every stage without failing. An empty `output.file` or `sourceMap.output.url` is treated as unset, same as absent.
+Every entry point uses the options bag, which always uses `sourceMap`. `parse` and `rewrite` expose a flat `inputSourceMap` at the entry point. The pipeline normalizes it to `sourceMap.input` before the `options` hook runs.
 
-The `options` hook observes the bag before resolution. An unset `cwd` or `file` is absent from `args.options` (read it as `undefined`), not `""`; the defaults (`process.cwd()` and `"index.ts"`) are applied only after the fixpoint settles, so `start` and later hooks see the resolved values. Returning `{ ...args.options }` therefore preserves unset fields and cannot turn them into explicit empty strings.
+Those AST-producing entry points ignore `sourceMap.output` and `output`. A stage-agnostic plugin can set them for every stage without failing. The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
 
-Identity is the plugin object, not its `name`; the same object does not re-run its `options` hook. Duplicates and the depth guard follow the [shared fixpoint rules](/apis/plugin#hook-semantics).
+The `options` hook observes the bag before the pipeline resolves it. An unset `cwd` or `file` is absent from `args.options`, so treat it as `undefined`, not `""`. A fixpoint repeats over new instances and settles when none remains. The pipeline applies the defaults (`process.cwd()` and `"index.ts"`) only after the fixpoint settles. `start` and later hooks then see the resolved values. Returning `{ ...args.options }` therefore preserves unset fields and cannot make them explicit empty strings.
 
-All hook AST values are [Ast](/apis/javascript/Ast) instances; see that page for construction, mutation, and snapshot behavior. Every AST-bearing hook receives an `Ast` whose `language` is the current grammar. A `transform` may return an `Ast` with a different language, and read-back uses the returned language. A `parse` hook replacement keeps the parser options' grammar authority: the returned AST's language does not override the parser options.
+The plugin object is the identity, not its `name`. The same object does not run its `options` hook again. Duplicates and the depth guard follow the [shared fixpoint rules](/apis/plugin#hook-semantics).
+
+All hook AST values are [Ast](/apis/javascript/Ast) instances. See that page for construction, mutation, and snapshot behavior. Every AST-bearing hook receives an `Ast` whose `language` is the current grammar. A `transform` can return an `Ast` with a different language, and read-back uses the returned language. A `parse` hook replacement keeps the grammar authority of the parser options. The returned AST's language does not override the parser options.
 
 ### Errors
 
-A hook reports failure by throwing. Throw a [PluginError](/apis/javascript/PluginError) to attach a message and optional [ErrorSource](/apis/javascript/ErrorSource); the rejection surfaces at the entry point as a [CompileError](/apis/javascript/CompileError).
+A hook reports failure by throwing. Throw a [PluginError](/apis/javascript/PluginError) to attach a message and an optional [ErrorSource](/apis/javascript/ErrorSource). The rejection surfaces at the entry point as a [CompileError](/apis/javascript/CompileError).
 
 `EndArgs.error` is the rendered error text as `string | null`, not an error object.
 
@@ -105,7 +107,7 @@ If a stage fails and an `end` hook then fails, the `end` error replaces the stag
 
 ## Ordering
 
-`ObjectHook<T>` is either the handler itself or an object carrying the handler plus an `order`. `PluginOrder` is `"pre"` or `"post"`.
+`ObjectHook<T>` is either the handler itself or an object with the handler plus an `order`. `PluginOrder` is `"pre"` or `"post"`.
 
 ```ts
 type ObjectHook<T> = T | { order?: PluginOrder; handler: T };
@@ -113,7 +115,7 @@ type ObjectHook<T> = T | { order?: PluginOrder; handler: T };
 type PluginOrder = "pre" | "post";
 ```
 
-A hook object puts the handler on `handler`:
+A hook object stores the handler in the `handler` field:
 
 ```ts
 import type { Plugin } from "telarel";
@@ -133,7 +135,7 @@ const plugin: Plugin = {
 
 Every hook receives a context as its first argument.
 
-- `options` receives `CommonPluginContext`, which carries no fields.
+- `options` receives `CommonPluginContext`, which has no fields.
 - Every later hook receives `PluginContext`:
 
 | Field    | Type         | Description                |
@@ -143,11 +145,11 @@ Every hook receives a context as its first argument.
 
 `ModuleInfo` holds `file: string`, `language: Language | void`, and `sourceType: SourceType | void`.
 
-Path values that are not valid UTF-8 are rendered lossily (`U+FFFD`) in hook payloads.
+The pipeline renders path values that are not valid UTF-8 lossily (`U+FFFD`) in hook payloads.
 
 ## Passing plugins
 
-Plugins are passed through the `plugins` field of the options. A `PluginOption` may be a plugin, a builtin descriptor, a falsy slot, or a nested array; entries may also resolve to a promise.
+Callers pass plugins through the `plugins` field of the options. A `PluginOption` can be a plugin, a builtin descriptor, a falsy slot, or a nested array. An entry can also resolve to a promise.
 
 ```ts
 type MaybePromise<T> = T | Promise<T>;
@@ -159,7 +161,7 @@ type PluginOption = MaybePromise<
 >;
 ```
 
-Nested arrays and falsy slots make conditionals easy:
+You can use nested arrays and falsy slots to make entries conditional:
 
 ```ts
 import type { CodeResult, PluginOption } from "telarel";
@@ -184,7 +186,7 @@ const result: CodeResult = await compile("const x: number = 1;", { plugins });
 
 ## Example
 
-A plugin that rewrites the module specifier `react` to `preact/compat` while walking the AST in `transform`:
+The example plugin rewrites the module specifier `react` to `preact/compat` while it walks the AST in `transform`:
 
 <PeekCode>
 

@@ -26,10 +26,12 @@ pub struct ParseProgramOptions<'ctx, 'a> {
     pub allocator: &'a Allocator,
     /// The file being parsed.
     pub file: &'a str,
-    /// The grammar of the code;
+    /// The grammar of the code.
+    ///
     /// `None` infers the grammar from the file extension.
     pub language: Option<Language>,
-    /// The module system of the code;
+    /// The module system of the code.
+    ///
     /// `None` keeps the module kind resolved from the grammar.
     pub source_type: Option<SourceType>,
 }
@@ -48,10 +50,12 @@ pub struct ParseAstOptions {
     pub cwd: PathBuf,
     /// The file being parsed.
     pub file: String,
-    /// The grammar of the code;
+    /// The grammar of the code.
+    ///
     /// `None` infers the grammar from the file extension.
     pub language: Option<Language>,
-    /// The module system of the code;
+    /// The module system of the code.
+    ///
     /// `None` keeps the module kind resolved from the grammar.
     pub source_type: Option<SourceType>,
     /// The input source map describing how `code` was produced from
@@ -59,8 +63,6 @@ pub struct ParseAstOptions {
     pub input_map: Option<SourceMap>,
 }
 
-/// Convert the first parser diagnostic (or fatal error) into a
-/// [`CompileError`].
 fn parse_error(
     context: &CompileContext<'_>,
     parser_return: &oxc::parser::ParserReturn<'_>,
@@ -549,7 +551,7 @@ mod tests {
         )
         .expect("unambiguous module kind parses");
 
-        // The parser resolves an unambiguous source to script or module;
+        // The parser resolves an unambiguous source to script or module.
         // ESM syntax resolves to module.
         assert!(result.program.source_type.is_module());
         assert!(result.program.source_type.is_typescript());

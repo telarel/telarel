@@ -2,7 +2,7 @@ use napi::{Error, Result, Status};
 
 use telarel_plugin_transform::{InjectEntry, InjectOptions, InjectSpecifier};
 
-/// The JS-facing inject specifier mode.
+/// The JS-facing mode for an inject specifier.
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum BindingInjectMode {
@@ -11,7 +11,8 @@ enum BindingInjectMode {
     Namespace,
 }
 
-/// The JS-facing inject object form: `{ source, imported?, local, mode? }`.
+/// The JS-facing form of an inject object:
+/// `{ source, imported?, local, mode? }`.
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BindingInjectObject {
@@ -21,8 +22,8 @@ struct BindingInjectObject {
     mode: Option<BindingInjectMode>,
 }
 
-/// Parse the inject pair form `[source, imported]` into a named specifier
-/// bound to the Record key.
+/// Parse the inject pair form `[source, imported]` into a named specifier.
+/// The Record key becomes the local binding.
 fn parse_inject_pair(
     local: &str,
     pair: Vec<serde_json::Value>,

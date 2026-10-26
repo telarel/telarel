@@ -25,9 +25,9 @@ const sourcesPath: string = Path.resolve(
 );
 
 /**
- * The four helpers the JS binding cannot reach: legacy decorators and the
- * tagged-template-escape plugin are not exposed through the `oxc` passthrough.
- * They are covered by the Rust trigger table instead.
+ * The JS binding cannot reach these four helpers. The `oxc` passthrough does
+ * not expose legacy decorators or the tagged-template-escape plugin. The Rust
+ * trigger table covers them instead.
  */
 const BINDING_UNREACHABLE: ReadonlySet<string> = new Set([
     "decorate",
@@ -49,10 +49,10 @@ const readHelperNames = async (): Promise<Array<string>> => {
 /**
  * One snippet that makes the transform plugin emit a specific runtime helper.
  *
- * `dependencyMarker` is set for the dependency-only helpers oxc never loads
- * directly (`OverloadYield`, `get`, `typeof`, ...): they arrive transitively
- * from a dependent, so they are proven by a rename-stable marker in the inlined
- * body rather than a runtime import specifier.
+ * The test sets `dependencyMarker` for the dependency-only helpers that oxc
+ * never loads directly (`OverloadYield`, `get`, `typeof`, ...). These helpers
+ * arrive transitively from a dependent. The test proves them by a rename-stable
+ * marker in the inlined body instead of a runtime import specifier.
  */
 type Trigger = {
     helper: string;
@@ -383,7 +383,7 @@ describe("transform helpers", (): void => {
             });
 
             // The snippet must make the plugin emit the runtime import for
-            // this helper...
+            // this helper.
             expect(runtime.code).toContain(specifierFor(trigger.helper));
 
             // The inline pass reuses the emitted import's local name.
@@ -410,8 +410,8 @@ describe("transform helpers", (): void => {
                 mode: "inline",
             });
 
-            // A dependency-only helper is never loaded directly by oxc; it
-            // arrives transitively, so it is proven by its inlined body.
+            // oxc never loads a dependency-only helper directly. It arrives
+            // transitively, so the test proves it by its inlined body.
             expect(runtime.code).not.toContain(specifierFor(trigger.helper));
             expect(inlined.code).toContain(marker);
             expect(inlined.code).not.toContain(MODULE_NAME);

@@ -10,14 +10,14 @@ use crate::tasks::function::{FunctionTask, Run};
 
 /// Parse a source text with the builtin parser, in memory.
 ///
-/// Backs the builtin `createParser`; no plugin chain runs.
+/// Backs the builtin `createParser`. No plugin chain runs.
 #[napi_derive::napi(ts_return_type = "Promise<JsAstResult>")]
 pub fn builtin_parse(
     code: String,
     options: JsParserOptions,
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<FunctionTask<JsAstResult>>> {
-    // Resolve the defaults (cwd, file, grammar, module kind, source map) the
-    // same way the pipeline's builtin parser fallback does.
+    // Resolve the defaults (cwd, file, grammar, module kind, source map) as
+    // the pipeline's builtin parser fallback does.
     let resolved: ResolvedOptions =
         resolve_options(options.to_resolvable()?, Vec::new());
 

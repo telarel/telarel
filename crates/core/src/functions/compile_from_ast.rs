@@ -8,7 +8,7 @@ use crate::common::pipeline::{CompileFromAstStage, run};
 /// Compile an existing `ast` through rewrite and generation.
 ///
 /// Runs `options`, `start`, `prepare`, `transform`, `finalize`, `generate`,
-/// and `end` inline, so `options`/`start`/`end` fire exactly once.
+/// and `end` inline. Thus `options`, `start`, and `end` fire exactly once.
 pub async fn compile_from_ast(
     ast: Ast,
     options: CompileFromAstOptions,
