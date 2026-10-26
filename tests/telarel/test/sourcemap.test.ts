@@ -313,6 +313,34 @@ describe("sourcemap", (): void => {
         expect(result.map?.mappings).toBe("AAAA,MAAM,IAAI;AACV,MAAM,IAAI");
     });
 
+    it("composes a multi-source input map without delta offsets", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;\nconst b = 2;", {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: {
+                input: buildMap({
+                    file: "bundle.ts",
+                    mappings: "AASA,UCWK;AAoBH,UDUK",
+                    names: [],
+                    sourceRoot: "src",
+                    ignoreList: [1],
+                    sources: ["a.ts", "b.ts"],
+                    sourcesContent: ["aaa", "bbb"],
+                }),
+            },
+        });
+
+        // Input segments are non-uniform across two sources. A codegen token
+        // between segments takes the segment's original position and source,
+        // instead of inheriting the codegen map's source and a delta offset.
+        expect(result.map?.file).toBe("index.ts");
+        expect(result.map?.sourceRoot).toBe("src");
+        expect(result.map?.sources).toEqual(["a.ts", "b.ts"]);
+        expect(result.map?.sourcesContent).toEqual(["aaa", "bbb"]);
+        expect(result.map?.ignoreList).toEqual([1]);
+        expect(result.map?.mappings).toBe("AASA,MAAA,ICWK;AAoBH,MAAA,IDUK");
+    });
+
     it("normalizes CRLF in code but keeps it in sourcesContent", async (): Promise<void> => {
         const result: CodeResult = await compile(
             "const a = 1;\r\nconst b = 2;",

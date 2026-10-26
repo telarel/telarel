@@ -93,7 +93,7 @@ mod tests {
 
         let generated: SourceMap = result.map.expect("output map present");
 
-        assert_eq!(generated.get_source(0), Some("index.ts"));
+        assert_eq!(generated.get_source(0), Some("upstream.ts"));
 
         assert_eq!(
             first_token(&generated),

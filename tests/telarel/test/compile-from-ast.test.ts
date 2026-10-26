@@ -190,7 +190,8 @@ describe("compileFromAst", (): void => {
         );
 
         expect(result.map?.file).toBe("index.ts");
-        expect(result.map?.sources).toEqual(["index.ts"]);
-        expect(result.map?.mappings).toBe("AASA,MAAM,IAAI");
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+        expect(result.map?.sourcesContent).toEqual(["const a = 1;"]);
+        expect(result.map?.mappings).toBe("AASA,MAAA,IAAA");
     });
 });

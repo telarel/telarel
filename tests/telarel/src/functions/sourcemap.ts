@@ -18,6 +18,7 @@ type BuildMapOptions = {
     names?: Array<string>;
     mappings: string;
     sourceRoot?: string;
+    ignoreList?: Array<number>;
 };
 
 const buildMap = (options: BuildMapOptions): SourceMap => {
@@ -38,6 +39,10 @@ const buildMap = (options: BuildMapOptions): SourceMap => {
 
     if (options.sourceRoot !== void 0) {
         map.sourceRoot = options.sourceRoot;
+    }
+
+    if (options.ignoreList !== void 0) {
+        map.ignoreList = options.ignoreList;
     }
 
     return map;

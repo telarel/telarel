@@ -5,7 +5,7 @@ use oxc::codegen::{Codegen, CodegenOptions as OxcCodegenOptions};
 
 use crate::ast::ast::Ast;
 use crate::ast::result::CodeResult;
-use crate::sourcemap::{SourceMap, compose::compose_maps};
+use crate::sourcemap::SourceMap;
 
 /// Options for [`generate_code`].
 #[derive(Debug, Clone)]
@@ -38,7 +38,12 @@ pub fn generate_code(
 
     let map: SourceMap = match ast.map() {
         | Some(input_map) => {
-            compose_maps(Some(&options.file), &codegen_map, &[input_map])
+            let mut map: SourceMap = codegen_map.compose(input_map.clone());
+
+            // oxc codegen leaves `file` unset, so restore it after compose.
+            map.set_file(&options.file);
+
+            map
         },
         | None => codegen_map,
     };
@@ -71,6 +76,8 @@ pub fn generate_program(
 
 #[cfg(test)]
 mod tests {
+    use oxc::allocator::Allocator;
+    use oxc::ast::ast::{BindingPattern, Ident, Statement, VariableDeclarator};
     use oxc_sourcemap::SourceMapBuilder;
 
     use crate::ast::parse::{ParseAstOptions, parse_ast};
@@ -101,6 +108,36 @@ mod tests {
 
         // original line 9 col 0 was produced into parse-input (0, 0)
         builder.add_token(0, 0, 9, 0, Some(source_id), None);
+
+        builder.into_owned_sourcemap().into_inner()
+    }
+
+    fn multi_source_input_map() -> SourceMap {
+        let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
+
+        builder.set_file("bundle.ts");
+
+        let a_id: u32 = builder.add_source_and_content("a.ts", "aaa");
+        let b_id: u32 = builder.add_source_and_content("b.ts", "bbb");
+
+        builder.add_token(0, 0, 9, 0, Some(a_id), None);
+        builder.add_token(0, 10, 20, 5, Some(b_id), None);
+        builder.add_token(1, 0, 40, 2, Some(b_id), None);
+        builder.add_token(1, 10, 50, 7, Some(a_id), None);
+
+        builder.into_owned_sourcemap().into_inner()
+    }
+
+    fn named_input_map() -> SourceMap {
+        let mut builder: SourceMapBuilder<'_> = SourceMapBuilder::default();
+
+        builder.set_file("upstream.ts");
+
+        let source_id: u32 =
+            builder.add_source_and_content("upstream.ts", "const a = 1;");
+        let name_id: u32 = builder.add_name("upstreamName");
+
+        builder.add_token(0, 0, 9, 0, Some(source_id), Some(name_id));
 
         builder.into_owned_sourcemap().into_inner()
     }
@@ -210,6 +247,146 @@ mod tests {
         assert_eq!(token.get_dst_col(), 0);
         assert_eq!(token.get_src_line(), 9);
         assert_eq!(token.get_src_col(), 0);
+
+        assert_eq!(
+            map.get_sources().collect::<Vec<&str>>(),
+            vec!["upstream.ts"],
+        );
+        assert_eq!(
+            map.get_source_contents().collect::<Vec<Option<&str>>>(),
+            [Some("const a = 1;")],
+        );
+    }
+
+    #[test]
+    fn test_generate_code_composes_multi_source_input_map() {
+        let options: ParseAstOptions = ParseAstOptions {
+            cwd: PathBuf::new(),
+            file: FILE.to_string(),
+            language: None,
+            source_type: None,
+            input_map: Some(multi_source_input_map()),
+        };
+
+        let ast: Ast =
+            parse_ast("const a = 1;\nconst b = 2;".to_string(), options)
+                .expect("parses");
+
+        let result: CodeResult =
+            generate_code(&ast, GenerateCodeOptions { file: FILE.to_string() });
+
+        let map: SourceMap = result.map.expect("map always produced");
+
+        assert_eq!(map.get_file(), Some(FILE));
+        assert_eq!(
+            map.get_sources().collect::<Vec<&str>>(),
+            vec!["a.ts", "b.ts"],
+        );
+        assert_eq!(
+            map.get_source_contents().collect::<Vec<Option<&str>>>(),
+            [Some("aaa"), Some("bbb")],
+        );
+
+        assert_eq!(map.to_json().mappings, "AASA,MAAA,ICWK;AAoBH,MAAA,IDUK");
+
+        // A codegen token that lands between input segments takes the input
+        // segment's position. It is not offset by a delta.
+        let between: oxc_sourcemap::Token =
+            map.get_token(1).expect("second token exists");
+
+        assert_eq!(
+            (
+                between.get_dst_line(),
+                between.get_dst_col(),
+                between.get_src_line(),
+                between.get_src_col(),
+            ),
+            (0, 6, 9, 0),
+        );
+
+        // The source id follows the input map, not the codegen map.
+        let b_source: oxc_sourcemap::Token =
+            map.get_token(2).expect("third token exists");
+
+        assert_eq!(
+            b_source.get_source_id().and_then(|id: u32| map.get_source(id)),
+            Some("b.ts"),
+        );
+
+        assert_eq!((b_source.get_src_line(), b_source.get_src_col()), (20, 5));
+    }
+
+    #[test]
+    fn test_generate_code_keeps_input_map_name() {
+        let options: ParseAstOptions = ParseAstOptions {
+            cwd: PathBuf::new(),
+            file: FILE.to_string(),
+            language: None,
+            source_type: None,
+            input_map: Some(named_input_map()),
+        };
+
+        let ast: Ast =
+            parse_ast("const a = 1;".to_string(), options).expect("parses");
+
+        let result: CodeResult =
+            generate_code(&ast, GenerateCodeOptions { file: FILE.to_string() });
+
+        let map: SourceMap = result.map.expect("map always produced");
+
+        assert_eq!(
+            map.get_names().collect::<Vec<&str>>(),
+            vec!["upstreamName"],
+        );
+        assert_eq!(
+            map.get_token(0).and_then(|token: oxc_sourcemap::Token| {
+                token.get_name_id()
+            }),
+            Some(0),
+        );
+    }
+
+    #[test]
+    fn test_generate_code_preserves_generated_name() {
+        let options: ParseAstOptions = ParseAstOptions {
+            cwd: PathBuf::new(),
+            file: FILE.to_string(),
+            language: None,
+            source_type: None,
+            input_map: Some(sample_input_map()),
+        };
+
+        let mut ast: Ast =
+            parse_ast("const a = 1;".to_string(), options).expect("parses");
+
+        ast.with_mut(|allocator: &Allocator, program: &mut Program<'_>| {
+            let Statement::VariableDeclaration(declaration) =
+                &mut program.body[0]
+            else {
+                panic!("expected a variable declaration");
+            };
+
+            let declarator: &mut VariableDeclarator<'_> = declaration
+                .declarations
+                .first_mut()
+                .expect("declaration has a declarator");
+
+            let BindingPattern::BindingIdentifier(identifier) =
+                &mut declarator.id
+            else {
+                panic!("expected a binding identifier");
+            };
+
+            identifier.name = Ident::from_str_in("renamed", &allocator);
+        });
+
+        let result: CodeResult =
+            generate_code(&ast, GenerateCodeOptions { file: FILE.to_string() });
+
+        let map: SourceMap = result.map.expect("map always produced");
+
+        assert_eq!(result.code, "const renamed = 1;");
+        assert_eq!(map.get_names().collect::<Vec<&str>>(), vec!["a"]);
     }
 
     #[test]

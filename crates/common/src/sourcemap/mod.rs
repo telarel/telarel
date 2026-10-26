@@ -1,4 +1,3 @@
-pub mod compose;
 pub mod inline;
 pub mod mode;
 pub mod resolve;

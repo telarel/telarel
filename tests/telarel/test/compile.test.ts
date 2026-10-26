@@ -1658,12 +1658,12 @@ describe("compile", (): void => {
             },
         });
 
-        // The upstream map resolves parse-input (0, 0) to original (9, 0).
-        // Composition then propagates that result to the src side of the
-        // codegen map.
+        // The input map resolves parse-input (0, 0) to original (9, 0).
+        // The composed map takes its source identity from the input map.
         expect(result.map?.file).toBe("index.ts");
-        expect(result.map?.sources).toEqual(["index.ts"]);
-        expect(result.map?.mappings).toBe("AASA,MAAM,IAAI");
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+        expect(result.map?.sourcesContent).toEqual(["const a = 1;"]);
+        expect(result.map?.mappings).toBe("AASA,MAAA,IAAA");
     });
 
     it("appends the external map URL derived from output.file", async (): Promise<void> => {

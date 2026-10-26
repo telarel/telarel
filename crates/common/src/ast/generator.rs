@@ -118,6 +118,9 @@ mod tests {
         assert_eq!(token.get_dst_col(), 0);
         assert_eq!(token.get_src_line(), 9);
         assert_eq!(token.get_src_col(), 0);
+
+        assert_eq!(map.get_source(0), Some("upstream.ts"));
+        assert_eq!(map.get_source_content(0), Some("const a = 1;"));
     }
 
     #[test]

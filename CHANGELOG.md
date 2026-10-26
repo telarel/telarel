@@ -36,6 +36,7 @@
 - remove `CompileError::from_message`; use `CompileError::new` instead
 - remove `code` from `CompileOptions`; the source is now a call argument
 - remove `InputSourceMapMode::Path`; use `External` with `InputSourceMapOptions.path`, which resolves a relative `path` against the source file's directory instead of `cwd`
+- remove `compose_maps`. Use `SourceMap::compose` instead.
 
 #### Features
 
@@ -54,6 +55,7 @@
 #### Fixes
 
 - change external input source-map lookup to ignore `?query`/`#hash` suffixes in `file`
+- change output source-map composition to take `sources`, `sourcesContent`, `sourceRoot`, and `ignoreList` from the input map, and to append generated names as fallbacks
 
 #### Performance
 
