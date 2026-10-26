@@ -15,7 +15,8 @@ pub struct ResolvedOptions {
     /// The grammar of the code, resolved from options, the AST, or the file
     /// extension.
     pub language: Language,
-    /// The module system of the code, resolved from the grammar.
+    /// The module kind of the code, resolved from options, the AST, or the
+    /// file extension.
     pub source_type: SourceType,
     /// The output code configuration.
     pub output: ResolvedOutputOptions,

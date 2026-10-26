@@ -12,7 +12,8 @@ use crate::_types::ast::JsAstInput;
 use crate::_types::options::JsCompileFromAstOptions;
 use crate::_types::results::JsCodeResult;
 use crate::ast::{
-    effective_language, js_to_ast, parse_ast_language, source_type_for_options,
+    effective_language, js_to_ast, parse_ast_language,
+    source_type_for_ast_input,
 };
 use crate::plugin::build::to_plugins;
 use crate::plugin::hooks::RefList;
@@ -30,8 +31,9 @@ pub fn compile_from_ast(
     let options_rust: CompileFromAstOptions =
         options.to_compile_from_ast_options()?;
 
-    // The precedence is explicit options, then the input AST's grammar, then
-    // the grammar inferred from the resolved file.
+    // The grammar comes from explicit options, the input AST, or the file extension,
+    // in that order. The module kind comes from an explicit `sourceType` other than
+    // `"unambiguous"`, the program's `sourceType`, or the file extension, in that order.
     let resolved: ResolvedOptions = resolve_options(
         ResolvableOptions::from(options_rust.clone()),
         Vec::new(),
@@ -45,10 +47,11 @@ pub fn compile_from_ast(
         resolved.language,
     );
 
-    let source_type = source_type_for_options(
+    let source_type = source_type_for_ast_input(
         &resolved.file,
-        Some(language),
-        resolved.source_type,
+        language,
+        options_rust.source_type,
+        &input.program,
     );
 
     let refs: Arc<RefList> = Arc::new(RefList::new());

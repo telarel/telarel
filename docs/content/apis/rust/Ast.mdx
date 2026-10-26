@@ -50,15 +50,15 @@ impl Ast {
 
 ## Accessors
 
-| Accessor            | Type                 | Description                                                                        |
-| ------------------- | -------------------- | ---------------------------------------------------------------------------------- |
-| `ast.program()`     | `&Program<'_>`       | The parsed program.                                                                |
-| `ast.source()`      | `&Arc<str>`          | The source text the program's spans anchor to.                                     |
-| `ast.language()`    | `Language`           | The grammar of the parsed program: `JS`, `TS`, `DTS`, `JSX`, or `TSX`.             |
-| `ast.source_type()` | `SourceType`         | The resolved module kind of the parsed program: `Script`, `CommonJS`, or `Module`. |
-| `ast.map()`         | `Option<&SourceMap>` | The input source map, if any.                                                      |
+| Accessor            | Type                 | Description                                                            |
+| ------------------- | -------------------- | ---------------------------------------------------------------------- |
+| `ast.program()`     | `&Program<'_>`       | The parsed program.                                                    |
+| `ast.source()`      | `&Arc<str>`          | The source text the program's spans anchor to.                         |
+| `ast.language()`    | `Language`           | The grammar of the parsed program: `JS`, `TS`, `DTS`, `JSX`, or `TSX`. |
+| `ast.source_type()` | `SourceType`         | The module kind of the program, read from `Program.source_type`.       |
+| `ast.map()`         | `Option<&SourceMap>` | The input source map, if any.                                          |
 
-`Language` and `SourceType` are the Telarel enums. `source_type()` never reports `Unambiguous` for a normally parsed AST. `Unambiguous` is a parser input. A parsed program resolves to `Script`, `CommonJS`, or `Module`.
+`Language` and `SourceType` are the Telarel enums. `source_type()` never reports `Unambiguous` for a normally parsed AST. `Unambiguous` is a parser input. A parsed program resolves to `Script`, `CommonJS`, or `Module`. An explicit `source_type` other than `Unambiguous` in `rewrite` or `compile_from_ast` replaces the parsed module kind. `Unambiguous` leaves it unchanged.
 
 Program spans are UTF-8 byte offsets into `source()`, matching `oxc::span::Span`.
 

@@ -25,12 +25,11 @@ pub struct ResolvableOptions {
     pub file: Option<String>,
     /// The grammar of the code.
     ///
-    /// `None` leaves the grammar to be resolved from the AST, then the file
-    /// extension.
+    /// `None` falls back to the input AST grammar, then the file extension.
     pub language: Option<Language>,
-    /// The module system of the code.
+    /// The module kind of the code.
     ///
-    /// `None` keeps the module kind resolved from the grammar.
+    /// `None` falls back to the input AST module kind, then the file extension.
     pub source_type: Option<SourceType>,
     /// The output code configuration.
     pub output: Option<OutputOptions>,

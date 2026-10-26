@@ -28,6 +28,7 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 
 ## AST boundary
 
+- `rewrite` and `compileFromAst` use the caller's `sourceType` when it is not `"unambiguous"`. When the option is `"unambiguous"` or absent, the module kind comes from `program.sourceType`. If the program has no `sourceType`, the file extension is the fallback. `generate` takes the module kind from `program.sourceType` unless an options hook replaces it.
 - The `parse` and `generate` hooks use the normalized object `{ program, code, map?, language? }`. Outbound `JsAst.language` is required. Inbound `JsAstInput.language` is optional.
 - The `prepare`, `transform`, and `finalize` hooks use a JSON-serialized ESTree string (`astJson`) through `oxc_estree_codec`. The payload also carries the AST's `code`, optional `map`, and language label. The JS wrapper rebuilds the normalized `Ast` from those fields. Transform read-back uses the returned language when present, otherwise the input AST's language. `program.sourceType` owns the module kind.
 - A `parse` hook replacement keeps the grammar authority of the parser options. The returned AST's language does not override them.

@@ -26,7 +26,7 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 - `Ast` shares ownership of its allocator and source through `Arc`. `program()` borrows a tree whose spans anchor to that source.
 - `Ast` wraps `Arc<AstInner>`. `Clone` is O(1) and shares the arena.
 - `AstOwner` owns the allocator, source, semantic `Language`/`SourceType`, and input source map.
-- `Ast::language()` derives the grammar from the parsed program. `Ast::source_type()` returns the coarse `telarel_common::SourceType` resolved from the program. It never returns the parser-input `Unambiguous` for a normal parsed AST.
+- `Ast::language()` derives the grammar from the parsed program. `Ast::source_type()` returns the coarse `telarel_common::SourceType` resolved from the program. It never returns the parser-input `Unambiguous` for a normal parsed AST. An explicit `source_type` other than `Unambiguous` replaces `Program.source_type` when an AST enters the pipeline. The accessors read the program.
 - The raw oxc source type remains reachable through `ast.program().source_type`. `from_source` / `try_from_source` accept the Telarel `Language` and `SourceType`, not oxc's raw type.
 - `with_mut` is the only path to the arena. It takes `&mut self` and copy-on-writes through `Arc::make_mut` when another handle is alive, so mutating a clone never mutates the original.
 - `with_mut` debug-asserts that `Program::source_text` stays content-equal to `Ast::source`. Span conversion, codegen source maps, and error frames depend on that equality. Public contract: `docs/content/apis/rust/Ast.mdx`.

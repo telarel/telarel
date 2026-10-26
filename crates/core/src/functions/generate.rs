@@ -26,13 +26,13 @@ mod tests {
     use telarel_common::{
         Ast, CodeResult, CompileError, GenerateOptions, OutputOptions,
         OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
-        SourceMapOptions,
+        ResolvedOptions, SourceMapOptions, SourceType,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
         EndObserverPlugin, GenerateOutcome, GenerateOutcomePlugin, SpyPlugin,
-        output_mode, parse_fixture,
+        StartObserverPlugin, output_mode, parse_as, parse_fixture,
     };
 
     use super::generate;
@@ -323,6 +323,26 @@ mod tests {
             *log.lock().unwrap(),
             vec![String::from("a"), String::from("b")],
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_context_uses_the_ast_module_kind() {
+        let seen: Arc<Mutex<Vec<ResolvedOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let ast: Ast = parse_as("const a = 1;", SourceType::Module);
+
+        let options: GenerateOptions = GenerateOptions {
+            file: Some(String::from("index.cjs")),
+            ..GenerateOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(StartObserverPlugin::new(&seen))];
+
+        generate(ast, options, plugins).await.expect("generate succeeds");
+
+        assert_eq!(seen.lock().unwrap()[0].source_type, SourceType::Module);
     }
 
     #[tokio::test(flavor = "current_thread")]

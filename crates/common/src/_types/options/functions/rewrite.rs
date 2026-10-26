@@ -21,9 +21,10 @@ pub struct RewriteOptions {
     ///
     /// `None` falls back to the input AST grammar, then the file extension.
     pub language: Option<Language>,
-    /// The module system of the code.
-    ///
-    /// `None` keeps the module kind resolved from the grammar.
+    /// The module kind of the code. A `source_type` other than `Unambiguous`
+    /// replaces the module kind of the input AST. `Unambiguous` requests
+    /// inference, so the AST module kind is the inferred result. If the AST has
+    /// no module kind, the file extension is the fallback.
     pub source_type: Option<SourceType>,
     /// The input source-map request for the step.
     ///

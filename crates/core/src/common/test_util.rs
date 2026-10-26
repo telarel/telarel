@@ -15,7 +15,7 @@ use tempfile::TempDir;
 use telarel_common::{
     Ast, AstResult, CodeResult, CompileError, InputSourceMap,
     InputSourceMapMode, OutputSourceMap, OutputSourceMapMode, ParseAstOptions,
-    ResolvedOptions, SourceMap, SourceMapOptions, parse_ast,
+    ResolvedOptions, SourceMap, SourceMapOptions, SourceType, parse_ast,
 };
 use telarel_plugin::{
     CommonPluginContext, EndArgs, FinalizeArgs, GenerateArgs, GenerateReturn,
@@ -35,6 +35,23 @@ pub fn parse_fixture(code: &str) -> Result<Ast, CompileError> {
             input_map: None,
         },
     )
+}
+
+pub fn parse_as(
+    code: &str,
+    source_type: SourceType,
+) -> Ast {
+    parse_ast(
+        code.to_string(),
+        ParseAstOptions {
+            cwd: PathBuf::from("/repo"),
+            file: String::from("index.ts"),
+            language: None,
+            source_type: Some(source_type),
+            input_map: None,
+        },
+    )
+    .expect("fixture parses")
 }
 
 pub fn parse_with_map(

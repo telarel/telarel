@@ -23,11 +23,14 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
 
-    use telarel_common::{Ast, CodeResult, CompileFromAstOptions};
+    use telarel_common::{
+        Ast, CodeResult, CompileFromAstOptions, ResolvedOptions, SourceType,
+    };
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
-        ReplaceAstPlugin, SpyPlugin, parse_fixture,
+        ReplaceAstPlugin, SpyPlugin, StartObserverPlugin, parse_as,
+        parse_fixture,
     };
 
     use super::compile_from_ast;
@@ -77,5 +80,51 @@ mod tests {
                 .expect("compile_from_ast succeeds");
 
         assert_eq!(result.code, "\"replaced\";");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_commonjs_kind_survives_an_mjs_file() {
+        let seen: Arc<Mutex<Vec<ResolvedOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let ast: Ast = parse_as("module.exports = 1;", SourceType::CommonJS);
+
+        let options: CompileFromAstOptions = CompileFromAstOptions {
+            file: Some(String::from("index.mjs")),
+            ..CompileFromAstOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(StartObserverPlugin::new(&seen))];
+
+        let result: CodeResult = compile_from_ast(ast, options, plugins)
+            .await
+            .expect("compile_from_ast succeeds");
+
+        assert_eq!(result.code, "module.exports = 1;");
+        assert_eq!(seen.lock().unwrap()[0].source_type, SourceType::CommonJS,);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_explicit_source_type_reaches_the_context() {
+        let seen: Arc<Mutex<Vec<ResolvedOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let ast: Ast = parse_as("const a = 1;", SourceType::Module);
+
+        let options: CompileFromAstOptions = CompileFromAstOptions {
+            file: Some(String::from("index.cjs")),
+            source_type: Some(SourceType::Script),
+            ..CompileFromAstOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(StartObserverPlugin::new(&seen))];
+
+        compile_from_ast(ast, options, plugins)
+            .await
+            .expect("compile_from_ast succeeds");
+
+        assert_eq!(seen.lock().unwrap()[0].source_type, SourceType::Script);
     }
 }

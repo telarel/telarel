@@ -15,6 +15,9 @@
 //! - [`source_type_for_generate`] keeps the module kind unambiguous, so the
 //!   codec resolves it from the program JSON's `sourceType`. This is the
 //!   generate path, where only the grammar comes from options, AST, or file.
+//! - [`source_type_for_ast_input`] applies the AST-entry precedence: an
+//!   explicit concrete kind, then the program's `sourceType`, then the file
+//!   extension.
 
 use std::sync::Arc;
 
@@ -23,7 +26,7 @@ use oxc::span::SourceType as OxcSourceType;
 use telarel_common::{
     Ast, Language, SourceMap, SourceType, from_oxc_language,
     from_oxc_module_kind, grammar_source_type, resolve_grammar,
-    with_module_kind,
+    resolve_source_type, with_module_kind,
 };
 
 use crate::_types::options::parse_language_option;
@@ -198,8 +201,9 @@ pub fn ast_from_program(
 /// input.
 ///
 /// The caller computes `source_type`. Use [`source_type_for_options`] for an
-/// explicit source type, or [`source_type_for_generate`] when the program JSON
-/// owns the module kind.
+/// explicit source type, [`source_type_for_generate`] when the program JSON
+/// owns the module kind, or [`source_type_for_ast_input`] for the AST-entry
+/// precedence used by `rewrite` and `compileFromAst`.
 pub fn js_to_ast(
     input: JsAstInput,
     source_type: OxcSourceType,
@@ -227,6 +231,35 @@ pub fn source_type_for_options(
 /// program JSON's `sourceType`.
 pub fn source_type_for_generate(language: Language) -> OxcSourceType {
     with_module_kind(grammar_source_type(language), SourceType::Unambiguous)
+}
+
+fn program_states_source_type(program: &serde_json::Value) -> bool {
+    program.get("sourceType").and_then(serde_json::Value::as_str).is_some()
+}
+
+/// The AST-entry source type: an explicit concrete module kind, then the
+/// program's own `sourceType`, then the file extension.
+///
+/// Must stay aligned with the module-kind resolution in `telarel_core`'s pipeline.
+pub fn source_type_for_ast_input(
+    file: &str,
+    language: Language,
+    explicit: Option<SourceType>,
+    program: &serde_json::Value,
+) -> OxcSourceType {
+    match explicit {
+        | Some(source_type) if source_type != SourceType::Unambiguous => {
+            source_type_for_options(file, Some(language), source_type)
+        },
+        | _ if program_states_source_type(program) => {
+            source_type_for_generate(language)
+        },
+        | _ => {
+            let file_kind: SourceType = resolve_source_type(file, None, None);
+
+            source_type_for_options(file, Some(language), file_kind)
+        },
+    }
 }
 
 /// Parse the optional grammar label that an inbound JS AST carries.
@@ -320,6 +353,40 @@ mod tests {
             "start": 0,
             "end": 0,
         });
+
+        ast_from_program(&program, String::new(), None, source_type)
+            .expect("the program decodes")
+    }
+
+    fn program_with_source_type(
+        source_type_label: Option<&str>
+    ) -> serde_json::Value {
+        let mut program: serde_json::Value = serde_json::json!({
+            "type": "Program",
+            "body": [],
+            "start": 0,
+            "end": 0,
+        });
+
+        if let Some(source_type_label) = source_type_label {
+            program["sourceType"] =
+                serde_json::Value::String(source_type_label.to_string());
+        }
+
+        program
+    }
+
+    fn decode_ast_input(
+        file: &str,
+        language: Language,
+        explicit: Option<SourceType>,
+        source_type_label: Option<&str>,
+    ) -> Ast {
+        let program: serde_json::Value =
+            program_with_source_type(source_type_label);
+
+        let source_type: OxcSourceType =
+            source_type_for_ast_input(file, language, explicit, &program);
 
         ast_from_program(&program, String::new(), None, source_type)
             .expect("the program decodes")
@@ -681,6 +748,71 @@ mod tests {
 
         assert!(resolved.is_typescript_definition(), "{resolved:?}");
         assert!(resolved.is_script(), "{resolved:?}");
+    }
+
+    #[test]
+    fn test_ast_input_explicit_source_type_wins() {
+        let ast: Ast = decode_ast_input(
+            "index.mjs",
+            Language::JS,
+            Some(SourceType::Script),
+            Some("module"),
+        );
+
+        assert_eq!(ast.source_type(), SourceType::Script);
+        assert!(ast.program().source_type.is_script());
+    }
+
+    #[test]
+    fn test_ast_input_program_source_type_wins_over_cjs_file() {
+        let ast: Ast =
+            decode_ast_input("index.cjs", Language::JS, None, Some("module"));
+
+        assert_eq!(ast.source_type(), SourceType::Module);
+        assert!(ast.program().source_type.is_module());
+    }
+
+    #[test]
+    fn test_ast_input_program_source_type_wins_over_mjs_file() {
+        let ast: Ast =
+            decode_ast_input("index.mjs", Language::JS, None, Some("commonjs"));
+
+        assert_eq!(ast.source_type(), SourceType::CommonJS);
+        assert!(ast.program().source_type.is_commonjs());
+    }
+
+    #[test]
+    fn test_ast_input_unambiguous_defers_to_program_source_type() {
+        let ast: Ast = decode_ast_input(
+            "index.cjs",
+            Language::JS,
+            Some(SourceType::Unambiguous),
+            Some("module"),
+        );
+
+        assert_eq!(ast.source_type(), SourceType::Module);
+        assert!(ast.program().source_type.is_module());
+    }
+
+    #[test]
+    fn test_ast_input_falls_back_to_file_without_program_source_type() {
+        let ast: Ast = decode_ast_input("index.cjs", Language::JS, None, None);
+
+        assert_eq!(ast.source_type(), SourceType::CommonJS);
+        assert!(ast.program().source_type.is_commonjs());
+    }
+
+    #[test]
+    fn test_ast_input_unambiguous_falls_back_to_file_without_program_kind() {
+        let ast: Ast = decode_ast_input(
+            "index.cjs",
+            Language::JS,
+            Some(SourceType::Unambiguous),
+            None,
+        );
+
+        assert_eq!(ast.source_type(), SourceType::CommonJS);
+        assert!(ast.program().source_type.is_commonjs());
     }
 
     #[test]

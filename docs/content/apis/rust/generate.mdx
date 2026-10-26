@@ -27,17 +27,17 @@ The builtin generator is the terminal fallback after every `generate` hook defer
 
 Every field is optional. The pipeline resolves each field against defaults before use.
 
-| Field        | Type                       | Default                   | Description                                                                                                             |
-| ------------ | -------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `cwd`        | `Option<PathBuf>`          | process working dir       | Filesystem root used to resolve relative paths.                                                                         |
-| `file`       | `Option<String>`           | `index.ts`                | The file being generated. It is used for option resolution and source-map defaults. It does not change the AST grammar. |
-| `language`   | `Option<Language>`         | AST language, then `file` | The grammar recorded in the resolved step options and visible to plugins. Builtin generation uses the AST grammar.      |
-| `output`     | `Option<OutputOptions>`    | `file`                    | Output code configuration. `output.file` derives the default source-map URL.                                            |
-| `source_map` | `Option<SourceMapOptions>` | off                       | The source-map inputs and outputs requested for the step.                                                               |
+| Field        | Type                       | Default             | Description                                                                                                             |
+| ------------ | -------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `cwd`        | `Option<PathBuf>`          | process working dir | Filesystem root used to resolve relative paths.                                                                         |
+| `file`       | `Option<String>`           | `index.ts`          | The file being generated. It is used for option resolution and source-map defaults. It does not change the AST grammar. |
+| `language`   | `Option<Language>`         | AST language        | The grammar recorded in the resolved step options and visible to plugins. Builtin generation uses the AST grammar.      |
+| `output`     | `Option<OutputOptions>`    | `file`              | Output code configuration. `output.file` derives the default source-map URL.                                            |
+| `source_map` | `Option<SourceMapOptions>` | off                 | The source-map inputs and outputs requested for the step.                                                               |
 
-The pipeline resolves `language` into the step options. An explicit value wins. Otherwise, the AST grammar wins, then `file`. The explicit value is visible to the `options` hook. The resolved value is visible to `start` and later hooks through the resolved options and `PluginContext.module`.
+The pipeline resolves `language` into the step options. An explicit value wins. Otherwise, the AST grammar wins. The explicit value is visible to the `options` hook. The resolved value is visible to `start` and later hooks through the resolved options and `PluginContext.module`.
 
-Builtin code generation does not use the resolved value. It emits from the AST's own `Program.source_type`. Module kind remains owned by `Program.source_type`. There is no `GenerateOptions.source_type`.
+Builtin code generation does not use the resolved value. It emits from the AST's own `Program.source_type`. Module kind remains owned by `Program.source_type`. An options hook can still return `source_type`; a value other than `Unambiguous` replaces `Program.source_type` before generation. There is no `GenerateOptions.source_type`.
 
 ## Returns
 

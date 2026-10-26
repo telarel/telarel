@@ -27,7 +27,7 @@ Every invocation runs:
 5. the entry point's stages, inline
 6. `end`
 
-AST-entry stages resolve language in this order: explicit options, then AST language, then the file extension. `ModuleInfo` and post-resolution hooks see that language.
+AST-entry stages resolve language in this order: explicit options, then AST language. They resolve the module kind in this order: explicit `source_type`, then the AST `source_type`, then the file extension. A concrete explicit kind replaces `Program.source_type` before the stages run. `ModuleInfo` and post-resolution hooks see the resolved values.
 
 Each stage runs once per invocation. `options` runs per plugin instance. `start` and `end` run per settled entry, duplicates included. No entry point re-enters another.
 

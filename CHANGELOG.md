@@ -28,6 +28,7 @@
 - change `OutputSourceMapOptions` to carry an optional external map `url`
 - change `ParseOptions` and `RewriteOptions` to accept `input_source_map` instead of `source_map`
 - change `ResolvableOptions` and `ResolvedOptions` to carry `output`
+- change `RewriteOptions.source_type` and `CompileFromAstOptions.source_type` to use a value other than `Unambiguous`, then the AST module kind, then the file extension. `Unambiguous` requests inference.
 - change `apply_output_source_map_mode` to accept `OutputSourceMapOptions` and the output file used for the default external map URL
 - change the `cwd` parameter of `resolve_input_source_map` to `&Path`
 - change the `cwd` field in Rust option structs to `PathBuf`
@@ -66,6 +67,7 @@
 #### Breaking
 
 - change `compile`, `compileFromAst`, and `generate` to append a default external map comment derived from `output.file`
+- change `rewrite` and `compile_from_ast` to use a `source_type` value other than `Unambiguous`, then the AST module kind, then the file extension. `Unambiguous` requests inference.
 - replace `CompileOutput` with `CodeResult`
 
 #### Features
@@ -84,6 +86,7 @@
 
 #### Breaking
 
+- change `ModuleInfo.source_type` for AST entries to use a `source_type` value other than `Unambiguous`, then the AST module kind, then the file extension. `Unambiguous` requests inference.
 - change `PluginContext.cwd` to `&Path`
 - change `TransformArgs` to own a cheap `Ast`; it loses its lifetime and `Copy`
 - change the `options` hook to receive `ResolvableOptions` before defaults are resolved
@@ -118,6 +121,7 @@
 
 #### Breaking
 
+- change `rewrite` and `compileFromAst` to use a `sourceType` value other than `"unambiguous"`, then the AST module kind, then the file extension. `"unambiguous"` requests inference.
 - change AST normalization to `{ program, code, map? }` and accept either an `Ast` or a `Program` plus its source text
 - change `inputSourceMap` and `sourceMap.input` path strings to `InvalidArg`; use `{ mode: "external", path }`
 - change `parse` and `rewrite` JS options to use `inputSourceMap` instead of `sourceMap`
@@ -152,6 +156,7 @@
 - change the re-exported `CompileOptions`, `CompileFromAstOptions`, and `GenerateOptions` to carry `output`
 - change the re-exported `InputSourceMapMode` to remove `Path`; use `External` with `InputSourceMapOptions.path`, which resolves a relative `path` against the source file's directory instead of `cwd`
 - change the re-exported `ParseOptions` and `RewriteOptions` source-map option to `input_source_map`
+- change the re-exported `RewriteOptions.source_type` and `CompileFromAstOptions.source_type` to use a value other than `Unambiguous`, then the AST module kind, then the file extension. `Unambiguous` requests inference.
 - change the re-exported `TransformArgs` to own a cheap `Ast` and drop its lifetime and `Copy` implementation
 - change the re-exported `cwd` option fields to `PathBuf`
 - replace the `parse_owned` and `codegen` re-exports with the new entry points
@@ -171,11 +176,13 @@
 
 - change `compile` to take the source text first: `compile(code, options)`
 - change `createGenerator` and `ErrorSource.fromAst` to accept `Ast`
+- change `rewrite` and `compileFromAst` to use a `sourceType` value other than `"unambiguous"`, then the AST module kind, then the file extension. `"unambiguous"` requests inference.
 - change `Ast` from a plain object to a class with `program`, `source`, and `map` getters
 - change `Ast.map` to return `null` when no map is attached
 - change `Ast.program` to a deeply read-only view; use `Ast.mutate` to change it
 - change `ErrorSource.file`, `ErrorSource.code`, and `ErrorSource.span` from methods to getters
 - change `InputSourceMapMode` and `InputSourceMapOptions.mode` to accept a `SourceMap` value or the `"inline"`, `"external"`, and `"auto"` literals; `inputSourceMap` and `sourceMap.input` path strings now reject as `InvalidArg`—use `{ mode: "external", path }`, which resolves a relative `path` against the source file's directory instead of `cwd`
+- change `ModuleInfo.sourceType` for `generate` to report the AST module kind, then the file extension.
 - change `parse` and `rewrite` options to use `inputSourceMap` instead of `sourceMap`
 - change `PrepareArgs`, `FinalizeArgs`, and `GenerateArgs` to carry `Ast` instead of `Program`; `TransformArgs` and `TransformResult` carry `Ast`
 - change entry-point rejections to `CompileError`

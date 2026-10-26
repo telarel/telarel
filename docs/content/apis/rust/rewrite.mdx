@@ -27,17 +27,19 @@ An AST's own input source map wins. When the AST carries none, the pipeline atta
 
 Every field is optional. The pipeline resolves each field against defaults before use.
 
-| Field              | Type                     | Default                   | Description                                                                                                                 |
-| ------------------ | ------------------------ | ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `cwd`              | `Option<PathBuf>`        | process working dir       | Filesystem root used to resolve relative paths.                                                                             |
-| `file`             | `Option<String>`         | `index.ts`                | The file being rewritten. It is used for option resolution. It does not change the AST grammar.                             |
-| `language`         | `Option<Language>`       | AST language, then `file` | The grammar recorded in the resolved step options and visible to plugins. It does not change the input AST grammar.         |
-| `source_type`      | `Option<SourceType>`     | inferred                  | The module kind recorded in the resolved step options and visible to plugins. It does not change the input AST module kind. |
-| `input_source_map` | `Option<InputSourceMap>` | off                       | The input source-map request for the step.                                                                                  |
+| Field              | Type                     | Default                    | Description                                                           |
+| ------------------ | ------------------------ | -------------------------- | --------------------------------------------------------------------- |
+| `cwd`              | `Option<PathBuf>`        | process working dir        | Filesystem root used to resolve relative paths.                       |
+| `file`             | `Option<String>`         | `index.ts`                 | The file being rewritten. It supplies option and source-map defaults. |
+| `language`         | `Option<Language>`       | AST language               | The grammar recorded in the resolved options.                         |
+| `source_type`      | `Option<SourceType>`     | AST module kind, then file | The module kind recorded in the resolved options.                     |
+| `input_source_map` | `Option<InputSourceMap>` | off                        | The input source-map request for the step.                            |
 
-The explicit values are visible to the `options` hook. After resolution, the explicit or inferred values are visible to `start` and later hooks. They are available through the resolved options and `PluginContext.module`.
+The explicit values are visible to the `options` hook. After resolution, the explicit or inferred values are visible to `start` and later hooks through the resolved options and `PluginContext.module`.
 
-When `language` is omitted, the resolved language falls back to the input AST grammar, then the file extension. `rewrite` does not reparse the input AST or change its grammar or module kind. The returned AST is the input AST or a plugin replacement. It keeps the grammar and module kind of that AST.
+The grammar comes from `language` when set, then the input AST. The module kind comes from a concrete `source_type`, then the AST module kind, then the file extension. `Unambiguous` requests inference. A concrete `source_type` replaces the input AST module kind before the stages run.
+
+`rewrite` does not reparse the input AST. The returned AST is the input AST, or a plugin replacement with its own module kind.
 
 `rewrite` produces an AST, so it has no output source map. The shared plugin options bag presents this request as `source_map.input`. `rewrite` ignores a plugin-set `source_map.output` or top-level `output`.
 

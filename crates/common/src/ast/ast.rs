@@ -192,10 +192,7 @@ impl Ast {
         from_oxc_language(self.program().source_type)
     }
 
-    /// The resolved module kind of the parsed program.
-    ///
-    /// `Unambiguous` is a parser input. A normally parsed AST resolves to
-    /// `Script`, `CommonJS`, or `Module`.
+    /// The module kind of the program.
     pub fn source_type(&self) -> SourceType {
         from_oxc_module_kind(self.program().source_type)
     }

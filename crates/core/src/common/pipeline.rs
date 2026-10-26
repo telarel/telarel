@@ -11,8 +11,10 @@
 use telarel_common::{
     Ast, AstResult, CodeResult, CompileError, Generator, GeneratorOptions,
     Language, OutputSourceMap, OutputSourceMapOptions, Parser, ParserOptions,
-    ResolvableOptions, ResolvedOptions, apply_output_source_map_mode,
-    resolve_input_source_map, resolve_options,
+    ResolvableOptions, ResolvedOptions, SourceType,
+    apply_output_source_map_mode, grammar_source_type,
+    resolve_input_source_map, resolve_options, resolve_source_type,
+    with_module_kind,
 };
 use telarel_plugin::__internal::PluginDriver;
 use telarel_plugin::{
@@ -27,6 +29,21 @@ pub trait Stage {
 
     /// The grammar of the stage's AST, when the stage enters from an AST.
     fn ast_language(&self) -> Option<Language> {
+        None
+    }
+
+    /// The AST the stage entered with, when it has one.
+    fn ast(&self) -> Option<&Ast> {
+        None
+    }
+
+    /// The module kind of the stage's AST, when it has one.
+    fn ast_source_type(&self) -> Option<SourceType> {
+        self.ast().map(Ast::source_type)
+    }
+
+    /// Mutable access to the stage's AST, when it has one.
+    fn ast_mut(&mut self) -> Option<&mut Ast> {
         None
     }
 
@@ -211,6 +228,14 @@ impl Stage for RewriteStage {
         Some(self.ast.language())
     }
 
+    fn ast(&self) -> Option<&Ast> {
+        Some(&self.ast)
+    }
+
+    fn ast_mut(&mut self) -> Option<&mut Ast> {
+        Some(&mut self.ast)
+    }
+
     async fn run(
         self,
         driver: &PluginDriver,
@@ -236,6 +261,14 @@ impl Stage for GenerateStage {
         Some(self.ast.language())
     }
 
+    fn ast(&self) -> Option<&Ast> {
+        Some(&self.ast)
+    }
+
+    fn ast_mut(&mut self) -> Option<&mut Ast> {
+        Some(&mut self.ast)
+    }
+
     async fn run(
         self,
         driver: &PluginDriver,
@@ -257,6 +290,14 @@ impl Stage for CompileFromAstStage {
 
     fn ast_language(&self) -> Option<Language> {
         Some(self.ast.language())
+    }
+
+    fn ast(&self) -> Option<&Ast> {
+        Some(&self.ast)
+    }
+
+    fn ast_mut(&mut self) -> Option<&mut Ast> {
+        Some(&mut self.ast)
     }
 
     async fn run(
@@ -295,9 +336,21 @@ impl Stage for CompileStage {
     }
 }
 
+/// Apply an explicit module kind to `ast` without changing its grammar.
+fn apply_source_type(
+    ast: &mut Ast,
+    source_type: SourceType,
+) {
+    let language: Language = ast.language();
+    ast.with_mut(|_allocator, program| {
+        program.source_type =
+            with_module_kind(grammar_source_type(language), source_type);
+    });
+}
+
 /// Run the shared skeleton around `stage`.
 pub async fn run<S: Stage>(
-    stage: S,
+    mut stage: S,
     options: ResolvableOptions,
     plugins: Vec<SharedPluginable>,
 ) -> Result<S::Output, CompileError> {
@@ -318,6 +371,7 @@ pub async fn run<S: Stage>(
     let driver: PluginDriver = PluginDriver::new(settled);
 
     let requested_language: Option<Language> = args.options.language;
+    let requested_source_type: Option<SourceType> = args.options.source_type;
 
     let mut resolved: ResolvedOptions =
         resolve_options(args.options, driver.settled_names().to_vec());
@@ -326,6 +380,29 @@ pub async fn run<S: Stage>(
         && let Some(language) = stage.ast_language()
     {
         resolved.language = language;
+    }
+
+    // The JS AST-entry bridge mirrors this rule in `source_type_for_ast_input`.
+    if let Some(ast) = stage.ast_mut()
+        && let Some(source_type) = requested_source_type
+        && source_type != SourceType::Unambiguous
+        && ast.source_type() != source_type
+    {
+        apply_source_type(ast, source_type);
+    }
+
+    if matches!(requested_source_type, None | Some(SourceType::Unambiguous))
+        && let Some(source_type) = stage.ast_source_type()
+        && source_type != SourceType::Unambiguous
+    {
+        resolved.source_type = source_type;
+    }
+
+    if stage.ast().is_some()
+        && requested_source_type == Some(SourceType::Unambiguous)
+        && stage.ast_source_type() == Some(SourceType::Unambiguous)
+    {
+        resolved.source_type = resolve_source_type(&resolved.file, None, None);
     }
 
     let module: ModuleInfo<'_> = ModuleInfo {

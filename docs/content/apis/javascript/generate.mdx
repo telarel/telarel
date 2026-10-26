@@ -43,7 +43,9 @@ The function accepts either an [Ast](/apis/javascript/Ast) instance or a bare ES
 | `sourceMap` | `SourceMapOptions` | off              | The source-map inputs and outputs requested for the step.                         |
 | `plugins`   | `PluginOption[]`   | `[]`             | The plugins to run.                                                               |
 
-The grammar precedence is `options.language > Ast.language > file extension`. `ast.program.sourceType` owns the module kind. `generate` has no `sourceType` option.
+The grammar precedence is `options.language > Ast.language > file extension`.
+
+`ast.program.sourceType` owns the module kind. An options hook can still return `sourceType`; a value other than `"unambiguous"` replaces `ast.program.sourceType` before generation. `generate` has no `sourceType` option.
 
 The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
 

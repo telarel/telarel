@@ -14,13 +14,13 @@ type ModuleInfo = {
      */
     file: string;
     /**
-     * The language of the source code. Resolved from options, the AST, or the
+     * The grammar of the source code. Resolved from options, the AST, or the
      * file extension.
      */
     language: Language | void;
     /**
-     * The module system of the source code. By default, the compiler resolves
-     * it from the language.
+     * The module kind of the code, resolved from options, the AST, or the file
+     * extension.
      */
     sourceType: SourceType | void;
 };

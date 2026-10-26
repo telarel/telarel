@@ -3,11 +3,14 @@ import type {
     AstOptions,
     AstResult,
     CodeResult,
+    CommonPluginContext,
     GenerateArgs,
     Generator,
     Language,
+    OptionsArgs,
     PluginContext,
     SourceMap,
+    SourceType,
 } from "telarel";
 
 import { CompileError, createGenerator, generate, parse } from "telarel";
@@ -236,6 +239,73 @@ describe("generate", (): void => {
                 },
             ],
         });
+    });
+
+    it("exposes the AST module kind to plugin contexts", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const a = 1;", {
+                file: "index.mjs",
+                sourceType: "module",
+            })
+        ).ast;
+        const seen: Array<SourceType | void> = [];
+
+        await generate(ast, {
+            file: "index.cjs",
+            plugins: [
+                {
+                    name: "observe-source-type",
+                    generate: (ctx: PluginContext): null => {
+                        seen.push(ctx.module.sourceType);
+
+                        return null;
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual(["module"]);
+    });
+
+    it("lets an options hook set the source type before generation", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const a = 1;", {
+                file: "index.mjs",
+                sourceType: "module",
+            })
+        ).ast;
+        const seen: Array<{
+            context: SourceType | void;
+            program: SourceType;
+        }> = [];
+
+        await generate(ast, {
+            file: "index.cjs",
+            plugins: [
+                {
+                    name: "set-source-type",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): OptionsArgs => ({
+                        options: { ...args.options, sourceType: "script" },
+                    }),
+                    generate: (
+                        ctx: PluginContext,
+                        args: GenerateArgs,
+                    ): null => {
+                        seen.push({
+                            context: ctx.module.sourceType,
+                            program: args.ast.program.sourceType,
+                        });
+
+                        return null;
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([{ context: "script", program: "script" }]);
     });
 
     it("exposes the ast and options to the generate hook", async (): Promise<void> => {

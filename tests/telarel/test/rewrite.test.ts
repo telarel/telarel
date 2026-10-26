@@ -255,6 +255,78 @@ describe("rewrite", (): void => {
         expect(result.ast.program.sourceType).toBe("script");
     });
 
+    it("keeps a module AST when the file is cjs", async (): Promise<void> => {
+        const parsed: AstResult = await parse("const a = 1;", {
+            file: "index.mjs",
+            sourceType: "module",
+        });
+        const seen: Array<string> = [];
+
+        const result: AstResult = await rewrite(parsed.ast, {
+            file: "index.cjs",
+            plugins: [
+                {
+                    name: "observe-source-type",
+                    prepare: (ctx: PluginContext): void => {
+                        seen.push(String(ctx.module.sourceType));
+                    },
+                },
+            ],
+        });
+
+        expect(result.ast.program.sourceType).toBe("module");
+        expect(seen).toEqual(["module"]);
+    });
+
+    it("keeps a commonjs AST when the file is mjs", async (): Promise<void> => {
+        const parsed: AstResult = await parse("module.exports = 1;", {
+            file: "index.cjs",
+        });
+
+        const result: AstResult = await rewrite(parsed.ast, {
+            file: "index.mjs",
+        });
+
+        expect(result.ast.program.sourceType).toBe("commonjs");
+    });
+
+    it("lets an explicit sourceType override the AST", async (): Promise<void> => {
+        const parsed: AstResult = await parse("const a = 1;", {
+            file: "index.mjs",
+            sourceType: "module",
+        });
+        const seen: Array<string> = [];
+
+        const result: AstResult = await rewrite(parsed.ast, {
+            file: "index.cjs",
+            sourceType: "script",
+            plugins: [
+                {
+                    name: "observe-source-type",
+                    prepare: (ctx: PluginContext): void => {
+                        seen.push(String(ctx.module.sourceType));
+                    },
+                },
+            ],
+        });
+
+        expect(result.ast.program.sourceType).toBe("script");
+        expect(seen).toEqual(["script"]);
+    });
+
+    it("uses the AST module kind when sourceType is unambiguous", async (): Promise<void> => {
+        const parsed: AstResult = await parse("module.exports = 1;", {
+            file: "index.cjs",
+        });
+
+        const result: AstResult = await rewrite(parsed.ast, {
+            file: "index.mjs",
+            sourceType: "unambiguous",
+        });
+
+        expect(result.ast.program.sourceType).toBe("commonjs");
+    });
+
     it("does not fire the parse or generate hooks", async (): Promise<void> => {
         const parsed: AstResult = await parse("const a = 1;", {
             file: "index.ts",

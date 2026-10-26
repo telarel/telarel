@@ -26,13 +26,14 @@ mod tests {
 
     use telarel_common::{
         Ast, AstResult, CompileError, InputSourceMap, InputSourceMapMode,
-        RewriteOptions, SourceMap,
+        ResolvedOptions, RewriteOptions, SourceMap, SourceType,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
         EndObserverPlugin, FailPlugin, FailStage, ReplaceAstPlugin, SpyPlugin,
-        assert_same_map, input_map, parse_fixture, parse_with_map, sample_map,
+        StartObserverPlugin, assert_same_map, input_map, parse_as,
+        parse_fixture, parse_with_map, sample_map,
     };
 
     use super::rewrite;
@@ -197,6 +198,96 @@ mod tests {
         let observed: Vec<Option<String>> = ended.lock().unwrap().clone();
 
         assert_eq!(observed[0].as_deref(), Some("fail-finalize"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_module_kind_survives_a_cjs_file() {
+        let seen: Arc<Mutex<Vec<ResolvedOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let ast: Ast = parse_as("const a = 1;", SourceType::Module);
+
+        let options: RewriteOptions = RewriteOptions {
+            file: Some(String::from("index.cjs")),
+            ..RewriteOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(StartObserverPlugin::new(&seen))];
+
+        let result: AstResult =
+            rewrite(ast, options, plugins).await.expect("rewrite succeeds");
+
+        assert_eq!(result.ast.source_type(), SourceType::Module);
+        assert_eq!(seen.lock().unwrap()[0].source_type, SourceType::Module);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_commonjs_kind_survives_an_mjs_file() {
+        let seen: Arc<Mutex<Vec<ResolvedOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let ast: Ast = parse_as("module.exports = 1;", SourceType::CommonJS);
+
+        let options: RewriteOptions = RewriteOptions {
+            file: Some(String::from("index.mjs")),
+            ..RewriteOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(StartObserverPlugin::new(&seen))];
+
+        let result: AstResult =
+            rewrite(ast, options, plugins).await.expect("rewrite succeeds");
+
+        assert_eq!(result.ast.source_type(), SourceType::CommonJS);
+        assert_eq!(seen.lock().unwrap()[0].source_type, SourceType::CommonJS,);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_explicit_source_type_overrides_the_ast() {
+        let seen: Arc<Mutex<Vec<ResolvedOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let ast: Ast = parse_as("const a = 1;", SourceType::Module);
+
+        let options: RewriteOptions = RewriteOptions {
+            file: Some(String::from("index.cjs")),
+            source_type: Some(SourceType::Script),
+            ..RewriteOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(StartObserverPlugin::new(&seen))];
+
+        let result: AstResult =
+            rewrite(ast, options, plugins).await.expect("rewrite succeeds");
+
+        assert_eq!(result.ast.source_type(), SourceType::Script);
+        assert_eq!(seen.lock().unwrap()[0].source_type, SourceType::Script);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_unambiguous_source_type_keeps_the_ast_kind() {
+        let seen: Arc<Mutex<Vec<ResolvedOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let ast: Ast = parse_as("module.exports = 1;", SourceType::CommonJS);
+
+        let options: RewriteOptions = RewriteOptions {
+            file: Some(String::from("index.mjs")),
+            source_type: Some(SourceType::Unambiguous),
+            ..RewriteOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(StartObserverPlugin::new(&seen))];
+
+        let result: AstResult =
+            rewrite(ast, options, plugins).await.expect("rewrite succeeds");
+
+        assert_eq!(result.ast.source_type(), SourceType::CommonJS);
+        assert_eq!(seen.lock().unwrap()[0].source_type, SourceType::CommonJS,);
     }
 
     #[tokio::test(flavor = "current_thread")]

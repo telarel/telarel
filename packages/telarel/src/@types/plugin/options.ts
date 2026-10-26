@@ -57,13 +57,15 @@ type CompleteOptions = {
      */
     file: string;
     /**
-     * The grammar of the code. Resolved from options, the AST, or the file
-     * extension.
+     * The grammar of the source code.
+     *
+     * Resolved from options, the AST, or the file extension.
      */
     language: Language;
     /**
-     * The module system of the code. By default, the compiler keeps it resolved
-     * from the grammar.
+     * The module kind of the code.
+     *
+     * Resolved from options, the AST, or the file extension.
      */
     sourceType: SourceType;
     /**
