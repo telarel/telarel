@@ -248,7 +248,7 @@ describe("generate", (): void => {
                 sourceType: "module",
             })
         ).ast;
-        const seen: Array<SourceType | void> = [];
+        const seen: Array<SourceType> = [];
 
         await generate(ast, {
             file: "index.cjs",
@@ -275,7 +275,7 @@ describe("generate", (): void => {
             })
         ).ast;
         const seen: Array<{
-            context: SourceType | void;
+            context: SourceType;
             program: SourceType;
         }> = [];
 

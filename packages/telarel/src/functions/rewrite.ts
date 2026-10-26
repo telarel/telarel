@@ -1,10 +1,10 @@
 import type { AstResult } from "#/@types/ast";
-import type { Language } from "#/@types/grammar";
 import type { RewriteOptions } from "#/@types/plugin/options";
 import type { Program } from "#/@types/program";
 import type { RawPlugin } from "#/bridges/plugin";
 
 import { rewrite as bindingRewrite } from "#/binding";
+import { parseLanguage } from "#/bridges/grammar";
 import { toAstInput, toRawPlugins } from "#/bridges/plugin";
 import { Ast } from "#/classes/ast";
 import { CompileError } from "#/errors/compile";
@@ -57,7 +57,7 @@ async function rewrite(
         next = new Ast({
             program: result.ast.program as Program,
             source: result.ast.code,
-            language: result.ast.language as Language,
+            language: parseLanguage(result.ast.language),
             map: result.ast.map,
         });
     } catch (error: unknown) {

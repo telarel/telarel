@@ -3,11 +3,13 @@ import type {
     CommonPluginContext,
     EndArgs,
     FinalizeArgs,
+    Language,
     OptionsArgs,
     Plugin,
     PluginContext,
     PrepareArgs,
     ResolvedOptions,
+    SourceType,
     StartArgs,
     TransformArgs,
     TransformResult,
@@ -1045,6 +1047,64 @@ describe("compile", (): void => {
         ]);
     });
 
+    it("always resolves the module info in every hook context", async (): Promise<void> => {
+        const seen: Array<{
+            hook: string;
+            language: Language;
+            sourceType: SourceType;
+        }> = [];
+
+        const record = (hook: string, ctx: PluginContext): void => {
+            seen.push({
+                hook,
+                language: ctx.module.language,
+                sourceType: ctx.module.sourceType,
+            });
+        };
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceType: "module",
+            plugins: [
+                {
+                    name: "observe-context",
+                    start: (ctx: PluginContext): void => {
+                        record("start", ctx);
+                    },
+                    parse: (ctx: PluginContext): void => {
+                        record("parse", ctx);
+                    },
+                    prepare: (ctx: PluginContext): void => {
+                        record("prepare", ctx);
+                    },
+                    transform: (ctx: PluginContext): void => {
+                        record("transform", ctx);
+                    },
+                    finalize: (ctx: PluginContext): void => {
+                        record("finalize", ctx);
+                    },
+                    generate: (ctx: PluginContext): void => {
+                        record("generate", ctx);
+                    },
+                    end: (ctx: PluginContext): void => {
+                        record("end", ctx);
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([
+            { hook: "start", language: "ts", sourceType: "module" },
+            { hook: "parse", language: "ts", sourceType: "module" },
+            { hook: "prepare", language: "ts", sourceType: "module" },
+            { hook: "transform", language: "ts", sourceType: "module" },
+            { hook: "finalize", language: "ts", sourceType: "module" },
+            { hook: "generate", language: "ts", sourceType: "module" },
+            { hook: "end", language: "ts", sourceType: "module" },
+        ]);
+    });
+
     it("applies a returned ast mutation through json", async (): Promise<void> => {
         const result: CodeResult = await compile(`const a = "old";`, {
             cwd: "/repo",
@@ -1399,8 +1459,8 @@ describe("compile", (): void => {
                     start: (ctx: PluginContext): void => {
                         seen.push({
                             cwd: ctx.cwd,
-                            language: String(ctx.module.language),
-                            sourceType: String(ctx.module.sourceType),
+                            language: ctx.module.language,
+                            sourceType: ctx.module.sourceType,
                         });
                     },
                 },

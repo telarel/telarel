@@ -1,7 +1,7 @@
 import type { AstResult, CodeResult } from "#/@types/ast";
 import type { BuiltinPlugin } from "#/@types/builtin";
 import type { GeneratorOptions } from "#/@types/generator";
-import type { Language, SourceType } from "#/@types/grammar";
+import type { Language } from "#/@types/grammar";
 import type { ParserOptions } from "#/@types/parser";
 import type { Plugin } from "#/@types/plugin";
 import type {
@@ -30,15 +30,15 @@ import type { SourceMapOptions } from "#/@types/sourcemap";
 import type { SourceMap } from "#/@types/sourcemap/map";
 import type { NormalizedHook } from "#/bridges/normalize-hook";
 
+import { parseLanguage, parseSourceType } from "#/bridges/grammar";
 import { normalizeHook } from "#/bridges/normalize-hook";
 import { Ast } from "#/classes/ast";
 import { getPluginErrorMessage, PluginError } from "#/errors/plugin";
 import { encodePluginError } from "#/errors/transport/plugin-error";
 
 /**
- * Raw plugin context, as carried by every ctx-bearing hook payload: scalar
- * strings with the label convention (empty string = unset for
- * `language`/`sourceType`).
+ * Raw plugin context, as carried by every ctx-bearing hook payload. The binding
+ * resolves `language` and `sourceType`. The bridge parses both labels.
  */
 type RawPluginContext = {
     cwd: string;
@@ -211,27 +211,23 @@ const isBuiltinPlugin = (
 };
 
 const toLanguage = (language: string): Language | void => {
-    return language.length === 0 ? void 0 : (language as Language);
-};
-
-const toSourceType = (sourceType: string): SourceType | void => {
-    return sourceType.length === 0 ? void 0 : (sourceType as SourceType);
+    return language.length === 0 ? void 0 : parseLanguage(language);
 };
 
 const toContext = (rawCtx: RawPluginContext): PluginContext => ({
     cwd: rawCtx.cwd,
     module: {
         file: rawCtx.file,
-        language: toLanguage(rawCtx.language),
-        sourceType: toSourceType(rawCtx.sourceType),
+        language: parseLanguage(rawCtx.language),
+        sourceType: parseSourceType(rawCtx.sourceType),
     },
 });
 
 const toParserOptions = (rawOptions: RawParserOptions): ParserOptions => ({
     cwd: rawOptions.cwd,
     file: rawOptions.file,
-    language: rawOptions.language as Language,
-    sourceType: rawOptions.sourceType as SourceType,
+    language: parseLanguage(rawOptions.language),
+    sourceType: parseSourceType(rawOptions.sourceType),
     sourceMap: rawOptions.sourceMap,
 });
 
@@ -429,11 +425,11 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                 }
 
                 if (rawArgs.language.length > 0) {
-                    bag.language = rawArgs.language as Language;
+                    bag.language = parseLanguage(rawArgs.language);
                 }
 
                 if (rawArgs.sourceType.length > 0) {
-                    bag.sourceType = rawArgs.sourceType as SourceType;
+                    bag.sourceType = parseSourceType(rawArgs.sourceType);
                 }
 
                 if (rawArgs.output !== void 0) {
@@ -513,8 +509,8 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                     options: {
                         cwd: rawArgs.options.cwd,
                         file: rawArgs.options.file,
-                        language: rawArgs.options.language as Language,
-                        sourceType: rawArgs.options.sourceType as SourceType,
+                        language: parseLanguage(rawArgs.options.language),
+                        sourceType: parseSourceType(rawArgs.options.sourceType),
                         output: rawArgs.options.output,
                         sourceMap: rawArgs.options.sourceMap,
                         plugins: rawArgs.options.plugins,

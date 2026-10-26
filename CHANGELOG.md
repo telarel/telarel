@@ -182,6 +182,7 @@
 - change `Ast.program` to a deeply read-only view; use `Ast.mutate` to change it
 - change `ErrorSource.file`, `ErrorSource.code`, and `ErrorSource.span` from methods to getters
 - change `InputSourceMapMode` and `InputSourceMapOptions.mode` to accept a `SourceMap` value or the `"inline"`, `"external"`, and `"auto"` literals; `inputSourceMap` and `sourceMap.input` path strings now reject as `InvalidArg`—use `{ mode: "external", path }`, which resolves a relative `path` against the source file's directory instead of `cwd`
+- change `ModuleInfo.language` and `ModuleInfo.sourceType` to be non-optional in `PluginContext`. Both values are always present.
 - change `ModuleInfo.sourceType` for `generate` to report the AST module kind, then the file extension.
 - change `parse` and `rewrite` options to use `inputSourceMap` instead of `sourceMap`
 - change `PrepareArgs`, `FinalizeArgs`, and `GenerateArgs` to carry `Ast` instead of `Program`; `TransformArgs` and `TransformResult` carry `Ast`

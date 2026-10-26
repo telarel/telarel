@@ -147,7 +147,7 @@ Every hook receives a context as its first argument.
 | `cwd`    | `string`     | Current working directory. |
 | `module` | `ModuleInfo` | The module being compiled. |
 
-`ModuleInfo` holds `file: string`, `language: Language | void`, and `sourceType: SourceType | void`.
+`ModuleInfo` holds `file: string`, `language: Language`, and `sourceType: SourceType`. The pipeline resolves all three before it runs any `PluginContext` hook. `"unambiguous"` means the parser infers the module kind from the statements.
 
 The pipeline renders path values that are not valid UTF-8 lossily (`U+FFFD`) in hook payloads.
 

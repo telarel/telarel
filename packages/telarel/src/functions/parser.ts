@@ -1,9 +1,9 @@
 import type { AstResult } from "#/@types/ast";
-import type { Language } from "#/@types/grammar";
 import type { ParserOptions } from "#/@types/parser";
 import type { Program } from "#/@types/program";
 
 import { builtinParse } from "#/binding";
+import { parseLanguage } from "#/bridges/grammar";
 import { Ast } from "#/classes/ast";
 import { CompileError } from "#/errors/compile";
 
@@ -38,7 +38,7 @@ const createParser = (
                 ast = new Ast({
                     program: result.ast.program as Program,
                     source: result.ast.code,
-                    language: result.ast.language as Language,
+                    language: parseLanguage(result.ast.language),
                     map: result.ast.map,
                 });
             } catch (error: unknown) {

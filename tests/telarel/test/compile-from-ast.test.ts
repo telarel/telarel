@@ -104,7 +104,7 @@ describe("compileFromAst", (): void => {
                 {
                     name: "observe-source-type",
                     prepare: (ctx: PluginContext): void => {
-                        seen.push(String(ctx.module.sourceType));
+                        seen.push(ctx.module.sourceType);
                     },
                 },
             ],

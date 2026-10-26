@@ -1,10 +1,10 @@
 import type { AstResult } from "#/@types/ast";
-import type { Language } from "#/@types/grammar";
 import type { ParseOptions } from "#/@types/plugin/options";
 import type { Program } from "#/@types/program";
 import type { RawPlugin } from "#/bridges/plugin";
 
 import { parse as bindingParse } from "#/binding";
+import { parseLanguage } from "#/bridges/grammar";
 import { toRawPlugins } from "#/bridges/plugin";
 import { Ast } from "#/classes/ast";
 import { CompileError } from "#/errors/compile";
@@ -38,7 +38,7 @@ const parse = async (
         ast = new Ast({
             program: result.ast.program as Program,
             source: result.ast.code,
-            language: result.ast.language as Language,
+            language: parseLanguage(result.ast.language),
             map: result.ast.map,
         });
     } catch (error: unknown) {
