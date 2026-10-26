@@ -30,8 +30,8 @@ importers:
         specifier: ~0.5.0
         version: 0.5.0(oxlint@1.89.0(oxlint-tsgolint@7.0.2005))
       '@apst/tsconfig':
-        specifier: ~0.3.0
-        version: 0.3.0(typescript@7.0.2)
+        specifier: ~1.0.0
+        version: 1.0.0(typescript@7.0.2)
       '@apst/tsdown':
         specifier: ~0.5.0
         version: 0.5.0(tsdown@0.23.2(typescript@7.0.2))
@@ -193,10 +193,10 @@ packages:
       oxlint:
         optional: true
 
-  '@apst/tsconfig@0.3.0':
-    resolution: {integrity: sha512-1fvjlQLOexuVqZaQj7K+n/3GxEAk5WcbuSuUsaxpfxhEuWpTIGop04nGX7XENScZhkxm4+vFIFy1LsYLNpOUjQ==}
+  '@apst/tsconfig@1.0.0':
+    resolution: {integrity: sha512-5fWCtK51XBLRiJFmV5DYSONZH3X4yT8aYNWQrcTzcmChpOX/kQh90srN1h0r6YP8WEC9htDAF/SRpQPbMkR2KA==}
     peerDependencies:
-      typescript: ^5.0.0 || ^6.0.0
+      typescript: ^5.0.0 || ^6.0.0 || ^7.0.0
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -3852,7 +3852,7 @@ snapshots:
     optionalDependencies:
       oxlint: 1.89.0(oxlint-tsgolint@7.0.2005)
 
-  '@apst/tsconfig@0.3.0(typescript@7.0.2)':
+  '@apst/tsconfig@1.0.0(typescript@7.0.2)':
     optionalDependencies:
       typescript: 7.0.2
 
