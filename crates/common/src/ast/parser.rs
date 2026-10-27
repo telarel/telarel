@@ -1,8 +1,10 @@
 use crate::_types::options::builtin::parser::ParserOptions;
+use crate::ast::ast::Ast;
 use crate::ast::parse::{ParseAstOptions, parse_ast};
 use crate::ast::result::AstResult;
 use crate::errors::compile::CompileError;
 use crate::sourcemap::SourceMap;
+use crate::sourcemap::inline::strip_consumed_inline_source_map_comment;
 use crate::sourcemap::resolve::resolve_input_source_map;
 
 /// A builtin parser that attaches the requested input source map to its result.
@@ -34,7 +36,7 @@ impl Parser {
             | None => None,
         };
 
-        let ast = parse_ast(
+        let mut ast: Ast = parse_ast(
             self.code,
             ParseAstOptions {
                 cwd: self.options.cwd.clone(),
@@ -45,6 +47,10 @@ impl Parser {
             },
         )?;
 
+        if let Some(input) = self.options.source_map.input.as_ref() {
+            strip_consumed_inline_source_map_comment(&mut ast, input);
+        }
+
         Ok(AstResult { ast })
     }
 }
@@ -53,6 +59,7 @@ impl Parser {
 mod tests {
     use std::path::{Path, PathBuf};
 
+    use oxc::ast::ast::Comment;
     use oxc_sourcemap::SourceMapBuilder;
     use tempfile::TempDir;
 
@@ -62,7 +69,10 @@ mod tests {
     use crate::_types::options::sourcemap::input::{
         InputSourceMap, InputSourceMapMode, InputSourceMapOptions,
     };
-    use crate::helpers::test_util::{path_buf, temp_dir, write_file};
+    use crate::ast::ast::Ast;
+    use crate::helpers::test_util::{
+        comment_text, path_buf, temp_dir, write_file,
+    };
     use crate::sourcemap::inline::append_inline_source_map;
 
     use super::*;
@@ -103,6 +113,12 @@ mod tests {
         expected: &SourceMap,
     ) {
         assert_eq!(actual.to_json_string(), expected.to_json_string());
+    }
+
+    fn has_source_mapping_comment(ast: &Ast) -> bool {
+        ast.program().comments.iter().any(|comment: &Comment| {
+            comment_text(ast, comment).contains("sourceMappingURL")
+        })
     }
 
     #[test]
@@ -170,6 +186,30 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_value_mode_keeps_inline_comment() {
+        let map: SourceMap = sample_map("upstream.ts");
+
+        let code: String =
+            append_inline_source_map(String::from("const a = 1;"), &map);
+
+        let result: AstResult = Parser::new(
+            code,
+            options(
+                Path::new(""),
+                "index.ts",
+                source_map_options(InputSourceMap::Mode(
+                    InputSourceMapMode::Value(map.clone()),
+                )),
+            ),
+        )
+        .parse()
+        .expect("value mode parses");
+
+        assert_same_map(result.ast.map().expect("map attached"), &map);
+        assert!(has_source_mapping_comment(&result.ast));
+    }
+
+    #[test]
     fn test_parse_inline_mode_attaches_map() {
         let map: SourceMap = sample_map("upstream.ts");
 
@@ -190,6 +230,8 @@ mod tests {
         .expect("inline mode parses");
 
         assert_same_map(result.ast.map().expect("map attached"), &map);
+        assert!(result.ast.source().contains("sourceMappingURL"));
+        assert!(!has_source_mapping_comment(&result.ast));
     }
 
     #[test]
@@ -266,6 +308,8 @@ mod tests {
         .expect("auto mode parses");
 
         assert_same_map(result.ast.map().expect("map attached"), &inline_map);
+        assert!(result.ast.source().contains("sourceMappingURL"));
+        assert!(!has_source_mapping_comment(&result.ast));
     }
 
     #[test]

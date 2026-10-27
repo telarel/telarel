@@ -60,3 +60,8 @@ pub use crate::sourcemap::inline::{
 };
 pub use crate::sourcemap::mode::apply_output_source_map_mode;
 pub use crate::sourcemap::resolve::resolve_input_source_map;
+
+#[doc(hidden)]
+pub mod __internal {
+    pub use crate::sourcemap::inline::strip_consumed_inline_source_map_comment;
+}

@@ -43,6 +43,24 @@ pub enum OutputSourceMap {
     Options(OutputSourceMapOptions),
 }
 
+impl OutputSourceMap {
+    /// Return the output mode for this output map.
+    pub(crate) fn mode(&self) -> OutputSourceMapMode {
+        match self {
+            | Self::Mode(mode) => *mode,
+            | Self::Options(options) => options.mode,
+        }
+    }
+
+    /// Return the configured external map URL for this output map, if any.
+    pub(crate) fn url(&self) -> Option<&str> {
+        match self {
+            | Self::Mode(_) => None,
+            | Self::Options(options) => options.url.as_deref(),
+        }
+    }
+}
+
 impl Default for OutputSourceMap {
     fn default() -> Self {
         Self::Mode(OutputSourceMapMode::default())
@@ -77,5 +95,63 @@ mod tests {
 
         assert_eq!(options.mode, OutputSourceMapMode::External);
         assert!(options.url.is_none());
+    }
+
+    #[test]
+    fn test_output_source_map_mode_reads_both_variants() {
+        assert_eq!(
+            OutputSourceMap::Mode(OutputSourceMapMode::Both).mode(),
+            OutputSourceMapMode::Both,
+        );
+        assert_eq!(
+            OutputSourceMap::Options(OutputSourceMapOptions {
+                mode: OutputSourceMapMode::Inline,
+                url: None,
+            })
+            .mode(),
+            OutputSourceMapMode::Inline,
+        );
+    }
+
+    #[test]
+    fn test_output_source_map_url_is_none_for_bare_mode() {
+        assert_eq!(
+            OutputSourceMap::Mode(OutputSourceMapMode::External).url(),
+            None,
+        );
+    }
+
+    #[test]
+    fn test_output_source_map_url_is_none_when_unset() {
+        assert_eq!(
+            OutputSourceMap::Options(OutputSourceMapOptions {
+                mode: OutputSourceMapMode::External,
+                url: None,
+            })
+            .url(),
+            None,
+        );
+    }
+
+    #[test]
+    fn test_output_source_map_url_returns_configured_value() {
+        let output: OutputSourceMap =
+            OutputSourceMap::Options(OutputSourceMapOptions {
+                mode: OutputSourceMapMode::External,
+                url: Some(String::from("dist/app.js.map")),
+            });
+
+        assert_eq!(output.url(), Some("dist/app.js.map"));
+    }
+
+    #[test]
+    fn test_output_source_map_url_returns_empty_value_verbatim() {
+        let output: OutputSourceMap =
+            OutputSourceMap::Options(OutputSourceMapOptions {
+                mode: OutputSourceMapMode::External,
+                url: Some(String::new()),
+            });
+
+        assert_eq!(output.url(), Some(""));
     }
 }

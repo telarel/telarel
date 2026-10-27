@@ -175,9 +175,99 @@ mod tests {
         let result: CodeResult =
             compile(code, options, vec![]).await.expect("compile succeeds");
 
+        assert_eq!(result.code, "const a = 1;");
+        assert!(!result.code.contains("sourceMappingURL"));
+
         let generated: SourceMap = result.map.expect("output map present");
 
         assert_eq!(first_token(&generated), (0, 0, 9, 0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_inline_input_map_strips_comment_before_inline_output()
+    {
+        let map: SourceMap = sample_map("upstream.ts", 9);
+
+        let code: String =
+            append_inline_source_map(String::from("const a = 1;"), &map);
+
+        let options: CompileOptions = CompileOptions {
+            file: Some(String::from("index.ts")),
+            source_map: Some(SourceMapOptions {
+                input: Some(InputSourceMap::Mode(InputSourceMapMode::Inline)),
+                output: Some(OutputSourceMap::Mode(
+                    OutputSourceMapMode::Inline,
+                )),
+            }),
+            ..CompileOptions::default()
+        };
+
+        let result: CodeResult =
+            compile(code, options, vec![]).await.expect("compile succeeds");
+
+        assert!(result.map.is_none());
+        assert_eq!(result.code.matches("//# sourceMappingURL=").count(), 1);
+        assert!(result.code.starts_with(
+            "const a = 1;\n//# sourceMappingURL=data:application/json;base64,"
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_inline_input_map_strips_comment_before_external_output()
+     {
+        let map: SourceMap = sample_map("upstream.ts", 9);
+
+        let code: String =
+            append_inline_source_map(String::from("const a = 1;"), &map);
+
+        let options: CompileOptions = CompileOptions {
+            file: Some(String::from("index.ts")),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/index.js")),
+            }),
+            source_map: Some(SourceMapOptions {
+                input: Some(InputSourceMap::Mode(InputSourceMapMode::Inline)),
+                output: Some(OutputSourceMap::Mode(
+                    OutputSourceMapMode::External,
+                )),
+            }),
+            ..CompileOptions::default()
+        };
+
+        let result: CodeResult =
+            compile(code, options, vec![]).await.expect("compile succeeds");
+
+        assert_eq!(
+            result.code,
+            "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
+        );
+        assert_eq!(result.code.matches("//# sourceMappingURL=").count(), 1);
+        assert!(result.map.is_some());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_inline_input_map_keeps_ordinary_comment() {
+        let map: SourceMap = sample_map("upstream.ts", 9);
+
+        let code: String = append_inline_source_map(
+            String::from("// keep me\nconst a = 1;"),
+            &map,
+        );
+
+        let options: CompileOptions = CompileOptions {
+            file: Some(String::from("index.ts")),
+            source_map: Some(SourceMapOptions {
+                input: Some(InputSourceMap::Mode(InputSourceMapMode::Inline)),
+                output: None,
+            }),
+            ..CompileOptions::default()
+        };
+
+        let result: CodeResult =
+            compile(code, options, vec![]).await.expect("compile succeeds");
+
+        assert_eq!(result.code, "// keep me\nconst a = 1;");
+        assert!(!result.code.contains("sourceMappingURL"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -258,9 +348,75 @@ mod tests {
         let result: CodeResult =
             compile(code, options, vec![]).await.expect("compile succeeds");
 
+        assert_eq!(result.code, "const a = 1;");
+        assert!(!result.code.contains("sourceMappingURL"));
+
         let generated: SourceMap = result.map.expect("output map present");
 
         assert_eq!(first_token(&generated), (0, 0, 9, 0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_auto_inline_map_wins_and_strips_comment() {
+        let dir: TempDir = temp_dir();
+        let external_map: SourceMap = sample_map("external.ts", 9);
+        let inline_map: SourceMap = sample_map("inline.ts", 9);
+
+        write_file(&dir, "index.ts.map", &external_map.to_json_string());
+
+        let code: String =
+            append_inline_source_map(String::from("const a = 1;"), &inline_map);
+
+        let options: CompileOptions = CompileOptions {
+            cwd: Some(path_buf(&dir)),
+            file: Some(String::from("index.ts")),
+            source_map: Some(SourceMapOptions {
+                input: Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
+                output: None,
+            }),
+            ..CompileOptions::default()
+        };
+
+        let result: CodeResult =
+            compile(code, options, vec![]).await.expect("compile succeeds");
+
+        assert_eq!(result.code, "const a = 1;");
+        assert!(!result.code.contains("sourceMappingURL"));
+
+        let generated: SourceMap = result.map.expect("output map present");
+
+        assert_eq!(generated.get_source(0), Some("inline.ts"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_auto_external_fallback_keeps_non_data_url_comment() {
+        let dir: TempDir = temp_dir();
+        let external_map: SourceMap = sample_map("external.ts", 9);
+
+        write_file(&dir, "index.ts.map", &external_map.to_json_string());
+
+        let code: &str = "const a = 1;\n//# sourceMappingURL=docs.map\n";
+
+        let options: CompileOptions = CompileOptions {
+            cwd: Some(path_buf(&dir)),
+            file: Some(String::from("index.ts")),
+            source_map: Some(SourceMapOptions {
+                input: Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
+                output: None,
+            }),
+            ..CompileOptions::default()
+        };
+
+        let result: CodeResult = compile(code.to_string(), options, vec![])
+            .await
+            .expect("compile succeeds");
+
+        assert!(result.code.contains("//# sourceMappingURL=docs.map"));
+        assert_eq!(result.code.matches("//# sourceMappingURL=").count(), 1);
+
+        let generated: SourceMap = result.map.expect("output map present");
+
+        assert_eq!(generated.get_source(0), Some("external.ts"));
     }
 
     #[tokio::test(flavor = "current_thread")]

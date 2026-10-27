@@ -124,12 +124,8 @@ pub fn resolve_input_source_map(
     file: &str,
     input: &InputSourceMap,
 ) -> Result<Option<SourceMap>, CompileError> {
-    let (mode, path): (&InputSourceMapMode, Option<&Path>) = match input {
-        | InputSourceMap::Mode(mode) => (mode, None),
-        | InputSourceMap::Options(options) => {
-            (&options.mode, options.path.as_deref())
-        },
-    };
+    let mode: &InputSourceMapMode = input.mode();
+    let path: Option<&Path> = input.path();
 
     resolve_input_source_map_mode(code, cwd, file, mode, path)
 }

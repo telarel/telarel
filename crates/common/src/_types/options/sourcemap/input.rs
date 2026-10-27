@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::sourcemap::SourceMap;
 
@@ -52,6 +52,24 @@ pub enum InputSourceMap {
     Mode(InputSourceMapMode),
     /// Full input options.
     Options(InputSourceMapOptions),
+}
+
+impl InputSourceMap {
+    /// Return the input mode for this input map.
+    pub(crate) fn mode(&self) -> &InputSourceMapMode {
+        match self {
+            | Self::Mode(mode) => mode,
+            | Self::Options(options) => &options.mode,
+        }
+    }
+
+    /// Return the custom path for this input map, if any.
+    pub(crate) fn path(&self) -> Option<&Path> {
+        match self {
+            | Self::Mode(_) => None,
+            | Self::Options(options) => options.path.as_deref(),
+        }
+    }
 }
 
 impl Default for InputSourceMap {

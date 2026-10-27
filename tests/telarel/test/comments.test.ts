@@ -8,6 +8,7 @@ import type {
     ParseArgs,
     PluginContext,
     Program,
+    SourceMap,
     TransformArgs,
     TransformResult,
 } from "telarel";
@@ -22,6 +23,12 @@ import {
     rewrite,
 } from "telarel";
 import { describe, expect, it } from "vitest";
+
+import {
+    appendInlineMap,
+    buildMap,
+    SOURCE_MAPPING_COMMENT,
+} from "#/functions/sourcemap";
 
 const SOURCE: string = "// lead\nconst µ = 1; /* trail */\n// tail";
 
@@ -55,6 +62,24 @@ const commentValues = (program: DeepReadonly<Program>): Array<string> =>
     (program.comments ?? []).map(
         (comment: DeepReadonly<Comment>): string => comment.value,
     );
+
+const hasSourceMappingComment = (result: AstResult): boolean =>
+    (result.ast.program.comments ?? []).some(
+        (comment: DeepReadonly<Comment>): boolean =>
+            result.ast.source
+                .slice(comment.start, comment.end)
+                .includes(SOURCE_MAPPING_COMMENT),
+    );
+
+const inlineMapSource = (): string => {
+    const map: SourceMap = buildMap({
+        file: "index.js",
+        sources: ["index.js"],
+        mappings: "AAAA",
+    });
+
+    return appendInlineMap("const a = 1;", map);
+};
 
 const expectPreserved = (code: string): void => {
     for (const comment of COMPILED_COMMENTS) {
@@ -500,5 +525,44 @@ describe("comments", (): void => {
         expect(generated.code).toContain("// keep");
         expect(rewritten.ast.program.type).toBe("Program");
         expect(compiled.code).toContain("// keep");
+    });
+
+    it("removes the consumed comment from a rewritten AST", async (): Promise<void> => {
+        const source: string = inlineMapSource();
+        const parsed: AstResult = await parsedSource(source);
+
+        expect(hasSourceMappingComment(parsed)).toBe(true);
+
+        const result: AstResult = await rewrite(parsed.ast, {
+            file: "index.js",
+            inputSourceMap: "inline",
+        });
+
+        expect(hasSourceMappingComment(result)).toBe(false);
+        expect(result.ast.source).toContain(SOURCE_MAPPING_COMMENT);
+    });
+
+    it("removes the consumed comment before generate output", async (): Promise<void> => {
+        const source: string = inlineMapSource();
+        const parsed: AstResult = await parsedSource(source);
+        const result: CodeResult = await generate(parsed.ast, {
+            file: "index.js",
+            sourceMap: { input: "inline" },
+        });
+
+        expect(result.code).toContain("const a = 1;");
+        expect(result.code).not.toContain(SOURCE_MAPPING_COMMENT);
+    });
+
+    it("removes the consumed comment before compileFromAst output", async (): Promise<void> => {
+        const source: string = inlineMapSource();
+        const parsed: AstResult = await parsedSource(source);
+        const result: CodeResult = await compileFromAst(parsed.ast, {
+            file: "index.js",
+            sourceMap: { input: "inline" },
+        });
+
+        expect(result.code).toContain("const a = 1;");
+        expect(result.code).not.toContain(SOURCE_MAPPING_COMMENT);
     });
 });

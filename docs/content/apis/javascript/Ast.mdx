@@ -79,7 +79,7 @@ type Comment = {
 
 The compiler ignores an invalid or stale `attachedTo` and re-derives it from a codegen anchor instead of rejecting it. Absent `comments` and `comments: []` both mean no comments. A present non-array `comments` value rejects. The compiler derives `value` from the source text and ignores it on input.
 
-Comments survive AST round-trips. An AST that `parse` or `transform` returns owns its comments. Returning an AST without comments drops them.
+Comments survive AST round-trips, except a `sourceMappingURL` comment that supplied an inline input map. An AST that `parse` or `transform` returns owns its comments. Returning an AST without comments drops them.
 
 `parse` may return comments that report oxc's parser position. Inline comments may report `"trailing"`. The compiler normalizes inbound `position` to `"leading"`. Oxc codegen emits only leading comments, so placement depends on codegen.
 

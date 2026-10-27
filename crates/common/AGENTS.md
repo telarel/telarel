@@ -41,6 +41,7 @@ The public modes are defined by `InputSourceMapMode` and `OutputSourceMapMode` i
 - The AST's own input map always wins. The pipeline only attaches a resolved input map when the AST carries none.
 - Input path overrides resolve through `source_dir` and `external_map_path_for`. Public path semantics: `docs/content/apis/rust/Parser.mdx` and `docs/content/apis/javascript/createParser.mdx`.
 - Code-entry functions (`parse`, `compile`) attach the resolved input map after a winning `parse` hook when the AST carries none. The builtin parser still resolves and attaches its own map.
+- When `Inline` or `Auto` resolves an inline map, the builtin parser and `attach_input_map` remove the consumed comment from `Program.comments` before generation. `Ast::source` is unchanged. Comments that were not consumed remain.
 - The pipeline applies output options uniformly after the winning `generate` hook. This rule holds whether the builtin or a plugin generated the code. Public output semantics: `docs/content/apis/rust/compile.mdx#compileoptions` and `docs/content/apis/rust/generate.mdx#generateoptions`.
 - The builtin generator's output-map composition delegates to `oxc_sourcemap::SourceMap::compose`. The codegen map is the `self` operand, so it must contain at most one source.
 - When no map was produced, the code is returned byte-identical in every mode. Never fabricate an identity map.

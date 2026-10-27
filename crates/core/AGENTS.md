@@ -41,6 +41,8 @@ Which hooks each entry point runs is public behavior. See `docs/content/apis/plu
 
 Shared input/output invariants: [common source maps](../common/AGENTS.md#source-maps).
 
+`attach_input_map` follows the shared input-map rules. Its AST-own-map early return keeps comments unchanged.
+
 ## Error propagation
 
 - Hook errors cross the pipeline unchanged. The pipeline adds no stage prefixes. The message and `ErrorSource` are exactly what the plugin or builtin produced.

@@ -115,12 +115,13 @@ When modifying code:
 
 ### Documentation
 
-- if public behavior changes, update the tests and `docs/content`
+- if the public contract changes, update the tests and `docs/content`
+- if a fix restores the documented contract, update the tests and `CHANGELOG.md`
 - if internal architecture or invariants change, update the affected crate `AGENTS.md`
 
-`docs/content` documents public behavior only. `crates/<crate>/AGENTS.md` documents internal architecture only. Do not duplicate public API semantics into agent docs; link to `docs/content` instead.
+`docs/content` documents the public contract: what users configure, receive, or must design around. It does not document implementation history, bug-fix mechanics, or internal bookkeeping, even when a user can observe those details. Keep those details in tests and the affected crate `AGENTS.md`. `crates/<crate>/AGENTS.md` documents internal architecture only. Do not duplicate public API semantics into agent docs; link to `docs/content` instead. State shared behavior once in a shared reference page and link to it instead of repeating it on every entry point.
 
-Update `docs/content` only when a change alters what users can observe:
+Update `docs/content` only when a change alters the public contract users configure or depend on:
 
 - exported functions, types, options, defaults, or result shapes
 - the plugin contract, hook semantics, ordering, or lifecycle
@@ -133,10 +134,12 @@ Do not update `docs/content` for:
 - performance-only changes
 - test-only changes or dependency bumps
 - internal invariants or file layout
+- internal cleanup or incidental observable details
+- repeated copies of shared behavior that belong on one reference page
 
 Update the affected `crates/<crate>/AGENTS.md` when a change alters internal architecture, invariants, file layout, or test commands a future contributor needs.
 
-If unsure whether behavior is public, check existing docs and tests and ask instead of guessing. When code and docs conflict, tests are the source of truth for behavior; fix the docs to match the intended public contract.
+If unsure whether behavior is part of the public contract, check existing docs and tests and ask instead of guessing. When code and docs conflict, tests are the source of truth for behavior; fix the docs to match the intended public contract.
 
 ### Changelog
 

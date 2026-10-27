@@ -1,8 +1,11 @@
 import type {
+    AstResult,
     CodeResult,
+    Comment,
     CommonPluginContext,
     DeepReadonly,
     OptionsArgs,
+    ParseArgs,
     PluginContext,
     SourceMap,
     SourceMapOptions,
@@ -13,11 +16,53 @@ import type {
 
 import type { ProgramFixture } from "#/functions/ast";
 
-import { compile } from "telarel";
-import { describe, expect, it } from "vitest";
+import * as Fsp from "node:fs/promises";
+import * as Path from "node:path";
+
+import { compile, generate, parse } from "telarel";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { renameRootIdentifier } from "#/functions/ast";
-import { buildMap } from "#/functions/sourcemap";
+import {
+    appendInlineMap,
+    buildMap,
+    makeTempDir,
+    removeTempDir,
+    SOURCE_MAPPING_COMMENT,
+} from "#/functions/sourcemap";
+
+const tempDirs: Array<string> = [];
+
+// NAPI-RS preopens the drive root as a guest path such as `D:\`, but
+// wasi-libc recognizes only `/` separators. An input map on the filesystem
+// cannot resolve a Windows absolute path under WASI. Therefore, the
+// external-map tests skip on Windows WASI.
+const isWasiWindows: boolean =
+    process.env.NAPI_RS_FORCE_WASI === "error" && process.platform === "win32";
+
+const tempDir = async (): Promise<string> => {
+    const directory: string = await makeTempDir("telarel-sourcemap-");
+
+    tempDirs.push(directory);
+
+    return directory;
+};
+
+afterEach(async (): Promise<void> => {
+    await Promise.all(tempDirs.splice(0).map(removeTempDir));
+});
+
+const upstreamMap = (): ReturnType<typeof buildMap> =>
+    buildMap({
+        file: "upstream.ts",
+        mappings: "AASA",
+        names: [],
+        sources: ["upstream.ts"],
+        sourcesContent: ["const a = 1;"],
+    });
+
+const countSourceMappingComments = (code: string): number =>
+    code.split(SOURCE_MAPPING_COMMENT).length - 1;
 
 describe("sourcemap", (): void => {
     it("emits a v3 codegen map with observed exact fields", async (): Promise<void> => {
@@ -464,4 +509,256 @@ describe("sourcemap", (): void => {
             "AAAA,MAAM,IAAI;AACV,MAAM,IAAI;AACV,MAAM,IAAI",
         );
     });
+
+    it("removes the consumed comment when no output map is requested", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+
+        const result: CodeResult = await compile(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: "inline" },
+        });
+
+        expect(result.code).toBe("const a = 1;");
+        expect(countSourceMappingComments(result.code)).toBe(0);
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+    });
+
+    it("handles non-ASCII source before the consumed comment", async (): Promise<void> => {
+        const source: string = 'const µ = "日本語";';
+        const code: string = appendInlineMap(source, upstreamMap());
+
+        const result: CodeResult = await compile(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: "inline" },
+        });
+
+        expect(result.code).toBe(source);
+        expect(countSourceMappingComments(result.code)).toBe(0);
+    });
+
+    it("emits exactly one inline comment when output is inline", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+
+        const result: CodeResult = await compile(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: {
+                input: "inline",
+                output: "inline",
+            },
+        });
+
+        expect(result.map).toBeNull();
+        expect(countSourceMappingComments(result.code)).toBe(1);
+        expect(
+            result.code.startsWith(
+                `const a = 1;\n${SOURCE_MAPPING_COMMENT}data:application/json;base64,`,
+            ),
+        ).toBe(true);
+    });
+
+    it("emits exactly one external comment when output is external", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+
+        const result: CodeResult = await compile(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            output: { file: "dist/index.js" },
+            sourceMap: {
+                input: "inline",
+                output: "external",
+            },
+        });
+
+        expect(result.code).toBe(
+            `const a = 1;\n${SOURCE_MAPPING_COMMENT}dist/index.js.map\n`,
+        );
+        expect(countSourceMappingComments(result.code)).toBe(1);
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+    });
+
+    it("removes the consumed comment in auto mode", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+
+        const result: CodeResult = await compile(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: "auto" },
+        });
+
+        expect(result.code).toBe("const a = 1;");
+        expect(countSourceMappingComments(result.code)).toBe(0);
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+    });
+
+    it("keeps comments that resemble source-map comments", async (): Promise<void> => {
+        const code: string = `// see sourceMappingURL=docs\n${appendInlineMap(
+            "const a = 1;",
+            upstreamMap(),
+        )}`;
+
+        const result: CodeResult = await compile(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: "inline" },
+        });
+
+        expect(result.code).toContain("// see sourceMappingURL=docs");
+        expect(result.code).not.toContain(SOURCE_MAPPING_COMMENT);
+        expect(result.code).toBe("// see sourceMappingURL=docs\nconst a = 1;");
+    });
+
+    it("does not restore the consumed comment after a transform pass-through", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+
+        const result: CodeResult = await compile(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: "inline" },
+            plugins: [
+                {
+                    name: "pass-through",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => ({ ast: args.ast }),
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+        expect(countSourceMappingComments(result.code)).toBe(0);
+    });
+
+    it("removes the comment after the pipeline attaches the map to a winning parse hook's AST", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+
+        const parsed: AstResult = await parse(code, {
+            cwd: "/repo",
+            file: "index.ts",
+        });
+
+        expect(parsed.ast.source).toContain(SOURCE_MAPPING_COMMENT);
+
+        const result: CodeResult = await compile(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: "inline" },
+            plugins: [
+                {
+                    name: "parse-without-map",
+                    parse: (
+                        _ctx: PluginContext,
+                        _args: ParseArgs,
+                    ): AstResult => ({ ast: parsed.ast }),
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+        expect(countSourceMappingComments(result.code)).toBe(0);
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+    });
+
+    it("keeps the inline comment when the AST already carries its own input map", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+        const ownMap: SourceMap = buildMap({
+            file: "own.ts",
+            mappings: "AASA",
+            names: [],
+            sources: ["own.ts"],
+            sourcesContent: ["const a = 1;"],
+        });
+
+        const parsed: AstResult = await parse(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            inputSourceMap: ownMap,
+        });
+
+        expect(parsed.ast.map?.sources).toEqual(["own.ts"]);
+        expect(parsed.ast.source).toContain(SOURCE_MAPPING_COMMENT);
+
+        const result: CodeResult = await compile(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: "inline" },
+            plugins: [
+                {
+                    name: "own-map",
+                    parse: (
+                        _ctx: PluginContext,
+                        _args: ParseArgs,
+                    ): AstResult => ({ ast: parsed.ast }),
+                },
+            ],
+        });
+
+        expect(result.code).toContain(SOURCE_MAPPING_COMMENT);
+        expect(countSourceMappingComments(result.code)).toBe(1);
+        expect(result.map?.sources).toEqual(["own.ts"]);
+    });
+
+    it("removes the comment from a parsed AST but keeps the source text", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+
+        const parsed: AstResult = await parse(code, {
+            cwd: "/repo",
+            file: "index.ts",
+            inputSourceMap: "inline",
+        });
+
+        expect(parsed.ast.map?.sources).toEqual(["upstream.ts"]);
+        expect(parsed.ast.source).toContain(SOURCE_MAPPING_COMMENT);
+        expect(
+            (parsed.ast.program.comments ?? []).some(
+                (comment: DeepReadonly<Comment>): boolean =>
+                    parsed.ast.source
+                        .slice(comment.start, comment.end)
+                        .includes("sourceMappingURL"),
+            ),
+        ).toBe(false);
+
+        const generated: CodeResult = await generate(parsed.ast, {
+            cwd: "/repo",
+            file: "index.ts",
+        });
+
+        expect(generated.code).toBe("const a = 1;");
+    });
+
+    it.skipIf(isWasiWindows)(
+        "keeps a non-data sourceMappingURL comment when auto falls back to an external map",
+        async (): Promise<void> => {
+            const directory: string = await tempDir();
+            const external: SourceMap = buildMap({
+                file: "external.ts",
+                mappings: "AASA",
+                names: [],
+                sources: ["external.ts"],
+                sourcesContent: ["const a = 1;"],
+            });
+
+            await Fsp.writeFile(
+                Path.join(directory, "index.ts.map"),
+                JSON.stringify(external),
+                "utf-8",
+            );
+
+            const lookalike: string = `${SOURCE_MAPPING_COMMENT}docs.map`;
+            const code: string = `const a = 1;\n${lookalike}\n`;
+
+            const result: CodeResult = await compile(code, {
+                cwd: directory,
+                file: "index.ts",
+                sourceMap: { input: "auto" },
+            });
+
+            expect(result.code).toContain(lookalike);
+            expect(countSourceMappingComments(result.code)).toBe(1);
+            expect(result.map?.sources).toEqual(["external.ts"]);
+        },
+    );
 });

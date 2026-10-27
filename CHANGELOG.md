@@ -29,7 +29,7 @@
 - change `ParseOptions` and `RewriteOptions` to accept `input_source_map` instead of `source_map`
 - change `ResolvableOptions` and `ResolvedOptions` to carry `output`
 - change `RewriteOptions.source_type` and `CompileFromAstOptions.source_type` to use a value other than `Unambiguous`, then the AST module kind, then the file extension. `Unambiguous` requests inference.
-- change `apply_output_source_map_mode` to accept `OutputSourceMapOptions` and the output file used for the default external map URL
+- change `apply_output_source_map_mode` to accept the output source-map request and the output file used for the default external map URL
 - change the `cwd` parameter of `resolve_input_source_map` to `&Path`
 - change the `cwd` field in Rust option structs to `PathBuf`
 - change the `file` default to `index.ts`
@@ -55,6 +55,7 @@
 
 #### Fixes
 
+- change the builtin parser to remove a consumed inline input source-map comment from the returned AST
 - change external input source-map lookup to ignore `?query`/`#hash` suffixes in `file`
 - change output source-map composition to take `sources`, `sourcesContent`, `sourceRoot`, and `ignoreList` from the input map, and to append generated names as fallbacks
 
@@ -77,6 +78,7 @@
 #### Fixes
 
 - change `parse` and `compile` to attach the requested input source map after a winning `parse` hook
+- change the pipeline to remove a consumed inline input source-map comment before generation, so output modes append at most one `sourceMappingURL` comment
 - change the pipeline to run the `options` fixpoint before the driver and to call `start` and `end` exactly once per invocation
 - change parser/generator selection to fall back to the builtin after every plugin hook defers
 - change stage failures to return hook errors unchanged instead of adding stage prefixes
@@ -170,6 +172,11 @@
 - add `PluginError` and `ErrorSource` re-exports
 - add re-exports of the new options, result types, source-map types, and plugin hook types
 
+#### Fixes
+
+- change the re-exported `generate`, `compile_from_ast`, and `compile` entry points to remove a consumed inline input source-map comment before output
+- change the re-exported `parse` and `rewrite` entry points to remove a consumed inline input source-map comment from the returned AST
+
 ### Telarel (NPM)
 
 #### Breaking
@@ -215,6 +222,8 @@
 
 #### Fixes
 
+- change `compile`, `compileFromAst`, and `generate` to remove a consumed inline input map comment before output
+- change `parse`, `rewrite`, and `createParser` to remove a consumed inline input map comment from the returned AST
 - change `parse` and `compile` to attach `inputSourceMap` after a winning `parse` hook
 - change empty `output.file` and `sourceMap.output.url` to be treated as unset instead of rejected
 - change the `options` hook to omit unset `cwd` and `file` instead of sending empty strings

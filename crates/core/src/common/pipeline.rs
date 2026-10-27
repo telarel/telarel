@@ -8,13 +8,13 @@
 //! once per invocation. The only path that skips `end` is an
 //! `options`-fixpoint failure, where no driver exists yet.
 
+use telarel_common::__internal::strip_consumed_inline_source_map_comment;
 use telarel_common::{
     Ast, AstResult, CodeResult, CompileError, Generator, GeneratorOptions,
-    Language, OutputSourceMap, OutputSourceMapOptions, Parser, ParserOptions,
-    ResolvableOptions, ResolvedOptions, SourceType,
-    apply_output_source_map_mode, grammar_source_type,
-    resolve_input_source_map, resolve_options, resolve_source_type,
-    with_module_kind,
+    Language, OutputSourceMap, Parser, ParserOptions, ResolvableOptions,
+    ResolvedOptions, SourceType, apply_output_source_map_mode,
+    grammar_source_type, resolve_input_source_map, resolve_options,
+    resolve_source_type, with_module_kind,
 };
 use telarel_plugin::__internal::PluginDriver;
 use telarel_plugin::{
@@ -56,17 +56,6 @@ pub trait Stage {
     ) -> Result<Self::Output, CompileError>;
 }
 
-/// The resolved output options. `None` falls back to the defaults.
-fn output_options(output: Option<&OutputSourceMap>) -> OutputSourceMapOptions {
-    match output {
-        | Some(OutputSourceMap::Mode(mode)) => {
-            OutputSourceMapOptions { mode: *mode, url: None }
-        },
-        | Some(OutputSourceMap::Options(options)) => options.clone(),
-        | None => OutputSourceMapOptions::default(),
-    }
-}
-
 /// Attach the resolved input map to `ast` when it carries none.
 ///
 /// The AST's own map always wins. `Ok(None)` from the resolver means there is
@@ -89,7 +78,13 @@ fn attach_input_map(
         &resolved.file,
         input,
     )? {
-        | Some(map) => Ok(ast.with_input_map(Some(map))),
+        | Some(map) => {
+            let mut mapped: Ast = ast.with_input_map(Some(map));
+
+            strip_consumed_inline_source_map_comment(&mut mapped, input);
+
+            Ok(mapped)
+        },
         | None => Ok(ast),
     }
 }
@@ -157,13 +152,11 @@ async fn generate_stage(
         driver.generate(ctx, ast, &options, &builtin).await?;
 
     let output: Option<&OutputSourceMap> = resolved.source_map.output.as_ref();
-    let output_file: Option<&str> =
-        output.map(|_output: &OutputSourceMap| resolved.output.file.as_str());
 
     Ok(apply_output_source_map_mode(
         result,
-        &output_options(output),
-        output_file,
+        output,
+        resolved.output.file.as_str(),
     ))
 }
 
