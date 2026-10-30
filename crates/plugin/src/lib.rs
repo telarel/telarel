@@ -10,7 +10,7 @@ mod options;
 mod plugin;
 mod plugin_driver;
 
-pub use telarel_common::{HookUsage, PluginError};
+pub use telarel_common::{HookUsage, PluginError, SourceMap};
 
 pub use crate::_types::context::{
     CommonPluginContext, ModuleInfo, PluginContext,
@@ -26,7 +26,6 @@ pub use crate::_types::hooks::start::StartArgs;
 pub use crate::_types::hooks::transform::TransformReturn;
 pub use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
 pub use crate::_types::order::{PluginHookMeta, PluginOrder};
-pub use crate::_types::sourcemap::SourceMap;
 pub use crate::options::fixpoint::options_fixpoint;
 pub use crate::plugin::Plugin;
 pub use crate::plugin::pluginable::{Pluginable, SharedPluginable};

@@ -9,7 +9,6 @@ This crate holds the plugin contract and hook engine. It covers the `Plugin` tra
 | `src/_types/hooks/`        | Hook argument and return types                                                                                                                         |
 | `src/_types/context.rs`    | `CommonPluginContext`, `PluginContext`, `ModuleInfo`                                                                                                   |
 | `src/_types/order.rs`      | `PluginHookMeta` and `PluginOrder`                                                                                                                     |
-| `src/_types/sourcemap.rs`  | Plugin-facing `SourceMap`                                                                                                                              |
 | `src/options/fixpoint.rs`  | The `options` fixpoint runner                                                                                                                          |
 | `src/plugin/mod.rs`        | The `Plugin` trait. Every hook defaults to a no-op                                                                                                     |
 | `src/plugin/pluginable.rs` | Object-safe `Pluginable`, `SharedPluginable`, `HookFuture`                                                                                             |
