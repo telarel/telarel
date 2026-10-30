@@ -20,7 +20,14 @@ import type { ProgramFixture } from "#/functions/ast";
 import * as Fsp from "node:fs/promises";
 import * as Path from "node:path";
 
-import { Ast, compile, createGenerator, generate, parse } from "telarel";
+import {
+    Ast,
+    compile,
+    compileFromAst,
+    createGenerator,
+    generate,
+    parse,
+} from "telarel";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { renameRootIdentifier } from "#/functions/ast";
@@ -1109,5 +1116,115 @@ describe("createGenerator source maps", (): void => {
                 `const a = 1;\n${SOURCE_MAPPING_COMMENT}data:application/json;base64,`,
             ),
         ).toBe(true);
+    });
+});
+
+describe("empty file option", (): void => {
+    it("treats an empty file as the index.ts default", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a: number = 1;", {
+            file: "",
+        });
+
+        expect(result.code).toBe("const a: number = 1;");
+        expect(result.map?.sources).toEqual(["index.ts"]);
+    });
+
+    it("uses index.ts.map for an empty file in external output", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "",
+            sourceMap: { output: "external" },
+        });
+
+        expect(result.code).toBe(
+            `const a = 1;\n${SOURCE_MAPPING_COMMENT}index.ts.map\n`,
+        );
+        expect(result.map?.sources).toEqual(["index.ts"]);
+    });
+
+    it.skipIf(isWasiWindows)(
+        "reads index.ts.map for an empty file in external input mode",
+        async (): Promise<void> => {
+            const directory: string = await tempDir();
+            const externalMap: SourceMap = buildMap({
+                file: "external.ts",
+                mappings: "AAMA",
+                names: [],
+                sources: ["external.ts"],
+                sourcesContent: ["const a = 1;"],
+            });
+
+            await Fsp.writeFile(
+                Path.join(directory, "index.ts.map"),
+                JSON.stringify(externalMap),
+                "utf-8",
+            );
+
+            const result: CodeResult = await compile("const a = 1;", {
+                cwd: directory,
+                file: "",
+                sourceMap: { input: "external" },
+            });
+
+            expect(result.map?.sources).toEqual(["external.ts"]);
+        },
+    );
+
+    it("treats an empty file as the index.ts default in compileFromAst", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const a = 1;", {
+                cwd: "/repo",
+                file: "index.ts",
+            })
+        ).ast;
+
+        const result: CodeResult = await compileFromAst(ast, {
+            cwd: "/repo",
+            file: "",
+            sourceMap: { output: "external" },
+        });
+
+        expect(result.code).toBe(
+            `const a = 1;\n${SOURCE_MAPPING_COMMENT}index.ts.map\n`,
+        );
+        expect(result.map?.sources).toEqual(["index.ts"]);
+    });
+
+    it("treats an empty file as the index.ts default in generate", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const a = 1;", {
+                cwd: "/repo",
+                file: "index.ts",
+            })
+        ).ast;
+
+        const result: CodeResult = await generate(ast, {
+            cwd: "/repo",
+            file: "",
+            sourceMap: { output: "external" },
+        });
+
+        expect(result.code).toBe(
+            `const a = 1;\n${SOURCE_MAPPING_COMMENT}index.ts.map\n`,
+        );
+        expect(result.map?.sources).toEqual(["index.ts"]);
+    });
+
+    it("lets an explicit url win over the index.ts default for an empty file", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "",
+            sourceMap: {
+                output: {
+                    mode: "external",
+                    url: "custom.js.map",
+                },
+            },
+        });
+
+        expect(result.code).toBe(
+            `const a = 1;\n${SOURCE_MAPPING_COMMENT}custom.js.map\n`,
+        );
+        expect(result.map?.sources).toEqual(["index.ts"]);
     });
 });

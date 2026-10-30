@@ -90,10 +90,17 @@ pub fn resolve_options(
     plugin_names: Vec<String>,
 ) -> ResolvedOptions {
     let cwd: PathBuf = options.cwd.unwrap_or_else(get_process_cwd);
-    let file: String = options.file.unwrap_or_else(|| String::from("index.ts"));
+
+    let file: String = options
+        .file
+        .filter(|file: &String| !file.is_empty())
+        .unwrap_or_else(|| String::from("index.ts"));
+
     let language: Language = infer_language(&file, options.language);
+
     let source_type: SourceType =
         resolve_source_type(&file, options.language, options.source_type);
+
     let source_map: SourceMapOptions = options.source_map.unwrap_or_default();
 
     let output_file: String = options
@@ -302,6 +309,54 @@ mod tests {
         );
 
         assert_eq!(resolved.output.file, "src/app.ts");
+    }
+
+    #[test]
+    fn test_resolve_options_empty_file_falls_back_to_index_ts() {
+        let resolved: ResolvedOptions = resolve_options(
+            ResolvableOptions {
+                file: Some(String::new()),
+                ..ResolvableOptions::default()
+            },
+            vec![],
+        );
+
+        assert_eq!(resolved.file, "index.ts");
+        assert_eq!(resolved.language, Language::TS);
+        assert_eq!(resolved.source_type, SourceType::Unambiguous);
+        assert_eq!(resolved.output.file, "index.ts");
+    }
+
+    #[test]
+    fn test_resolve_options_empty_file_and_output_file_fall_back_to_index_ts() {
+        let resolved: ResolvedOptions = resolve_options(
+            ResolvableOptions {
+                file: Some(String::new()),
+                output: Some(OutputOptions { file: Some(String::new()) }),
+                ..ResolvableOptions::default()
+            },
+            vec![],
+        );
+
+        assert_eq!(resolved.file, "index.ts");
+        assert_eq!(resolved.output.file, "index.ts");
+    }
+
+    #[test]
+    fn test_resolve_options_explicit_output_file_wins_over_empty_file() {
+        let resolved: ResolvedOptions = resolve_options(
+            ResolvableOptions {
+                file: Some(String::new()),
+                output: Some(OutputOptions {
+                    file: Some(String::from("dist/app.js")),
+                }),
+                ..ResolvableOptions::default()
+            },
+            vec![],
+        );
+
+        assert_eq!(resolved.file, "index.ts");
+        assert_eq!(resolved.output.file, "dist/app.js");
     }
 
     #[test]

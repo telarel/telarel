@@ -359,10 +359,8 @@ describe("compile", (): void => {
     });
 
     it("preserves defaults when an options hook echoes an unset bag", async (): Promise<void> => {
-        // Regression guard: unset fields stay absent from the raw bag. If the
-        // bag carried `""`, a plugin that spreads and returns it would set
-        // `file` to an explicit empty string. That empty file would lose the
-        // `index.ts` default and infer the JS grammar.
+        // Regression guard: unset fields stay absent from the raw bag. An
+        // echoed bag keeps the `index.ts` default and the ts grammar.
         const isWasi: boolean = process.env.NAPI_RS_FORCE_WASI === "error";
         const expectedCwd: string = isWasi ? "/" : process.cwd();
         const seen: Array<{ cwd: string; file: string }> = [];
