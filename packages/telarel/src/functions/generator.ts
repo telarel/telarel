@@ -9,7 +9,8 @@ import { CompileError } from "#/errors/compile";
 /**
  * Creates a builtin generator over a fixed AST and options.
  *
- * The returned generator never runs the plugin chain.
+ * The returned generator never runs the plugin chain. Standalone, it composes
+ * the requested input map and applies the output mode.
  */
 const createGenerator = (
     ast: Ast,

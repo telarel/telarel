@@ -8,11 +8,15 @@ use crate::_types::options::sourcemap::SourceMapOptions;
 pub struct GeneratorOptions {
     /// Current working directory.
     ///
-    /// The field is reserved and builtin codegen does not use it.
+    /// It anchors the source file used to resolve a relative
+    /// `source_map.input.path`. `source_dir(cwd, file)` resolves `file` against
+    /// `cwd`, then joins a relative `path` to the file's directory.
     pub cwd: PathBuf,
     /// The file being generated.
     pub file: String,
     /// The source-map inputs and outputs requested for the step.
+    ///
+    /// The builtin generator applies `input`; it does not apply `output`.
     pub source_map: SourceMapOptions,
 }
 

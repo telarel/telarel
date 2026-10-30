@@ -234,7 +234,7 @@ describe("parse", (): void => {
         expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
     });
 
-    it("keeps a winning parse hook AST's own map", async (): Promise<void> => {
+    it("replaces a winning parse hook AST's own map with the requested map", async (): Promise<void> => {
         const ownMap: ReturnType<typeof buildMap> = buildMap({
             file: "own.ts",
             mappings: "AAAA",
@@ -266,8 +266,47 @@ describe("parse", (): void => {
             ],
         });
 
-        expect(result.ast.map?.sources).toEqual(["own.ts"]);
-        expect(result.ast.map?.mappings).toBe("AAAA");
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+        expect(result.ast.map?.mappings).toBe("AASA");
+    });
+
+    it("keeps a winning parse hook AST's own map when a best-effort input request finds no map", async (): Promise<void> => {
+        const directory: string = await tempDir();
+        const ownMap: ReturnType<typeof buildMap> = buildMap({
+            file: "own.ts",
+            mappings: "AAAA",
+            names: [],
+            sources: ["own.ts"],
+        });
+
+        const hooked: AstResult = await parse("let b;", {
+            cwd: "/repo",
+            file: "index.ts",
+        });
+
+        for (const inputSourceMap of ["inline", "auto"] as const) {
+            const result: AstResult = await parse("const a = 1;", {
+                cwd: directory,
+                file: "index.ts",
+                inputSourceMap,
+                plugins: [
+                    {
+                        name: "parse-winner",
+                        parse: (): AstResult => ({
+                            ast: new Ast({
+                                program: hooked.ast
+                                    .program as unknown as AstOptions["program"],
+                                source: hooked.ast.source,
+                                map: ownMap,
+                            }),
+                        }),
+                    },
+                ],
+            });
+
+            expect(result.ast.map?.sources).toEqual(["own.ts"]);
+            expect(result.ast.map?.mappings).toBe("AAAA");
+        }
     });
 
     it("attaches a value input map from options and ignores its path", async (): Promise<void> => {

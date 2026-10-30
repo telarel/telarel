@@ -309,7 +309,10 @@ pub struct JsGeneratorHookOptions {
     pub cwd: String,
     /// The file being parsed or generated.
     pub file: String,
-    /// The source-map inputs and outputs requested for the step.
+    /// The source-map request for the step. A generate hook sees no input or
+    /// output request because the pipeline resolved the input before the hook
+    /// and owns output delivery. The wire shape stays
+    /// `{ input: null, output: null }`.
     #[napi(js_name = "sourceMap")]
     pub source_map: serde_json::Value,
 }

@@ -23,13 +23,15 @@ Creates a parser over `code` and its resolved `ParserOptions`.
 
 Every field is required. In a `parse` hook, the stage options are available as `args.options`.
 
-| Field         | Type               | Description                                                                                                                                                            |
-| ------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cwd`         | `PathBuf`          | Filesystem root used to locate the source file. A relative `path` in the input source map resolves against the source file's directory. Absolute paths are used as-is. |
-| `file`        | `String`           | The file being parsed.                                                                                                                                                 |
-| `language`    | `Language`         | The grammar of the code.                                                                                                                                               |
-| `source_type` | `SourceType`       | The module system of the code.                                                                                                                                         |
-| `source_map`  | `SourceMapOptions` | The source-map inputs and outputs requested for the step.                                                                                                              |
+| Field         | Type               | Description                                      |
+| ------------- | ------------------ | ------------------------------------------------ |
+| `cwd`         | `PathBuf`          | Filesystem root used to resolve the source file. |
+| `file`        | `String`           | The file being parsed.                           |
+| `language`    | `Language`         | The grammar of the code.                         |
+| `source_type` | `SourceType`       | The module system of the code.                   |
+| `source_map`  | `SourceMapOptions` | Source-map request for the step.                 |
+
+`cwd` anchors resolution of `file`. A relative input-map `path` resolves against the source file's directory; absolute paths are used as-is.
 
 ## `Parser::parse`
 

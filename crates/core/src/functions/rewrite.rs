@@ -7,9 +7,11 @@ use crate::common::pipeline::{RewriteStage, run};
 
 /// Rewrite `ast` through the plugin chain.
 ///
-/// Runs `options`, `start`, `prepare`, `transform`, `finalize`, and `end`. The
-/// AST's own input map wins. Otherwise, the pipeline attaches the resolved
-/// input source map before the stages run.
+/// Runs `options`, `start`, `prepare`, `transform`, `finalize`, and `end`. An
+/// explicit input-map request applies at the entry boundary. It replaces the
+/// AST's own map when it resolves; an `inline` or `auto` miss keeps that map,
+/// and an `external` miss rejects. A map returned by a `transform` hook is
+/// downstream state and is not replaced by the request.
 pub async fn rewrite(
     ast: Ast,
     options: RewriteOptions,
@@ -24,6 +26,8 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
 
+    use tempfile::TempDir;
+
     use telarel_common::{
         Ast, AstResult, CompileError, InputSourceMap, InputSourceMapMode,
         ResolvedOptions, RewriteOptions, SourceMap, SourceType,
@@ -33,7 +37,7 @@ mod tests {
     use crate::common::test_util::{
         EndObserverPlugin, FailPlugin, FailStage, ReplaceAstPlugin, SpyPlugin,
         StartObserverPlugin, assert_same_map, input_map, parse_as,
-        parse_fixture, parse_with_map, sample_map,
+        parse_fixture, parse_with_map, path_buf, sample_map, temp_dir,
     };
 
     use super::rewrite;
@@ -102,21 +106,42 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_rewrite_keeps_the_asts_own_map() {
+    async fn test_rewrite_request_overrides_the_asts_own_map() {
         let incoming: SourceMap = sample_map("incoming.ts", 1);
         let requested: SourceMap = sample_map("requested.ts", 2);
 
-        let ast: Ast = parse_with_map("const a = 1;", incoming.clone());
+        let ast: Ast = parse_with_map("const a = 1;", incoming);
 
         let options: RewriteOptions = RewriteOptions {
-            input_source_map: Some(input_map(requested)),
+            input_source_map: Some(input_map(requested.clone())),
             ..RewriteOptions::default()
         };
 
         let result: AstResult =
             rewrite(ast, options, vec![]).await.expect("rewrite succeeds");
 
-        assert_same_map(result.ast.map().expect("map carried"), &incoming);
+        assert_same_map(result.ast.map().expect("map attached"), &requested);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_rewrite_best_effort_miss_keeps_the_asts_own_map() {
+        let incoming: SourceMap = sample_map("incoming.ts", 1);
+        let dir: TempDir = temp_dir();
+
+        for mode in [InputSourceMapMode::Inline, InputSourceMapMode::Auto] {
+            let ast: Ast = parse_with_map("const a = 1;", incoming.clone());
+
+            let options: RewriteOptions = RewriteOptions {
+                cwd: Some(path_buf(&dir)),
+                input_source_map: Some(InputSourceMap::Mode(mode)),
+                ..RewriteOptions::default()
+            };
+
+            let result: AstResult =
+                rewrite(ast, options, vec![]).await.expect("rewrite succeeds");
+
+            assert_same_map(result.ast.map().expect("map carried"), &incoming);
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]

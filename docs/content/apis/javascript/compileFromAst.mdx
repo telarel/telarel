@@ -53,6 +53,10 @@ The module kind comes from a concrete `sourceType`, then the AST module kind, th
 
 The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
 
+An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `inline` or `auto` and finds no map, the AST's own map is kept. An `external` request that cannot read its map rejects.
+
+The request applies to the AST at the entry boundary. A map returned by a transform hook is the downstream result and is not replaced by the request.
+
 ## Returns
 
 `Promise<CodeResult>`:

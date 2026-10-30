@@ -7,10 +7,11 @@ use crate::common::pipeline::{ParseStage, run};
 
 /// Parse `code` into an AST.
 ///
-/// Runs `options`, `start`, `parse`, and `end`. After a `parse` hook wins, the
-/// pipeline attaches the requested input source map when the returned AST
-/// carries none. An AST's own map wins. The builtin parser is the terminal
-/// fallback after every `parse` hook defers.
+/// Runs `options`, `start`, `parse`, and `end`. An explicit input-map request
+/// replaces the AST's own map when it resolves. An `inline` or `auto` request
+/// that finds no map keeps that map, and an `external` request that cannot
+/// read its map rejects. The builtin parser is the terminal fallback after
+/// every `parse` hook defers.
 pub async fn parse(
     code: String,
     options: ParseOptions,
@@ -25,16 +26,18 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
 
+    use tempfile::TempDir;
+
     use telarel_common::{
         AstResult, CompileError, InputSourceMap, InputSourceMapMode,
-        ParseOptions, SourceMap,
+        ParseOptions, SourceMap, append_inline_source_map,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
         EndObserverPlugin, FailPlugin, FailStage, ParseOutcome,
         ParseOutcomePlugin, ParseWithMapPlugin, SpyPlugin, assert_same_map,
-        input_map, sample_map,
+        input_map, path_buf, sample_map, temp_dir,
     };
 
     use super::parse;
@@ -111,24 +114,73 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_parse_keeps_winning_parse_hook_ast_map() {
+    async fn test_parse_request_overrides_winning_parse_hook_ast_map() {
         let own: SourceMap = sample_map("own.ts", 1);
         let requested: SourceMap = sample_map("requested.ts", 2);
 
         let options: ParseOptions = ParseOptions {
-            input_source_map: Some(input_map(requested)),
+            input_source_map: Some(input_map(requested.clone())),
             ..ParseOptions::default()
         };
-        let plugins: Vec<SharedPluginable> = vec![Plugin::new_shared(
-            ParseWithMapPlugin::new("let b;", own.clone()),
-        )];
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(ParseWithMapPlugin::new("let b;", own))];
 
         let result: AstResult =
             parse(String::from("let builtin;"), options, plugins)
                 .await
                 .expect("parse succeeds");
 
-        assert_same_map(result.ast.map().expect("map carried"), &own);
+        assert_same_map(result.ast.map().expect("map attached"), &requested);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_parse_best_effort_miss_keeps_winning_parse_hook_ast_map() {
+        let own: SourceMap = sample_map("own.ts", 1);
+        let dir: TempDir = temp_dir();
+
+        for mode in [InputSourceMapMode::Inline, InputSourceMapMode::Auto] {
+            let options: ParseOptions = ParseOptions {
+                cwd: Some(path_buf(&dir)),
+                file: Some(String::from("index.ts")),
+                input_source_map: Some(InputSourceMap::Mode(mode)),
+                ..ParseOptions::default()
+            };
+            let plugins: Vec<SharedPluginable> = vec![Plugin::new_shared(
+                ParseWithMapPlugin::new("let b;", own.clone()),
+            )];
+
+            let result: AstResult =
+                parse(String::from("let builtin;"), options, plugins)
+                    .await
+                    .expect("parse succeeds");
+
+            assert_same_map(result.ast.map().expect("map carried"), &own);
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_parse_builtin_inline_request_strips_consumed_comment() {
+        let map: SourceMap = sample_map("upstream.ts", 5);
+
+        let code: String =
+            append_inline_source_map(String::from("const a = 1;"), &map);
+
+        let options: ParseOptions = ParseOptions {
+            input_source_map: Some(InputSourceMap::Mode(
+                InputSourceMapMode::Inline,
+            )),
+            ..ParseOptions::default()
+        };
+
+        let result: AstResult =
+            parse(code, options, vec![]).await.expect("parse succeeds");
+
+        assert_same_map(result.ast.map().expect("map attached"), &map);
+        assert!(result.ast.source().contains("sourceMappingURL"));
+        assert!(
+            result.ast.program().comments.is_empty(),
+            "the consumed inline comment must not survive"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

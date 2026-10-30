@@ -1,4 +1,5 @@
 import type {
+    AstOptions,
     AstResult,
     CodeResult,
     Comment,
@@ -19,13 +20,15 @@ import type { ProgramFixture } from "#/functions/ast";
 import * as Fsp from "node:fs/promises";
 import * as Path from "node:path";
 
-import { compile, generate, parse } from "telarel";
+import { Ast, compile, createGenerator, generate, parse } from "telarel";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { renameRootIdentifier } from "#/functions/ast";
 import {
     appendInlineMap,
     buildMap,
+    countSourceMappingComments,
+    firstMappingSegment,
     makeTempDir,
     removeTempDir,
     SOURCE_MAPPING_COMMENT,
@@ -61,8 +64,23 @@ const upstreamMap = (): ReturnType<typeof buildMap> =>
         sourcesContent: ["const a = 1;"],
     });
 
-const countSourceMappingComments = (code: string): number =>
-    code.split(SOURCE_MAPPING_COMMENT).length - 1;
+const ownMap = (): ReturnType<typeof buildMap> =>
+    buildMap({
+        file: "own.ts",
+        mappings: "AAAA",
+        names: [],
+        sources: ["own.ts"],
+        sourcesContent: ["const a = 1;"],
+    });
+
+const astWithOwnMap = async (): Promise<Ast> =>
+    (
+        await parse("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            inputSourceMap: ownMap(),
+        })
+    ).ast;
 
 describe("sourcemap", (): void => {
     it("emits a v3 codegen map with observed exact fields", async (): Promise<void> => {
@@ -662,20 +680,14 @@ describe("sourcemap", (): void => {
         expect(result.map?.sources).toEqual(["upstream.ts"]);
     });
 
-    it("keeps the inline comment when the AST already carries its own input map", async (): Promise<void> => {
+    it("replaces a winning parse hook AST's own input map with the requested inline map", async (): Promise<void> => {
         const code: string = appendInlineMap("const a = 1;", upstreamMap());
-        const ownMap: SourceMap = buildMap({
-            file: "own.ts",
-            mappings: "AASA",
-            names: [],
-            sources: ["own.ts"],
-            sourcesContent: ["const a = 1;"],
-        });
+        const astMap: SourceMap = ownMap();
 
         const parsed: AstResult = await parse(code, {
             cwd: "/repo",
             file: "index.ts",
-            inputSourceMap: ownMap,
+            inputSourceMap: astMap,
         });
 
         expect(parsed.ast.map?.sources).toEqual(["own.ts"]);
@@ -696,9 +708,62 @@ describe("sourcemap", (): void => {
             ],
         });
 
-        expect(result.code).toContain(SOURCE_MAPPING_COMMENT);
-        expect(countSourceMappingComments(result.code)).toBe(1);
-        expect(result.map?.sources).toEqual(["own.ts"]);
+        expect(result.code).toBe("const a = 1;");
+        expect(countSourceMappingComments(result.code)).toBe(0);
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+        expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
+            dstColumn: 0,
+            sourceIndex: 0,
+            sourceLine: 9,
+            sourceColumn: 0,
+        });
+    });
+
+    it("keeps a transform-returned map over the boundary request", async (): Promise<void> => {
+        const transformMap: SourceMap = buildMap({
+            file: "transform.ts",
+            mappings: "AAKA",
+            names: [],
+            sources: ["transform.ts"],
+            sourcesContent: ["const a = 1;"],
+        });
+        let observedSources: ReadonlyArray<string> | undefined;
+
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: upstreamMap() },
+            plugins: [
+                {
+                    name: "transform-map",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
+                        observedSources = args.ast.map?.sources;
+
+                        return {
+                            ast: new Ast({
+                                program: args.ast
+                                    .program as unknown as AstOptions["program"],
+                                source: args.ast.source,
+                                map: transformMap,
+                            }),
+                        };
+                    },
+                },
+            ],
+        });
+
+        expect(observedSources).toEqual(["upstream.ts"]);
+        expect(result.code).toBe("const a = 1;");
+        expect(result.map?.sources).toEqual(["transform.ts"]);
+        expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
+            dstColumn: 0,
+            sourceIndex: 0,
+            sourceLine: 5,
+            sourceColumn: 0,
+        });
     });
 
     it("removes the comment from a parsed AST but keeps the source text", async (): Promise<void> => {
@@ -761,4 +826,288 @@ describe("sourcemap", (): void => {
             expect(result.map?.sources).toEqual(["external.ts"]);
         },
     );
+});
+
+describe("createGenerator source maps", (): void => {
+    it("overrides the AST's own map with a value input request", async (): Promise<void> => {
+        const ast: Ast = await astWithOwnMap();
+
+        expect(ast.map?.sources).toEqual(["own.ts"]);
+
+        const result: CodeResult = await createGenerator(ast, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: upstreamMap() },
+        }).generate();
+
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+        expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
+            dstColumn: 0,
+            sourceIndex: 0,
+            sourceLine: 9,
+            sourceColumn: 0,
+        });
+    });
+
+    it("resolves an inline input map and strips the consumed comment", async (): Promise<void> => {
+        const code: string = appendInlineMap("const a = 1;", upstreamMap());
+        const ast: Ast = (
+            await parse(code, {
+                cwd: "/repo",
+                file: "index.ts",
+                inputSourceMap: ownMap(),
+            })
+        ).ast;
+
+        expect(ast.source).toContain(SOURCE_MAPPING_COMMENT);
+
+        const result: CodeResult = await createGenerator(ast, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { input: "inline" },
+        }).generate();
+
+        expect(result.code).toBe("const a = 1;");
+        expect(countSourceMappingComments(result.code)).toBe(0);
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+        expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
+            dstColumn: 0,
+            sourceIndex: 0,
+            sourceLine: 9,
+            sourceColumn: 0,
+        });
+    });
+
+    it.skipIf(isWasiWindows)(
+        "reads an external input map through cwd",
+        async (): Promise<void> => {
+            const directory: string = await tempDir();
+            const externalMap: SourceMap = buildMap({
+                file: "external.ts",
+                mappings: "AAMA",
+                names: [],
+                sources: ["external.ts"],
+                sourcesContent: ["const a = 1;"],
+            });
+
+            await Fsp.writeFile(
+                Path.join(directory, "index.ts.map"),
+                JSON.stringify(externalMap),
+                "utf-8",
+            );
+
+            const ast: Ast = (
+                await parse("const a = 1;", {
+                    cwd: "/repo",
+                    file: "index.ts",
+                })
+            ).ast;
+            const result: CodeResult = await createGenerator(ast, {
+                cwd: directory,
+                file: "index.ts",
+                sourceMap: { input: "external" },
+            }).generate();
+
+            expect(result.map?.sources).toEqual(["external.ts"]);
+            expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
+                dstColumn: 0,
+                sourceIndex: 0,
+                sourceLine: 6,
+                sourceColumn: 0,
+            });
+        },
+    );
+
+    it.skipIf(isWasiWindows)(
+        "prefers an inline map and falls back to an external map in auto mode",
+        async (): Promise<void> => {
+            const directory: string = await tempDir();
+            const externalMap: SourceMap = buildMap({
+                file: "external.ts",
+                mappings: "AAMA",
+                names: [],
+                sources: ["external.ts"],
+                sourcesContent: ["const a = 1;"],
+            });
+
+            await Fsp.writeFile(
+                Path.join(directory, "index.ts.map"),
+                JSON.stringify(externalMap),
+                "utf-8",
+            );
+
+            const inlineCode: string = appendInlineMap(
+                "const a = 1;",
+                buildMap({
+                    file: "inline.ts",
+                    mappings: "AAIA",
+                    names: [],
+                    sources: ["inline.ts"],
+                    sourcesContent: ["const a = 1;"],
+                }),
+            );
+            const inlineAst: Ast = (
+                await parse(inlineCode, {
+                    cwd: "/repo",
+                    file: "index.ts",
+                })
+            ).ast;
+            const inlineResult: CodeResult = await createGenerator(inlineAst, {
+                cwd: directory,
+                file: "index.ts",
+                sourceMap: { input: "auto" },
+            }).generate();
+
+            expect(inlineResult.map?.sources).toEqual(["inline.ts"]);
+            expect(
+                firstMappingSegment(inlineResult.map?.mappings ?? ""),
+            ).toEqual({
+                dstColumn: 0,
+                sourceIndex: 0,
+                sourceLine: 4,
+                sourceColumn: 0,
+            });
+
+            const externalAst: Ast = (
+                await parse("const a = 1;", {
+                    cwd: "/repo",
+                    file: "index.ts",
+                })
+            ).ast;
+            const externalResult: CodeResult = await createGenerator(
+                externalAst,
+                {
+                    cwd: directory,
+                    file: "index.ts",
+                    sourceMap: { input: "auto" },
+                },
+            ).generate();
+
+            expect(externalResult.map?.sources).toEqual(["external.ts"]);
+            expect(
+                firstMappingSegment(externalResult.map?.mappings ?? ""),
+            ).toEqual({
+                dstColumn: 0,
+                sourceIndex: 0,
+                sourceLine: 6,
+                sourceColumn: 0,
+            });
+        },
+    );
+
+    it("keeps the AST's own map when a best-effort input request finds no map", async (): Promise<void> => {
+        const directory: string = await tempDir();
+        const ast: Ast = await astWithOwnMap();
+
+        for (const input of ["inline", "auto"] as const) {
+            const result: CodeResult = await createGenerator(ast, {
+                cwd: directory,
+                file: "index.ts",
+                sourceMap: { input },
+            }).generate();
+
+            expect(result.map?.sources).toEqual(["own.ts"]);
+            expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
+                dstColumn: 0,
+                sourceIndex: 0,
+                sourceLine: 0,
+                sourceColumn: 0,
+            });
+        }
+    });
+
+    it("returns no map and appends exactly one inline comment for output inline", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const a = 1;", {
+                cwd: "/repo",
+                file: "index.ts",
+            })
+        ).ast;
+        const result: CodeResult = await createGenerator(ast, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { output: "inline" },
+        }).generate();
+
+        expect(result.map).toBeNull();
+        expect(countSourceMappingComments(result.code)).toBe(1);
+        expect(
+            result.code.startsWith(
+                `const a = 1;\n${SOURCE_MAPPING_COMMENT}data:application/json;base64,`,
+            ),
+        ).toBe(true);
+    });
+
+    it("keeps the map and appends the configured URL for output external", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const a = 1;", {
+                cwd: "/repo",
+                file: "index.ts",
+            })
+        ).ast;
+        const result: CodeResult = await createGenerator(ast, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: {
+                output: {
+                    mode: "external",
+                    url: "dist/index.js.map",
+                },
+            },
+        }).generate();
+
+        expect(result.code).toBe(
+            `const a = 1;\n${SOURCE_MAPPING_COMMENT}dist/index.js.map\n`,
+        );
+        expect(countSourceMappingComments(result.code)).toBe(1);
+        expect(result.map?.sources).toEqual(["index.ts"]);
+        expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
+            dstColumn: 0,
+            sourceIndex: 0,
+            sourceLine: 0,
+            sourceColumn: 0,
+        });
+    });
+
+    it("uses file.map when output external has no url", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const a = 1;", {
+                cwd: "/repo",
+                file: "index.ts",
+            })
+        ).ast;
+        const result: CodeResult = await createGenerator(ast, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { output: "external" },
+        }).generate();
+
+        expect(result.code).toBe(
+            `const a = 1;\n${SOURCE_MAPPING_COMMENT}index.ts.map\n`,
+        );
+        expect(countSourceMappingComments(result.code)).toBe(1);
+        expect(result.map?.sources).toEqual(["index.ts"]);
+    });
+
+    it("keeps the map and appends exactly one comment for output both", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const a = 1;", {
+                cwd: "/repo",
+                file: "index.ts",
+            })
+        ).ast;
+        const result: CodeResult = await createGenerator(ast, {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: { output: "both" },
+        }).generate();
+
+        expect(result.map?.sources).toEqual(["index.ts"]);
+        expect(countSourceMappingComments(result.code)).toBe(1);
+        expect(
+            result.code.startsWith(
+                `const a = 1;\n${SOURCE_MAPPING_COMMENT}data:application/json;base64,`,
+            ),
+        ).toBe(true);
+    });
 });

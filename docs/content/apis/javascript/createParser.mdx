@@ -26,13 +26,15 @@ The returned parser calls the builtin parser directly and never runs the plugin 
 
 Every field is required. In a `parse` hook, the stage options are available as `args.options`.
 
-| Field        | Type               | Description                                                                                                                                                                   |
-| ------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cwd`        | `string`           | The parser uses the current working directory to locate the source file. A relative input map `path` resolves against the source file's directory. Absolute paths stay as-is. |
-| `file`       | `string`           | The file being parsed.                                                                                                                                                        |
-| `language`   | `Language`         | The grammar of the code.                                                                                                                                                      |
-| `sourceType` | `SourceType`       | The module system of the code.                                                                                                                                                |
-| `sourceMap`  | `SourceMapOptions` | The source-map inputs and outputs requested for the step.                                                                                                                     |
+| Field        | Type               | Description                                      |
+| ------------ | ------------------ | ------------------------------------------------ |
+| `cwd`        | `string`           | Filesystem root used to resolve the source file. |
+| `file`       | `string`           | The file being parsed.                           |
+| `language`   | `Language`         | The grammar of the code.                         |
+| `sourceType` | `SourceType`       | The module system of the code.                   |
+| `sourceMap`  | `SourceMapOptions` | Source-map request for the step.                 |
+
+`cwd` anchors resolution of `file`. A relative `sourceMap.input.path` resolves against the source file's directory; absolute paths are used as-is.
 
 The builtin parser resolves `sourceMap.input`. It attaches the requested input map to the returned AST. The pipeline applies output source-map delivery. The builtin parser does not apply it.
 

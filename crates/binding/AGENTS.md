@@ -20,9 +20,9 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 
 ## JS API surface
 
-`docs/content/apis/javascript` documents the public JavaScript surface. The seven NAPI functions live in `src/functions/`. The source (text or AST) is always the first argument. Options never carry `code`. `builtinParse` and `builtinGenerate` bypass the plugin chain.
+`docs/content/apis/javascript` documents the public JavaScript surface. The seven NAPI functions live in `src/functions/`. The source (text or AST) is always the first argument. Options never carry `code`. `builtinParse` and `builtinGenerate` bypass the plugin chain. `builtinGenerate` resolves `sourceMap.input` through `Generator` and applies `sourceMap.output` delivery itself.
 
-`parse` and `rewrite` take a flat `inputSourceMap`. Every other entry point keeps the shared `sourceMap` bag plus `output`. The `options` payload and the resolved `start` options carry both. The `parse` and `generate` hook option payloads carry only `sourceMap`. AST and transform payloads carry neither.
+`parse` and `rewrite` take a flat `inputSourceMap`. `compile`, `compileFromAst`, and `generate` keep the shared `sourceMap` bag plus `output`; `builtinParse` and `builtinGenerate` take only `sourceMap`. The `options` payload and the resolved `start` options carry both. The `parse` hook option payload carries only `sourceMap`. The `generate` hook payload carries `sourceMap` with both `input` and `output` unset, serialized as `{ input: null, output: null }`. AST and transform payloads carry neither.
 
 `cwd` stays a JS string at the napi boundary. The JS-facing option structs keep `String`, and both `_types/options.rs` and `unmarshal_options` convert it to `PathBuf` on entry. `_types/path.rs::path_label` renders it back at every outbound site. Non-UTF-8 paths become `U+FFFD`. `file` stays a UTF-8 string (`String`) in both directions. Because napi rejects non-UTF-8 paths on Unix, do not expose `PathBuf` in outbound napi structs.
 

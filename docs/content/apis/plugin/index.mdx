@@ -47,7 +47,7 @@ flowchart TD
 
 If every hook defers, the builtin parser runs. The builtin is the compiler's own parser or generator.
 
-After a `parse` hook wins, the pipeline attaches the requested input source map only when the returned AST has no input map. The AST's own input map wins.
+After a `parse` hook wins, the pipeline applies the entry point's input source-map request to the returned AST. An explicit request wins when it resolves to a map. If the request is `inline` or `auto` and finds no map, the AST's own map is kept. An `external` request that cannot read its map rejects.
 
 **`prepare` / `finalize`: observers.** The pipeline runs each hook as a read-only observer of the AST. `prepare` observes the parsed AST. `finalize` observes the final AST. The pipeline ignores return values, and these hooks cannot change the tree. In JavaScript, these hooks and `generate` receive an `Ast` snapshot. Mutations to the snapshot stay local to the hook.
 
@@ -56,7 +56,7 @@ After a `parse` hook wins, the pipeline attaches the requested input source map 
 - **Rust.** The argument is an owned cheap handle. The hook calls `Ast::with_mut` to mutate the AST.
 - **JavaScript.** The argument is an `Ast` instance. The hook calls `Ast.mutate` to mutate the AST, and the returned `Ast` replaces the instance.
 
-**`generate`: first-win.** The pipeline iterates over the plugins that implement this hook. The first plugin that returns code wins and the pipeline skips the rest. A plugin that returns nothing defers to the next plugin. If every plugin defers, the builtin generator regenerates the code.
+**`generate`: first-win.** The pipeline iterates over the plugins that implement this hook. The first plugin that returns code wins and the pipeline skips the rest. A plugin that returns nothing defers to the next plugin. If every plugin defers, the builtin generator regenerates the code. The hook's generator options carry an empty source-map request: input resolution happens before the hook, and output delivery happens after the winning result.
 
 **`end`: notify.** The pipeline runs this hook on every settled entry and on every path. It runs when the compile fails, but it does not run when the `options` stage fails. The pipeline ignores return values.
 

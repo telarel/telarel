@@ -26,15 +26,21 @@ The returned generator calls the builtin generator directly and never runs the p
 
 Every field is required. In a `generate` hook, the stage options are available as `args.options`.
 
-| Field       | Type               | Description                                                  |
-| ----------- | ------------------ | ------------------------------------------------------------ |
-| `cwd`       | `string`           | Current working directory. Reserved, and codegen ignores it. |
-| `file`      | `string`           | The file being generated.                                    |
-| `sourceMap` | `SourceMapOptions` | The source-map inputs and outputs requested for the step.    |
+| Field       | Type               | Description                                      |
+| ----------- | ------------------ | ------------------------------------------------ |
+| `cwd`       | `string`           | Filesystem root used to resolve the source file. |
+| `file`      | `string`           | The file being generated.                        |
+| `sourceMap` | `SourceMapOptions` | Source-map request for the step.                 |
+
+`cwd` anchors resolution of `file`. A relative `sourceMap.input.path` resolves against the source file's directory; absolute paths are used as-is.
 
 When `ast.language` is present, generation uses it. Otherwise, generation uses the `file` extension. `GeneratorOptions` has no `language` field.
 
-The builtin generator composes the AST's own input map into the produced map. It returns that map separately. The pipeline applies output delivery modes (`external`, `inline`, and `both`). The builtin generator does not apply them.
+An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `inline` or `auto` and finds no map, the AST's own map is kept. An `external` request that cannot read its map rejects.
+
+Standalone, `createGenerator` resolves `sourceMap.input` and applies `sourceMap.output`. In a `generate` hook, `args.options.sourceMap.input` and `sourceMap.output` are unset: the pipeline has already attached the input map to `args.ast` and applies output after the winning result. Pass `args.options` unchanged.
+
+The returned `map` follows the applied output mode. `inline` returns no map. `external` and `both` return the map.
 
 ## Returns
 

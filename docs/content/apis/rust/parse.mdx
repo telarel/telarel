@@ -13,7 +13,7 @@ pub async fn parse(
 
 Parses `code` into an AST.
 
-When the winning `parse` hook returns an AST with no input source map, the pipeline attaches the requested input source map to that AST. An AST's own input source map wins. The builtin parser is the terminal fallback after every `parse` hook defers.
+An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `Inline` or `Auto` and finds no map, the AST's own map is kept. An `External` request that cannot read its map rejects. The pipeline applies the request to the AST that the winning `parse` hook returns. The builtin parser is the terminal fallback after every `parse` hook defers.
 
 ## Parameters
 

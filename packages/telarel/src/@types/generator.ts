@@ -5,7 +5,8 @@ import type { SourceMapOptions } from "#/@types/sourcemap";
  */
 type GeneratorOptions = {
     /**
-     * The working directory. Builtin codegen does not use it.
+     * The working directory. It anchors the source file used to resolve a
+     * relative `sourceMap.input.path`.
      */
     cwd: string;
     /**
@@ -14,6 +15,10 @@ type GeneratorOptions = {
     file: string;
     /**
      * The source-map inputs and outputs requested for the step.
+     *
+     * `createGenerator` resolves `input` and applies `output` delivery. A
+     * `generate` hook sees both request fields unset, because the pipeline
+     * resolved the input before the hook and owns output delivery.
      */
     sourceMap: SourceMapOptions;
 };

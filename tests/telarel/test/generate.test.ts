@@ -16,10 +16,23 @@ import type {
 import { CompileError, createGenerator, generate, parse } from "telarel";
 import { describe, expect, it } from "vitest";
 
-import { buildMap, SOURCE_MAPPING_COMMENT } from "#/functions/sourcemap";
+import {
+    buildMap,
+    firstMappingSegment,
+    SOURCE_MAPPING_COMMENT,
+} from "#/functions/sourcemap";
 
 const parsed = async (): Promise<AstResult> =>
     await parse("const a = 1;", { file: "index.ts" });
+
+const upstreamMap = (): ReturnType<typeof buildMap> =>
+    buildMap({
+        file: "upstream.ts",
+        mappings: "AASA",
+        names: [],
+        sources: ["upstream.ts"],
+        sourcesContent: ["const a = 1;"],
+    });
 
 const decodeInlineMap = (code: string): SourceMap => {
     const payload: string = code.split("base64,")[1]?.trim() ?? "";
@@ -313,10 +326,15 @@ describe("generate", (): void => {
             keys: Array<string>;
             astKeys: Array<string>;
             file: string;
+            sourceMap: unknown;
         }> = [];
 
         await generate((await parsed()).ast, {
             file: "index.ts",
+            sourceMap: {
+                input: upstreamMap(),
+                output: "external",
+            },
             plugins: [
                 {
                     name: "observe-generate",
@@ -328,6 +346,7 @@ describe("generate", (): void => {
                             keys: Object.keys(args),
                             astKeys: Object.keys(args.ast),
                             file: args.options.file,
+                            sourceMap: args.options.sourceMap,
                         });
 
                         return null;
@@ -341,6 +360,7 @@ describe("generate", (): void => {
                 keys: ["ast", "options"],
                 astKeys: [],
                 file: "index.ts",
+                sourceMap: { input: null, output: null },
             },
         ]);
     });
@@ -395,6 +415,36 @@ describe("generate", (): void => {
         expect(seen).toEqual(["defer"]);
         expect(result.code).toBe("const a = 1;");
         expect(result.map?.version).toBe(3);
+    });
+
+    it("replaces the incoming AST map with the requested input map", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("const a = 1;", {
+                file: "index.ts",
+                inputSourceMap: buildMap({
+                    file: "own.ts",
+                    mappings: "AAAA",
+                    names: [],
+                    sources: ["own.ts"],
+                    sourcesContent: ["const a = 1;"],
+                }),
+            })
+        ).ast;
+
+        expect(ast.map?.sources).toEqual(["own.ts"]);
+
+        const result: CodeResult = await generate(ast, {
+            file: "index.ts",
+            sourceMap: { input: upstreamMap() },
+        });
+
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+        expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
+            dstColumn: 0,
+            sourceIndex: 0,
+            sourceLine: 9,
+            sourceColumn: 0,
+        });
     });
 
     it("carries a generate hook's returned map through", async (): Promise<void> => {

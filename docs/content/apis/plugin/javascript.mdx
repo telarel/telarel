@@ -95,6 +95,8 @@ Every entry point uses the options bag, which always uses `sourceMap`. `parse` a
 
 Those AST-producing entry points ignore `sourceMap.output` and `output`. A stage-agnostic plugin can set them for every stage without failing. The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
 
+The `generate` hook's generator options carry an empty source-map request: `args.options.sourceMap` has no input or output request. Input resolution happens before the hook; output delivery happens after the winning result.
+
 The `options` hook observes the bag before the pipeline resolves it. An unset `cwd` or `file` is absent from `args.options`, so treat it as `undefined`, not `""`. A fixpoint repeats over new instances and settles when none remains. The pipeline applies the defaults (`process.cwd()` and `"index.ts"`) only after the fixpoint settles. `start` and later hooks then see the resolved values. Returning `{ ...args.options }` therefore preserves unset fields and cannot make them explicit empty strings.
 
 The plugin object is the identity, not its `name`. The same object does not run its `options` hook again. Duplicates and the depth guard follow the [shared fixpoint rules](/apis/plugin#hook-semantics).

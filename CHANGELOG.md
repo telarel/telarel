@@ -25,6 +25,8 @@
 - change `CompileError` to carry a message and optional source
 - change `CompileOptions`, `CompileFromAstOptions`, and `GenerateOptions` to carry `output`
 - change `GenerateOptions` to carry `language`
+- change `GeneratorOptions.cwd` to anchor resolution of a relative input-map path through the source file
+- change `GeneratorOptions.source_map.input` to replace the AST's own input map when it resolves
 - change `OutputSourceMapOptions` to carry an optional external map `url`
 - change `ParseOptions` and `RewriteOptions` to accept `input_source_map` instead of `source_map`
 - change `ResolvableOptions` and `ResolvedOptions` to carry `output`
@@ -69,6 +71,8 @@
 
 - change `compile`, `compileFromAst`, and `generate` to append a default external map comment derived from `output.file`
 - change `rewrite` and `compile_from_ast` to use a `source_type` value other than `Unambiguous`, then the AST module kind, then the file extension. `Unambiguous` requests inference.
+- change the `generate` hook options to omit `source_map.input` and `source_map.output` requests
+- change input-map precedence to let an explicit request replace the AST's own map at the entry boundary
 - replace `CompileOutput` with `CodeResult`
 
 #### Features
@@ -77,7 +81,7 @@
 
 #### Fixes
 
-- change `parse` and `compile` to attach the requested input source map after a winning `parse` hook
+- change `parse` and `compile` to apply the requested input source map after a winning `parse` hook
 - change the pipeline to remove a consumed inline input source-map comment before generation, so output modes append at most one `sourceMappingURL` comment
 - change the pipeline to run the `options` fixpoint before the driver and to call `start` and `end` exactly once per invocation
 - change parser/generator selection to fall back to the builtin after every plugin hook defers
@@ -123,6 +127,7 @@
 
 #### Breaking
 
+- change `builtinGenerate` to apply the requested input map and output mode
 - change `rewrite` and `compileFromAst` to use a `sourceType` value other than `"unambiguous"`, then the AST module kind, then the file extension. `"unambiguous"` requests inference.
 - change AST normalization to `{ program, code, map? }` and accept either an `Ast` or a `Program` plus its source text
 - change `inputSourceMap` and `sourceMap.input` path strings to `InvalidArg`; use `{ mode: "external", path }`
@@ -152,10 +157,13 @@
 
 #### Breaking
 
+- change the re-exported `parse`, `rewrite`, `generate`, `compile_from_ast`, and `compile` entry points to let an explicit input-map request replace the AST's own map
 - change the re-exported `Ast::from_source` and `Ast::try_from_source` to accept `Language` and `SourceType`
 - change the re-exported `Ast::source_type` to return `SourceType`
 - change the re-exported `CompileContext.cwd` to `&Path`
 - change the re-exported `CompileOptions`, `CompileFromAstOptions`, and `GenerateOptions` to carry `output`
+- change the re-exported `GeneratorOptions.cwd` to anchor a relative input-map path through the source file
+- change the re-exported `GeneratorOptions.source_map.input` to replace the AST's own input map when it resolves
 - change the re-exported `InputSourceMapMode` to remove `Path`; use `External` with `InputSourceMapOptions.path`, which resolves a relative `path` against the source file's directory instead of `cwd`
 - change the re-exported `ParseOptions` and `RewriteOptions` source-map option to `input_source_map`
 - change the re-exported `RewriteOptions.source_type` and `CompileFromAstOptions.source_type` to use a value other than `Unambiguous`, then the AST module kind, then the file extension. `Unambiguous` requests inference.
@@ -183,6 +191,8 @@
 
 - change `compile` to take the source text first: `compile(code, options)`
 - change `createGenerator` and `ErrorSource.fromAst` to accept `Ast`
+- change `createGenerator` to apply `sourceMap.input` and `sourceMap.output`
+- change input-map precedence for `parse`, `rewrite`, `generate`, `compile`, and `compileFromAst`
 - change `rewrite` and `compileFromAst` to use a `sourceType` value other than `"unambiguous"`, then the AST module kind, then the file extension. `"unambiguous"` requests inference.
 - change `Ast` from a plain object to a class with `program`, `source`, and `map` getters
 - change `Ast.map` to return `null` when no map is attached
@@ -195,6 +205,7 @@
 - change `PrepareArgs`, `FinalizeArgs`, and `GenerateArgs` to carry `Ast` instead of `Program`; `TransformArgs` and `TransformResult` carry `Ast`
 - change entry-point rejections to `CompileError`
 - change external output mode to append a default `sourceMappingURL` derived from `output.file` when `url` is absent
+- change the `generate` hook payload to omit source-map input and output requests
 - change the `options` fixpoint to run once per plugin instance: a same-name replacement runs, an unchanged plugin does not re-run `options`, and duplicate entries are preserved
 - remove plain-object `Ast` inputs; construct `new Ast({ program, source })` instead
 - remove the `PrepareResult` and `FinalizeResult` exports
@@ -224,7 +235,7 @@
 
 - change `compile`, `compileFromAst`, and `generate` to remove a consumed inline input map comment before output
 - change `parse`, `rewrite`, and `createParser` to remove a consumed inline input map comment from the returned AST
-- change `parse` and `compile` to attach `inputSourceMap` after a winning `parse` hook
+- change `parse` and `compile` to apply `inputSourceMap` after a winning `parse` hook
 - change empty `output.file` and `sourceMap.output.url` to be treated as unset instead of rejected
 - change the `options` hook to omit unset `cwd` and `file` instead of sending empty strings
 - change external input source-map lookup to ignore `?query`/`#hash` suffixes in `file`

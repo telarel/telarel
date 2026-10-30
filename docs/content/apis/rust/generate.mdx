@@ -15,6 +15,10 @@ Generates code from `ast`.
 
 The builtin generator is the terminal fallback after every `generate` hook defers. The pipeline applies the resolved output source-map mode to the winning result.
 
+An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `Inline` or `Auto` and finds no map, the AST's own map is kept. An `External` request that cannot read its map rejects.
+
+The `generate` hook's generator options carry an empty source-map request. Input resolution happens before the hook; output delivery happens after the winning result.
+
 ## Parameters
 
 | Name      | Type                    | Description               |

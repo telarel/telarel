@@ -1,8 +1,8 @@
 use oxc::span::SourceType as OxcSourceType;
 
 use telarel_common::{
-    Ast, CodeResult, Generator, GeneratorOptions, Language, ResolvedOptions,
-    resolve_options,
+    Ast, CodeResult, Generator, GeneratorOptions, Language, OutputSourceMap,
+    ResolvedOptions, apply_output_source_map_mode, resolve_options,
 };
 
 use crate::_types::ast::JsAstInput;
@@ -41,12 +41,24 @@ pub fn builtin_generate(
 
     let source_type: OxcSourceType = source_type_for_generate(language);
 
+    // The generator applies the input request. Output delivery belongs to the
+    // caller boundary, as it does for the pipeline's builtin generator.
+    let output: Option<OutputSourceMap> = resolved.source_map.output;
+
+    let output_file: String = resolved.output.file;
+
     let run: Run<JsCodeResult> = Box::new(move || {
         let ast: Ast = js_to_ast(input, source_type).map_err(anyhow_to_napi)?;
 
         let result: CodeResult = Generator::new(&ast, options_rust)
             .generate()
             .map_err(error_to_napi)?;
+
+        let result: CodeResult = apply_output_source_map_mode(
+            result,
+            output.as_ref(),
+            output_file.as_str(),
+        );
 
         Ok(JsCodeResult::from(result))
     });

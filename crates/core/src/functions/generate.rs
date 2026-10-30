@@ -7,9 +7,12 @@ use crate::common::pipeline::{GenerateStage, run};
 
 /// Generate code from `ast`.
 ///
-/// Runs `options`, `start`, `generate`, and `end`. The builtin generator is
-/// the terminal fallback after every `generate` hook defers. The resolved
-/// output source-map mode is applied to the winning result.
+/// Runs `options`, `start`, `generate`, and `end`. An explicit input-map
+/// request applies at the entry boundary. It replaces the AST's own map when
+/// it resolves; an `inline` or `auto` miss keeps that map, and an `external`
+/// miss rejects. The `generate` hook payload carries neither source-map
+/// request. Output delivery is applied to the winning result. The builtin
+/// generator is the terminal fallback after every `generate` hook defers.
 pub async fn generate(
     ast: Ast,
     options: GenerateOptions,
@@ -26,13 +29,15 @@ mod tests {
     use telarel_common::{
         Ast, CodeResult, CompileError, GenerateOptions, OutputOptions,
         OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
-        ResolvedOptions, SourceMapOptions, SourceType,
+        ResolvedOptions, SourceMap, SourceMapOptions, SourceType,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
-        EndObserverPlugin, GenerateOutcome, GenerateOutcomePlugin, SpyPlugin,
-        StartObserverPlugin, output_mode, parse_as, parse_fixture,
+        EndObserverPlugin, GenerateOptionsObserverPlugin, GenerateOutcome,
+        GenerateOutcomePlugin, OptionsObserverPlugin, SpyPlugin,
+        StartObserverPlugin, first_token, input_map, input_value, output_mode,
+        parse_as, parse_fixture, parse_with_map, sample_map,
     };
 
     use super::generate;
@@ -148,6 +153,88 @@ mod tests {
             result.map.is_none(),
             "a winning mapless generator must not fabricate an identity map"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_request_overrides_the_asts_own_map() {
+        let incoming: SourceMap = sample_map("incoming.ts", 1);
+        let requested: SourceMap = sample_map("requested.ts", 2);
+
+        let ast: Ast = parse_with_map("const a = 1;", incoming);
+
+        let options: GenerateOptions = GenerateOptions {
+            file: Some(String::from("index.ts")),
+            source_map: Some(input_value(requested)),
+            ..GenerateOptions::default()
+        };
+
+        let result: CodeResult =
+            generate(ast, options, vec![]).await.expect("generate succeeds");
+
+        let generated: SourceMap = result.map.expect("output map present");
+
+        assert_eq!(generated.get_source(0), Some("requested.ts"));
+        assert_eq!(first_token(&generated), (0, 0, 2, 0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_hook_omits_source_map_requests() {
+        let options_seen: Arc<Mutex<Vec<Option<SourceMapOptions>>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let started: Arc<Mutex<Vec<ResolvedOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let seen: Arc<Mutex<Vec<SourceMapOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let ast: Ast = parse_fixture("const a = 1;").unwrap();
+
+        let options: GenerateOptions = GenerateOptions {
+            source_map: Some(SourceMapOptions {
+                input: Some(input_map(sample_map("upstream.ts", 9))),
+                output: Some(OutputSourceMap::Mode(
+                    OutputSourceMapMode::Inline,
+                )),
+            }),
+            ..GenerateOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(OptionsObserverPlugin::new(&options_seen)),
+            Plugin::new_shared(StartObserverPlugin::new(&started)),
+            Plugin::new_shared(GenerateOptionsObserverPlugin::new(&seen)),
+        ];
+
+        generate(ast, options, plugins).await.expect("generate succeeds");
+
+        let options_seen: Vec<Option<SourceMapOptions>> =
+            options_seen.lock().unwrap().clone();
+
+        assert_eq!(options_seen.len(), 1);
+
+        let options_request: SourceMapOptions = options_seen[0]
+            .clone()
+            .expect("options must see the full source-map request");
+
+        assert!(options_request.input.is_some());
+        assert!(options_request.output.is_some());
+
+        let resolved: Vec<ResolvedOptions> = started.lock().unwrap().clone();
+
+        assert_eq!(resolved.len(), 1);
+        assert!(
+            resolved[0].source_map.input.is_some(),
+            "start must see the full input request"
+        );
+        assert!(
+            resolved[0].source_map.output.is_some(),
+            "start must see the full output request"
+        );
+
+        let observed: Vec<SourceMapOptions> = seen.lock().unwrap().clone();
+
+        assert_eq!(observed.len(), 1);
+        assert!(observed[0].input.is_none());
+        assert!(observed[0].output.is_none());
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -8,13 +8,12 @@
 //! once per invocation. The only path that skips `end` is an
 //! `options`-fixpoint failure, where no driver exists yet.
 
-use telarel_common::__internal::strip_consumed_inline_source_map_comment;
 use telarel_common::{
     Ast, AstResult, CodeResult, CompileError, Generator, GeneratorOptions,
     Language, OutputSourceMap, Parser, ParserOptions, ResolvableOptions,
     ResolvedOptions, SourceType, apply_output_source_map_mode,
-    grammar_source_type, resolve_input_source_map, resolve_options,
-    resolve_source_type, with_module_kind,
+    grammar_source_type, resolve_options, resolve_source_type,
+    with_module_kind,
 };
 use telarel_plugin::__internal::PluginDriver;
 use telarel_plugin::{
@@ -56,42 +55,24 @@ pub trait Stage {
     ) -> Result<Self::Output, CompileError>;
 }
 
-/// Attach the resolved input map to `ast` when it carries none.
+/// Apply the explicit input-map request to `ast` at an entry boundary.
 ///
-/// The AST's own map always wins. `Ok(None)` from the resolver means there is
-/// nothing to attach.
+/// A request that resolves replaces the AST's own map. A best-effort (`inline`
+/// or `auto`) miss keeps the AST's own map, and an `external` miss rejects.
 fn attach_input_map(
     ast: Ast,
     resolved: &ResolvedOptions,
 ) -> Result<Ast, CompileError> {
-    if ast.map().is_some() {
-        return Ok(ast);
-    }
-
-    let Some(input) = resolved.source_map.input.as_ref() else {
-        return Ok(ast);
-    };
-
-    match resolve_input_source_map(
-        ast.source(),
+    telarel_common::__internal::attach_input_map(
+        &ast,
         &resolved.cwd,
         &resolved.file,
-        input,
-    )? {
-        | Some(map) => {
-            let mut mapped: Ast = ast.with_input_map(Some(map));
-
-            strip_consumed_inline_source_map_comment(&mut mapped, input);
-
-            Ok(mapped)
-        },
-        | None => Ok(ast),
-    }
+        resolved.source_map.input.as_ref(),
+    )
 }
 
 /// The `parse` stage: the builtin parser is the terminal fallback after every
-/// `parse` hook defers. The resolved input map is attached to the winning AST
-/// when it carries none. An AST's own map wins.
+/// `parse` hook defers.
 async fn parse_stage(
     driver: &PluginDriver,
     ctx: &PluginContext<'_>,
@@ -99,7 +80,14 @@ async fn parse_stage(
     code: &str,
 ) -> Result<AstResult, CompileError> {
     let options: ParserOptions = ParserOptions::from(resolved);
-    let builtin: Parser = Parser::new(code.to_string(), options.clone());
+
+    // The entry boundary applies the input request exactly once, after the
+    // winning parse result. The builtin parser must not resolve it a second
+    // time.
+    let mut builtin_options: ParserOptions = options.clone();
+    builtin_options.source_map.input = None;
+
+    let builtin: Parser = Parser::new(code.to_string(), builtin_options);
 
     let result: AstResult = driver.parse(ctx, code, &options, &builtin).await?;
     let ast: Ast = attach_input_map(result.ast, resolved)?;
@@ -136,20 +124,27 @@ async fn rewrite_stages(
 }
 
 /// The `generate` stage: the builtin generator is the terminal fallback after
-/// every `generate` hook defers. The pipeline applies the resolved output
-/// source-map options uniformly, regardless of which hook won.
+/// every `generate` hook defers.
+///
+/// Input was applied at the entry boundary. Output is applied after the winning
+/// result, whichever generator produced it.
 async fn generate_stage(
     driver: &PluginDriver,
     ctx: &PluginContext<'_>,
     resolved: &ResolvedOptions,
     ast: &Ast,
 ) -> Result<CodeResult, CompileError> {
-    let options: GeneratorOptions = GeneratorOptions::from(resolved);
+    // The hook payload carries neither request: the AST already holds the
+    // resolved input map, and the pipeline owns output delivery.
+    let mut hook_options: GeneratorOptions = GeneratorOptions::from(resolved);
 
-    let builtin: Generator<'_> = Generator::new(ast, options.clone());
+    hook_options.source_map.input = None;
+    hook_options.source_map.output = None;
+
+    let builtin: Generator<'_> = Generator::new(ast, hook_options.clone());
 
     let result: CodeResult =
-        driver.generate(ctx, ast, &options, &builtin).await?;
+        driver.generate(ctx, ast, &hook_options, &builtin).await?;
 
     let output: Option<&OutputSourceMap> = resolved.source_map.output.as_ref();
 

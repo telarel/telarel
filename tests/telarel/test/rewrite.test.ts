@@ -428,7 +428,7 @@ describe("rewrite", (): void => {
         expect(result.ast.map?.mappings).toBe("AASA");
     });
 
-    it("keeps the AST's own map over a requested input map", async (): Promise<void> => {
+    it("replaces the incoming AST map with the requested input map", async (): Promise<void> => {
         const parsed: AstResult = await parse("const a = 1;", {
             file: "index.ts",
         });
@@ -449,8 +449,36 @@ describe("rewrite", (): void => {
             inputSourceMap: upstreamMap(),
         });
 
-        expect(result.ast.map?.sources).toEqual(["own.ts"]);
-        expect(result.ast.map?.mappings).toBe("AAAA");
+        expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
+        expect(result.ast.map?.mappings).toBe("AASA");
+    });
+
+    it("keeps the incoming AST map when a best-effort input request finds no map", async (): Promise<void> => {
+        const parsed: AstResult = await parse("const a = 1;", {
+            file: "index.ts",
+        });
+        const ownMap = buildMap({
+            file: "own.ts",
+            mappings: "AAAA",
+            names: [],
+            sources: ["own.ts"],
+        });
+        const ast: Ast = new Ast({
+            program: parsed.ast.program as unknown as AstOptions["program"],
+            source: parsed.ast.source,
+            map: ownMap,
+        });
+
+        for (const inputSourceMap of ["inline", "auto"] as const) {
+            const result: AstResult = await rewrite(ast, {
+                cwd: "/repo",
+                file: "index.ts",
+                inputSourceMap,
+            });
+
+            expect(result.ast.map?.sources).toEqual(["own.ts"]);
+            expect(result.ast.map?.mappings).toBe("AAAA");
+        }
     });
 
     it("rejects on a transform hook error", async (): Promise<void> => {

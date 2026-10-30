@@ -30,7 +30,9 @@ Compiles `code` from source text into generated output, with plugins, in memory.
 
 The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
 
-The AST's own input map wins. Otherwise, the pipeline attaches the requested input map to the AST that the winning `parse` hook returns. The builtin parser is the terminal fallback when every `parse` hook defers.
+An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `inline` or `auto` and finds no map, the AST's own map is kept. An `external` request that cannot read its map rejects. The pipeline applies the request to the AST that the winning `parse` hook returns. The builtin parser is the terminal fallback when every `parse` hook defers.
+
+The request applies to the AST at the entry boundary. A map returned by a transform hook is the downstream result and is not replaced by the request.
 
 ## Returns
 

@@ -42,6 +42,10 @@ The grammar comes from `language` when set, then the input AST. The module kind 
 
 `compile_from_ast` does not reparse the AST. The returned AST is the input AST, or a plugin replacement with its own module kind. Builtin generation uses the returned AST's `Program.source_type`.
 
+An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `Inline` or `Auto` and finds no map, the AST's own map is kept. An `External` request that cannot read its map rejects.
+
+The request applies to the AST at the entry boundary. A map returned by a transform hook is the downstream result and is not replaced by the request.
+
 ## Returns
 
 `Result<CodeResult, CompileError>`, where `CodeResult` is `{ code: String, map: Option<SourceMap> }`.

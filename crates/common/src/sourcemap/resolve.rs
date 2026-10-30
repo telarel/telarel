@@ -3,12 +3,15 @@ use std::path::{Path, PathBuf};
 use crate::_types::options::sourcemap::input::{
     InputSourceMap, InputSourceMapMode,
 };
+use crate::ast::ast::Ast;
 use crate::errors::compile::CompileError;
 use crate::helpers::path::{
     external_map_path, resolve_against, strip_file_suffix,
 };
 use crate::sourcemap::SourceMap;
-use crate::sourcemap::inline::extract_inline_source_map;
+use crate::sourcemap::inline::{
+    extract_inline_source_map, strip_consumed_inline_source_map_comment,
+};
 
 /// Parse a source map JSON string, naming its source in any error.
 fn parse_map_json(
@@ -130,6 +133,35 @@ pub fn resolve_input_source_map(
     resolve_input_source_map_mode(code, cwd, file, mode, path)
 }
 
+/// Attach the input map requested by `input` to `ast`.
+///
+/// An explicit request replaces the AST's own map when it resolves. A
+/// best-effort miss (`Inline` or `Auto` with no map) and no request keep the
+/// AST's own map. An `External` miss or corrupt map is an error from the
+/// resolver.
+pub fn attach_input_map(
+    ast: &Ast,
+    cwd: &Path,
+    file: &str,
+    input: Option<&InputSourceMap>,
+) -> Result<Ast, CompileError> {
+    let Some(input): Option<&InputSourceMap> = input else {
+        return Ok(ast.clone());
+    };
+
+    let Some(map): Option<SourceMap> =
+        resolve_input_source_map(ast.source(), cwd, file, input)?
+    else {
+        return Ok(ast.clone());
+    };
+
+    let mut mapped: Ast = ast.with_input_map(Some(map));
+
+    strip_consumed_inline_source_map_comment(&mut mapped, input);
+
+    Ok(mapped)
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -138,6 +170,7 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::_types::options::sourcemap::input::InputSourceMapOptions;
+    use crate::ast::parse::{ParseAstOptions, parse_ast};
     use crate::helpers::test_util::{path_buf, temp_dir, write_file};
     use crate::sourcemap::inline::append_inline_source_map;
 
@@ -181,6 +214,23 @@ mod tests {
         write_file(dir, name, contents);
 
         path
+    }
+
+    fn parse_ast_with_map(
+        code: &str,
+        map: Option<SourceMap>,
+    ) -> Ast {
+        parse_ast(
+            code.to_string(),
+            ParseAstOptions {
+                cwd: PathBuf::new(),
+                file: String::from("index.ts"),
+                language: None,
+                source_type: None,
+                input_map: map,
+            },
+        )
+        .expect("fixture parses")
     }
 
     #[test]
@@ -734,5 +784,78 @@ mod tests {
             );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_attach_value_request_replaces_ast_map() {
+        let ast: Ast =
+            parse_ast_with_map("const a = 1;", Some(sample_map("ast.ts")));
+        let replacement: SourceMap = sample_map("replacement.ts");
+
+        let mapped: Ast = attach_input_map(
+            &ast,
+            Path::new(""),
+            "index.ts",
+            Some(&InputSourceMap::Mode(InputSourceMapMode::Value(
+                replacement.clone(),
+            ))),
+        )
+        .expect("value request resolves");
+
+        assert_same_map(mapped.map().expect("map attached"), &replacement);
+    }
+
+    #[test]
+    fn test_attach_inline_request_replaces_ast_map_and_strips_comment() {
+        let inline_map: SourceMap = sample_map("inline.ts");
+        let code: String =
+            append_inline_source_map(String::from("const a = 1;"), &inline_map);
+        let ast: Ast = parse_ast_with_map(&code, Some(sample_map("ast.ts")));
+
+        assert_eq!(ast.program().comments.len(), 1);
+
+        let mapped: Ast = attach_input_map(
+            &ast,
+            Path::new(""),
+            "index.ts",
+            Some(&InputSourceMap::Mode(InputSourceMapMode::Inline)),
+        )
+        .expect("inline request resolves");
+
+        assert_same_map(mapped.map().expect("map attached"), &inline_map);
+        assert!(mapped.program().comments.is_empty());
+        assert!(mapped.source().contains("sourceMappingURL"));
+    }
+
+    #[test]
+    fn test_attach_best_effort_miss_keeps_ast_map() {
+        let ast: Ast =
+            parse_ast_with_map("const a = 1;", Some(sample_map("ast.ts")));
+        let expected: &SourceMap = ast.map().expect("fixture carries a map");
+
+        for mode in [InputSourceMapMode::Inline, InputSourceMapMode::Auto] {
+            let mapped: Ast = attach_input_map(
+                &ast,
+                Path::new(""),
+                "index.ts",
+                Some(&InputSourceMap::Mode(mode)),
+            )
+            .expect("best-effort miss is silent");
+
+            assert_same_map(mapped.map().expect("map kept"), expected);
+        }
+    }
+
+    #[test]
+    fn test_attach_without_request_keeps_ast_map() {
+        let ast: Ast =
+            parse_ast_with_map("const a = 1;", Some(sample_map("ast.ts")));
+        let expected: &SourceMap = ast.map().expect("fixture carries a map");
+
+        let mapped: Ast =
+            attach_input_map(&ast, Path::new(""), "index.ts", None)
+                .expect("no request never fails");
+
+        assert_same_map(mapped.map().expect("map kept"), expected);
     }
 }

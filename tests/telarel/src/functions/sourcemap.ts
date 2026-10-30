@@ -56,6 +56,9 @@ const appendInlineMap = (code: string, map: SourceMap): string => {
     return `${code}\n${SOURCE_MAPPING_COMMENT}data:application/json;base64,${payload}\n`;
 };
 
+const countSourceMappingComments = (code: string): number =>
+    code.split(SOURCE_MAPPING_COMMENT).length - 1;
+
 const BASE64_CHARS: string =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -122,6 +125,7 @@ export type { BuildMapOptions, MappingSegment };
 export {
     appendInlineMap,
     buildMap,
+    countSourceMappingComments,
     firstMappingSegment,
     makeTempDir,
     removeTempDir,

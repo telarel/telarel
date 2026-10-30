@@ -169,12 +169,14 @@ pub struct JsParserOptions {
 #[napi_derive::napi(object)]
 pub struct JsGeneratorOptions {
     /// Current working directory. When the JS side omits it, the value
-    /// resolves to the process working directory.
+    /// resolves to the process working directory. It anchors the source file
+    /// used to resolve a relative `sourceMap.input.path`.
     pub cwd: Option<String>,
     /// The file being generated. When the JS side omits it, the value
     /// resolves to a default filename.
     pub file: Option<String>,
     /// The source-map inputs and outputs requested for the step.
+    /// `builtinGenerate` resolves `input` and applies `output` delivery.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
 }

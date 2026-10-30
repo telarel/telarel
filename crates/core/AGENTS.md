@@ -41,7 +41,9 @@ Which hooks each entry point runs is public behavior. See `docs/content/apis/plu
 
 Shared input/output invariants: [common source maps](../common/AGENTS.md#source-maps).
 
-`attach_input_map` follows the shared input-map rules. Its AST-own-map early return keeps comments unchanged.
+The entry boundary applies the explicit input-map request exactly once per entry point. `parse_stage` applies it after a winning `parse` hook; `rewrite`, `generate`, and `compile_from_ast` apply it before their stages run. A map returned by a transform hook is downstream state, and the boundary request does not replace it.
+
+`parse_stage` clears the request on the builtin parser options. `generate_stage` clears `input` and `output` on the generator options that it passes to both the `generate` hook and the builtin. The hook payload therefore carries neither request, and the builtin does not resolve the input a second time. Output delivery happens after the winning result, whichever generator produced it.
 
 ## Error propagation
 

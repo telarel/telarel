@@ -627,6 +627,79 @@ impl Plugin for GenerateOutcomePlugin {
     }
 }
 
+/// Records the source-map options passed to every `options` hook.
+#[derive(Debug)]
+pub struct OptionsObserverPlugin {
+    seen: Arc<Mutex<Vec<Option<SourceMapOptions>>>>,
+}
+
+impl OptionsObserverPlugin {
+    pub fn new(seen: &Arc<Mutex<Vec<Option<SourceMapOptions>>>>) -> Self {
+        Self { seen: Arc::clone(seen) }
+    }
+}
+
+impl Plugin for OptionsObserverPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        "options-observer".into()
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Options
+    }
+
+    fn options<'a>(
+        &'a self,
+        _ctx: &'a CommonPluginContext,
+        args: &'a OptionsArgs,
+    ) -> impl Future<Output = OptionsReturn> + Send {
+        let source_map: Option<SourceMapOptions> =
+            args.options.source_map.clone();
+
+        async move {
+            self.seen.lock().unwrap().push(source_map);
+
+            Ok(None)
+        }
+    }
+}
+
+/// Records the source-map options passed to every `generate` hook.
+#[derive(Debug)]
+pub struct GenerateOptionsObserverPlugin {
+    seen: Arc<Mutex<Vec<SourceMapOptions>>>,
+}
+
+impl GenerateOptionsObserverPlugin {
+    pub fn new(seen: &Arc<Mutex<Vec<SourceMapOptions>>>) -> Self {
+        Self { seen: Arc::clone(seen) }
+    }
+}
+
+impl Plugin for GenerateOptionsObserverPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        "generate-options-observer".into()
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Generate
+    }
+
+    fn generate<'a>(
+        &'a self,
+        _ctx: &'a PluginContext<'_>,
+        args: GenerateArgs<'a>,
+    ) -> impl Future<Output = GenerateReturn> + Send + 'a {
+        let options: SourceMapOptions = args.options.source_map.clone();
+
+        async move {
+            self.seen.lock().unwrap().push(options);
+
+            Ok(None)
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ReplaceAstPlugin {
     pub code: &'static str,
@@ -654,5 +727,42 @@ impl Plugin for ReplaceAstPlugin {
 
             Ok(Some(TransformOutput { ast }))
         }
+    }
+}
+
+/// A transform hook that replaces the AST with one carrying `map`.
+#[derive(Debug)]
+pub struct ReplaceAstWithMapPlugin {
+    code: &'static str,
+    map: SourceMap,
+}
+
+impl ReplaceAstWithMapPlugin {
+    pub fn new(
+        code: &'static str,
+        map: SourceMap,
+    ) -> Self {
+        Self { code, map }
+    }
+}
+
+impl Plugin for ReplaceAstWithMapPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        "replace-ast-with-map".into()
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Transform
+    }
+
+    fn transform<'a>(
+        &'a self,
+        _ctx: &'a PluginContext<'_>,
+        _args: TransformArgs,
+    ) -> impl Future<Output = TransformReturn> + Send + 'a {
+        let code: &'static str = self.code;
+        let map: SourceMap = self.map.clone();
+
+        async move { Ok(Some(TransformOutput { ast: parse_with_map(code, map) })) }
     }
 }

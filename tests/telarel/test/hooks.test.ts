@@ -26,6 +26,11 @@ import {
 } from "telarel";
 import { describe, expect, it } from "vitest";
 
+import {
+    countSourceMappingComments,
+    SOURCE_MAPPING_COMMENT,
+} from "#/functions/sourcemap";
+
 type CaptureProgramOptions = {
     code: string;
 };
@@ -531,12 +536,13 @@ describe("hooks", (): void => {
         expect(result.map).toBeNull();
     });
 
-    it("passes createParser/createGenerator results through hooks verbatim", async (): Promise<void> => {
+    it("passes createParser/createGenerator results through hooks and delivers output once", async (): Promise<void> => {
         const seen: Array<string> = [];
 
         const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",
             file: "index.ts",
+            sourceMap: { output: "external" },
             plugins: [
                 {
                     name: "builtin-verbatim",
@@ -571,7 +577,10 @@ describe("hooks", (): void => {
         });
 
         expect(seen).toEqual(["parse", "generate"]);
-        expect(result.code).toBe("const a = 1;");
+        expect(result.code).toBe(
+            `const a = 1;\n${SOURCE_MAPPING_COMMENT}index.ts.map\n`,
+        );
+        expect(countSourceMappingComments(result.code)).toBe(1);
         expect(result.map?.version).toBe(3);
     });
 });

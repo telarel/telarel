@@ -23,19 +23,21 @@ Creates a generator over `ast` and its resolved `GeneratorOptions`.
 
 ### `GeneratorOptions`
 
-Every field is required. In a `generate` hook, the stage options are available as `args.options`.
+Every field is required. In a `generate` hook, the stage options are available as `args.options`; their `source_map` carries no input or output request.
 
-| Field        | Type               | Description                                                 |
-| ------------ | ------------------ | ----------------------------------------------------------- |
-| `cwd`        | `PathBuf`          | Filesystem root. The field is reserved. Codegen ignores it. |
-| `file`       | `String`           | The file being generated.                                   |
-| `source_map` | `SourceMapOptions` | The source-map inputs and outputs requested for the step.   |
+| Field        | Type               | Description                                      |
+| ------------ | ------------------ | ------------------------------------------------ |
+| `cwd`        | `PathBuf`          | Filesystem root used to resolve the source file. |
+| `file`       | `String`           | The file being generated.                        |
+| `source_map` | `SourceMapOptions` | Source-map request for the step.                 |
+
+`cwd` anchors resolution of `file`. A relative input-map `path` resolves against the source file's directory; absolute paths are used as-is.
 
 ## `Generator::generate`
 
-Generates code from the fixed AST and composes the AST's input source map into the produced source map.
+Generates code from the fixed AST. It resolves `source_map.input` against the AST source text, `cwd`, and `file`, then composes the resolved input map into the produced source map. An explicit request wins over the AST's own input map when it resolves to a map. If the request is `Inline` or `Auto` and finds no map, the AST's own map is kept. An `External` request that cannot read its map rejects.
 
-The builtin generator always returns a source map. The pipeline applies the resolved output source-map mode (`Inline`, `External`, or `Both`). `Generator::generate` does not apply it.
+The builtin generator always returns a source map. `Generator::generate` applies `source_map.input` but not `source_map.output`. Output delivery remains a pipeline concern: the pipeline applies the resolved output source-map mode (`Inline`, `External`, or `Both`) after the winning result.
 
 `CodeResult` is `{ code: String, map: Option<SourceMap> }`.
 

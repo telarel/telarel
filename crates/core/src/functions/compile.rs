@@ -9,10 +9,12 @@ use crate::common::pipeline::{CompileStage, run};
 ///
 /// Runs the full chain inline: `options`, `start`, `parse`, `prepare`,
 /// `transform`, `finalize`, `generate`, and `end`. Thus `options`, `start`, and
-/// `end` fire exactly once. After a `parse` hook wins, the pipeline attaches
-/// the requested input source map when the returned AST carries none. An AST's
-/// own map wins. The builtin parser is the fallback when every `parse` hook
-/// defers.
+/// `end` fire exactly once. An explicit input-map request is applied at the
+/// entry boundary after the winning parse result. It replaces the AST's own
+/// map when it resolves; an `inline` or `auto` miss keeps that map, and an
+/// `external` miss rejects. A map returned by a `transform` hook is downstream
+/// state and is not replaced by the request. Output delivery is applied to the
+/// winning result.
 pub async fn compile(
     code: String,
     options: CompileOptions,
@@ -38,8 +40,9 @@ mod tests {
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
-        ParseOutcome, ParseOutcomePlugin, SpyPlugin, StartObserverPlugin,
-        first_token, input_value, path_buf, sample_map, temp_dir, write_file,
+        ParseOutcome, ParseOutcomePlugin, ReplaceAstWithMapPlugin, SpyPlugin,
+        StartObserverPlugin, first_token, input_value, path_buf, sample_map,
+        temp_dir, write_file,
     };
 
     use super::compile;
@@ -126,6 +129,36 @@ mod tests {
 
         let generated: SourceMap = result.map.expect("output map present");
         assert_eq!(first_token(&generated), (0, 0, 9, 0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_keeps_a_transform_returned_map() {
+        let requested: SourceMap = sample_map("requested.ts", 2);
+        let transformed: SourceMap = sample_map("transformed.ts", 4);
+
+        let options: CompileOptions = CompileOptions {
+            file: Some(String::from("index.ts")),
+            source_map: Some(input_value(requested)),
+            ..CompileOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> = vec![Plugin::new_shared(
+            ReplaceAstWithMapPlugin::new("const a = 1;", transformed),
+        )];
+
+        let result: CodeResult =
+            compile(String::from("const a = 1;"), options, plugins)
+                .await
+                .expect("compile succeeds");
+
+        let generated: SourceMap = result.map.expect("output map present");
+
+        assert_eq!(generated.get_source(0), Some("transformed.ts"));
+        assert_eq!(
+            first_token(&generated),
+            (0, 0, 4, 0),
+            "the transform-returned map must win over the boundary request"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

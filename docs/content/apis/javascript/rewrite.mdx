@@ -15,7 +15,9 @@ function rewrite(
 
 Rewrites an AST with plugins, in memory.
 
-The AST's own input map wins. Otherwise, the pipeline attaches the requested input map before the stages run.
+An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `inline` or `auto` and finds no map, the AST's own map is kept. An `external` request that cannot read its map rejects.
+
+The request applies to the AST at the entry boundary. A map returned by a transform hook is the downstream result and is not replaced by the request.
 
 ## Parameters
 

@@ -17,10 +17,19 @@ import { compileFromAst, parse } from "telarel";
 import { describe, expect, it } from "vitest";
 
 import { renameRootIdentifier } from "#/functions/ast";
-import { buildMap } from "#/functions/sourcemap";
+import { buildMap, firstMappingSegment } from "#/functions/sourcemap";
 
 const parsed = async (): Promise<AstResult> =>
     await parse("const a = 1;", { file: "index.ts" });
+
+const upstreamMap = (): ReturnType<typeof buildMap> =>
+    buildMap({
+        file: "upstream.ts",
+        mappings: "AASA",
+        names: [],
+        sources: ["upstream.ts"],
+        sourcesContent: ["const a = 1;"],
+    });
 
 describe("compileFromAst", (): void => {
     it("compiles an AST through the full chain", async (): Promise<void> => {
@@ -273,5 +282,37 @@ describe("compileFromAst", (): void => {
         expect(result.map?.sources).toEqual(["upstream.ts"]);
         expect(result.map?.sourcesContent).toEqual(["const a = 1;"]);
         expect(result.map?.mappings).toBe("AASA,MAAA,IAAA");
+    });
+
+    it("replaces the incoming AST's own map with the requested input map", async (): Promise<void> => {
+        const ownMap: ReturnType<typeof buildMap> = buildMap({
+            file: "own.ts",
+            mappings: "AAAA",
+            names: [],
+            sources: ["own.ts"],
+            sourcesContent: ["const a = 1;"],
+        });
+        const ast: Ast = (
+            await parse("const a = 1;", {
+                file: "index.ts",
+                inputSourceMap: ownMap,
+            })
+        ).ast;
+
+        expect(ast.map?.sources).toEqual(["own.ts"]);
+        expect(ast.map?.mappings).toBe("AAAA");
+
+        const result: CodeResult = await compileFromAst(ast, {
+            file: "index.ts",
+            sourceMap: { input: upstreamMap() },
+        });
+
+        expect(result.map?.sources).toEqual(["upstream.ts"]);
+        expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
+            dstColumn: 0,
+            sourceIndex: 0,
+            sourceLine: 9,
+            sourceColumn: 0,
+        });
     });
 });

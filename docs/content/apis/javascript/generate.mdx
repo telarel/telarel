@@ -15,7 +15,9 @@ function generate(
 
 Generates code from an AST with plugins, in memory.
 
-The AST's own input map wins. Otherwise, the pipeline attaches the requested input map before generation. The builtin generator is the terminal fallback when every `generate` hook defers. The pipeline applies the resolved output source-map mode to the winning result.
+An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `inline` or `auto` and finds no map, the AST's own map is kept. An `external` request that cannot read its map rejects.
+
+The request applies to the AST at the entry boundary. A map returned by a `generate` hook is the downstream result and is not replaced by the request. The builtin generator is the terminal fallback when every `generate` hook defers. The pipeline applies the resolved output source-map mode to the winning result.
 
 ## Parameters
 

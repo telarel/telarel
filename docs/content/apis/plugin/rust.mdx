@@ -73,6 +73,8 @@ Every entry point uses the options bag, which always uses `source_map`. `parse` 
 
 Those AST-producing entry points ignore `source_map.output` and `output`. A stage-agnostic plugin can set them for every stage without failing.
 
+The `generate` hook's generator options carry an empty source-map request: `args.options.source_map` has no input or output request. Input resolution happens before the hook; output delivery happens after the winning result.
+
 The pipeline uses a `parse` hook replacement exactly as the hook returns it. Its own `Ast` / `Program.source_type` provides the grammar for later stages and code regeneration. The pipeline passes `ParserOptions` to the hook.
 
 The driver applies these options only to the builtin parser that runs when every hook defers, which means no hook returns a replacement. The builtin is the compiler's own parser or generator. The JavaScript binding differs: it rebuilds a parse replacement with the grammar of the parser options.
