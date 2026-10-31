@@ -54,6 +54,20 @@ impl TransformPlugin {
         Self::with_options(TransformOptions::default())
     }
 
+    /// Create a plugin with `options`.
+    pub fn with_options(options: TransformOptions) -> Self {
+        Self { name: Cow::Borrowed(NAME), options, resolved: OnceLock::new() }
+    }
+
+    /// Override the name reported to the plugin pipeline.
+    pub fn with_name(
+        mut self,
+        name: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        self.name = name.into();
+        self
+    }
+
     async fn transform_inner<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
@@ -185,20 +199,6 @@ impl TransformPlugin {
         }
 
         Ok(Some(TransformOutput { ast }))
-    }
-
-    /// Create a plugin with `options`.
-    pub fn with_options(options: TransformOptions) -> Self {
-        Self { name: Cow::Borrowed(NAME), options, resolved: OnceLock::new() }
-    }
-
-    /// Override the name reported to the plugin pipeline.
-    pub fn with_name(
-        mut self,
-        name: impl Into<Cow<'static, str>>,
-    ) -> Self {
-        self.name = name.into();
-        self
     }
 }
 
