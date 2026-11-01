@@ -89,6 +89,32 @@ const astWithOwnMap = async (): Promise<Ast> =>
         })
     ).ast;
 
+const plainAst = async (): Promise<Ast> =>
+    (
+        await parse("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+        })
+    ).ast;
+
+type ExternalMapExpectation = {
+    source: string;
+    url: string;
+};
+
+const expectExternalMap = (
+    result: CodeResult,
+    expected: ExternalMapExpectation,
+): void => {
+    expect(result.code).toBe(
+        `const a = 1;\n${SOURCE_MAPPING_COMMENT}${expected.url}\n`,
+    );
+    expect(result.map).not.toBeNull();
+    expect(result.map?.version).toBe(3);
+    expect(result.map?.sources).toEqual([expected.source]);
+    expect(result.map?.mappings).toBe("AAAA,MAAM,IAAI");
+};
+
 describe("sourcemap", (): void => {
     it("emits a v3 codegen map with observed exact fields", async (): Promise<void> => {
         const result: CodeResult = await compile("const a = 1;", {
@@ -1228,3 +1254,301 @@ describe("empty file option", (): void => {
         expect(result.map?.sources).toEqual(["index.ts"]);
     });
 });
+
+// The output-path tests assert through `expectExternalMap`.
+// oxlint-disable vitest/expect-expect
+
+describe("output path edges: compile", (): void => {
+    it("derives the external map URL from the resolved file when output.file is unset", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "src/index.ts",
+            sourceMap: { output: "external" },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "src/index.ts.map",
+        });
+    });
+
+    it("falls back to file when output.file is empty", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "src/index.ts",
+            output: { file: "" },
+            sourceMap: { output: "external" },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "src/index.ts.map",
+        });
+    });
+
+    it("uses index.ts.map when file and output.file are both empty", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "",
+            output: { file: "" },
+            sourceMap: { output: "external" },
+        });
+
+        expectExternalMap(result, {
+            source: "index.ts",
+            url: "index.ts.map",
+        });
+    });
+
+    it("lets an explicit url win over the output.file default", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "src/index.ts",
+            output: { file: "dist/index.js" },
+            sourceMap: {
+                output: {
+                    mode: "external",
+                    url: "custom.js.map",
+                },
+            },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "custom.js.map",
+        });
+    });
+
+    it("falls back to output.file when sourceMap.output.url is empty", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "src/index.ts",
+            output: { file: "dist/index.js" },
+            sourceMap: {
+                output: {
+                    mode: "external",
+                    url: "",
+                },
+            },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "dist/index.js.map",
+        });
+    });
+});
+
+describe("output path edges: compileFromAst", (): void => {
+    it("derives the external map URL from the resolved file when output.file is unset", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await compileFromAst(ast, {
+            cwd: "/repo",
+            file: "src/index.ts",
+            sourceMap: { output: "external" },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "src/index.ts.map",
+        });
+    });
+
+    it("falls back to file when output.file is empty", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await compileFromAst(ast, {
+            cwd: "/repo",
+            file: "src/index.ts",
+            output: { file: "" },
+            sourceMap: { output: "external" },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "src/index.ts.map",
+        });
+    });
+
+    it("uses index.ts.map when file and output.file are both empty", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await compileFromAst(ast, {
+            cwd: "/repo",
+            file: "",
+            output: { file: "" },
+            sourceMap: { output: "external" },
+        });
+
+        expectExternalMap(result, {
+            source: "index.ts",
+            url: "index.ts.map",
+        });
+    });
+
+    it("lets an explicit url win over the output.file default", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await compileFromAst(ast, {
+            cwd: "/repo",
+            file: "src/index.ts",
+            output: { file: "dist/index.js" },
+            sourceMap: {
+                output: {
+                    mode: "external",
+                    url: "custom.js.map",
+                },
+            },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "custom.js.map",
+        });
+    });
+
+    it("falls back to output.file when sourceMap.output.url is empty", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await compileFromAst(ast, {
+            cwd: "/repo",
+            file: "src/index.ts",
+            output: { file: "dist/index.js" },
+            sourceMap: {
+                output: {
+                    mode: "external",
+                    url: "",
+                },
+            },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "dist/index.js.map",
+        });
+    });
+});
+
+describe("output path edges: generate", (): void => {
+    it("derives the external map URL from the resolved file when output.file is unset", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await generate(ast, {
+            cwd: "/repo",
+            file: "src/index.ts",
+            sourceMap: { output: "external" },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "src/index.ts.map",
+        });
+    });
+
+    it("falls back to file when output.file is empty", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await generate(ast, {
+            cwd: "/repo",
+            file: "src/index.ts",
+            output: { file: "" },
+            sourceMap: { output: "external" },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "src/index.ts.map",
+        });
+    });
+
+    it("uses index.ts.map when file and output.file are both empty", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await generate(ast, {
+            cwd: "/repo",
+            file: "",
+            output: { file: "" },
+            sourceMap: { output: "external" },
+        });
+
+        expectExternalMap(result, {
+            source: "index.ts",
+            url: "index.ts.map",
+        });
+    });
+
+    it("falls back to file when sourceMap.output.url is empty", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await generate(ast, {
+            cwd: "/repo",
+            file: "src/index.ts",
+            sourceMap: {
+                output: {
+                    mode: "external",
+                    url: "",
+                },
+            },
+        });
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "src/index.ts.map",
+        });
+    });
+});
+
+describe("output path edges: createGenerator", (): void => {
+    it("derives the external map URL from file", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await createGenerator(ast, {
+            cwd: "/repo",
+            file: "src/index.ts",
+            sourceMap: { output: "external" },
+        }).generate();
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "src/index.ts.map",
+        });
+    });
+
+    it("uses index.ts.map when file is empty", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await createGenerator(ast, {
+            cwd: "/repo",
+            file: "",
+            sourceMap: { output: "external" },
+        }).generate();
+
+        expectExternalMap(result, {
+            source: "index.ts",
+            url: "index.ts.map",
+        });
+    });
+
+    it("falls back to file when sourceMap.output.url is empty", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await createGenerator(ast, {
+            cwd: "/repo",
+            file: "src/index.ts",
+            sourceMap: {
+                output: {
+                    mode: "external",
+                    url: "",
+                },
+            },
+        }).generate();
+
+        expectExternalMap(result, {
+            source: "src/index.ts",
+            url: "src/index.ts.map",
+        });
+    });
+});
+
+// oxlint-enable vitest/expect-expect
