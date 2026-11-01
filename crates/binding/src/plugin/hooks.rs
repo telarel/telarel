@@ -374,9 +374,10 @@ pub struct OptionsCall {
     pub cwd: Option<SharedStr>,
     /// The file being parsed or generated. Absent when unset.
     pub file: Option<SharedStr>,
-    /// Source language of the file.
+    /// Source language of the file. The wire value is `""` when unspecified.
     pub language: SharedStr,
-    /// Module system used for code generation.
+    /// Module system used for code generation. The wire value is `""` when
+    /// unspecified.
     pub source_type: SharedStr,
     /// The output code options requested so far, as a JS object. `None`
     /// means unspecified, and Telarel omits it from the payload.
@@ -399,8 +400,9 @@ impl ToNapiValue for OptionsCall {
 
         let mut object: Object<'static> = Object::new(&env)?;
 
-        // Unset values are absent, not empty strings. The pre-resolution bag
-        // must preserve "unset" so a hook that echoes it keeps the defaults.
+        // `cwd` and `file` are omitted when unset so an echoed bag keeps
+        // the resolution defaults. `language` and `sourceType` always ship;
+        // an empty label reads as unset on the JS side.
         if let Some(cwd) = val.cwd {
             object.set("cwd", cwd)?;
         }

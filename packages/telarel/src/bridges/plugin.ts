@@ -415,7 +415,9 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                     plugins: rawArgs.plugins as unknown as Array<PluginOption>,
                 };
 
-                // Unset values stay absent so an echoed bag keeps the defaults.
+                // An unset `cwd` or `file` stays absent so an echoed bag
+                // keeps the defaults. An empty `language` or `sourceType`
+                // label also means unset.
                 if (typeof rawArgs.cwd === "string") {
                     bag.cwd = rawArgs.cwd;
                 }
