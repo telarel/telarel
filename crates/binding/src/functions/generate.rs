@@ -12,8 +12,9 @@ use telarel_plugin::SharedPluginable;
 use crate::_types::ast::JsAstInput;
 use crate::_types::options::JsGenerateOptions;
 use crate::_types::results::JsCodeResult;
-use crate::ast::{
-    effective_language, js_to_ast, parse_ast_language, source_type_for_generate,
+use crate::ast::normalized::js_to_ast;
+use crate::ast::resolve::{
+    effective_language, parse_ast_language, source_type_for_generate,
 };
 use crate::plugin::build::to_plugins;
 use crate::plugin::hooks::RefList;
@@ -38,7 +39,7 @@ pub fn generate(
         Vec::new(),
     );
 
-    let input: crate::ast::JsAstInput = ast.into();
+    let input: crate::ast::normalized::JsAstInput = ast.into();
 
     let language: Language = effective_language(
         options_rust.language,

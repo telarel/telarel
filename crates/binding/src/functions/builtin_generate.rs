@@ -8,8 +8,9 @@ use telarel_common::{
 use crate::_types::ast::JsAstInput;
 use crate::_types::options::JsGeneratorOptions;
 use crate::_types::results::JsCodeResult;
-use crate::ast::{
-    effective_language, js_to_ast, parse_ast_language, source_type_for_generate,
+use crate::ast::normalized::js_to_ast;
+use crate::ast::resolve::{
+    effective_language, parse_ast_language, source_type_for_generate,
 };
 use crate::tasks::anyhow_to_napi;
 use crate::tasks::error_to_napi;
@@ -31,7 +32,7 @@ pub fn builtin_generate(
 
     let options_rust: GeneratorOptions = GeneratorOptions::from(&resolved);
 
-    let input: crate::ast::JsAstInput = ast.into();
+    let input: crate::ast::normalized::JsAstInput = ast.into();
 
     let language: Language = effective_language(
         None,

@@ -1,10 +1,10 @@
 use telarel_common::Ast;
 
 use crate::_types::sourcemap::JsSourceMap;
-use crate::ast;
+use crate::ast::normalized;
 
-/// The JS-facing normalized AST: the ESTree program, the source text it spans
-/// anchor to, an optional source map for the input, and the grammar label.
+/// The JS-facing normalized AST: the ESTree program, the source text that its
+/// spans anchor to, an optional source map for the input, and the grammar label.
 #[napi_derive::napi(object)]
 pub struct JsAst {
     /// The ESTree program that parsing or rewriting produces. It carries the
@@ -21,12 +21,12 @@ pub struct JsAst {
 impl JsAst {
     /// Convert an owned [`Ast`] into its JS-facing form.
     pub fn from_ast(ast: &Ast) -> anyhow::Result<Self> {
-        Ok(ast::ast_to_js(ast)?.into())
+        Ok(normalized::ast_to_js(ast)?.into())
     }
 }
 
-impl From<ast::JsAst> for JsAst {
-    fn from(value: ast::JsAst) -> Self {
+impl From<normalized::JsAst> for JsAst {
+    fn from(value: normalized::JsAst) -> Self {
         Self {
             program: value.program,
             code: value.code,
@@ -51,7 +51,7 @@ pub struct JsAstInput {
     pub language: Option<String>,
 }
 
-impl From<JsAstInput> for ast::JsAstInput {
+impl From<JsAstInput> for normalized::JsAstInput {
     fn from(value: JsAstInput) -> Self {
         Self {
             program: value.program,

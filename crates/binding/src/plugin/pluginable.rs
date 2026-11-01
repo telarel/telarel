@@ -32,10 +32,10 @@ use crate::_types::plugin::hooks::{
 };
 use crate::_types::plugin::order::read_hook_meta;
 use crate::_types::sourcemap::JsSourceMap;
-use crate::ast::{
-    ast_from_json, ast_to_estree_json, js_source_map_to_owned, js_to_ast,
-    source_map_to_js, source_type_for_generate, source_type_for_options,
-};
+use crate::ast::estree::{ast_from_json, ast_to_estree_json};
+use crate::ast::normalized::js_to_ast;
+use crate::ast::resolve::{source_type_for_generate, source_type_for_options};
+use crate::ast::sourcemap::{js_source_map_to_owned, source_map_to_js};
 use crate::comment;
 use crate::errors::plugin::decode_plugin_error;
 use crate::plugin::build::NAME_REQUIRED;
@@ -886,7 +886,7 @@ mod tests {
     };
 
     use crate::_types::ast::JsAstInput;
-    use crate::ast::ast_from_program;
+    use crate::ast::estree::ast_from_program;
     use crate::plugin::hooks::RefList;
 
     use super::*;

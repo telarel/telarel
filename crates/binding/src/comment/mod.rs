@@ -361,9 +361,8 @@ mod tests {
         generate_code, parse_ast,
     };
 
-    use crate::ast::{
-        ast_from_program, ast_to_estree_json, source_type_for_generate,
-    };
+    use crate::ast::estree::{ast_from_program, ast_to_estree_json};
+    use crate::ast::resolve::source_type_for_generate;
     use crate::comment::adapted::NormalizedComment;
     use crate::comment::{attach, extract, inject, reanchor_ast};
     use crate::plugin::spans::SpanMap;
