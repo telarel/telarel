@@ -22,7 +22,8 @@ The plugin is named `telarel_plugin_transform` by default. It declares `HookUsag
 
 Internally:
 
-- `args.ast` is an owned cheap handle. The plugin moves it into a local and mutates through `Ast::with_mut`. `with_mut` copies on write because the driver retains the carried AST. The plugin returns `Some(TransformOutput)` only when the tree changed. An unchanged tree returns `None`.
+- `args.ast` is an owned cheap handle. The plugin moves it into a local and mutates through `Ast::with_mut`. `with_mut` copies on write because the driver retains the carried AST. `None` leaves the carried AST untouched.
+- Change detection is per pass: the main pass compares code generation before and after the oxc transformer runs, helper inlining returns whether it edited the program, and `inject` and `define` report their own `changed` flag. The plugin returns `Some(TransformOutput)` when any pass reports a change.
 - Option resolution is cached in a `OnceLock`. The cache is cwd-free. The plugin context's `cwd` is overlaid per call.
 - Configuration errors are cached and replay on every call. Resolution happens before mutation, so a configuration error leaves the input AST untouched.
 
@@ -32,8 +33,6 @@ Internally:
 2. Helper inlining (when the resolved mode is inline)
 3. `inject`
 4. `define`
-
-Change detection for the main transformer uses code generation before and after the pass. The other passes report their own `changed` flag.
 
 ## Helper loading
 
