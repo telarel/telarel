@@ -71,7 +71,7 @@ fn external_map_path_for(
     match path {
         | None => external_map_path(cwd, file),
         | Some(path) if path.is_absolute() => path.to_path_buf(),
-        | Some(path) => source_dir(cwd, file).join(path),
+        | Some(path) => resolve_against(&source_dir(cwd, file), path),
     }
 }
 
