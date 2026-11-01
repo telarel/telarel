@@ -97,6 +97,10 @@ prebuild-rs: copy-transform-runtime-helpers
 build-rs:
     node ./{{telarel}}/scripts/build.ts
 
+# Build release NAPI binding for benchmarking
+build-rs-release:
+    node ./{{telarel}}/scripts/build.ts --release
+
 # Build JavaScript packages
 build-js:
     cd ./{{telarel}} && {{tsdown}}
@@ -136,8 +140,14 @@ bench-rs:
 
 # Run JavaScript benchmarks
 [env("VITE_CONFIG_NATIVE_IGNORE_WARNING", "true")]
-bench-js:
+bench-js: build-rs-release build-js
     cd ./{{bench_js}} && {{vitest}} bench --run
+
+# Run JavaScript benchmarks with WASM binding
+[env("NODE_OPTIONS", "--disable-warning=ExperimentalWarning")]
+[env("TELAREL_ALLOW_WASM_BENCH", "1")]
+bench-js-wasm: build-rs-release build-js
+    cd ./{{bench_js}} && {{vitest}} bench --run --config vitest.wasm.config.ts
 
 # Run benchmarks
 bench: bench-rs bench-js

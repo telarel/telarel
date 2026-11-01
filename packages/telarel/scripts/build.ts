@@ -67,6 +67,8 @@ const hasWasm: boolean = platforms.includes("wasm32-wasip1-threads");
 
 const wasmTarget: string = "wasm32-wasip1-threads";
 
+const isRelease: boolean = process.argv.includes("--release");
+
 const orderedTargets: ReadonlyArray<string> = [
     hostTriple,
     ...(hasWasm ? [wasmTarget] : []),
@@ -76,6 +78,12 @@ for (const platform of orderedTargets) {
     consola.info(`Building Rust binding for ${platform}...`);
 
     const isWasmTarget: boolean = platform === "wasm32-wasip1-threads";
+
+    const devProfile: string | undefined = isWasmTarget ? "dev-wasm" : void 0;
+
+    const releaseProfile: string = isWasmTarget ? "release-wasm" : "release";
+
+    const profile: string | undefined = isRelease ? releaseProfile : devProfile;
 
     const { task: buildTask } = await napi.build({
         target: platform,
@@ -89,7 +97,7 @@ for (const platform of orderedTargets) {
         dts: Path.join("..", "src", "binding", "index.d.ts"),
         esm: true,
         package: "telarel_binding",
-        profile: isWasmTarget ? "dev-wasm" : void 0,
+        profile,
     });
 
     await buildTask;

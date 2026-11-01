@@ -1,16 +1,25 @@
 import type { CodeResult, CompileOptions, Plugin } from "telarel";
 
 import * as Fs from "node:fs";
+import { createRequire } from "node:module";
 import * as Path from "node:path";
 import * as Url from "node:url";
 
 import { compile } from "telarel";
 import { describe, test } from "vitest";
 
+import { reportBenchmarkBackend } from "#/backend";
 import { componentRenamePlugin } from "#/plugins/component-rename";
 import { importRewritePlugin } from "#/plugins/import-rewrite";
 import { jsxAttributePlugin } from "#/plugins/jsx-attribute";
 import { voidFoldPlugin } from "#/plugins/void-fold";
+
+const require = createRequire(import.meta.url);
+
+reportBenchmarkBackend(
+    Object.keys(require.cache),
+    process.env.TELAREL_ALLOW_WASM_BENCH === "1",
+);
 
 const benchDir: string = Path.dirname(Url.fileURLToPath(import.meta.url));
 
