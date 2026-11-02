@@ -16,14 +16,20 @@ pub const NAME_REQUIRED: &str = "plugin `name` is required";
 /// `PLUGIN_ID` in `packages/telarel/src/bridges/plugin.ts`.
 const PLUGIN_ID: &str = "__telarelPluginId";
 
+/// Internal batch-runner key shared with the JS wrapper. This key must match
+/// `TRANSFORM_BATCH` in `packages/telarel/src/bridges/plugin.ts`.
+pub const TRANSFORM_BATCH_KEY: &str = "__telarelTransformBatch";
+
 /// Bridge one raw descriptor for a JS plugin into a shared adapter.
 ///
 /// The caller has already rooted the descriptor's reference. Builtin markers
 /// dispatch to Rust before any hook scan, for entry and mid-fixpoint plugins
-/// alike. Plain JS plugins become [`JsPlugin`].
+/// alike. Plain JS plugins become [`JsPlugin`], which retains `plugin_ref` so a
+/// batch payload can carry the descriptor back to JS.
 pub fn bridge_plugin(
     object: &napi::bindgen_prelude::Object<'static>,
     refs: &Arc<RefList>,
+    plugin_ref: &SharedRef,
 ) -> Result<SharedPluginable> {
     let is_builtin: bool = object
         .get::<serde_json::Value>("__builtin")?
@@ -44,7 +50,7 @@ pub fn bridge_plugin(
     }
 
     let adapter: SharedPluginable =
-        Arc::new(JsPlugin::from_object(object, refs)?);
+        Arc::new(JsPlugin::from_object(object, refs, plugin_ref)?);
 
     Ok(adapter)
 }
@@ -83,7 +89,7 @@ pub fn to_plugins(
                 },
             };
 
-        bag.push(shared);
+        bag.push(shared.clone());
 
         let id: Option<u32> = match object.get::<u32>(PLUGIN_ID) {
             | Ok(id) => id,
@@ -101,7 +107,7 @@ pub fn to_plugins(
             continue;
         }
 
-        match bridge_plugin(&object, refs) {
+        match bridge_plugin(&object, refs, &shared) {
             | Ok(plugin) => {
                 if let Some(id) = id {
                     refs.remember_bridged(id, Arc::clone(&plugin));

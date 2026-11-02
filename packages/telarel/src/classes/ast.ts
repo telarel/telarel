@@ -10,6 +10,13 @@ import type { SourceMap } from "#/@types/sourcemap/map";
 const AST_MUTATED: unique symbol = Symbol("telarel.ast.mutated");
 
 /**
+ * Identifies the internal mutation reset. The transform batch runner clears the
+ * sticky marker before each member. This symbol is not a public package
+ * export.
+ */
+const AST_RESET_MUTATED: unique symbol = Symbol("telarel.ast.resetMutated");
+
+/**
  * Options for constructing an {@link Ast}.
  */
 type AstOptions = {
@@ -54,6 +61,11 @@ export class Ast {
         Object.defineProperty(Ast.prototype, AST_MUTATED, {
             value(this: Ast): boolean {
                 return this.#mutated;
+            },
+        });
+        Object.defineProperty(Ast.prototype, AST_RESET_MUTATED, {
+            value(this: Ast): void {
+                this.#mutated = false;
             },
         });
     }
@@ -123,7 +135,11 @@ export interface Ast {
      * Reports whether {@link Ast.mutate} has been called on this instance.
      */
     [AST_MUTATED]: () => boolean;
+    /**
+     * Clears the sticky mutation marker before the next batch member.
+     */
+    [AST_RESET_MUTATED]: () => void;
 }
 
 export type { AstOptions };
-export { AST_MUTATED };
+export { AST_MUTATED, AST_RESET_MUTATED };

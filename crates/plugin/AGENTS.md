@@ -44,6 +44,10 @@ Each hook has its own optional `PluginHookMeta { order }`. `sort_plugins_by_hook
 
 `src/plugin_driver/hooks/transform.rs` owns the carried `Ast` and hands each hook an O(1) handle clone. The live fold handle forces a mutating hook's `Ast::with_mut` to copy on write. Thus a `None` return cannot mutate the carried AST. Public hook semantics: [plugin docs](../../docs/content/apis/plugin/index.mdx).
 
+The fold partitions the settled transform list into maximal contiguous runs whose plugins return `Some` from `Pluginable::as_transform_batchable`. The first member of a run builds one `TransformBatch` through `TransformBatchable::make_transform_batch`. A batch returns the same `Option<TransformOutput>` shape as a single hook. A run of one, or a batch construction that returns `None`, uses the single-hook path. A non-batchable plugin breaks the run around it. The batch traits are internal capabilities only. They are exported through `crate::__internal` and are not public plugin API.
+
+A batch that reports `None` leaves the carried AST untouched. The batch read-back compares its final output with its input. A batch whose members changed and then reverted the AST still reports `None` when no comments need re-anchoring. An earlier accepted plugin or batch output remains carried, and the final result stays `Some`. When comments need re-anchoring, the batch reports `Some` with the sanitized input AST instead. This behavior is required by the batch read-back. The batch read-back differs from a single hook chain, where an accepting hook returns `Some`.
+
 ## Dependency boundary
 
 Production code must not import `oxc` or `oxc_sourcemap` directly. Use the re-exports and types from `telarel_common`. Direct access belongs in `#[cfg(test)]` modules, and both crates stay dev-dependencies. Oxc is an implementation detail behind `telarel_common`. This boundary keeps the hook contract on Telarel's semantic types rather than a specific backend.

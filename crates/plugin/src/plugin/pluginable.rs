@@ -26,6 +26,37 @@ pub type SharedPluginable = Arc<dyn Pluginable>;
 /// A boxed, `Send` hook future.
 pub type HookFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// A shared, one-call transform batch.
+pub type SharedTransformBatch = Arc<dyn TransformBatch>;
+
+/// Internal capability for a plugin that can run a contiguous transform run in
+/// one call.
+///
+/// This capability is not part of the public plugin contract. It exists so the
+/// driver can collapse several JavaScript transform hooks into a single AST
+/// boundary crossing.
+pub trait TransformBatchable: Send + Sync {
+    /// Build one batch over `members`, or `None` to use individual calls.
+    /// Members are in settled transform order.
+    fn make_transform_batch(
+        &self,
+        members: &[&dyn Pluginable],
+    ) -> Option<SharedTransformBatch>;
+}
+
+/// Internal one-call transform batch.
+///
+/// The contract matches the single transform hook: `None` keeps the carried
+/// AST, and `Some` replaces it for the rest of the chain.
+pub trait TransformBatch: Send + Sync {
+    /// Call the batch once with the carried AST.
+    fn call_transform<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: TransformArgs,
+    ) -> HookFuture<'a, TransformReturn>;
+}
+
 /// Object-safe mirror of [`Plugin`].
 ///
 /// Each hook is exposed as a `call_*` method that returns a boxed future. Thus
@@ -94,6 +125,14 @@ pub trait Pluginable: Any + Send + Sync + 'static {
 
     /// Ordering for the `transform` hook.
     fn call_transform_meta(&self) -> Option<PluginHookMeta> {
+        None
+    }
+
+    /// Internal batching capability for the `transform` hook.
+    ///
+    /// The default is not batchable. The driver only groups plugins that
+    /// return `Some` from this method into one transform call.
+    fn as_transform_batchable(&self) -> Option<&dyn TransformBatchable> {
         None
     }
 

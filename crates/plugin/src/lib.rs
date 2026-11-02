@@ -32,6 +32,8 @@ pub use crate::plugin::pluginable::{Pluginable, SharedPluginable};
 
 #[doc(hidden)]
 pub mod __internal {
-    pub use crate::plugin::pluginable::HookFuture;
+    pub use crate::plugin::pluginable::{
+        HookFuture, SharedTransformBatch, TransformBatch, TransformBatchable,
+    };
     pub use crate::plugin_driver::PluginDriver;
 }

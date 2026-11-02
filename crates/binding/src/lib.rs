@@ -16,7 +16,8 @@ pub use crate::_types::plugin::context::JsPluginContext;
 pub use crate::_types::plugin::hooks::{
     JsAstArgs, JsCodeOutput, JsEndArgs, JsGenerateArgs, JsGeneratorHookOptions,
     JsOptionsOutput, JsParseArgs, JsParseOutput, JsParserHookOptions,
-    JsResolvedOptions, JsResolvedOutputOptions, JsStartArgs, JsTransformOutput,
+    JsResolvedOptions, JsResolvedOutputOptions, JsStartArgs,
+    JsTransformBatchArgs, JsTransformOutput,
 };
 pub use crate::_types::results::JsCodeResult;
 pub use crate::_types::sourcemap::JsSourceMap;
@@ -74,10 +75,11 @@ pub mod __internal {
     pub use crate::plugin::hooks::{
         CtxTsfn, EndCall, EndTsfn, FinalizeTsfn, FnCtx, GenerateCall,
         GenerateTsfn, HookCall, ObserveCall, OptionsCall, OptionsTsfn,
-        ParseCall, ParseTsfn, PrepareTsfn, StartCall, StartTsfn, TransformCall,
-        TransformTsfn, Tsfn, end, finalize, generate, materialize, options,
-        parse, plugin_context, prepare, release_refs, scan_hook, scan_options,
-        start, transform,
+        ParseCall, ParseTsfn, PrepareTsfn, StartCall, StartTsfn,
+        TransformBatchCall, TransformBatchTsfn, TransformCall, TransformTsfn,
+        Tsfn, end, finalize, generate, materialize, options, parse,
+        plugin_context, prepare, release_refs, scan_hook, scan_options, start,
+        transform,
     };
     pub use crate::plugin::options::{
         language_label, parse_language, parse_source_type, source_type_label,

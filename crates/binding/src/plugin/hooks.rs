@@ -16,7 +16,8 @@ use crate::_types::ast::JsAst;
 use crate::_types::plugin::context::JsPluginContext;
 use crate::_types::plugin::hooks::{
     JsAstArgs, JsCodeOutput, JsEndArgs, JsGenerateArgs, JsParseArgs,
-    JsParseOutput, JsResolvedOptions, JsStartArgs, JsTransformOutput,
+    JsParseOutput, JsResolvedOptions, JsStartArgs, JsTransformBatchArgs,
+    JsTransformOutput,
 };
 use crate::_types::sourcemap::JsSourceMap;
 
@@ -681,6 +682,55 @@ pub type TransformTsfn = Tsfn<
     transform::Args,
     Either<Promise<transform::Return>, transform::Return>,
 >;
+
+/// Worker-side call data for a batched `transform` run.
+pub struct TransformBatchCall {
+    /// Working directory used to resolve relative paths.
+    pub cwd: SharedStr,
+    /// The file being parsed or generated.
+    pub file: SharedStr,
+    /// Source language of the file.
+    pub language: SharedStr,
+    /// Module system used for code generation.
+    pub source_type: SharedStr,
+    /// The AST as a JSON string.
+    pub ast_json: String,
+    /// Source text the program's spans anchor to.
+    pub code: String,
+    /// The input source map, when the AST carries one.
+    pub map: Option<JsSourceMap>,
+    /// Grammar of the AST the batch receives.
+    pub ast_language: String,
+    /// The raw plugin descriptors for this run, in driver order.
+    pub plugins: Vec<SharedRef>,
+}
+
+impl HookCall for TransformBatchCall {
+    type Payload = JsTransformBatchArgs;
+    type Return = Option<JsTransformOutput>;
+
+    fn into_payload(self) -> Result<(JsPluginContext, Self::Payload)> {
+        let context: JsPluginContext = plugin_context(
+            self.cwd,
+            self.file,
+            self.language,
+            self.source_type,
+        )?;
+
+        let payload: JsTransformBatchArgs = JsTransformBatchArgs {
+            ast_json: self.ast_json,
+            code: self.code,
+            map: self.map,
+            language: self.ast_language,
+            plugins: self.plugins,
+        };
+
+        Ok((context, payload))
+    }
+}
+
+/// TSFN bridging one batched `transform` run.
+pub type TransformBatchTsfn = CtxTsfn<TransformBatchCall>;
 
 /// Worker-side call data for the `generate` hook.
 pub struct GenerateCall {

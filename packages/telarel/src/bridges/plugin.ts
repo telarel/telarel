@@ -32,7 +32,7 @@ import type { NormalizedHook } from "#/bridges/normalize-hook";
 
 import { parseLanguage, parseSourceType } from "#/bridges/grammar";
 import { normalizeHook } from "#/bridges/normalize-hook";
-import { AST_MUTATED, Ast } from "#/classes/ast";
+import { AST_MUTATED, AST_RESET_MUTATED, Ast } from "#/classes/ast";
 import { getPluginErrorMessage, PluginError } from "#/errors/plugin";
 import { encodePluginError } from "#/errors/transport/plugin-error";
 
@@ -171,6 +171,10 @@ type RawBuiltinPlugin = {
 
 type RawPlugin = RawHookPlugin | RawBuiltinPlugin;
 
+type RawTransformBatchArgs = RawAstArgs & {
+    plugins: Array<RawPlugin>;
+};
+
 // Marks wrapper-produced descriptors so a descriptor echoed back through an
 // options bag is passed through instead of being translated a second time.
 const RAW_PLUGIN_MARKER: unique symbol = Symbol("telarel.bridge.rawPlugin");
@@ -180,6 +184,20 @@ const isWrappedPlugin = (plugin: Plugin | BuiltinPlugin): boolean =>
 
 // Must match `PLUGIN_ID` in `crates/binding/src/plugin/build.rs`.
 const PLUGIN_ID: string = "__telarelPluginId";
+
+// Must match `TRANSFORM_BATCH_KEY` in `crates/binding/src/plugin/build.rs`.
+const TRANSFORM_BATCH: string = "__telarelTransformBatch";
+
+// Read only by the batch runner below. The binding never scans this key.
+const TRANSFORM_ENTRY: string = "__telarelTransformEntry";
+
+// Internal verification escape hatch. Raw descriptors without a batch runner
+// keep the per-plugin path. The opt-out lets tests compare both paths.
+const isTransformBatchDisabled = (): boolean =>
+    process.env.TELAREL_DISABLE_TRANSFORM_BATCH === "1";
+
+// Internal diagnostic trace, not public API.
+const TRANSFORM_BATCH_TRACE: string = "TELAREL_DEBUG_TRANSFORM_BATCH";
 
 const pluginIds: WeakMap<Plugin | BuiltinPlugin, number> = new WeakMap();
 
@@ -339,6 +357,154 @@ const requireAst = (value: unknown): Ast => {
 
     return value;
 };
+
+const toRawTransformOutput = (ast: Ast): RawTransformAstOutput => {
+    const input: AstInput = toAstInput(ast);
+
+    const output: RawTransformAstOutput = {
+        astJson: JSON.stringify(input.program),
+        code: input.code,
+    };
+
+    if (input.map !== void 0) {
+        output.map = input.map;
+    }
+
+    if (typeof input.language === "string") {
+        output.language = input.language;
+    }
+
+    return output;
+};
+
+const isTransformNoOp = (current: Ast, next: Ast): boolean =>
+    next === current &&
+    !current[AST_MUTATED]() &&
+    (current.program.comments?.length ?? 0) === 0;
+
+const normalizeReturnedAst = (next: Ast, previous: Ast): Ast => {
+    const language: Language | void = next.language;
+
+    const effective: Language | void =
+        typeof language === "string" && language.length > 0
+            ? language
+            : previous.language;
+
+    if (effective === next.language) {
+        return next;
+    }
+
+    return new Ast({
+        program: next.program as Program,
+        source: next.source,
+        language: typeof effective === "string" ? effective : void 0,
+        map: (next.map as SourceMap | null) ?? void 0,
+    });
+};
+
+type CallTransformEntryOptions = {
+    entry: TransformHook;
+    rawCtx: RawPluginContext;
+    ast: Ast;
+};
+
+const callTransformEntry = async (
+    options: CallTransformEntryOptions,
+): Promise<TransformResult | null> =>
+    await runHook(async (): Promise<TransformResult | null> => {
+        const value: TransformResult | null | void = await options.entry(
+            toContext(options.rawCtx),
+            { ast: options.ast },
+        );
+
+        if (value === null || value === void 0) {
+            return null;
+        }
+
+        return { ast: requireAst(value.ast) };
+    });
+
+const runTransformBatch = async (
+    rawCtx: RawPluginContext,
+    rawArgs: RawTransformBatchArgs,
+): Promise<RawTransformOutput> =>
+    await runHook(async (): Promise<RawTransformOutput> => {
+        let currentAst: Ast = toAst({ args: rawArgs });
+
+        // The checkpoint shares `map`. In-place `map` mutation is unsupported in a batch.
+        let checkpoint: RawTransformAstOutput = {
+            astJson: rawArgs.astJson,
+            code: rawArgs.code,
+        };
+
+        if (rawArgs.map !== void 0 && rawArgs.map !== null) {
+            checkpoint.map = rawArgs.map;
+        }
+
+        if (
+            typeof rawArgs.language === "string" &&
+            rawArgs.language.length > 0
+        ) {
+            checkpoint.language = rawArgs.language;
+        }
+
+        let changed: boolean = false;
+
+        if (process.env[TRANSFORM_BATCH_TRACE] === "1") {
+            console.debug("[telarel] transform batch", {
+                plugins: rawArgs.plugins.map(
+                    (plugin: RawPlugin): string => plugin.name,
+                ),
+            });
+        }
+
+        for (const plugin of rawArgs.plugins) {
+            const entry: unknown = (plugin as Record<string, unknown>)[
+                TRANSFORM_ENTRY
+            ];
+
+            if (typeof entry !== "function") {
+                throw new TypeError(
+                    "transform batch member is missing __telarelTransformEntry",
+                );
+            }
+
+            // The mutation marker is sticky across calls, so clear it before
+            // each member to attribute only this member's mutation.
+            currentAst[AST_RESET_MUTATED]();
+
+            const result: TransformResult | null = await callTransformEntry({
+                entry: entry as TransformHook,
+                rawCtx,
+                ast: currentAst,
+            });
+
+            if (result === null) {
+                if (currentAst[AST_MUTATED]()) {
+                    // Discard the in-place mutation instead of serializing it.
+                    currentAst = toAst({ args: checkpoint });
+                }
+
+                continue;
+            }
+
+            const next: Ast = result.ast;
+
+            if (isTransformNoOp(currentAst, next)) {
+                continue;
+            }
+
+            changed = true;
+
+            if (next !== currentAst) {
+                currentAst = normalizeReturnedAst(next, currentAst);
+            }
+
+            checkpoint = toRawTransformOutput(currentAst);
+        }
+
+        return changed ? checkpoint : null;
+    });
 
 const flattenPlugins = async (
     options: ReadonlyArray<PluginOption>,
@@ -605,33 +771,22 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
                 const next: Ast = requireAst(result.ast);
 
-                // A pass-through must still reach Rust's equality path when
-                // comments need re-anchoring to parser positions.
-                if (
-                    next === ast &&
-                    !ast[AST_MUTATED]() &&
-                    (ast.program.comments?.length ?? 0) === 0
-                ) {
+                if (isTransformNoOp(ast, next)) {
                     return null;
                 }
 
-                const astInput: AstInput = toAstInput(next);
-
-                const output: RawTransformAstOutput = {
-                    astJson: JSON.stringify(astInput.program),
-                    code: astInput.code,
-                };
-
-                if (astInput.map !== void 0) {
-                    output.map = astInput.map;
-                }
-
-                if (typeof astInput.language === "string") {
-                    output.language = astInput.language;
-                }
-
-                return output;
+                return toRawTransformOutput(next);
             });
+
+        Object.defineProperty(raw, TRANSFORM_ENTRY, {
+            value: transformHandler,
+        });
+
+        if (!isTransformBatchDisabled()) {
+            Object.defineProperty(raw, TRANSFORM_BATCH, {
+                value: runTransformBatch,
+            });
+        }
 
         if (transform.meta.order !== void 0) {
             raw.transformMeta = { order: transform.meta.order };

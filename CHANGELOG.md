@@ -250,6 +250,7 @@
 
 #### Performance
 
+- change JavaScript transform hooks to share one AST round trip per contiguous run
 - change the transform bridge to skip AST JSON serialization when a transform returns the same unmutated `Ast`
 
 ## 0.1.0 (2026-10-10)

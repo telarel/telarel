@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,7 +16,9 @@ use telarel_common::{
     Ast, AstResult, CodeResult, HookUsage, Language, ResolvableOptions,
     SourceMap,
 };
-use telarel_plugin::__internal::HookFuture;
+use telarel_plugin::__internal::{
+    HookFuture, SharedTransformBatch, TransformBatch, TransformBatchable,
+};
 use telarel_plugin::{
     CommonPluginContext, EndArgs, FinalizeArgs, GenerateArgs, GenerateReturn,
     NotifyReturn, OptionsArgs, ParseArgs, ParseReturn, PluginContext,
@@ -39,11 +42,14 @@ use crate::ast::sourcemap::{js_source_map_to_owned, source_map_to_js};
 use crate::comment;
 use crate::errors::plugin::decode_plugin_error;
 use crate::plugin::build::NAME_REQUIRED;
+use crate::plugin::build::TRANSFORM_BATCH_KEY;
 use crate::plugin::build::to_plugins;
 use crate::plugin::hooks::{
-    EndCall, EndTsfn, FinalizeTsfn, GenerateCall, GenerateTsfn, ObserveCall,
-    OptionsCall, OptionsTsfn, ParseCall, ParseTsfn, PrepareTsfn, RefList,
-    SharedStr, StartCall, StartTsfn, TransformCall, TransformTsfn, hook_scan,
+    CtxTsfn, EndCall, EndTsfn, FinalizeTsfn, GenerateCall, GenerateTsfn,
+    HookCall, ObserveCall, OptionsCall, OptionsTsfn, ParseCall, ParseTsfn,
+    PrepareTsfn, RefList, SharedRef, SharedStr, StartCall, StartTsfn,
+    TransformBatchCall, TransformBatchTsfn, TransformCall, TransformTsfn,
+    hook_scan, scan_hook,
 };
 use crate::plugin::options::{
     language_label, parse_language, parse_source_type, source_type_label,
@@ -61,6 +67,7 @@ pub struct JsPlugin {
     tsfn_parse: Option<ParseTsfn>,
     tsfn_prepare: Option<PrepareTsfn>,
     tsfn_transform: Option<TransformTsfn>,
+    tsfn_transform_batch: Option<Arc<TransformBatchTsfn>>,
     tsfn_finalize: Option<FinalizeTsfn>,
     tsfn_generate: Option<GenerateTsfn>,
     tsfn_end: Option<EndTsfn>,
@@ -75,14 +82,19 @@ pub struct JsPlugin {
     /// The dynamic release list of the compile, shared with every JS plugin
     /// and with the compile task's `finally`.
     refs: Arc<RefList>,
+    /// The rooted raw descriptor. A transform batch payload carries it back to
+    /// JS so the batch runner can read the descriptor's internal entry.
+    plugin_ref: SharedRef,
 }
 
 impl JsPlugin {
     /// Bridge a raw JS plugin object into a JS plugin adapter. Returns
-    /// `InvalidArg` when `name` is absent.
+    /// `InvalidArg` when `name` is absent. `plugin_ref` is the caller's rooted
+    /// descriptor. The adapter keeps a clone for batch payloads.
     pub fn from_object(
         object: &Object<'static>,
         refs: &Arc<RefList>,
+        plugin_ref: &SharedRef,
     ) -> Result<Self> {
         let name: String = object.get::<String>("name")?.ok_or_else(|| {
             napi::Error::new(Status::InvalidArg, NAME_REQUIRED.to_owned())
@@ -98,6 +110,10 @@ impl JsPlugin {
             tsfn_generate,
             tsfn_end,
         ) = hook_scan!(object);
+
+        let tsfn_transform_batch: Option<Arc<TransformBatchTsfn>> =
+            scan_hook::<TransformBatchCall>(object, TRANSFORM_BATCH_KEY)?
+                .map(Arc::new);
 
         let hook_meta_options: Option<PluginHookMeta> =
             read_hook_meta(object, "options")?;
@@ -130,6 +146,7 @@ impl JsPlugin {
             tsfn_parse,
             tsfn_prepare,
             tsfn_transform,
+            tsfn_transform_batch,
             tsfn_finalize,
             tsfn_generate,
             tsfn_end,
@@ -142,6 +159,7 @@ impl JsPlugin {
             hook_meta_generate,
             hook_meta_end,
             refs: Arc::clone(refs),
+            plugin_ref: plugin_ref.clone(),
         })
     }
 }
@@ -172,6 +190,103 @@ fn ast_hook_parts(ast: &Ast) -> (String, String, Option<JsSourceMap>, String) {
     )
 }
 
+/// The outbound payload fields shared by the single and batch transform calls.
+struct TransformCallParts {
+    cwd: SharedStr,
+    file: SharedStr,
+    language: SharedStr,
+    source_type: SharedStr,
+    ast_json: String,
+    code: String,
+    map: Option<JsSourceMap>,
+    ast_language: String,
+}
+
+/// The input side of a transform read-back, in the form the plugin saw.
+struct TransformInput {
+    ast: Ast,
+    ast_json: String,
+    code: String,
+    map: Option<JsSourceMap>,
+}
+
+impl TransformCallParts {
+    /// Build the shared payload fields from the plugin context and input AST.
+    ///
+    /// The bridge anchors the UTF-16 map to the AST's own source, the parse
+    /// input, not the module's original code. It therefore matches the byte
+    /// spans that the codec emits.
+    fn new(
+        ctx: &PluginContext<'_>,
+        ast: &Ast,
+    ) -> Self {
+        let (ast_json, code, map, ast_language): (
+            String,
+            String,
+            Option<JsSourceMap>,
+            String,
+        ) = ast_hook_parts(ast);
+
+        Self {
+            cwd: SharedStr::new(&path_label(ctx.cwd)),
+            file: SharedStr::new(ctx.module.file),
+            language: SharedStr::new(language_label(Some(ctx.module.language))),
+            source_type: SharedStr::new(source_type_label(Some(
+                ctx.module.source_type,
+            ))),
+            ast_json,
+            code,
+            map,
+            ast_language,
+        }
+    }
+
+    /// Clone the shared fields into a single transform call.
+    fn call(&self) -> TransformCall {
+        TransformCall {
+            cwd: self.cwd.clone(),
+            file: self.file.clone(),
+            language: self.language.clone(),
+            source_type: self.source_type.clone(),
+            ast_json: self.ast_json.clone(),
+            code: self.code.clone(),
+            map: self.map.clone(),
+            ast_language: self.ast_language.clone(),
+        }
+    }
+
+    /// Clone the shared fields into a batch call and add the run's descriptors.
+    fn batch_call(
+        &self,
+        plugins: Vec<SharedRef>,
+    ) -> TransformBatchCall {
+        TransformBatchCall {
+            cwd: self.cwd.clone(),
+            file: self.file.clone(),
+            language: self.language.clone(),
+            source_type: self.source_type.clone(),
+            ast_json: self.ast_json.clone(),
+            code: self.code.clone(),
+            map: self.map.clone(),
+            ast_language: self.ast_language.clone(),
+            plugins,
+        }
+    }
+
+    /// Consume the read-back fields for the input AST that produced the call.
+    fn into_input(
+        self,
+        ast: Ast,
+    ) -> TransformInput {
+        TransformInput {
+            ast,
+            ast_json: self.ast_json,
+            code: self.code,
+            map: self.map,
+        }
+    }
+}
+
 /// The transform read-back grammar: a returned label wins. An absent label
 /// means the input AST's grammar still anchors the rebuild.
 fn transform_read_back_language(
@@ -184,6 +299,93 @@ fn transform_read_back_language(
     };
 
     Ok(returned.unwrap_or(input))
+}
+
+/// Call one transform TSFN and unmarshal its sync or async return.
+async fn call_transform_tsfn<C>(
+    tsfn: &CtxTsfn<C>,
+    call: C,
+) -> std::result::Result<Option<JsTransformOutput>, PluginError>
+where
+    C: HookCall<Return = Option<JsTransformOutput>>,
+{
+    let output: Either<
+        Promise<Option<JsTransformOutput>>,
+        Option<JsTransformOutput>,
+    > = tsfn.call_async_catch(call).await.map_err(hook_error)?;
+
+    match output {
+        | Either::A(promise) => promise.await.map_err(hook_error),
+        | Either::B(value) => Ok(value),
+    }
+}
+
+/// Apply the single and batch transform read-back rules to one JS return.
+///
+/// An unchanged return short-circuits to `None` unless comments need
+/// re-anchoring, in which case the sanitized input AST returns as `Some`. Any
+/// changed field rebuilds a fresh owned AST from the returned JSON, code, map,
+/// and effective grammar. Both transform paths must use this helper so their
+/// pass-through and rebuild behavior cannot drift.
+fn finish_transform_output(
+    replaced: JsTransformOutput,
+    input: TransformInput,
+) -> std::result::Result<Option<TransformOutput>, PluginError> {
+    let language: Language = transform_read_back_language(
+        replaced.language.as_deref(),
+        input.ast.language(),
+    )?;
+
+    if replaced.ast_json == input.ast_json
+        && replaced.code == input.code
+        && replaced.map == input.map
+        && language == input.ast.language()
+    {
+        let mut ast: Ast = input.ast;
+
+        if comment::reanchor_ast(&mut ast) {
+            return Ok(Some(TransformOutput { ast }));
+        }
+
+        return Ok(None);
+    }
+
+    // The returned program's `sourceType` owns the module kind. The chosen
+    // grammar only supplies the unambiguous parser input.
+    let source_type: SourceType = source_type_for_generate(language);
+
+    let input_map: Option<SourceMap> = match replaced.map {
+        | Some(map) => {
+            Some(js_source_map_to_owned(&map).map_err(anyhow_to_plugin_error)?)
+        },
+        | None => None,
+    };
+
+    let ast: Ast = ast_from_json(
+        &replaced.ast_json,
+        Arc::from(replaced.code),
+        input_map,
+        source_type,
+    )
+    .map_err(anyhow_to_plugin_error)?;
+
+    Ok(Some(TransformOutput { ast }))
+}
+
+/// Apply the batch read-back rules to one unmarshalled batch return.
+///
+/// `None` means the batch accepted no member change. A final output equal to
+/// the batch input also reads as `None`, even when an earlier member changed
+/// the AST inside the batch. The driver keeps any earlier accepted output and
+/// its `changed` state.
+fn finish_transform_batch_output(
+    replaced: Option<JsTransformOutput>,
+    input: TransformInput,
+) -> std::result::Result<Option<TransformOutput>, PluginError> {
+    match replaced {
+        | Some(replaced) => finish_transform_output(replaced, input),
+        | None => Ok(None),
+    }
 }
 
 /// Unmarshal an `options` hook return into the pipeline bag on the JS thread,
@@ -396,6 +598,12 @@ async fn call_options_tsfn(
     std::sync::mpsc::Receiver::recv(&receiver).map_err(|_| {
         PluginError::new("options hook: callback channel closed")
     })?
+}
+
+/// The transform hooks that a JS plugin carries.
+struct TransformHookSet {
+    transform: bool,
+    batch: bool,
 }
 
 impl Pluginable for JsPlugin {
@@ -630,103 +838,31 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             };
 
-            // The bridge anchors the UTF-16 map to the AST's own source, the
-            // parse input, not the module's original code. It therefore
-            // matches the byte spans that the codec emits.
-            let (ast_json_utf16, source_code, source_map, ast_language): (
-                String,
-                String,
-                Option<JsSourceMap>,
-                String,
-            ) = ast_hook_parts(&args.ast);
+            let parts: TransformCallParts =
+                TransformCallParts::new(ctx, &args.ast);
 
-            let call: TransformCall = TransformCall {
-                cwd: SharedStr::new(&path_label(ctx.cwd)),
-                file: SharedStr::new(ctx.module.file),
-                language: SharedStr::new(language_label(Some(
-                    ctx.module.language,
-                ))),
-                source_type: SharedStr::new(source_type_label(Some(
-                    ctx.module.source_type,
-                ))),
-                ast_json: ast_json_utf16.clone(),
-                code: source_code.clone(),
-                map: source_map.clone(),
-                ast_language: ast_language.clone(),
-            };
+            let replaced: Option<JsTransformOutput> =
+                call_transform_tsfn(tsfn, parts.call()).await?;
 
-            let output: Either<
-                Promise<Option<JsTransformOutput>>,
-                Option<JsTransformOutput>,
-            > = tsfn.call_async_catch(call).await.map_err(hook_error)?;
-
-            let unmarshalled: Option<JsTransformOutput> = match output {
-                | Either::A(promise) => promise.await.map_err(hook_error)?,
-                | Either::B(value) => value,
-            };
-
-            let Some(replaced) = unmarshalled else {
+            let Some(replaced) = replaced else {
                 return Ok(None);
             };
 
-            // A returned grammar wins. An absent grammar means the input AST's
-            // grammar still anchors the read-back.
-            let language: Language = transform_read_back_language(
-                replaced.language.as_deref(),
-                args.ast.language(),
-            )?;
-
-            // Defense in depth: a pass-through sends the tree back unchanged.
-            // Compare every AST field in the form that the plugin saw, and
-            // skip the read-back. The language comparison keeps a grammar-only
-            // change from short-circuiting.
-            if replaced.ast_json == ast_json_utf16
-                && replaced.code == source_code
-                && replaced.map == source_map
-                && language == args.ast.language()
-            {
-                // A pass-through keeps parser anchors, which are token
-                // boundaries rather than codegen print sites. Sanitize the
-                // owned AST in place to keep oxc-only annotation flags.
-                let mut ast: Ast = args.ast;
-
-                if comment::reanchor_ast(&mut ast) {
-                    return Ok(Some(TransformOutput { ast }));
-                }
-
-                return Ok(None);
-            }
-
-            // The returned program's `sourceType` owns the module kind. The
-            // chosen grammar only supplies the unambiguous parser input.
-            let source_type: SourceType = source_type_for_generate(language);
-
-            let input_map: Option<SourceMap> = match replaced.map {
-                | Some(map) => Some(
-                    js_source_map_to_owned(&map)
-                        .map_err(anyhow_to_plugin_error)?,
-                ),
-                | None => None,
-            };
-
-            // Rebuild the returned tree into a fresh owned AST. The read-back
-            // allocates into the new AST's arena and anchors spans against the
-            // returned source and map. The replacement therefore travels as
-            // `Some`, exactly like a Rust plugin's replacement.
-            let ast: Ast = ast_from_json(
-                &replaced.ast_json,
-                Arc::from(replaced.code),
-                input_map,
-                source_type,
-            )
-            .map_err(anyhow_to_plugin_error)?;
-
-            Ok(Some(TransformOutput { ast }))
+            finish_transform_output(replaced, parts.into_input(args.ast))
         })
     }
 
     fn call_transform_meta(&self) -> Option<PluginHookMeta> {
         self.hook_meta_transform
+    }
+
+    fn as_transform_batchable(&self) -> Option<&dyn TransformBatchable> {
+        let hooks: TransformHookSet = TransformHookSet {
+            transform: self.tsfn_transform.is_some(),
+            batch: self.tsfn_transform_batch.is_some(),
+        };
+
+        if hooks.is_batchable() { Some(self) } else { None }
     }
 
     fn call_finalize<'a>(
@@ -868,8 +1004,65 @@ impl Pluginable for JsPlugin {
     }
 }
 
+impl TransformHookSet {
+    /// A plugin is batchable only when it has both the single transform hook
+    /// and the internal batch runner. Either missing keeps the single path.
+    fn is_batchable(&self) -> bool {
+        self.transform && self.batch
+    }
+}
+
+/// One JS batch call over the raw descriptors of a contiguous transform run.
+struct JsTransformBatch {
+    tsfn: Arc<TransformBatchTsfn>,
+    plugins: Vec<SharedRef>,
+}
+
+impl TransformBatchable for JsPlugin {
+    fn make_transform_batch(
+        &self,
+        members: &[&dyn Pluginable],
+    ) -> Option<SharedTransformBatch> {
+        let tsfn: Arc<TransformBatchTsfn> =
+            Arc::clone(self.tsfn_transform_batch.as_ref()?);
+
+        let mut plugins: Vec<SharedRef> = Vec::with_capacity(members.len());
+
+        for member in members {
+            let js: &JsPlugin =
+                (*member as &dyn Any).downcast_ref::<JsPlugin>()?;
+
+            plugins.push(js.plugin_ref.clone());
+        }
+
+        Some(Arc::new(JsTransformBatch { tsfn, plugins }))
+    }
+}
+
+impl TransformBatch for JsTransformBatch {
+    fn call_transform<'a>(
+        &'a self,
+        ctx: &'a PluginContext<'_>,
+        args: TransformArgs,
+    ) -> HookFuture<'a, TransformReturn> {
+        Box::pin(async move {
+            let parts: TransformCallParts =
+                TransformCallParts::new(ctx, &args.ast);
+
+            let replaced: Option<JsTransformOutput> = call_transform_tsfn(
+                &self.tsfn,
+                parts.batch_call(self.plugins.clone()),
+            )
+            .await?;
+
+            finish_transform_batch_output(replaced, parts.into_input(args.ast))
+        })
+    }
+}
+
 /// Tests for the env-free parts of the hook marshaling: the options
-/// unmarshalling and the bag and release-list bookkeeping.
+/// unmarshalling, the transform read-back rules, and the bag and release-list
+/// bookkeeping.
 ///
 /// The tests cover no full-bag scalar defaulting and the omitted-`plugins`
 /// empty list. The ESTree serialization and map parsing live in `crate::ast`,
@@ -882,11 +1075,12 @@ mod tests {
     use std::path::PathBuf;
 
     use telarel_common::{
-        Language, OutputOptions, SourceMapOptions, SourceType,
+        Language, OutputOptions, SourceMap, SourceMapOptions, SourceType,
     };
 
     use crate::_types::ast::JsAstInput;
     use crate::ast::estree::ast_from_program;
+    use crate::ast::test_util::{fixture_ast, parse_fixture, sample_map};
     use crate::plugin::hooks::RefList;
 
     use super::*;
@@ -1270,6 +1464,204 @@ mod tests {
         assert_eq!(ast.language(), Language::TSX);
         assert_eq!(ast.source_type(), SourceType::Module);
         assert!(ast.program().source_type.is_module());
+    }
+
+    fn transform_input(ast: Ast) -> TransformInput {
+        let (ast_json, code, map, _language): (
+            String,
+            String,
+            Option<JsSourceMap>,
+            String,
+        ) = ast_hook_parts(&ast);
+
+        TransformInput { ast, ast_json, code, map }
+    }
+
+    fn unchanged_output(input: &TransformInput) -> JsTransformOutput {
+        JsTransformOutput {
+            ast_json: input.ast_json.clone(),
+            code: input.code.clone(),
+            map: input.map.clone(),
+            language: Some(input.ast.language().as_str().to_string()),
+        }
+    }
+
+    fn replaced_output(
+        ast: &Ast,
+        language: Option<&str>,
+    ) -> JsTransformOutput {
+        let (ast_json, code, map, _language): (
+            String,
+            String,
+            Option<JsSourceMap>,
+            String,
+        ) = ast_hook_parts(ast);
+
+        JsTransformOutput {
+            ast_json,
+            code,
+            map,
+            language: language.map(ToString::to_string),
+        }
+    }
+
+    #[test]
+    fn test_transform_hook_set_requires_both_hooks() {
+        assert!(
+            TransformHookSet { transform: true, batch: true }.is_batchable()
+        );
+        assert!(
+            !TransformHookSet { transform: true, batch: false }.is_batchable()
+        );
+        assert!(
+            !TransformHookSet { transform: false, batch: true }.is_batchable()
+        );
+        assert!(
+            !TransformHookSet { transform: false, batch: false }.is_batchable()
+        );
+    }
+
+    #[test]
+    fn test_finish_transform_output_identical_returns_none() {
+        let input: TransformInput =
+            transform_input(fixture_ast("const a = 1;"));
+
+        let replaced: JsTransformOutput = unchanged_output(&input);
+
+        let output: Option<TransformOutput> =
+            finish_transform_output(replaced, input)
+                .expect("an identical pass-through read-back succeeds");
+
+        assert!(output.is_none());
+    }
+
+    #[test]
+    fn test_finish_transform_output_changed_json_rebuilds_some() {
+        let input: TransformInput =
+            transform_input(fixture_ast("const a = 1;"));
+
+        let replacement: Ast = fixture_ast("\"changed\";");
+
+        let replaced: JsTransformOutput = replaced_output(&replacement, None);
+
+        let output: TransformOutput = finish_transform_output(replaced, input)
+            .expect("a changed read-back succeeds")
+            .expect("a changed read-back returns Some");
+
+        let generated: String =
+            oxc::codegen::Codegen::new().build(output.ast.program()).code;
+
+        assert!(generated.contains("changed"), "{generated}");
+    }
+
+    #[test]
+    fn test_finish_transform_output_absent_language_falls_back_to_input() {
+        let input: TransformInput = transform_input(parse_fixture(
+            "const a: number = 1;",
+            Language::TS,
+        ));
+
+        let replacement: Ast =
+            parse_fixture("const a: number = 2;", Language::TS);
+
+        let replaced: JsTransformOutput = replaced_output(&replacement, None);
+
+        let output: TransformOutput = finish_transform_output(replaced, input)
+            .expect("the read-back succeeds")
+            .expect("the change returns Some");
+
+        assert_eq!(output.ast.language(), Language::TS);
+    }
+
+    #[test]
+    fn test_finish_transform_output_language_only_change_rebuilds() {
+        let input: TransformInput =
+            transform_input(parse_fixture("const a = 1;", Language::JS));
+
+        let mut replaced: JsTransformOutput = unchanged_output(&input);
+
+        replaced.language = Some(String::from("jsx"));
+
+        let output: TransformOutput = finish_transform_output(replaced, input)
+            .expect("the read-back succeeds")
+            .expect("a grammar-only change is not a no-op");
+
+        assert_eq!(output.ast.language(), Language::JSX);
+    }
+
+    #[test]
+    fn test_finish_transform_output_identical_comments_reanchors() {
+        let input: TransformInput = transform_input(parse_fixture(
+            "const a = 1; // tail\n",
+            Language::JS,
+        ));
+
+        let replaced: JsTransformOutput = unchanged_output(&input);
+
+        let output: TransformOutput = finish_transform_output(replaced, input)
+            .expect("the re-anchor succeeds")
+            .expect("comments that need re-anchoring return Some");
+
+        assert_eq!(output.ast.program().comments.len(), 1);
+        assert!(output.ast.program().comments[0].is_leading());
+    }
+
+    #[test]
+    fn test_finish_transform_batch_output_no_member_change_returns_none() {
+        let input: TransformInput =
+            transform_input(fixture_ast("const a = 1;"));
+
+        let output: Option<TransformOutput> =
+            finish_transform_batch_output(None, input)
+                .expect("a batch with no accepted change succeeds");
+
+        assert!(output.is_none());
+    }
+
+    #[test]
+    fn test_finish_transform_batch_output_pass_through_returns_none() {
+        let input: TransformInput =
+            transform_input(fixture_ast("const a = 1;"));
+
+        let replaced: JsTransformOutput = unchanged_output(&input);
+
+        let output: Option<TransformOutput> =
+            finish_transform_batch_output(Some(replaced), input)
+                .expect("a pass-through batch read-back succeeds");
+
+        assert!(output.is_none());
+    }
+
+    #[test]
+    fn test_finish_transform_batch_output_changed_member_rebuilds_code_map_and_comments()
+     {
+        let input: TransformInput =
+            transform_input(fixture_ast("const a = 1;"));
+
+        let replacement: Ast = fixture_ast("const changed = 1; // tail\n");
+
+        let map: SourceMap = sample_map();
+
+        let mut replaced: JsTransformOutput =
+            replaced_output(&replacement, None);
+
+        replaced.map = Some(source_map_to_js(&map));
+
+        let output: TransformOutput =
+            finish_transform_batch_output(Some(replaced), input)
+                .expect("a changed batch read-back succeeds")
+                .expect("a changed batch member returns Some");
+
+        let generated: String =
+            oxc::codegen::Codegen::new().build(output.ast.program()).code;
+
+        assert!(generated.contains("changed"), "{generated}");
+        assert_eq!(output.ast.program().comments.len(), 1);
+
+        let output_map: &SourceMap =
+            output.ast.map().expect("the returned map is rebuilt");
+
+        assert_eq!(output_map.to_json_string(), map.to_json_string());
     }
 
     fn parse_output(

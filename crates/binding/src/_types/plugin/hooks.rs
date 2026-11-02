@@ -1,4 +1,4 @@
-use napi::bindgen_prelude::{JsValue, Object, ToNapiValue};
+use napi::bindgen_prelude::{Array, JsValue, Object, ToNapiValue};
 use napi::sys;
 
 use telarel_common::{
@@ -11,6 +11,7 @@ use crate::_types::ast::{JsAst, JsAstInput};
 use crate::_types::options::JsOutputOptions;
 use crate::_types::path::path_label;
 use crate::_types::sourcemap::JsSourceMap;
+use crate::plugin::hooks::SharedRef;
 use crate::plugin::options::{language_label, source_type_label};
 
 /// Args for the `transform`, `prepare`, and `finalize` hooks. The payload
@@ -46,6 +47,59 @@ impl ToNapiValue for JsAstArgs {
         }
 
         object.set("language", val.language)?;
+
+        Ok(JsValue::raw(&object))
+    }
+}
+
+/// Args for a batched `transform` run. The payload carries the carried AST,
+/// its source text, map, and grammar, plus the raw plugin descriptors for the
+/// run in settled order. The JS batch runner invokes each descriptor's
+/// `__telarelTransformEntry` in order over the same JS AST.
+pub struct JsTransformBatchArgs {
+    /// AST serialized as JSON for the JS bridge.
+    pub ast_json: String,
+    /// Source text the program's spans anchor to.
+    pub code: String,
+    /// The input source map, when the AST carries one.
+    pub map: Option<JsSourceMap>,
+    /// The grammar of the AST, as its canonical label.
+    pub language: String,
+    /// The raw plugin descriptors for this run, in driver order.
+    pub plugins: Vec<SharedRef>,
+}
+
+impl ToNapiValue for JsTransformBatchArgs {
+    unsafe fn to_napi_value(
+        env: sys::napi_env,
+        val: Self,
+    ) -> napi::Result<sys::napi_value> {
+        let env: napi::Env = napi::Env::from_raw(env);
+
+        let mut object: Object<'static> = Object::new(&env)?;
+
+        object.set("astJson", val.ast_json)?;
+
+        object.set("code", val.code)?;
+
+        if let Some(map) = val.map {
+            object.set("map", map)?;
+        }
+
+        object.set("language", val.language)?;
+
+        let descriptors: Vec<Object<'static>> = val
+            .plugins
+            .iter()
+            .map(|reference| reference.get(&env))
+            .collect::<napi::Result<Vec<Object<'static>>>>()?;
+
+        let plugins: Array<'_> = Array::from_vec(
+            &env,
+            descriptors.iter().collect::<Vec<&Object<'static>>>(),
+        )?;
+
+        object.set("plugins", plugins)?;
 
         Ok(JsValue::raw(&object))
     }

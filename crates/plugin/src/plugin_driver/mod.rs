@@ -201,6 +201,10 @@ impl PluginDriver {
 
     /// Run the `transform` hook chain. `Some` carries the last returned AST,
     /// and `None` means the AST is unchanged.
+    ///
+    /// Maximal contiguous runs of batchable plugins share one batch call. A
+    /// run of one, or a run whose batch construction fails, uses the
+    /// single-hook path.
     pub async fn transform(
         &self,
         ctx: &PluginContext<'_>,
@@ -276,14 +280,22 @@ mod tests {
         SourceType, parse_ast,
     };
 
-    use crate::_types::context::ModuleInfo;
+    use crate::_types::context::{CommonPluginContext, ModuleInfo};
+    use crate::_types::hooks::finalize::FinalizeArgs;
+    use crate::_types::hooks::generate::{GenerateArgs, GenerateReturn};
     use crate::_types::hooks::notify::NotifyReturn;
-    use crate::_types::hooks::parse::ParseArgs;
+    use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
+    use crate::_types::hooks::parse::{ParseArgs, ParseReturn};
+    use crate::_types::hooks::prepare::PrepareArgs;
+    use crate::_types::hooks::start::StartArgs;
     use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
     use crate::_types::order::{PluginHookMeta, PluginOrder};
     use crate::SharedPluginable;
     use crate::plugin::Plugin;
-    use crate::plugin::pluginable::Pluginable;
+    use crate::plugin::pluginable::{
+        HookFuture, Pluginable, SharedTransformBatch, TransformBatch,
+        TransformBatchable,
+    };
 
     use super::*;
 
@@ -337,6 +349,14 @@ mod tests {
 
     fn code_result(code: &str) -> CodeResult {
         CodeResult { code: code.to_string(), map: None }
+    }
+
+    fn probe_counts(probe: &BatchProbe) -> (usize, usize, usize) {
+        (
+            *probe.single_calls.lock().unwrap(),
+            *probe.make_calls.lock().unwrap(),
+            *probe.batch_calls.lock().unwrap(),
+        )
     }
 
     #[derive(Debug)]
@@ -524,6 +544,241 @@ mod tests {
                     "const a = 1;",
                     oxc::span::Span::new(6, 7),
                 ))
+            }
+        }
+    }
+
+    /// Counters shared by the test-only batchable plugins.
+    #[derive(Default)]
+    struct BatchProbe {
+        single_calls: Mutex<usize>,
+        make_calls: Mutex<usize>,
+        batch_calls: Mutex<usize>,
+        members: Mutex<Vec<Vec<String>>>,
+    }
+
+    /// The outcome a test batch reports.
+    #[derive(Debug, Clone, Copy)]
+    enum BatchOutcome {
+        None,
+        Replace(&'static str),
+        Fail,
+    }
+
+    /// A test-only transform batch with a fixed outcome.
+    struct ProbeBatch {
+        outcome: BatchOutcome,
+        probe: Arc<BatchProbe>,
+    }
+
+    impl TransformBatch for ProbeBatch {
+        fn call_transform<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: TransformArgs,
+        ) -> HookFuture<'a, TransformReturn> {
+            Box::pin(async move {
+                *self.probe.batch_calls.lock().unwrap() += 1;
+
+                match self.outcome {
+                    | BatchOutcome::None => Ok(None),
+                    | BatchOutcome::Replace(code) => {
+                        let ast: Ast = parse_fixture(code)?;
+
+                        Ok(Some(crate::TransformOutput { ast }))
+                    },
+                    | BatchOutcome::Fail => Err(PluginError::new("batch-boom")),
+                }
+            })
+        }
+    }
+
+    /// A test-only plugin that implements [`Pluginable`] directly, so it can
+    /// carry the internal transform batch capability.
+    struct BatchableTestPlugin {
+        name: &'static str,
+        meta: Option<PluginHookMeta>,
+        batchable: bool,
+        batch: Option<SharedTransformBatch>,
+        probe: Arc<BatchProbe>,
+    }
+
+    impl BatchProbe {
+        fn batchable(
+            self: &Arc<Self>,
+            name: &'static str,
+            meta: Option<PluginHookMeta>,
+            outcome: BatchOutcome,
+        ) -> SharedPluginable {
+            Arc::new(BatchableTestPlugin {
+                name,
+                meta,
+                batchable: true,
+                batch: Some(Arc::new(ProbeBatch {
+                    outcome,
+                    probe: Arc::clone(self),
+                })),
+                probe: Arc::clone(self),
+            })
+        }
+
+        fn batchable_without_batch(
+            self: &Arc<Self>,
+            name: &'static str,
+            meta: Option<PluginHookMeta>,
+        ) -> SharedPluginable {
+            Arc::new(BatchableTestPlugin {
+                name,
+                meta,
+                batchable: true,
+                batch: None,
+                probe: Arc::clone(self),
+            })
+        }
+
+        fn plain(
+            self: &Arc<Self>,
+            name: &'static str,
+            meta: Option<PluginHookMeta>,
+        ) -> SharedPluginable {
+            Arc::new(BatchableTestPlugin {
+                name,
+                meta,
+                batchable: false,
+                batch: None,
+                probe: Arc::clone(self),
+            })
+        }
+    }
+
+    impl Pluginable for BatchableTestPlugin {
+        fn call_name(&self) -> Cow<'static, str> {
+            self.name.into()
+        }
+
+        fn call_register_hook_usage(&self) -> HookUsage {
+            HookUsage::Transform
+        }
+
+        fn call_options<'a>(
+            &'a self,
+            _ctx: &'a CommonPluginContext,
+            _args: &'a OptionsArgs,
+        ) -> HookFuture<'a, OptionsReturn> {
+            Box::pin(async { Ok(None) })
+        }
+
+        fn call_start<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a StartArgs,
+        ) -> HookFuture<'a, NotifyReturn> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn call_parse<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: ParseArgs<'a>,
+        ) -> HookFuture<'a, ParseReturn> {
+            Box::pin(async { Ok(None) })
+        }
+
+        fn call_prepare<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: PrepareArgs<'a>,
+        ) -> HookFuture<'a, NotifyReturn> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn call_transform<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: TransformArgs,
+        ) -> HookFuture<'a, TransformReturn> {
+            Box::pin(async move {
+                *self.probe.single_calls.lock().unwrap() += 1;
+
+                Ok(None)
+            })
+        }
+
+        fn call_transform_meta(&self) -> Option<PluginHookMeta> {
+            self.meta
+        }
+
+        fn as_transform_batchable(&self) -> Option<&dyn TransformBatchable> {
+            if self.batchable { Some(self) } else { None }
+        }
+
+        fn call_finalize<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: FinalizeArgs<'a>,
+        ) -> HookFuture<'a, NotifyReturn> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn call_generate<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: GenerateArgs<'a>,
+        ) -> HookFuture<'a, GenerateReturn> {
+            Box::pin(async { Ok(None) })
+        }
+
+        fn call_end<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: &'a crate::EndArgs,
+        ) -> HookFuture<'a, NotifyReturn> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    impl TransformBatchable for BatchableTestPlugin {
+        fn make_transform_batch(
+            &self,
+            members: &[&dyn Pluginable],
+        ) -> Option<SharedTransformBatch> {
+            *self.probe.make_calls.lock().unwrap() += 1;
+
+            self.probe.members.lock().unwrap().push(
+                members
+                    .iter()
+                    .map(|member| member.call_name().into_owned())
+                    .collect(),
+            );
+
+            self.batch.clone()
+        }
+    }
+
+    /// Records the source text of the AST it observes and reports no change.
+    #[derive(Debug)]
+    struct ObserveCarriedAstPlugin {
+        seen: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Plugin for ObserveCarriedAstPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "observe-carried-ast".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Transform
+        }
+
+        fn transform<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            args: TransformArgs,
+        ) -> impl Future<Output = TransformReturn> + Send + 'a {
+            async move {
+                self.seen.lock().unwrap().push(args.ast.source().to_string());
+
+                Ok(None)
             }
         }
     }
@@ -1863,6 +2118,271 @@ mod tests {
 
         assert_eq!(driver.usage(), HookUsage::Prepare);
         assert!(recorded.is_empty());
+    }
+
+    fn probe_members(probe: &BatchProbe) -> Vec<Vec<String>> {
+        probe.members.lock().unwrap().clone()
+    }
+
+    fn member_names(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_batches_adjacent_batchable_plugins() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let probe: Arc<BatchProbe> = Arc::new(BatchProbe::default());
+
+        let plugins: Vec<SharedPluginable> = vec![
+            probe.batchable("one", None, BatchOutcome::None),
+            probe.batchable("two", None, BatchOutcome::None),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let output: Option<crate::TransformOutput> = driver
+            .transform(&ctx, TransformArgs { ast: test_ast() })
+            .await
+            .unwrap();
+
+        assert!(output.is_none());
+        assert_eq!(probe_counts(&probe), (0, 1, 1));
+        assert_eq!(probe_members(&probe), vec![member_names(&["one", "two"])]);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_non_batchable_plugin_splits_batch_runs() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let probe: Arc<BatchProbe> = Arc::new(BatchProbe::default());
+
+        let plugins: Vec<SharedPluginable> = vec![
+            probe.batchable("a1", None, BatchOutcome::None),
+            probe.batchable("a2", None, BatchOutcome::None),
+            probe.plain("middle", None),
+            probe.batchable("b1", None, BatchOutcome::None),
+            probe.batchable("b2", None, BatchOutcome::None),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let output: Option<crate::TransformOutput> = driver
+            .transform(&ctx, TransformArgs { ast: test_ast() })
+            .await
+            .unwrap();
+
+        assert!(output.is_none());
+        assert_eq!(probe_counts(&probe), (1, 2, 2));
+        assert_eq!(
+            probe_members(&probe),
+            vec![member_names(&["a1", "a2"]), member_names(&["b1", "b2"])]
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_batch_none_keeps_carried_ast() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let probe: Arc<BatchProbe> = Arc::new(BatchProbe::default());
+
+        let ast: Ast = test_ast();
+
+        let plugins: Vec<SharedPluginable> = vec![
+            probe.batchable("one", None, BatchOutcome::None),
+            probe.batchable("two", None, BatchOutcome::None),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let output: Option<crate::TransformOutput> = driver
+            .transform(&ctx, TransformArgs { ast: ast.clone() })
+            .await
+            .unwrap();
+
+        assert!(output.is_none());
+        assert_eq!(probe_counts(&probe), (0, 1, 1));
+
+        let out: String =
+            oxc::codegen::Codegen::new().build(ast.program()).code;
+
+        assert!(out.contains("console.log"), "{out}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_batch_none_after_change_keeps_result() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let probe: Arc<BatchProbe> = Arc::new(BatchProbe::default());
+
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            probe.batchable(
+                "change-1",
+                None,
+                BatchOutcome::Replace("\"accepted\";"),
+            ),
+            probe.batchable("change-2", None, BatchOutcome::None),
+            probe.plain("separator", None),
+            probe.batchable("none-1", None, BatchOutcome::None),
+            probe.batchable("none-2", None, BatchOutcome::None),
+            Plugin::new_shared(ObserveCarriedAstPlugin {
+                seen: Arc::clone(&seen),
+            }),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let output: crate::TransformOutput = driver
+            .transform(&ctx, TransformArgs { ast: test_ast() })
+            .await
+            .unwrap()
+            .expect("the earlier accepted change remains");
+
+        let out: String =
+            oxc::codegen::Codegen::new().build(output.ast.program()).code;
+
+        assert!(out.contains("accepted"), "{out}");
+        assert!(!out.contains("console.log"), "{out}");
+
+        assert_eq!(*seen.lock().unwrap(), vec![String::from("\"accepted\";")]);
+
+        assert_eq!(
+            probe_members(&probe),
+            vec![
+                member_names(&["change-1", "change-2"]),
+                member_names(&["none-1", "none-2"])
+            ]
+        );
+
+        assert_eq!(probe_counts(&probe), (1, 2, 2));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_batch_some_replaces_carried_ast() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let probe: Arc<BatchProbe> = Arc::new(BatchProbe::default());
+
+        let plugins: Vec<SharedPluginable> = vec![
+            probe.batchable("one", None, BatchOutcome::Replace("\"batched\";")),
+            probe.batchable("two", None, BatchOutcome::None),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let output: crate::TransformOutput = driver
+            .transform(&ctx, TransformArgs { ast: test_ast() })
+            .await
+            .unwrap()
+            .expect("the batch changed the program");
+
+        let out: String =
+            oxc::codegen::Codegen::new().build(output.ast.program()).code;
+
+        assert!(out.contains("batched"), "{out}");
+        assert!(!out.contains("console.log"), "{out}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_batch_error_propagates() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let probe: Arc<BatchProbe> = Arc::new(BatchProbe::default());
+
+        let plugins: Vec<SharedPluginable> = vec![
+            probe.batchable("one", None, BatchOutcome::Fail),
+            probe.batchable("two", None, BatchOutcome::None),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let error: PluginError = driver
+            .transform(&ctx, TransformArgs { ast: test_ast() })
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.message(), "batch-boom");
+        assert_eq!(probe_counts(&probe), (0, 1, 1));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_batch_preserves_pre_normal_post_order() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let probe: Arc<BatchProbe> = Arc::new(BatchProbe::default());
+
+        let pre: PluginHookMeta =
+            PluginHookMeta { order: Some(PluginOrder::Pre) };
+
+        let post: PluginHookMeta =
+            PluginHookMeta { order: Some(PluginOrder::Post) };
+
+        let plugins: Vec<SharedPluginable> = vec![
+            probe.batchable("normal", None, BatchOutcome::None),
+            probe.batchable("post", Some(post), BatchOutcome::None),
+            probe.batchable("pre", Some(pre), BatchOutcome::None),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        driver
+            .transform(&ctx, TransformArgs { ast: test_ast() })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            probe_members(&probe),
+            vec![member_names(&["pre", "normal", "post"])]
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_single_batchable_uses_single_path() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let probe: Arc<BatchProbe> = Arc::new(BatchProbe::default());
+
+        let plugins: Vec<SharedPluginable> = vec![probe.batchable(
+            "only",
+            None,
+            BatchOutcome::Replace("\"ignored\";"),
+        )];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let output: Option<crate::TransformOutput> = driver
+            .transform(&ctx, TransformArgs { ast: test_ast() })
+            .await
+            .unwrap();
+
+        assert!(output.is_none());
+        assert_eq!(probe_counts(&probe), (1, 0, 0));
+        assert!(probe_members(&probe).is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_batch_none_builder_falls_back_to_single_calls() {
+        let ctx: PluginContext<'_> = make_plugin_ctx();
+
+        let probe: Arc<BatchProbe> = Arc::new(BatchProbe::default());
+
+        let plugins: Vec<SharedPluginable> = vec![
+            probe.batchable_without_batch("one", None),
+            probe.batchable_without_batch("two", None),
+        ];
+
+        let driver: PluginDriver = PluginDriver::new(plugins);
+
+        let output: Option<crate::TransformOutput> = driver
+            .transform(&ctx, TransformArgs { ast: test_ast() })
+            .await
+            .unwrap();
+
+        assert!(output.is_none());
+        assert_eq!(probe_counts(&probe), (2, 1, 0));
+        assert_eq!(probe_members(&probe), vec![member_names(&["one", "two"])]);
     }
 
     #[tokio::test(flavor = "current_thread")]
