@@ -10,6 +10,7 @@ use telarel_common::{
 
 use crate::comment;
 use crate::comment::adapted::NormalizedComment;
+use crate::comment::raw::RawComment;
 use crate::plugin::spans::{SpanMap, spans_to_bytes, spans_to_utf16};
 
 fn debug_assert_source_anchored(ast: &Ast) {
@@ -50,8 +51,7 @@ pub fn ast_from_json(
 ) -> anyhow::Result<Ast> {
     let spans: SpanMap = SpanMap::new(&source);
 
-    let comments: Vec<NormalizedComment> =
-        comment::extract(program_json, &source, &spans)?;
+    let raw_comments: Vec<RawComment> = comment::extract_raw(program_json)?;
 
     let bytes: Cow<'_, str> = if spans.is_ascii() {
         Cow::Borrowed(program_json)
@@ -81,11 +81,21 @@ pub fn ast_from_json(
     )
     .map_err(anyhow::Error::from)?;
 
-    if !comments.is_empty() {
+    if !raw_comments.is_empty() {
+        let (comments, starts): (Vec<NormalizedComment>, Vec<u32>) =
+            comment::normalize_from_program(
+                &raw_comments,
+                ast.program(),
+                ast.source(),
+                &spans,
+            )?;
+
         ast.with_mut(
             |allocator: &oxc::allocator::Allocator,
              program: &mut oxc::ast::ast::Program<'_>| {
-                comment::attach(allocator, program, comments);
+                comment::attach_with_starts(
+                    allocator, program, comments, &starts,
+                );
             },
         );
     }
@@ -165,6 +175,107 @@ mod tests {
         );
 
         let _json: String = ast_to_estree_json(&ast);
+    }
+
+    #[test]
+    fn test_ast_from_json_ignores_a_comments_string_value() {
+        let source: &str = "// a";
+        let json: &str = concat!(
+            r#"{"type":"Program","sourceType":"script","body":[],"#,
+            r#""note":"comments","start":0,"end":4}"#
+        );
+
+        let ast: Ast = ast_from_json(
+            json,
+            Arc::from(source),
+            None,
+            source_type_for_generate(Language::JS),
+        )
+        .expect("the program decodes without a comments key");
+
+        assert!(ast.program().comments.is_empty());
+    }
+
+    #[test]
+    fn test_ast_from_json_ignores_a_nested_comments_key() {
+        let source: &str = "// a";
+        let json: &str = concat!(
+            r#"{"type":"Program","sourceType":"script","start":0,"end":4,"#,
+            r#""body":[{"type":"ExpressionStatement","start":0,"end":4,"#,
+            r#""expression":{"type":"Literal","start":0,"end":4,"value":1}}],"#,
+            r#""extra":{"comments":[]}}"#
+        );
+
+        let ast: Ast = ast_from_json(
+            json,
+            Arc::from(source),
+            None,
+            source_type_for_generate(Language::JS),
+        )
+        .expect("a nested comments key is not the top-level comments array");
+
+        assert!(ast.program().comments.is_empty());
+    }
+
+    #[test]
+    fn test_ast_from_json_finds_a_non_first_comments_key() {
+        let source: &str = "// a";
+        let json: &str = concat!(
+            r#"{"type":"Program","sourceType":"script","body":[],"#,
+            r#""start":0,"end":4,"comments":[{"type":"Line","#,
+            r#""start":0,"end":4}]}"#
+        );
+
+        let ast: Ast = ast_from_json(
+            json,
+            Arc::from(source),
+            None,
+            source_type_for_generate(Language::JS),
+        )
+        .expect("the non-first comments key is found");
+
+        assert_eq!(ast.program().comments.len(), 1);
+        assert_eq!(ast.program().comments[0].span.start, 0);
+        assert_eq!(ast.program().comments[0].span.end, 4);
+    }
+
+    #[test]
+    fn test_ast_from_json_finds_an_escaped_comments_key() {
+        let source: &str = "// a";
+        let json: &str = concat!(
+            r#"{"type":"Program","sourceType":"script","body":[],"#,
+            r#""start":0,"end":4,"\u0063omments":[{"type":"Line","#,
+            r#""start":0,"end":4}]}"#
+        );
+
+        let ast: Ast = ast_from_json(
+            json,
+            Arc::from(source),
+            None,
+            source_type_for_generate(Language::JS),
+        )
+        .expect("the escaped comments key is found");
+
+        assert_eq!(ast.program().comments.len(), 1);
+    }
+
+    #[test]
+    fn test_ast_from_json_reports_a_comment_index_error() {
+        let source: &str = "// a";
+        let json: &str = concat!(
+            r#"{"type":"Program","sourceType":"script","body":[],"#,
+            r#""start":0,"end":4,"comments":[5]}"#
+        );
+
+        let error: anyhow::Error = ast_from_json(
+            json,
+            Arc::from(source),
+            None,
+            source_type_for_generate(Language::JS),
+        )
+        .expect_err("the comment entry is not an object");
+
+        assert!(error.to_string().starts_with("comment 0: "), "{error}");
     }
 
     #[test]

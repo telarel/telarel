@@ -152,10 +152,12 @@
 
 #### Fixes
 
+- change inbound comment extraction to recognize a top-level `comments` key written with JSON Unicode escapes
 - change the JS plugin bridge to reuse the adapter for the same plugin object so unchanged plugins do not re-run `options`
 
 #### Performance
 
+- change comment extraction to parse only the top-level `comments` array and anchor against the rebuilt program, so inbound program JSON is parsed once
 - change the ESTree span bridge to skip the span table and JSON span rewrite for ASCII sources
 
 ### Telarel (Crate)

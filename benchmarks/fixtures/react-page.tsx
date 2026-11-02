@@ -1,5 +1,12 @@
 import * as React from "react";
 
+// The types below describe the data that the page threads through every
+// component. They are intentionally verbose so the fixture exercises a real
+// TypeScript surface.
+
+/**
+ * A single task in the benchmark task list.
+ */
 type Task = {
     id: string;
     title: string;
@@ -7,59 +14,92 @@ type Task = {
     priority: "low" | "normal" | "high";
 };
 
+/**
+ * The visibility filter applied to the task list.
+ */
 type Filter = "all" | "active" | "done";
 
+/**
+ * The tone that selects a badge colour.
+ */
 type BadgeTone = "neutral" | "positive" | "warning" | "critical";
 
+/**
+ * The visual variant of a button.
+ */
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
+/**
+ * Props for the small status badge.
+ */
 type BadgeProps = {
     label: string;
     tone: BadgeTone;
 };
 
+/**
+ * Props for the shared button.
+ */
 type ButtonProps = {
     label: string;
     variant: ButtonVariant;
     onClick: () => void;
 };
 
+/**
+ * Props for the text input.
+ */
 type TextInputProps = {
     value: string;
     placeholder: string;
     onChange: (value: string) => void;
 };
 
+/* A row renders one task and its controls. */
 type TaskRowProps = {
     task: Task;
     onToggle: (id: string) => void;
 };
 
+/* A list renders the visible rows. */
 type TaskListProps = {
     tasks: Array<Task>;
     onToggle: (id: string) => void;
 };
 
+/* The summary line above the ring. */
 type SummaryProps = {
     total: number;
     remaining: number;
 };
 
+/**
+ * Props for the page header.
+ */
 type HeaderProps = {
     title: string;
     subtitle: string;
 };
 
+/**
+ * Props for the empty state.
+ */
 type EmptyStateProps = {
     message: string;
     onReset: () => void;
 };
 
+/**
+ * Props for the filter toolbar.
+ */
 type ToolbarProps = {
     filter: Filter;
     onFilterChange: (filter: Filter) => void;
 };
 
+/**
+ * Props for the footer note.
+ */
 type FooterProps = {
     note: string;
 };
@@ -70,31 +110,42 @@ type TaskDetailProps = {
     onToggle: (id: string) => void;
 };
 
+// The filter order is shared by the toolbar and the list.
 const filters: Array<Filter> = ["all", "active", "done"];
 
+// Priority labels are stable, so the table lives at module scope.
 const priorityLabels: Record<Task["priority"], string> = {
     low: "low",
     normal: "normal",
     high: "high",
 };
 
+/**
+ * Map a task priority to a badge tone.
+ */
 const toneForPriority = (priority: Task["priority"]): BadgeTone => {
     if (priority === "high") return "critical";
     if (priority === "normal") return "neutral";
     return "warning";
 };
 
+/**
+ * Render a single badge.
+ */
 const Badge = ({ label, tone }: BadgeProps): React.JSX.Element => {
     const className: string = `badge badge-${tone}`;
     return <span className={className}>{label}</span>;
 };
 
+/**
+ * Render the shared button.
+ */
 const Button = ({
     label,
     variant,
     onClick,
 }: ButtonProps): React.JSX.Element => {
-    const className: string = `btn btn-${variant}`;
+    const className: string = `btn btn-${variant}`; // derived from the variant
 
     return (
         <button
@@ -107,6 +158,9 @@ const Button = ({
     );
 };
 
+/**
+ * Render the controlled text input.
+ */
 const TextInput = ({
     value,
     placeholder,
@@ -116,6 +170,7 @@ const TextInput = ({
         onChange(next);
     };
 
+    /* The input is controlled so the draft state stays in the page. */
     return (
         <input
             type={"text"}
@@ -127,11 +182,15 @@ const TextInput = ({
     );
 };
 
+/**
+ * Render one task row.
+ */
 const TaskRow = ({ task, onToggle }: TaskRowProps): React.JSX.Element => {
     const handleToggle = (): void => {
         onToggle(task.id);
     };
 
+    // The status label is derived, never stored.
     const statusLabel: string = task.done ? "done" : "open";
 
     return (
@@ -163,6 +222,9 @@ const TaskRow = ({ task, onToggle }: TaskRowProps): React.JSX.Element => {
     );
 };
 
+/**
+ * Render the visible task rows.
+ */
 const TaskList = ({ tasks, onToggle }: TaskListProps): React.JSX.Element => {
     const rows = tasks.map((task): React.JSX.Element => (
         <TaskRow
@@ -179,7 +241,11 @@ const TaskList = ({ tasks, onToggle }: TaskListProps): React.JSX.Element => {
     );
 };
 
+/**
+ * Render the summary line.
+ */
 const Summary = ({ total, remaining }: SummaryProps): React.JSX.Element => {
+    // Memoizing keeps the label stable across unrelated page renders.
     const message = React.useMemo((): string => {
         const prefix: string = remaining === 0 ? "All caught up" : "Work left";
         return `${prefix}: ${remaining} of ${total}`;
@@ -200,6 +266,9 @@ const Summary = ({ total, remaining }: SummaryProps): React.JSX.Element => {
     );
 };
 
+/**
+ * Render the page header.
+ */
 const Header = ({ title, subtitle }: HeaderProps): React.JSX.Element => {
     return (
         <header className={"page-header"}>
@@ -218,6 +287,9 @@ const Header = ({ title, subtitle }: HeaderProps): React.JSX.Element => {
     );
 };
 
+/**
+ * Render the empty state.
+ */
 const EmptyState = ({
     message,
     onReset,
@@ -234,6 +306,9 @@ const EmptyState = ({
     );
 };
 
+/**
+ * Render the filter toolbar.
+ */
 const Toolbar = ({
     filter,
     onFilterChange,
@@ -254,6 +329,9 @@ const Toolbar = ({
     );
 };
 
+/**
+ * Render the completion ring.
+ */
 const StatsRing = ({ total, remaining }: SummaryProps): React.JSX.Element => {
     const completedCount: number = total - remaining;
 
@@ -292,6 +370,9 @@ const StatsRing = ({ total, remaining }: SummaryProps): React.JSX.Element => {
     );
 };
 
+/**
+ * Render the optional task detail panel.
+ */
 const TaskDetail = ({
     task,
     onClose,
@@ -352,6 +433,9 @@ const TaskDetail = ({
     );
 };
 
+/**
+ * Render the page footer.
+ */
 const Footer = ({ note }: FooterProps): React.JSX.Element => {
     return (
         <footer className={"page-footer"}>
@@ -365,6 +449,7 @@ const Footer = ({ note }: FooterProps): React.JSX.Element => {
     );
 };
 
+// The seed data is fixed so repeated compiles render the same page.
 const seedTasks: Array<Task> = [
     { id: "t-1", title: "Read the changelog", done: false, priority: "low" },
     { id: "t-2", title: "Write release notes", done: true, priority: "normal" },
@@ -381,7 +466,11 @@ const seedTasks: Array<Task> = [
     { id: "t-8", title: "Archive old issues", done: true, priority: "low" },
 ];
 
+/**
+ * Render the benchmark task page.
+ */
 const Page = (): React.JSX.Element => {
+    // Local state covers the task list, the filter, the draft, and selection.
     const [tasks, setTasks] = React.useState<Array<Task>>(seedTasks);
     const [filter, setFilter] = React.useState<Filter>("all");
     const [draft, setDraft] = React.useState<string>("");
@@ -397,8 +486,9 @@ const Page = (): React.JSX.Element => {
             );
         },
         [setTasks],
-    );
+    ); // toggle by id keeps the callback stable
 
+    // Filter and draft changes are simple pass-through callbacks.
     const handleFilterChange = React.useCallback(
         (next: Filter): void => {
             setFilter(next);
@@ -418,6 +508,7 @@ const Page = (): React.JSX.Element => {
 
         if (title.length === 0) return void 0;
 
+        /* The id combines the new length with the title length. */
         const nextTask: Task = {
             id: `t-${tasks.length + 1}-${title.length}`,
             title,
@@ -430,6 +521,7 @@ const Page = (): React.JSX.Element => {
         setDraft("");
     }, [draft, tasks, setTasks]);
 
+    // Resetting restores the seed list and every piece of local state.
     const handleReset = React.useCallback((): void => {
         setTasks(seedTasks);
         setFilter("all");
@@ -463,11 +555,12 @@ const Page = (): React.JSX.Element => {
 
     const remaining = React.useMemo((): number => {
         return tasks.filter((task) => !task.done).length;
-    }, [tasks]);
+    }, [tasks]); // counts every open task
 
     const emptyMessage: string =
         filter === "done" ? "Nothing completed yet." : "No active tasks.";
 
+    // The page composes each section from the derived state above.
     return (
         <div className={"page"}>
             <Header
@@ -546,3 +639,5 @@ const Page = (): React.JSX.Element => {
 };
 
 export default Page;
+
+// End of the benchmark fixture.

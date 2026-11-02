@@ -9,6 +9,7 @@ pub mod adapters;
 pub mod classify;
 pub mod normalize;
 pub mod raw;
+mod scan;
 
 use oxc::ast::ast::{
     Comment, CommentContent, CommentPosition, Directive, Program, Statement,
@@ -115,9 +116,12 @@ fn needs_reanchor(program: &Program<'_>) -> bool {
     })
 }
 
-fn reanchor(program: &mut Program<'_>) -> bool {
-    let starts: Vec<u32> = printable_starts(program);
-
+/// Re-anchor comments to `starts`, which must be sorted and include the
+/// program start and end.
+fn reanchor_with_starts(
+    program: &mut Program<'_>,
+    starts: &[u32],
+) -> bool {
     let fallback: u32 = program.span.end;
 
     let mut changed: bool = false;
@@ -132,7 +136,7 @@ fn reanchor(program: &mut Program<'_>) -> bool {
             changed = true;
         }
 
-        if is_safe_anchor(comment, &starts) {
+        if is_safe_anchor(comment, starts) {
             continue;
         }
 
@@ -150,40 +154,9 @@ fn reanchor(program: &mut Program<'_>) -> bool {
     changed
 }
 
-fn collect_anchors(
-    value: &serde_json::Value,
-    top_level: bool,
-    anchors: &mut Vec<u32>,
-) {
-    match value {
-        | serde_json::Value::Object(object) => {
-            // oxc codegen looks comments up by the start of the construct it
-            // prints (plus the program end added by the caller). A span end is
-            // not a print site, so re-anchoring to one would drop the comment.
-            let anchor: Option<u32> = object
-                .get("start")
-                .and_then(serde_json::Value::as_u64)
-                .and_then(|number: u64| u32::try_from(number).ok());
-
-            if let Some(anchor) = anchor {
-                anchors.push(anchor);
-            }
-
-            for (key, child) in object {
-                if top_level && key == "comments" {
-                    continue;
-                }
-
-                collect_anchors(child, false, anchors);
-            }
-        },
-        | serde_json::Value::Array(items) => {
-            for item in items {
-                collect_anchors(item, false, anchors);
-            }
-        },
-        | _ => {},
-    }
+fn reanchor(program: &mut Program<'_>) -> bool {
+    let starts: Vec<u32> = printable_starts(program);
+    reanchor_with_starts(program, &starts)
 }
 
 fn json_comment<'a>(
@@ -245,70 +218,90 @@ pub fn inject(
     format!("{prefix}\"comments\":{array}{separator}{body}")
 }
 
-/// Extract and normalize `program.comments` from program JSON with UTF-16
-/// spans.
+/// Whether `program_json` can contain a top-level `comments` key.
 ///
-/// An absent `comments` key means no comments. A present non-array value is
-/// an error, as is an entry that cannot be normalized.
-pub fn extract(
-    program_json: &str,
-    source: &str,
-    spans: &SpanMap,
-) -> anyhow::Result<Vec<NormalizedComment>> {
-    if !program_json.contains("\"comments\"") {
+/// The literal check keeps the no-comments path cheap. An escaped key such as
+/// `"\u0063omments"` cannot match the literal, so any Unicode escape also
+/// triggers the scanner. ESTree output escapes keys rarely.
+fn may_contain_comments(program_json: &str) -> bool {
+    program_json.contains("\"comments\"") || program_json.contains("\\u")
+}
+
+/// Deserialize `program.comments` from program JSON with UTF-16 spans.
+///
+/// Only the top-level `comments` value is parsed. An absent key means no
+/// comments. A present non-array value is an error. An entry that cannot be
+/// deserialized is also an error.
+pub fn extract_raw(program_json: &str) -> anyhow::Result<Vec<RawComment>> {
+    if !may_contain_comments(program_json) {
         return Ok(Vec::new());
     }
 
-    let value: serde_json::Value = serde_json::from_str(program_json)?;
-
-    let Some(comments) = value.get("comments") else {
+    let Some(slice): Option<&str> = scan::comments_value(program_json)? else {
         return Ok(Vec::new());
     };
 
-    let array: &Vec<serde_json::Value> = comments
-        .as_array()
-        .ok_or_else(|| anyhow::anyhow!("comments must be an array"))?;
+    let values: Vec<serde_json::Value> = serde_json::from_str(slice)?;
 
-    let mut raw: Vec<RawComment> = Vec::with_capacity(array.len());
+    let mut raw: Vec<RawComment> = Vec::with_capacity(values.len());
 
-    for (index, comment) in array.iter().enumerate() {
-        let parsed: RawComment = serde_json::from_value(comment.clone())
-            .map_err(|error: serde_json::Error| {
+    for (index, value) in values.into_iter().enumerate() {
+        let parsed: RawComment = serde_json::from_value(value).map_err(
+            |error: serde_json::Error| {
                 anyhow::anyhow!("comment {index}: {error}")
-            })?;
+            },
+        )?;
 
         raw.push(parsed);
     }
 
-    let mut anchors: Vec<u32> = Vec::new();
+    Ok(raw)
+}
 
-    collect_anchors(&value, true, &mut anchors);
+/// Normalize raw comments against the rebuilt program's printable starts.
+///
+/// Returns the normalized comments and the byte starts they were anchored to,
+/// so the caller can re-anchor without walking the program again.
+pub fn normalize_from_program(
+    raw: &[RawComment],
+    program: &Program<'_>,
+    source: &str,
+    spans: &SpanMap,
+) -> anyhow::Result<(Vec<NormalizedComment>, Vec<u32>)> {
+    let starts: Vec<u32> = printable_starts(program);
 
-    anchors.push(0);
-    anchors.push(spans.byte_to_utf16(source.len()) as u32);
+    let mut anchors: Vec<u32> = starts
+        .iter()
+        .map(|start: &u32| spans.byte_to_utf16(*start as usize) as u32)
+        .collect();
+
     anchors.sort_unstable();
     anchors.dedup();
 
     let ctx: CommentContext<'_> =
         CommentContext { source, spans, anchors: &anchors };
 
-    normalize(&raw, &ctx)
+    let comments: Vec<NormalizedComment> = normalize(raw, &ctx)?;
+
+    Ok((comments, starts))
 }
 
-/// Attach normalized comments to a program using the program's own arena.
+/// Replace `program.comments` with `comments` and re-anchor them to `starts`.
 ///
-/// The function demotes pure and no-side-effects annotations to normal
-/// comments, because oxc diverts them to a stash that the ESTree codec cannot
-/// restore.
-pub fn attach<'a>(
+/// `starts` must be sorted and include the program start and end. Duplicate
+/// starts are tolerated.
+pub fn attach_with_starts<'a>(
     allocator: &'a oxc::allocator::Allocator,
     program: &mut Program<'a>,
     comments: Vec<NormalizedComment>,
+    starts: &[u32],
 ) {
     let mut arena: oxc::allocator::Vec<'a, Comment> =
         oxc::allocator::Vec::with_capacity_in(comments.len(), &allocator);
 
     for mut normalized in comments {
+        // oxc diverts these annotations to a stash that the ESTree codec
+        // cannot restore, so they become normal comments.
         if matches!(
             normalized.content,
             CommentContent::Pure | CommentContent::NoSideEffects
@@ -329,7 +322,7 @@ pub fn attach<'a>(
 
     program.comments = arena;
 
-    reanchor(program);
+    reanchor_with_starts(program, starts);
 }
 
 /// Re-anchor comments on an existing AST to the starts that codegen prints at.
@@ -364,8 +357,22 @@ mod tests {
     use crate::ast::estree::{ast_from_program, ast_to_estree_json};
     use crate::ast::resolve::source_type_for_generate;
     use crate::comment::adapted::NormalizedComment;
-    use crate::comment::{attach, extract, inject, reanchor_ast};
+    use crate::comment::raw::RawComment;
+    use crate::comment::{
+        attach_with_starts, extract_raw, inject, normalize_from_program,
+        printable_starts, reanchor_ast,
+    };
     use crate::plugin::spans::SpanMap;
+
+    fn attach<'a>(
+        allocator: &'a oxc::allocator::Allocator,
+        program: &mut oxc::ast::ast::Program<'a>,
+        comments: Vec<NormalizedComment>,
+    ) {
+        let starts: Vec<u32> = printable_starts(program);
+
+        attach_with_starts(allocator, program, comments, &starts);
+    }
 
     fn fixture_ast(source: &str) -> Ast {
         parse_ast(
@@ -419,6 +426,10 @@ mod tests {
             GenerateCodeOptions { file: String::from("index.js") },
         )
         .code
+    }
+
+    fn raw_comments(program_json: &str) -> Vec<RawComment> {
+        extract_raw(program_json).expect("the raw comments extract")
     }
 
     fn empty_ast(source: &str) -> Ast {
@@ -554,9 +565,10 @@ mod tests {
 
         assert!(outbound.starts_with("{\"comments\":"), "{outbound}");
 
-        let comments: Vec<NormalizedComment> =
-            extract(&outbound, source, &spans)
-                .expect("the outbound comments extract");
+        let raw: Vec<RawComment> = raw_comments(&outbound);
+        let (comments, _starts): (Vec<NormalizedComment>, Vec<u32>) =
+            normalize_from_program(&raw, ast.program(), source, &spans)
+                .expect("the outbound comments normalize");
 
         assert_eq!(comments.len(), 6);
 
@@ -592,9 +604,18 @@ mod tests {
             String::from(r#"{"type":"Program"}"#),
         );
 
-        let reextracted: Vec<NormalizedComment> =
-            extract(&second, source, &second_spans)
-                .expect("the reinjected comments extract");
+        let reextracted: Vec<NormalizedComment> = {
+            let raw: Vec<RawComment> = raw_comments(&second);
+
+            normalize_from_program(
+                &raw,
+                rebuilt.program(),
+                source,
+                &second_spans,
+            )
+            .expect("the reinjected comments normalize")
+            .0
+        };
 
         assert_eq!(reextracted.len(), comments.len());
 
@@ -607,84 +628,120 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_empty_array_is_empty() {
-        let spans: SpanMap = SpanMap::new("");
-
-        let comments: Vec<NormalizedComment> = extract(
+    fn test_extract_raw_empty_array_is_empty() {
+        let comments: Vec<RawComment> = raw_comments(
             r#"{"type":"Program","comments":[],"start":0,"end":0}"#,
-            "",
-            &spans,
-        )
-        .expect("an empty array extracts");
+        );
 
         assert!(comments.is_empty());
     }
 
     #[test]
-    fn test_extract_without_a_comments_key_skips_parsing() {
-        let spans: SpanMap = SpanMap::new("");
-
-        let comments: Vec<NormalizedComment> =
-            extract("not json", "", &spans).expect("no key means no parse");
+    fn test_extract_raw_without_a_comments_key_skips_parsing() {
+        let comments: Vec<RawComment> = raw_comments("not json");
 
         assert!(comments.is_empty());
     }
 
     #[test]
-    fn test_extract_rejects_a_non_array() {
-        let spans: SpanMap = SpanMap::new("");
-        let error: anyhow::Error =
-            extract(r#"{"type":"Program","comments":null}"#, "", &spans)
-                .expect_err("null is not an array");
+    fn test_extract_raw_ignores_a_comments_string_value() {
+        let comments: Vec<RawComment> = raw_comments(
+            r#"{"type":"Program","note":"comments","body":[],"start":0,"end":0}"#,
+        );
 
-        assert_eq!(error.to_string(), "comments must be an array");
+        assert!(comments.is_empty());
     }
 
     #[test]
-    fn test_extract_indexes_deserialization_errors() {
-        let source: &str = "// a";
-        let spans: SpanMap = SpanMap::new(source);
+    fn test_extract_raw_ignores_a_nested_comments_key() {
+        let comments: Vec<RawComment> = raw_comments(concat!(
+            r#"{"type":"Program","body":[{"type":"ExpressionStatement","#,
+            r#""extra":{"comments":[]}}],"start":0,"end":0}"#
+        ));
 
+        assert!(comments.is_empty());
+    }
+
+    #[test]
+    fn test_extract_raw_finds_a_non_first_comments_key() {
+        let comments: Vec<RawComment> = raw_comments(concat!(
+            r#"{"type":"Program","body":[],"start":0,"end":4,"#,
+            r#""comments":[{"type":"Line","start":0,"end":4}]}"#
+        ));
+
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].start, Some(0));
+        assert_eq!(comments[0].end, Some(4));
+    }
+
+    #[test]
+    fn test_extract_raw_recognizes_an_escaped_comments_key() {
+        let comments: Vec<RawComment> = raw_comments(concat!(
+            r#"{"type":"Program","body":[],"start":0,"end":4,"#,
+            r#""\u0063omments":[{"type":"Line","start":0,"end":4}]}"#
+        ));
+
+        assert_eq!(comments.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_raw_rejects_a_non_array() {
+        for json in [
+            r#"{"type":"Program","comments":null}"#,
+            r#"{"type":"Program","comments":{}}"#,
+            r#"{"type":"Program","comments":"x"}"#,
+            r#"{"type":"Program","comments":5}"#,
+        ] {
+            let error: anyhow::Error = extract_raw(json)
+                .expect_err("a non-array comments value errors");
+
+            assert_eq!(error.to_string(), "comments must be an array");
+        }
+    }
+
+    #[test]
+    fn test_extract_raw_indexes_deserialization_errors() {
         let error: anyhow::Error =
-            extract(r#"{"type":"Program","comments":[5]}"#, source, &spans)
+            extract_raw(r#"{"type":"Program","comments":[5]}"#)
                 .expect_err("the entry is not an object");
 
         assert!(error.to_string().starts_with("comment 0: "), "{error}");
 
         let error: anyhow::Error =
-            extract(r#"{"type":"Program","comments":[{},5]}"#, source, &spans)
+            extract_raw(r#"{"type":"Program","comments":[{},5]}"#)
                 .expect_err("the second entry is not an object");
 
         assert!(error.to_string().starts_with("comment 1: "), "{error}");
     }
 
     #[test]
-    fn test_extract_reports_a_missing_span() {
+    fn test_normalize_from_program_reports_a_missing_span() {
         let source: &str = "// a";
         let spans: SpanMap = SpanMap::new(source);
-        let error: anyhow::Error = extract(
-            r#"{"type":"Program","comments":[{"type":"Line"}]}"#,
-            source,
-            &spans,
-        )
-        .expect_err("the entry has no span");
+        let raw: Vec<RawComment> =
+            raw_comments(r#"{"type":"Program","comments":[{"type":"Line"}]}"#);
+        let ast: Ast = empty_ast(source);
+
+        let error: anyhow::Error =
+            normalize_from_program(&raw, ast.program(), source, &spans)
+                .expect_err("the entry has no span");
 
         assert_eq!(error.to_string(), "comment 0: missing start/end");
     }
 
     #[test]
-    fn test_extract_indexes_normalization_errors_with_offsets() {
+    fn test_normalize_from_program_indexes_errors_with_offsets() {
         let source: &str = "// a";
         let spans: SpanMap = SpanMap::new(source);
-        let error: anyhow::Error = extract(
-            concat!(
-                r#"{"type":"Program","comments":[{"type":"Line","start":0,"#,
-                r#""end":4,"position":"middle"}]}"#
-            ),
-            source,
-            &spans,
-        )
-        .expect_err("the position label is invalid");
+        let raw: Vec<RawComment> = raw_comments(concat!(
+            r#"{"type":"Program","comments":[{"type":"Line","start":0,"#,
+            r#""end":4,"position":"middle"}]}"#
+        ));
+        let ast: Ast = empty_ast(source);
+
+        let error: anyhow::Error =
+            normalize_from_program(&raw, ast.program(), source, &spans)
+                .expect_err("the position label is invalid");
 
         assert_eq!(
             error.to_string(),
@@ -693,21 +750,56 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_anchors_to_node_starts() {
-        let source: &str = "// a\nconst x = 1;";
+    fn test_normalize_from_program_uses_printable_starts() {
+        let source: &str = "function f(/* c */ a) { g(); }";
         let spans: SpanMap = SpanMap::new(source);
-        let comments: Vec<NormalizedComment> = extract(
-            concat!(
-                r#"{"type":"Program","start":0,"end":16,"body":["#,
-                r#"{"type":"VariableDeclaration","start":5,"end":16}],"#,
-                r#""comments":[{"type":"Line","start":0,"end":4}]}"#
-            ),
-            source,
-            &spans,
-        )
-        .expect("the comment extracts");
+        let raw: Vec<RawComment> = raw_comments(
+            r#"{"type":"Program","comments":[{"type":"Block","start":11,"end":18}]}"#,
+        );
+        let ast: Ast = fixture_ast(source);
+
+        let (comments, _starts): (Vec<NormalizedComment>, Vec<u32>) =
+            normalize_from_program(&raw, ast.program(), source, &spans)
+                .expect("the comment normalizes");
+
+        let statement_start: u32 =
+            source.find("g();").expect("the statement is present") as u32;
 
         assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].attached_to, statement_start);
+    }
+
+    #[test]
+    fn test_normalize_from_program_rederives_stale_attached_to() {
+        let source: &str = "// a\nconst x = 1;";
+        let spans: SpanMap = SpanMap::new(source);
+        let raw: Vec<RawComment> = raw_comments(concat!(
+            r#"{"type":"Program","comments":[{"type":"Line","start":0,"#,
+            r#""end":4,"attachedTo":99}]}"#
+        ));
+        let ast: Ast = fixture_ast(source);
+
+        let (comments, _starts): (Vec<NormalizedComment>, Vec<u32>) =
+            normalize_from_program(&raw, ast.program(), source, &spans)
+                .expect("the stale anchor is re-derived");
+
+        assert_eq!(comments[0].attached_to, 5);
+    }
+
+    #[test]
+    fn test_normalize_from_program_honors_printable_attached_to() {
+        let source: &str = "// a\nconst x = 1;";
+        let spans: SpanMap = SpanMap::new(source);
+        let raw: Vec<RawComment> = raw_comments(concat!(
+            r#"{"type":"Program","comments":[{"type":"Line","start":0,"#,
+            r#""end":4,"attachedTo":5}]}"#
+        ));
+        let ast: Ast = fixture_ast(source);
+
+        let (comments, _starts): (Vec<NormalizedComment>, Vec<u32>) =
+            normalize_from_program(&raw, ast.program(), source, &spans)
+                .expect("the explicit anchor is accepted");
+
         assert_eq!(comments[0].attached_to, 5);
     }
 
@@ -715,14 +807,14 @@ mod tests {
     fn test_extract_ignores_a_supplied_value() {
         let source: &str = "// real";
         let spans: SpanMap = SpanMap::new(source);
-        let comments: Vec<NormalizedComment> = extract(
+        let raw: Vec<RawComment> = raw_comments(
             r#"{"type":"Program","sourceType":"script","body":[],"start":0,"end":7,"comments":[{"type":"Line","value":"bogus","start":0,"end":7}]}"#,
-            source,
-            &spans,
-        )
-        .expect("the comment extracts");
-
+        );
         let mut rebuilt: Ast = empty_ast(source);
+
+        let (comments, _starts): (Vec<NormalizedComment>, Vec<u32>) =
+            normalize_from_program(&raw, rebuilt.program(), source, &spans)
+                .expect("the comment normalizes");
 
         rebuilt.with_mut(
             |allocator: &oxc::allocator::Allocator,

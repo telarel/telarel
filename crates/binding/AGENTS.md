@@ -44,8 +44,9 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 
 - The adapters are `CANONICAL` and `START_END`, folded with the first `Some` value per field. `CANONICAL` owns `attachedTo`, `position`, `newlines`, and `content`. It makes sure that the `position` and `content` labels are valid. `START_END` supplies the `start`/`end` pair. Normalization overwrites the requested position with leading.
 - `inject` splices the top-level `comments` array into the outbound program JSON with UTF-16 spans as its first key. It returns the JSON unchanged when there are no comments.
-- `extract` reads comments from inbound program JSON with UTF-16 spans. It collects anchors from object `start` fields while it skips the top-level `comments` value. It normalizes the entries against those anchors.
-- `attach` allocates the normalized comments into the rebuilt program's arena. It re-anchors them to the starts that codegen queries: the program start and end, directives, and non-block, non-empty statements.
+- `extract_raw` scans inbound program JSON for the top-level `comments` value and deserializes only that array. It runs before span conversion because comment spans are UTF-16. The literal prefilter keeps the no-comments path cheap. Any `\u` escape also triggers the scan, so the scan recognizes an escaped key.
+- `normalize_from_program` derives anchors from the rebuilt program's printable starts and converts those starts with `SpanMap`. It then normalizes the entries. `attach_with_starts` allocates the normalized comments into the rebuilt program's arena and re-anchors them to those same starts.
+- The re-anchor starts are the program start and end, directives, and non-block, non-empty statements. The same attach step also demotes pure and no-side-effects annotations to normal comments.
 - The transform pass-through re-anchors the existing AST in place. It leaves pure and no-side-effects annotations to the oxc annotation stash.
 - Normalization errors identify the comment index and, when known, its offsets. Deserialization errors identify only the index. A non-array top-level `comments` value names the field.
 
