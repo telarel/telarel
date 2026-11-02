@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use oxc::span::SourceType as OxcSourceType;
@@ -32,7 +33,8 @@ pub fn ast_to_estree_json(ast: &Ast) -> String {
 
     let spans: SpanMap = SpanMap::new(ast.source());
 
-    let json: String = spans_to_utf16(&spans, &json);
+    let json: String =
+        if spans.is_ascii() { json } else { spans_to_utf16(&spans, &json) };
 
     comment::inject(ast, &spans, json)
 }
@@ -51,7 +53,11 @@ pub fn ast_from_json(
     let comments: Vec<NormalizedComment> =
         comment::extract(program_json, &source, &spans)?;
 
-    let bytes: String = spans_to_bytes(&spans, program_json);
+    let bytes: Cow<'_, str> = if spans.is_ascii() {
+        Cow::Borrowed(program_json)
+    } else {
+        Cow::Owned(spans_to_bytes(&spans, program_json))
+    };
 
     let language: Language = from_oxc_language(source_type);
 
@@ -64,7 +70,7 @@ pub fn ast_from_json(
         map,
         |source_text: &str, allocator: &oxc::allocator::Allocator| {
             oxc_estree_codec::json_to_program(
-                &bytes,
+                bytes.as_ref(),
                 oxc_estree_codec::JsonToProgramOptions {
                     allocator,
                     source_type,
@@ -346,6 +352,76 @@ mod tests {
         .code;
 
         assert!(generated.contains("/*#__PURE__*/"), "{generated}");
+    }
+
+    #[test]
+    fn test_comments_survive_an_ascii_json_round_trip() {
+        let code: &str = "// line\nconst a = 1;\n/* block */\n";
+        let ast: Ast = parse_fixture(code, Language::JS);
+
+        assert!(SpanMap::new(ast.source()).is_ascii());
+
+        let json: String = ast_to_estree_json(&ast);
+
+        assert!(json.starts_with("{\"comments\":"), "{json}");
+
+        let rebuilt: Ast = ast_from_json(
+            &json,
+            Arc::from(code),
+            None,
+            ast.program().source_type,
+        )
+        .expect("read-back succeeds");
+
+        assert_eq!(rebuilt.program().comments.len(), 2);
+
+        let generated: String = generate_code(
+            &rebuilt,
+            GenerateCodeOptions { file: String::from("index.ts") },
+        )
+        .code;
+
+        for expected in ["// line", "/* block */"] {
+            assert!(
+                generated.contains(expected),
+                "{expected} missing from {generated}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_comments_survive_a_non_ascii_json_round_trip() {
+        let code: &str = "// µ\nconst a = \"日\"; /* 😀 */\n";
+        let ast: Ast = parse_fixture(code, Language::JS);
+
+        assert!(!SpanMap::new(ast.source()).is_ascii());
+
+        let json: String = ast_to_estree_json(&ast);
+
+        assert!(json.starts_with("{\"comments\":"), "{json}");
+
+        let rebuilt: Ast = ast_from_json(
+            &json,
+            Arc::from(code),
+            None,
+            ast.program().source_type,
+        )
+        .expect("read-back succeeds");
+
+        assert_eq!(rebuilt.program().comments.len(), 2);
+
+        let generated: String = generate_code(
+            &rebuilt,
+            GenerateCodeOptions { file: String::from("index.ts") },
+        )
+        .code;
+
+        for expected in ["// µ", "/* 😀 */"] {
+            assert!(
+                generated.contains(expected),
+                "{expected} missing from {generated}"
+            );
+        }
     }
 
     #[test]

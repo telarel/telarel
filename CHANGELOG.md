@@ -154,6 +154,10 @@
 
 - change the JS plugin bridge to reuse the adapter for the same plugin object so unchanged plugins do not re-run `options`
 
+#### Performance
+
+- change the ESTree span bridge to skip the span table and JSON span rewrite for ASCII sources
+
 ### Telarel (Crate)
 
 #### Breaking

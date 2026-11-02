@@ -15,6 +15,7 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 | `src/plugin/build.rs`      | `bridge_plugin` / `to_plugins`, builtin dispatch by `__builtin`        |
 | `src/plugin/hooks.rs`      | TSFN payloads, `RefList`, `SharedRef`, `SharedStr`                     |
 | `src/plugin/pluginable.rs` | `JsPlugin`: hook scanning, TSFN calls, marshalling                     |
+| `src/plugin/spans.rs`      | UTF-8 to UTF-16 span conversion with an ASCII identity fast path       |
 | `src/tasks/function.rs`    | `FunctionTask`, the worker closure, and reference release in `finally` |
 | `src/tasks/mod.rs`         | Tokio current-thread runtime per thread and `block_on_compile`         |
 
@@ -33,7 +34,7 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 - The `parse` and `generate` hooks use the normalized object `{ program, code, map?, language? }`. Outbound `JsAst.language` is required. Inbound `JsAstInput.language` is optional.
 - The `prepare`, `transform`, and `finalize` hooks use a JSON-serialized ESTree string (`astJson`) through `oxc_estree_codec`. The payload also carries the AST's `code`, optional `map`, and language label. The JS wrapper rebuilds the normalized `Ast` from those fields. Transform read-back uses the returned language when present, otherwise the input AST's language. `program.sourceType` owns the module kind.
 - A `parse` hook replacement keeps the grammar authority of the parser options. The returned AST's language does not override them.
-- Before it builds the UTF-16 `SpanMap`, outbound ESTree serialization debug-asserts that `Program::source_text` is still content-equal to `Ast::source`.
+- Before it builds the UTF-16 `SpanMap`, outbound ESTree serialization debug-asserts that `Program::source_text` is still content-equal to `Ast::source`. ASCII sources use identity offsets and skip the table and JSON rewrite; non-ASCII sources still build and rewrite through the table.
 - The bridge compares the JS `transform` return in its UTF-16 JSON form plus `code`, `map`, and language. An unchanged AST short-circuits to `None` unless its comments need re-anchoring, in which case the sanitized AST returns as `Some`. Comments live inside `programJson` and flow through `ast_from_json`, and rebuilt programs anchor to the returned `code` and `map`. A returned transform AST owns its comments. `comments: []` or an absent key drops them.
 - No `Ast` or pipeline future crosses the JS and worker boundary. The worker closure produces the JS-facing value directly.
 

@@ -1,13 +1,24 @@
-/// A boundary table for one source text.
+/// UTF-8 byte to UTF-16 code-unit conversion for one source text.
 ///
-/// It maps UTF-8 byte offsets to UTF-16 code-unit offsets, so the Rust `Span`
-/// type keeps its byte semantics across the JS bridge.
+/// ASCII sources store no boundary table because every valid offset already
+/// matches in both encodings. Other sources keep the boundary table so the
+/// Rust `Span` type keeps its byte semantics across the JS bridge.
 pub struct SpanMap {
     boundaries: Vec<(usize, usize)>,
+    ascii: bool,
+    source_len: usize,
 }
 
 impl SpanMap {
     pub fn new(source: &str) -> Self {
+        if source.is_ascii() {
+            return Self {
+                boundaries: Vec::new(),
+                ascii: true,
+                source_len: source.len(),
+            };
+        }
+
         let mut boundaries: Vec<(usize, usize)> =
             Vec::with_capacity(source.len() + 1);
 
@@ -20,7 +31,12 @@ impl SpanMap {
             boundaries.push((byte_index + character.len_utf8(), utf16_len));
         }
 
-        Self { boundaries }
+        Self { boundaries, ascii: false, source_len: source.len() }
+    }
+
+    /// Returns whether spans need no conversion because the source is ASCII.
+    pub fn is_ascii(&self) -> bool {
+        self.ascii
     }
 
     /// Out-of-range offsets clamp to the nearest boundary and never panic.
@@ -28,6 +44,10 @@ impl SpanMap {
         &self,
         byte_offset: usize,
     ) -> usize {
+        if self.ascii {
+            return byte_offset.min(self.source_len);
+        }
+
         let index: usize =
             self.boundaries.partition_point(|(byte, _)| *byte <= byte_offset);
 
@@ -40,6 +60,10 @@ impl SpanMap {
         &self,
         utf16_index: usize,
     ) -> usize {
+        if self.ascii {
+            return utf16_index.min(self.source_len);
+        }
+
         let index: usize =
             self.boundaries.partition_point(|(_, utf16)| *utf16 <= utf16_index);
 
@@ -151,9 +175,21 @@ mod tests {
     use super::{SpanMap, spans_to_bytes, spans_to_utf16};
 
     #[test]
+    fn test_new_ascii_skips_the_boundary_table() {
+        let source: &str = "const a = 1;";
+        let map: SpanMap = SpanMap::new(source);
+
+        assert!(map.is_ascii());
+        assert!(map.boundaries.is_empty());
+        assert_eq!(map.source_len, source.len());
+    }
+
+    #[test]
     fn test_byte_to_utf16_ascii_is_identity() {
         let source: &str = "const a = 1;";
         let map: SpanMap = SpanMap::new(source);
+
+        assert!(map.is_ascii());
 
         for offset in 0..=source.len() {
             assert_eq!(map.byte_to_utf16(offset), offset);
@@ -162,10 +198,25 @@ mod tests {
     }
 
     #[test]
+    fn test_ascii_offsets_clamp_to_source_end() {
+        let source: &str = "const a = 1;";
+        let map: SpanMap = SpanMap::new(source);
+
+        let out_of_range: [usize; 3] =
+            [source.len() + 1, source.len() * 2, usize::MAX];
+
+        for offset in out_of_range {
+            assert_eq!(map.byte_to_utf16(offset), source.len());
+            assert_eq!(map.utf16_to_byte(offset), source.len());
+        }
+    }
+
+    #[test]
     fn test_byte_to_utf16_micro_is_two_bytes_one_unit() {
         let source: &str = "const µ = 1;";
         let map: SpanMap = SpanMap::new(source);
 
+        assert!(!map.is_ascii());
         assert_eq!(map.byte_to_utf16(0), 0);
         assert_eq!(map.byte_to_utf16(6), 6);
         assert_eq!(map.byte_to_utf16(8), 7);
@@ -177,6 +228,7 @@ mod tests {
         let source: &str = "日";
         let map: SpanMap = SpanMap::new(source);
 
+        assert!(!map.is_ascii());
         assert_eq!(map.byte_to_utf16(0), 0);
         assert_eq!(map.byte_to_utf16(source.len()), 1);
         assert_eq!(map.utf16_to_byte(1), 3);
@@ -187,6 +239,7 @@ mod tests {
         let source: &str = "😀";
         let map: SpanMap = SpanMap::new(source);
 
+        assert!(!map.is_ascii());
         assert_eq!(map.byte_to_utf16(0), 0);
         assert_eq!(map.byte_to_utf16(source.len()), 2);
         assert_eq!(map.utf16_to_byte(2), 4);
@@ -197,6 +250,8 @@ mod tests {
         let source: &str = "a日😀b";
         let map: SpanMap = SpanMap::new(source);
         let byte_boundaries: [usize; 5] = [0, 1, 4, 8, 9];
+
+        assert!(!map.is_ascii());
 
         for boundary in byte_boundaries {
             let utf16: usize = map.byte_to_utf16(boundary);
@@ -216,6 +271,23 @@ mod tests {
 
         assert_eq!(map.byte_to_utf16(usize::MAX), 5);
         assert_eq!(map.utf16_to_byte(usize::MAX), 9);
+    }
+
+    #[test]
+    fn test_spans_are_identity_for_ascii_json() {
+        let source: &str = "const a = [1, 2];";
+        let map: SpanMap = SpanMap::new(source);
+        let json: &str = concat!(
+            r#"{"type":"Program","start":0,"end":16,"body":["#,
+            r#"{"type":"VariableDeclaration","start":0,"end":16,"#,
+            r#""declarations":[{"type":"VariableDeclarator","start":6,"#,
+            r#""end":15,"id":{"type":"Identifier","start":6,"end":7}}]}],"#,
+            r#""range":[0,16]}"#
+        );
+
+        assert!(map.is_ascii());
+        assert_eq!(spans_to_utf16(&map, json), json);
+        assert_eq!(spans_to_bytes(&map, json), json);
     }
 
     #[test]
