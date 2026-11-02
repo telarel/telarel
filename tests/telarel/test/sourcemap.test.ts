@@ -8,6 +8,7 @@ import type {
     OptionsArgs,
     ParseArgs,
     PluginContext,
+    Program,
     SourceMap,
     SourceMapOptions,
     StartArgs,
@@ -328,9 +329,12 @@ describe("sourcemap", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: ProgramFixture = args.ast
-                            .program as unknown as ProgramFixture;
-                        renameRootIdentifier({ program, name: "renamed" });
+                        args.ast.mutate((program: Program): void => {
+                            renameRootIdentifier({
+                                program: program as unknown as ProgramFixture,
+                                name: "renamed",
+                            });
+                        });
 
                         return { ast: args.ast };
                     },
@@ -523,9 +527,12 @@ describe("sourcemap", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: ProgramFixture = args.ast
-                            .program as unknown as ProgramFixture;
-                        renameRootIdentifier({ program, name: "renamed-long" });
+                        args.ast.mutate((program: Program): void => {
+                            renameRootIdentifier({
+                                program: program as unknown as ProgramFixture,
+                                name: "renamed-long",
+                            });
+                        });
 
                         return { ast: args.ast };
                     },

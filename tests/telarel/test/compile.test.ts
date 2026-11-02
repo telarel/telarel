@@ -8,6 +8,7 @@ import type {
     Plugin,
     PluginContext,
     PrepareArgs,
+    Program,
     ResolvedOptions,
     SourceType,
     StartArgs,
@@ -942,7 +943,12 @@ describe("compile", (): void => {
                 ) {
                     throw new Error("expected the first rename to be visible");
                 }
-                renameRootIdentifier({ program, name });
+                args.ast.mutate((mutable: Program): void => {
+                    renameRootIdentifier({
+                        program: mutable as unknown as ProgramFixture,
+                        name,
+                    });
+                });
 
                 return { ast: args.ast };
             };
@@ -1114,18 +1120,22 @@ describe("compile", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: InitFixture = args.ast
-                            .program as unknown as InitFixture;
-                        const statement:
-                            | InitFixture["body"][number]
-                            | undefined = program.body[0];
-                        const declaration:
-                            | InitFixture["body"][number]["declarations"][number]
-                            | undefined = statement?.declarations[0];
-                        if (declaration?.init.type !== "Literal") {
-                            throw new Error("expected a literal initializer");
-                        }
-                        declaration.init.value = "new";
+                        args.ast.mutate((program: Program): void => {
+                            const fixture: InitFixture =
+                                program as unknown as InitFixture;
+                            const statement:
+                                | InitFixture["body"][number]
+                                | undefined = fixture.body[0];
+                            const declaration:
+                                | InitFixture["body"][number]["declarations"][number]
+                                | undefined = statement?.declarations[0];
+                            if (declaration?.init.type !== "Literal") {
+                                throw new Error(
+                                    "expected a literal initializer",
+                                );
+                            }
+                            declaration.init.value = "new";
+                        });
 
                         return { ast: args.ast };
                     },
@@ -1151,9 +1161,12 @@ describe("compile", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: ProgramFixture = args.ast
-                            .program as unknown as ProgramFixture;
-                        renameRootIdentifier({ program, name: "mutated" });
+                        args.ast.mutate((program: Program): void => {
+                            renameRootIdentifier({
+                                program: program as unknown as ProgramFixture,
+                                name: "mutated",
+                            });
+                        });
 
                         return { ast: args.ast };
                     },
@@ -1365,9 +1378,13 @@ describe("compile", (): void => {
                             _ctx: PluginContext,
                             args: TransformArgs,
                         ): TransformResult => {
-                            const program: ProgramFixture = args.ast
-                                .program as unknown as ProgramFixture;
-                            renameRootIdentifier({ program, name: "renamed" });
+                            args.ast.mutate((program: Program): void => {
+                                renameRootIdentifier({
+                                    program:
+                                        program as unknown as ProgramFixture,
+                                    name: "renamed",
+                                });
+                            });
 
                             return { ast: args.ast };
                         },
@@ -1658,9 +1675,12 @@ describe("compile", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: ProgramFixture = args.ast
-                            .program as unknown as ProgramFixture;
-                        renameRootIdentifier({ program, name: "renamed" });
+                        args.ast.mutate((program: Program): void => {
+                            renameRootIdentifier({
+                                program: program as unknown as ProgramFixture,
+                                name: "renamed",
+                            });
+                        });
 
                         return { ast: args.ast };
                     },

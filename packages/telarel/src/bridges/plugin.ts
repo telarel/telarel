@@ -32,7 +32,7 @@ import type { NormalizedHook } from "#/bridges/normalize-hook";
 
 import { parseLanguage, parseSourceType } from "#/bridges/grammar";
 import { normalizeHook } from "#/bridges/normalize-hook";
-import { Ast } from "#/classes/ast";
+import { AST_MUTATED, Ast } from "#/classes/ast";
 import { getPluginErrorMessage, PluginError } from "#/errors/plugin";
 import { encodePluginError } from "#/errors/transport/plugin-error";
 
@@ -594,28 +594,40 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
             rawArgs: RawAstArgs,
         ): Promise<RawTransformOutput | null> =>
             await runHook(async (): Promise<RawTransformOutput | null> => {
+                const ast: Ast = toAst({ args: rawArgs });
+
                 const result: TransformResult | null | void =
-                    await transformHandler(toContext(rawCtx), {
-                        ast: toAst({ args: rawArgs }),
-                    });
+                    await transformHandler(toContext(rawCtx), { ast });
 
                 if (result === null || result === void 0) {
                     return null;
                 }
 
-                const ast: AstInput = toAstInput(requireAst(result.ast));
+                const next: Ast = requireAst(result.ast);
 
-                const output: RawTransformAstOutput = {
-                    astJson: JSON.stringify(ast.program),
-                    code: ast.code,
-                };
-
-                if (ast.map !== void 0) {
-                    output.map = ast.map;
+                // A pass-through must still reach Rust's equality path when
+                // comments need re-anchoring to parser positions.
+                if (
+                    next === ast &&
+                    !ast[AST_MUTATED]() &&
+                    (ast.program.comments?.length ?? 0) === 0
+                ) {
+                    return null;
                 }
 
-                if (typeof ast.language === "string") {
-                    output.language = ast.language;
+                const astInput: AstInput = toAstInput(next);
+
+                const output: RawTransformAstOutput = {
+                    astJson: JSON.stringify(astInput.program),
+                    code: astInput.code,
+                };
+
+                if (astInput.map !== void 0) {
+                    output.map = astInput.map;
+                }
+
+                if (typeof astInput.language === "string") {
+                    output.language = astInput.language;
                 }
 
                 return output;

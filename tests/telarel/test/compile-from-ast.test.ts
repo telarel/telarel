@@ -6,6 +6,7 @@ import type {
     CompileFromAstOptions,
     GenerateArgs,
     PluginContext,
+    Program,
     SourceType,
     TransformArgs,
     TransformResult,
@@ -42,9 +43,12 @@ describe("compileFromAst", (): void => {
                         _ctx: PluginContext,
                         args: TransformArgs,
                     ): TransformResult => {
-                        const program: ProgramFixture = args.ast
-                            .program as unknown as ProgramFixture;
-                        renameRootIdentifier({ program, name: "renamed" });
+                        args.ast.mutate((program: Program): void => {
+                            renameRootIdentifier({
+                                program: program as unknown as ProgramFixture,
+                                name: "renamed",
+                            });
+                        });
 
                         return { ast: args.ast };
                     },

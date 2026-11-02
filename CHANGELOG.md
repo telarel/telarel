@@ -246,6 +246,10 @@
 - change the `options` hook to omit unset `cwd` and `file` instead of sending empty strings
 - change external input source-map lookup to ignore `?query`/`#hash` suffixes in `file`
 
+#### Performance
+
+- change the transform bridge to skip AST JSON serialization when a transform returns the same unmutated `Ast`
+
 ## 0.1.0 (2026-10-10)
 
 initial release

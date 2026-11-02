@@ -10,6 +10,7 @@ import type {
     Plugin,
     PluginContext,
     PrepareArgs,
+    Program,
     TransformArgs,
     TransformResult,
 } from "telarel";
@@ -17,7 +18,7 @@ import type { TransformOptions } from "telarel/plugins/transform";
 
 import type { ProgramFixture } from "#/functions/ast";
 
-import { Ast, compile, parse } from "telarel";
+import { Ast, compile, parse, PluginError } from "telarel";
 import { transform } from "telarel/plugins/transform";
 import { describe, expect, it } from "vitest";
 
@@ -566,10 +567,12 @@ describe("transform", (): void => {
                 _ctx: PluginContext,
                 args: TransformArgs,
             ): TransformResult => {
-                const program: ProgramFixture = args.ast
-                    .program as unknown as ProgramFixture;
-
-                renameRootIdentifier({ program, name: "renamed" });
+                args.ast.mutate((program: Program): void => {
+                    renameRootIdentifier({
+                        program: program as unknown as ProgramFixture,
+                        name: "renamed",
+                    });
+                });
 
                 return { ast: args.ast };
             },
@@ -706,10 +709,12 @@ describe("transform", (): void => {
                 _ctx: PluginContext,
                 args: TransformArgs,
             ): TransformResult => {
-                const program: ProgramFixture = args.ast
-                    .program as unknown as ProgramFixture;
-
-                renameRootIdentifier({ program, name: "renamed" });
+                args.ast.mutate((program: Program): void => {
+                    renameRootIdentifier({
+                        program: program as unknown as ProgramFixture,
+                        name: "renamed",
+                    });
+                });
 
                 return { ast: args.ast };
             },
@@ -745,5 +750,112 @@ describe("transform", (): void => {
         });
 
         expect(result.code).toBe(code);
+    });
+
+    it("applies a same-instance transform mutation through Ast.mutate", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.js",
+            plugins: [
+                {
+                    name: "mutate-and-return",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
+                        args.ast.mutate((program: Program): void => {
+                            renameRootIdentifier({
+                                program: program as unknown as ProgramFixture,
+                                name: "mutated",
+                            });
+                        });
+
+                        return { ast: args.ast };
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const mutated = 1;");
+    });
+
+    it("discards a transform mutation when the handler returns null", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.js",
+            plugins: [
+                {
+                    name: "mutate-and-null",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): null => {
+                        args.ast.mutate((program: Program): void => {
+                            renameRootIdentifier({
+                                program: program as unknown as ProgramFixture,
+                                name: "discarded",
+                            });
+                        });
+
+                        return null;
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe("const a = 1;");
+    });
+
+    it("keeps output unchanged when an async transform returns the same unmutated Ast", async (): Promise<void> => {
+        const code: string = "const a = 1;";
+
+        const result: CodeResult = await compile(code, {
+            cwd: "/repo",
+            file: "index.js",
+            plugins: [
+                {
+                    name: "async-passthrough",
+                    transform: async (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): Promise<TransformResult> => {
+                        await Promise.resolve();
+
+                        return { ast: args.ast };
+                    },
+                },
+            ],
+        });
+
+        expect(result.code).toBe(code);
+        expect(result.map?.version).toBe(3);
+    });
+
+    it("reports the plugin error when a transform throws after Ast.mutate", async (): Promise<void> => {
+        await expect(
+            compile("const a = 1;", {
+                cwd: "/repo",
+                file: "index.js",
+                plugins: [
+                    {
+                        name: "mutate-and-throw",
+                        transform: (
+                            _ctx: PluginContext,
+                            args: TransformArgs,
+                        ): never => {
+                            args.ast.mutate((program: Program): void => {
+                                renameRootIdentifier({
+                                    program:
+                                        program as unknown as ProgramFixture,
+                                    name: "discarded",
+                                });
+                            });
+
+                            throw new PluginError("mutate-boom");
+                        },
+                    },
+                ],
+            }),
+        ).rejects.toThrow("mutate-boom");
     });
 });

@@ -43,7 +43,7 @@ const assertNativeBindingLoads = (nativePath: string): void => {
     if (result.error === void 0 && result.status === 0) return;
 
     const stderr: string = (result.stderr ?? "").trim();
-    
+
     const stdout: string = (result.stdout ?? "").trim();
 
     const captured: string = stderr.length > 0 ? stderr : stdout;

@@ -34,9 +34,7 @@ const reportBenchmarkBackend = (
     }
 
     process.stdout.write(
-        wasmModules.length > 0
-            ? "Backend: WASM\n"
-            : "Backend: native\n",
+        wasmModules.length > 0 ? "Backend: WASM\n" : "Backend: native\n",
     );
 };
 

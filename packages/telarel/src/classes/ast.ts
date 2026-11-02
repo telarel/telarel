@@ -4,6 +4,12 @@ import type { Program } from "#/@types/program";
 import type { SourceMap } from "#/@types/sourcemap/map";
 
 /**
+ * Identifies the internal mutation marker. The transform bridge reads it; it is
+ * not a public package export.
+ */
+const AST_MUTATED: unique symbol = Symbol("telarel.ast.mutated");
+
+/**
  * Options for constructing an {@link Ast}.
  */
 type AstOptions = {
@@ -34,11 +40,23 @@ type AstOptions = {
  * {@link mutate} are carried forward only when the AST is returned from
  * `transform`. Mutations in observer hooks are local to the hook.
  */
-class Ast {
+// Declaration merging adds the internal marker; `isolatedDeclarations` cannot
+// emit a class member keyed by a unique symbol.
+// oxlint-disable-next-line no-redeclare, typescript/no-unsafe-declaration-merging
+export class Ast {
     readonly #program: Program;
     readonly #source: string;
     readonly #language?: Language;
     readonly #map?: SourceMap;
+    #mutated: boolean = false;
+
+    static {
+        Object.defineProperty(Ast.prototype, AST_MUTATED, {
+            value(this: Ast): boolean {
+                return this.#mutated;
+            },
+        });
+    }
 
     public constructor(options: AstOptions) {
         this.#program = options.program;
@@ -91,9 +109,21 @@ class Ast {
     public mutate<Result extends void | Promise<void>>(
         fn: (program: Program) => Result,
     ): Result {
+        this.#mutated = true;
         return fn(this.#program);
     }
 }
 
+/**
+ * The internal mutation marker for {@link Ast}.
+ */
+// oxlint-disable-next-line typescript/consistent-type-definitions
+export interface Ast {
+    /**
+     * Reports whether {@link Ast.mutate} has been called on this instance.
+     */
+    [AST_MUTATED]: () => boolean;
+}
+
 export type { AstOptions };
-export { Ast };
+export { AST_MUTATED };

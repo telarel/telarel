@@ -9,6 +9,7 @@ import type {
     Plugin,
     PluginContext,
     PrepareArgs,
+    Program,
     TransformArgs,
     TransformResult,
 } from "telarel";
@@ -50,7 +51,12 @@ const rename = (
             throw new Error("expected the first rename to be visible");
         }
 
-        renameRootIdentifier({ program, name });
+        args.ast.mutate((mutable: Program): void => {
+            renameRootIdentifier({
+                program: mutable as unknown as ProgramFixture,
+                name,
+            });
+        });
 
         return { ast: args.ast };
     };
