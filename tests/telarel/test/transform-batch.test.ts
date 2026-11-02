@@ -39,24 +39,32 @@ const mutateRootIdentifier = (options: { ast: Ast; name: string }): void => {
 const rootIdentifier = (ast: Ast): string =>
     readRootIdentifier(ast.program as unknown as ProgramFixture);
 
-const withBatchDisabled = async <Result>(
+const withBatchSetting = async <Result>(
+    value: string | undefined,
     body: () => Promise<Result>,
 ): Promise<Result> => {
-    const previous: string | undefined =
-        process.env.TELAREL_DISABLE_TRANSFORM_BATCH;
+    const previous: string | undefined = process.env.TELAREL_TRANSFORM_BATCH;
 
-    process.env.TELAREL_DISABLE_TRANSFORM_BATCH = "1";
+    if (value === void 0) {
+        delete process.env.TELAREL_TRANSFORM_BATCH;
+    } else {
+        process.env.TELAREL_TRANSFORM_BATCH = value;
+    }
 
     try {
         return await body();
     } finally {
         if (previous === void 0) {
-            delete process.env.TELAREL_DISABLE_TRANSFORM_BATCH;
+            delete process.env.TELAREL_TRANSFORM_BATCH;
         } else {
-            process.env.TELAREL_DISABLE_TRANSFORM_BATCH = previous;
+            process.env.TELAREL_TRANSFORM_BATCH = previous;
         }
     }
 };
+
+const withBatchDisabled = async <Result>(
+    body: () => Promise<Result>,
+): Promise<Result> => await withBatchSetting("0", body);
 
 type BatchTrace<Result> = {
     batches: Array<Array<string>>;
@@ -84,16 +92,16 @@ const withBatchTrace = async <Result>(
     debugValue: string | null = "1",
 ): Promise<BatchTrace<Result>> => {
     const previous: string | undefined =
-        process.env.TELAREL_DEBUG_TRANSFORM_BATCH;
+        process.env.TELAREL_TRANSFORM_BATCH_DEBUG;
 
     const spy: MockInstance<typeof console.debug> = vi
         .spyOn(console, "debug")
         .mockImplementation((): void => {});
 
     if (debugValue === null) {
-        delete process.env.TELAREL_DEBUG_TRANSFORM_BATCH;
+        delete process.env.TELAREL_TRANSFORM_BATCH_DEBUG;
     } else {
-        process.env.TELAREL_DEBUG_TRANSFORM_BATCH = debugValue;
+        process.env.TELAREL_TRANSFORM_BATCH_DEBUG = debugValue;
     }
 
     try {
@@ -105,9 +113,9 @@ const withBatchTrace = async <Result>(
         spy.mockRestore();
 
         if (previous === void 0) {
-            delete process.env.TELAREL_DEBUG_TRANSFORM_BATCH;
+            delete process.env.TELAREL_TRANSFORM_BATCH_DEBUG;
         } else {
-            process.env.TELAREL_DEBUG_TRANSFORM_BATCH = previous;
+            process.env.TELAREL_TRANSFORM_BATCH_DEBUG = previous;
         }
     }
 };
@@ -272,6 +280,24 @@ describe("transform batch", (): void => {
                     file: "index.js",
                     plugins: [buildMutator("js1"), buildMutator("js2")],
                 }),
+        );
+
+        expect(batches).toEqual([["js1", "js2"]]);
+        expect(result.code).toBe("const js2 = 1;");
+    });
+
+    it("runs a batch when TELAREL_TRANSFORM_BATCH is 1", async (): Promise<void> => {
+        const { batches, result } = await withBatchTrace(
+            async (): Promise<CodeResult> =>
+                await withBatchSetting(
+                    "1",
+                    async (): Promise<CodeResult> =>
+                        await compile("const a = 1;", {
+                            cwd: "/repo",
+                            file: "index.js",
+                            plugins: [buildMutator("js1"), buildMutator("js2")],
+                        }),
+                ),
         );
 
         expect(batches).toEqual([["js1", "js2"]]);

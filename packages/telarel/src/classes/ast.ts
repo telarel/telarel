@@ -7,14 +7,14 @@ import type { SourceMap } from "#/@types/sourcemap/map";
  * Identifies the internal mutation marker. The transform bridge reads it; it is
  * not a public package export.
  */
-const AST_MUTATED: unique symbol = Symbol("telarel.ast.mutated");
+const AST_MUTATED: unique symbol = Symbol("__AST_MUTATED__");
 
 /**
  * Identifies the internal mutation reset. The transform batch runner clears the
  * sticky marker before each member. This symbol is not a public package
  * export.
  */
-const AST_RESET_MUTATED: unique symbol = Symbol("telarel.ast.resetMutated");
+const AST_RESET_MUTATED: unique symbol = Symbol("__AST_RESET_MUTATED__");
 
 /**
  * Options for constructing an {@link Ast}.

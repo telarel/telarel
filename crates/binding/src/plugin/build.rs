@@ -14,11 +14,11 @@ pub const NAME_REQUIRED: &str = "plugin `name` is required";
 
 /// Internal descriptor key shared with the JS wrapper. This key must match
 /// `PLUGIN_ID` in `packages/telarel/src/bridges/plugin.ts`.
-const PLUGIN_ID: &str = "__telarelPluginId";
+const PLUGIN_ID: &str = "__PLUGIN_ID__";
 
 /// Internal batch-runner key shared with the JS wrapper. This key must match
 /// `TRANSFORM_BATCH` in `packages/telarel/src/bridges/plugin.ts`.
-pub const TRANSFORM_BATCH_KEY: &str = "__telarelTransformBatch";
+pub const TRANSFORM_BATCH_KEY: &str = "__TRANSFORM_BATCH__";
 
 /// Bridge one raw descriptor for a JS plugin into a shared adapter.
 ///

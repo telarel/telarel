@@ -58,12 +58,12 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 
 - `JsPlugin::from_object` makes sure that `name` is present and scans the hook slots into TSFNs. `read_hook_meta` reads the `<hook>Meta` siblings that the JS wrapper produces.
 - The bridge infers hook usage from the TSFNs that the adapter carries.
-- A plugin is transform-batchable only when it has both the transform TSFN and the `__telarelTransformBatch` TSFN. The wrapper attaches that runner plus `__telarelTransformEntry` (the user handler) as non-enumerable properties on each transform descriptor. The binding scan uses `TRANSFORM_BATCH_KEY`, which must match `TRANSFORM_BATCH` in the wrapper.
+- A plugin is transform-batchable only when it has both the transform TSFN and the `__TRANSFORM_BATCH__` TSFN. The wrapper attaches that runner plus `__TRANSFORM_ENTRY__` (the user handler) as non-enumerable properties on each transform descriptor. The binding scan uses `TRANSFORM_BATCH_KEY`, which must match `TRANSFORM_BATCH` in the wrapper.
 - `JsPlugin` keeps a clone of the caller's rooted descriptor. `make_transform_batch` downcasts the run members to `JsPlugin` and sends their descriptor references in driver order. It never creates a second root; `to_plugins` owns the release list.
 - The JS batch runner isolates members with a checkpoint. A member that mutates and returns `null` is discarded by reparsing the checkpoint; an accepted change refreshes it. The runner also clears the sticky mutation marker before each member and normalizes an absent returned language to the carried AST's language.
 - The checkpoint stores the input `map` by reference. Direct in-place mutation of `ast.map` outside `ast.mutate` is not isolated between batch members; the single path gives each plugin a fresh map. `ast.mutate` is the supported mutation path. Do not clone maps per member, because that erodes the batching performance win.
-- Batching is default-on. `TELAREL_DISABLE_TRANSFORM_BATCH=1` is an internal test and diagnostic opt-out, not public package API; it forces the per-plugin path. `TELAREL_DEBUG_TRANSFORM_BATCH=1` enables the internal batch trace, which is silent by default.
-- The wrapper assigns each original plugin object an internal id through a `WeakMap`. It attaches the id to the generated raw descriptor as a non-enumerable `__telarelPluginId` property. The id is internal and is not serialized. A spread does not copy it.
+- Batching is default-on. `TELAREL_TRANSFORM_BATCH=0` is an internal test and diagnostic opt-out, not public package API; it forces the per-plugin path. `TELAREL_TRANSFORM_BATCH=1` or an unset value keeps batching on. `TELAREL_TRANSFORM_BATCH_DEBUG=1` enables the internal batch trace, which is silent otherwise.
+- The wrapper assigns each original plugin object an internal id through a `WeakMap`. It attaches the id to the generated raw descriptor as a non-enumerable `__PLUGIN_ID__` property. The id is internal and is not serialized. A spread does not copy it.
 - `to_plugins` keeps a per-compile `RefList` memo from id to adapter. It reuses the adapter when the same id appears again, so an unchanged plugin's `options` hook runs once. `RefList::release` clears the memo to break the `RefList -> JsPlugin -> RefList` cycle, because `JsPlugin` holds the `RefList`.
 - If code mutates a plugin object after its first bridge, the plugin keeps the adapter from that first bridge. Identity is the instance.
 - The `options` hook is special. It is an async function that returns a promise. Telarel bridges its resolution on the JS thread because the bridge must root and wrap late plugin descriptors where JS objects are reachable.
@@ -82,7 +82,7 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 - Telarel dispatches a plugin to Rust only when it carries the explicit `__builtin: true` property. The binding reserves no name prefix.
 - The descriptor is plain data: `{ __builtin: true, name, options }`.
 - Telarel names the constructed Rust plugin after the builtin's JS name (for transform, `builtin:transform`), so pipeline errors use the JS-facing name. Identity is the adapter instance, not the name.
-- Builtins use the same `__telarelPluginId` and `RefList` adapter memo path as JS hook plugins.
+- Builtins use the same `__PLUGIN_ID__` and `RefList` adapter memo path as JS hook plugins.
 - The same dispatch applies mid-fixpoint to plugins that `options` injects.
 
 ## Execution model

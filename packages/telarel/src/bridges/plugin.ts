@@ -183,21 +183,21 @@ const isWrappedPlugin = (plugin: Plugin | BuiltinPlugin): boolean =>
     RAW_PLUGIN_MARKER in plugin;
 
 // Must match `PLUGIN_ID` in `crates/binding/src/plugin/build.rs`.
-const PLUGIN_ID: string = "__telarelPluginId";
+const PLUGIN_ID: string = "__PLUGIN_ID__";
 
 // Must match `TRANSFORM_BATCH_KEY` in `crates/binding/src/plugin/build.rs`.
-const TRANSFORM_BATCH: string = "__telarelTransformBatch";
+const TRANSFORM_BATCH: string = "__TRANSFORM_BATCH__";
 
 // Read only by the batch runner below. The binding never scans this key.
-const TRANSFORM_ENTRY: string = "__telarelTransformEntry";
+const TRANSFORM_ENTRY: string = "__TRANSFORM_ENTRY__";
 
-// Internal verification escape hatch. Raw descriptors without a batch runner
-// keep the per-plugin path. The opt-out lets tests compare both paths.
-const isTransformBatchDisabled = (): boolean =>
-    process.env.TELAREL_DISABLE_TRANSFORM_BATCH === "1";
+// Batching is default-on. `TELAREL_TRANSFORM_BATCH=0` is an internal test and
+// diagnostic opt-out that forces the per-plugin path.
+const isTransformBatchEnabled = (): boolean =>
+    process.env.TELAREL_TRANSFORM_BATCH !== "0";
 
-// Internal diagnostic trace, not public API.
-const TRANSFORM_BATCH_TRACE: string = "TELAREL_DEBUG_TRANSFORM_BATCH";
+// Internal diagnostic trace, not public API. `1` enables it.
+const TRANSFORM_BATCH_DEBUG: string = "TELAREL_TRANSFORM_BATCH_DEBUG";
 
 const pluginIds: WeakMap<Plugin | BuiltinPlugin, number> = new WeakMap();
 
@@ -450,7 +450,7 @@ const runTransformBatch = async (
 
         let changed: boolean = false;
 
-        if (process.env[TRANSFORM_BATCH_TRACE] === "1") {
+        if (process.env[TRANSFORM_BATCH_DEBUG] === "1") {
             console.debug("[telarel] transform batch", {
                 plugins: rawArgs.plugins.map(
                     (plugin: RawPlugin): string => plugin.name,
@@ -465,7 +465,7 @@ const runTransformBatch = async (
 
             if (typeof entry !== "function") {
                 throw new TypeError(
-                    "transform batch member is missing __telarelTransformEntry",
+                    `transform batch member is missing ${TRANSFORM_ENTRY}`,
                 );
             }
 
@@ -782,7 +782,7 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
             value: transformHandler,
         });
 
-        if (!isTransformBatchDisabled()) {
+        if (isTransformBatchEnabled()) {
             Object.defineProperty(raw, TRANSFORM_BATCH, {
                 value: runTransformBatch,
             });

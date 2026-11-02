@@ -55,7 +55,7 @@ impl ToNapiValue for JsAstArgs {
 /// Args for a batched `transform` run. The payload carries the carried AST,
 /// its source text, map, and grammar, plus the raw plugin descriptors for the
 /// run in settled order. The JS batch runner invokes each descriptor's
-/// `__telarelTransformEntry` in order over the same JS AST.
+/// `__TRANSFORM_ENTRY__` in order over the same JS AST.
 pub struct JsTransformBatchArgs {
     /// AST serialized as JSON for the JS bridge.
     pub ast_json: String,
