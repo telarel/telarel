@@ -25,6 +25,13 @@ const distDir: string = Path.join(pkgDir, "dist");
 
 const bindingDir: string = Path.join(distDir, "binding");
 
+const assertNativeBindingScriptPath: string = Path.resolve(
+    Path.dirname(Url.fileURLToPath(import.meta.url)),
+    "..",
+    "scripts",
+    "assert.ts",
+);
+
 // Vitest 5 with Vite 8 crashes while formatting global setup errors here.
 // Write the message first so the guard stays visible.
 const failSetup = (message: string): never => {
@@ -32,11 +39,15 @@ const failSetup = (message: string): never => {
     throw new Error(message);
 };
 
-const assertNativeBindingLoads = (nativePath: string): void => {
+const assertNativeBindingLoads = (): void => {
+    const entryPath: string = Path.join(distDir, "index.mjs");
+
+    const entryUrl: string = Url.pathToFileURL(entryPath).href;
+
     const result: ChildProcess.SpawnSyncReturns<string | undefined> =
         ChildProcess.spawnSync(
             process.execPath,
-            ["-e", "require(process.argv[1])", nativePath],
+            [assertNativeBindingScriptPath, entryUrl],
             { encoding: "utf-8" },
         );
 
@@ -55,7 +66,7 @@ const assertNativeBindingLoads = (nativePath: string): void => {
 
     failSetup(
         [
-            `Failed to load native binding: ${nativePath}`,
+            `Failed to load a native binding from ${entryPath}.`,
             reason,
             "The benchmark refuses to run on the WASM fallback.",
             "Run `just build-rs-release` to rebuild the native addon.",
@@ -70,19 +81,17 @@ const checkNativeBinding = async (): Promise<void> => {
         ? await Fsp.readdir(bindingDir)
         : [];
 
-    const nativePaths: Array<string> = entries
-        .filter((entry: string): boolean => entry.endsWith(".node"))
-        .map((entry: string): string => Path.join(bindingDir, entry));
+    const hasNativeBinding: boolean = entries.some((entry: string): boolean =>
+        entry.endsWith(".node"),
+    );
 
-    if (nativePaths.length === 0) {
+    if (!hasNativeBinding) {
         failSetup(
             `No native binding was staged in ${bindingDir}. Run \`just build-rs-release\` (or \`just bench-js\`, which builds and stages it).`,
         );
     }
 
-    for (const nativePath of nativePaths) {
-        assertNativeBindingLoads(nativePath);
-    }
+    assertNativeBindingLoads();
 };
 
 const setup = async (): Promise<Teardown> => {
