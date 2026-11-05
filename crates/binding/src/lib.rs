@@ -21,6 +21,7 @@ pub use crate::_types::plugin::hooks::{
 };
 pub use crate::_types::results::JsCodeResult;
 pub use crate::_types::sourcemap::JsSourceMap;
+pub use crate::errors::render::render_code_frame;
 pub use crate::functions::{
     builtin_generate::builtin_generate, builtin_parse::builtin_parse,
     compile::compile, compile_from_ast::compile_from_ast, generate::generate,

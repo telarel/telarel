@@ -10,6 +10,7 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 | `src/ast/`                 | Crate-private AST normalization and ESTree JSON codec                  |
 | `src/comment/`             | Comment normalization and injection layer                              |
 | `src/errors/`              | Private error envelopes and their shared source payload                |
+| `src/errors/render.rs`     | Internal sync NAPI helper for native code-frame rendering              |
 | `src/functions/`           | Seven NAPI entry points                                                |
 | `src/plugin/builtin/`      | Rust builtin plugin dispatch and transform option parsing              |
 | `src/plugin/build.rs`      | `bridge_plugin` / `to_plugins`, builtin dispatch by `__builtin`        |
@@ -21,7 +22,7 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 
 ## JS API surface
 
-`docs/content/apis/javascript` documents the public JavaScript surface. The seven NAPI functions live in `src/functions/`. The source (text or AST) is always the first argument. Options never carry `code`. `builtinParse` and `builtinGenerate` bypass the plugin chain. `builtinGenerate` resolves `sourceMap.input` through `Generator` and applies `sourceMap.output` delivery itself.
+`docs/content/apis/javascript` documents the public JavaScript surface. The seven NAPI entry points live in `src/functions/`. The internal `renderCodeFrame` helper lives in `src/errors/render.rs`. The source (text or AST) is always the first argument. Options never carry `code`. `builtinParse` and `builtinGenerate` bypass the plugin chain. `builtinGenerate` resolves `sourceMap.input` through `Generator` and applies `sourceMap.output` delivery itself.
 
 `parse` and `rewrite` take a flat `inputSourceMap`. `compile`, `compileFromAst`, and `generate` keep the shared `sourceMap` bag plus `output`; `builtinParse` and `builtinGenerate` take only `sourceMap`. The `options` payload and the resolved `start` options carry both. The `parse` hook option payload carries only `sourceMap`. The `generate` hook payload carries `sourceMap` with both `input` and `output` unset, serialized as `{ input: null, output: null }`. AST and transform payloads carry neither.
 
@@ -75,6 +76,7 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 
 - Compile rejections and plugin hook failures share the optional source payload `{ source: { file, code, span } }`.
 - Spans are UTF-16 code units on the JS side. Rust converts them against the payload's own `code` before it constructs a byte-offset `Span`.
+- `CompileError.render` and `PluginError.render` call `renderCodeFrame`. Do not add a JavaScript code-frame renderer.
 - Telarel exact-matches envelope markers. Unknown or malformed envelopes produce a plain message error.
 
 ## Builtin plugins

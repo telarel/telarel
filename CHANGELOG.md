@@ -245,6 +245,7 @@
 - change `compile`, `compileFromAst`, and `generate` to remove a consumed inline input map comment before output
 - change `parse`, `rewrite`, and `createParser` to remove a consumed inline input map comment from the returned AST
 - change `parse` and `compile` to apply `inputSourceMap` after a winning `parse` hook
+- change `CompileError.render` and `PluginError.render` to use the native code-frame renderer and matches Rust `Display`
 - change an empty `file` to resolve to `index.ts` like an absent `file`
 - change empty `output.file` and `sourceMap.output.url` to be treated as unset instead of rejected
 - change the `options` hook to omit unset `cwd` and `file` instead of sending empty strings

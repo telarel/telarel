@@ -46,6 +46,7 @@ describe("errors", (): void => {
 
         expect(error.name).toBe("CompileError");
         expect(error.render()).toContain("index.ts");
+        expect(error.render()).toContain(",-[");
     });
 
     it("exposes a file and a UTF-16 span from a builtin parse error", async (): Promise<void> => {
@@ -330,6 +331,23 @@ describe("errors", (): void => {
         expect(rendered).toContain("rendered-boom");
         expect(rendered).toContain("input.ts");
         expect(rendered).toContain("^");
+        expect(rendered).toContain(",-[");
+        expect(rendered).toContain("`----");
+    });
+
+    it("renders a multi-line span with the native renderer", (): void => {
+        const code: string = "let a = 1;\nlet b = 2;";
+        const error: CompileError = new CompileError("multi-line-boom", {
+            source: ErrorSource.fromCode("input.ts", code, {
+                start: 0,
+                end: 14,
+            }),
+        });
+        const rendered: string = error.render();
+
+        expect(rendered).toContain("let a = 1;");
+        expect(rendered).toContain("let b = 2;");
+        expect(rendered).toContain(",->");
     });
 
     it("renders a code frame from a PluginError", (): void => {
@@ -347,6 +365,44 @@ describe("errors", (): void => {
         expect(rendered).toContain("rendered-boom");
         expect(rendered).toContain("input.ts");
         expect(rendered).toContain("^");
+        expect(rendered).toContain(",-[");
+        expect(rendered).toContain("`----");
+    });
+
+    it("renders a PluginError inside a hook", async (): Promise<void> => {
+        const sourceCode: string = "const x = 1;";
+        let renderedInHook: string | undefined;
+
+        const error: CompileError = asCompileError(
+            await rejection(
+                compile("const a = 1;", {
+                    cwd: "/repo",
+                    file: "index.ts",
+                    plugins: [
+                        {
+                            name: "render-in-hook",
+                            transform: (): never => {
+                                const pluginError: PluginError =
+                                    new PluginError("hook-boom", {
+                                        source: ErrorSource.fromCode(
+                                            "input.ts",
+                                            sourceCode,
+                                            { start: 6, end: 7 },
+                                        ),
+                                    });
+
+                                renderedInHook = pluginError.render();
+
+                                throw pluginError;
+                            },
+                        },
+                    ],
+                }),
+            ),
+        );
+
+        expect(renderedInHook).toContain(",-[");
+        expect(error.render()).toContain("hook-boom");
     });
 
     it("wraps messages from unknown errors", (): void => {
