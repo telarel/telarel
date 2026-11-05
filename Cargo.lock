@@ -1731,7 +1731,7 @@ dependencies = [
 
 [[package]]
 name = "telarel"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "oxc",
  "oxc_sourcemap",
@@ -1744,7 +1744,7 @@ dependencies = [
 
 [[package]]
 name = "telarel_bench"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "telarel",
@@ -1753,7 +1753,7 @@ dependencies = [
 
 [[package]]
 name = "telarel_binding"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "napi",
@@ -1773,7 +1773,7 @@ dependencies = [
 
 [[package]]
 name = "telarel_common"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "bitflags",
@@ -1785,7 +1785,7 @@ dependencies = [
 
 [[package]]
 name = "telarel_core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "oxc",
  "oxc_sourcemap",
@@ -1797,7 +1797,7 @@ dependencies = [
 
 [[package]]
 name = "telarel_example_common"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "telarel",
  "tokio",
@@ -1805,7 +1805,7 @@ dependencies = [
 
 [[package]]
 name = "telarel_example_transform"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "telarel",
  "telarel_plugin_transform",
@@ -1814,7 +1814,7 @@ dependencies = [
 
 [[package]]
 name = "telarel_plugin"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "oxc",
  "oxc_sourcemap",
@@ -1824,7 +1824,7 @@ dependencies = [
 
 [[package]]
 name = "telarel_plugin_transform"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "oxc",
  "oxc_compat",

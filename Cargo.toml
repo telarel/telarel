@@ -5,7 +5,7 @@ resolver = "3"
 members = ["crates/*", "benchmarks/rust", "examples/rust/*"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Alpheus <contact@alphe.us>"]
 edition = "2024"
 rust-version = "1.97.0"
@@ -17,12 +17,12 @@ categories = ["compilers", "web-programming"]
 [workspace.dependencies]
 
 # Workspace
-telarel_common = { version = "0.1.0", path = "crates/common" }
-telarel_plugin = { version = "0.1.0", path = "crates/plugin" }
-telarel_plugin_transform = { version = "0.1.0", path = "crates/plugin_transform" }
-telarel_core = { version = "0.1.0", path = "crates/core" }
-telarel_binding = { version = "0.1.0", path = "crates/binding" }
-telarel = { version = "0.1.0", path = "crates/telarel" }
+telarel_common = { version = "0.2.0", path = "crates/common" }
+telarel_plugin = { version = "0.2.0", path = "crates/plugin" }
+telarel_plugin_transform = { version = "0.2.0", path = "crates/plugin_transform" }
+telarel_core = { version = "0.2.0", path = "crates/core" }
+telarel_binding = { version = "0.2.0", path = "crates/binding" }
+telarel = { version = "0.2.0", path = "crates/telarel" }
 
 # Crates
 anyhow = { version = "^1.0.0" }
