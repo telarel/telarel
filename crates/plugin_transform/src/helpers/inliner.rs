@@ -13,7 +13,7 @@ use oxc::parser::Parser;
 use oxc::semantic::Scoping;
 use oxc::semantic::SemanticBuilder;
 use oxc::span::SourceType;
-use oxc::str::Str;
+use oxc::str::JSStr;
 use oxc::syntax::symbol::SymbolId;
 use telarel_plugin::PluginError;
 
@@ -198,7 +198,7 @@ impl<'a, 's> Inliner<'a, 's> {
                 | Statement::ImportDeclaration(import) => {
                     self.inline_dependency(
                         helper,
-                        &import.source.value,
+                        import.source.value,
                         &import.specifiers,
                         &mut import_symbol_ids,
                         &mut renames,
@@ -276,12 +276,18 @@ impl<'a, 's> Inliner<'a, 's> {
     fn inline_dependency(
         &mut self,
         helper: &HelperSource,
-        source: &Str<'a>,
+        source: JSStr<'a>,
         specifiers: &Option<ArenaVec<'a, ImportDeclarationSpecifier<'a>>>,
         import_symbol_ids: &mut HashSet<SymbolId>,
         renames: &mut HashMap<SymbolId, String>,
     ) -> Result<(), PluginError> {
-        let source_value: &str = source.as_str();
+        let Some(source_value): Option<&str> = source.as_str() else {
+            return Err(PluginError::new(format!(
+                "vendored helper `{}` has an import specifier with a lone surrogate `{}`",
+                helper.name,
+                source.display()
+            )));
+        };
 
         let Some(dep_name) = source_value
             .strip_prefix("./")

@@ -628,7 +628,7 @@ mod tests {
             helper: "objectWithoutPropertiesLoose",
             source: "const { a, ...r } = obj;",
             targets: ES2015,
-            dependency_marker: Some(".includes(n)) continue"),
+            dependency_marker: Some("-1 !== e.indexOf(n)) continue"),
             ..BASE
         },
         Trigger {

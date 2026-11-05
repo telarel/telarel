@@ -4,7 +4,7 @@ use telarel::allocator::Allocator;
 use telarel::ast::ast::{ImportDeclaration, Program};
 use telarel::ast_visit::VisitMut;
 use telarel::ast_visit::walk_mut;
-use telarel::str::Str;
+use telarel::str::JSStr;
 use telarel::{
     Ast, HookUsage, Plugin, PluginContext, TransformArgs, TransformOutput,
     TransformReturn,
@@ -23,8 +23,8 @@ impl<'x> VisitMut<'x> for ImportRewriter<'x> {
         &mut self,
         declaration: &mut ImportDeclaration<'x>,
     ) {
-        if declaration.source.value.as_str() == FROM {
-            declaration.source.value = Str::from_str_in(TO, &self.allocator);
+        if declaration.source.value == FROM {
+            declaration.source.value = JSStr::from_str_in(TO, &self.allocator);
         }
     }
 }

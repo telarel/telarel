@@ -57,7 +57,7 @@ fn import_usage(
     }
 
     let helper: &'static HelperSource =
-        helper_from_source(import.source.value.as_str(), module_name)?;
+        helper_from_source(import.source.value.as_str()?, module_name)?;
 
     let specifiers: &[ImportDeclarationSpecifier<'_>] =
         import.specifiers.as_ref()?;
@@ -130,7 +130,7 @@ fn require_usage(
     };
 
     let helper: &'static HelperSource =
-        helper_from_source(source.value.as_str(), module_name)?;
+        helper_from_source(source.value.as_str()?, module_name)?;
 
     Some(HelperUsage {
         statement_index,
@@ -185,4 +185,32 @@ pub fn collect_usages(
     }
 
     usages
+}
+
+#[cfg(test)]
+mod tests {
+    use oxc::allocator::Allocator;
+    use oxc::parser::Parser;
+    use oxc::parser::ParserReturn;
+    use oxc::span::SourceType;
+
+    use super::collect_usages;
+
+    #[test]
+    fn test_lone_surrogate_source_is_not_a_helper_usage() {
+        let allocator: Allocator = Allocator::new();
+
+        let parsed: ParserReturn<'_> = Parser::new(
+            &allocator,
+            r#"import helper from "\uD800/helpers/objectSpread2";"#,
+            SourceType::mjs(),
+        )
+        .parse();
+
+        assert!(!parsed.fatal_error);
+
+        assert!(
+            collect_usages(&parsed.program, "@oxc-project/runtime").is_empty()
+        );
+    }
 }

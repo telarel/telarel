@@ -5,14 +5,14 @@
 #### Rust
 
 - change `base64` to `~0.23.0`
-- change `oxc`, `oxc_compat`, `oxc_transformer_plugins`, and `oxc_traverse` to `~0.154.0`
-- change `oxc_estree_codec` to `~0.2.1`
+- change `oxc`, `oxc_compat`, `oxc_transformer_plugins`, and `oxc_traverse` to `~0.157.0`
+- change `oxc_estree_codec` to `~0.2.2`
 
 #### JavaScript
 
-- change `@oxc-project/runtime` to `0.154.0`
-- change `@oxc-project/types` to `~0.154.0`
-- change `oxc-transform` to `~0.154.0`
+- change `@oxc-project/runtime` to `0.157.0`
+- change `@oxc-project/types` to `~0.157.0`
+- change `oxc-transform` to `~0.157.0`
 
 ### Common
 
@@ -167,6 +167,7 @@
 - change the re-exported `parse`, `rewrite`, `generate`, `compile_from_ast`, and `compile` entry points to let an explicit input-map request replace the AST's own map
 - change the re-exported `Ast::from_source` and `Ast::try_from_source` to accept `Language` and `SourceType`
 - change the re-exported `Ast::source_type` to return `SourceType`
+- change the re-exported AST string values, such as `StringLiteral.value` and `TemplateElementValue.cooked`, to `JSStr`, which preserves lone surrogates; `JSStr::as_str` returns `Option<&str>`
 - change the re-exported `CompileContext.cwd` to `&Path`
 - change the re-exported `CompileOptions`, `CompileFromAstOptions`, and `GenerateOptions` to carry `output`
 - change the re-exported `GeneratorOptions.cwd` to anchor a relative input-map path through the source file

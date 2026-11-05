@@ -274,7 +274,7 @@ const TRIGGERS: ReadonlyArray<Trigger> = [
         file: "index.mjs",
         code: "const { a, ...r } = obj;",
         options: { targets: es2015 },
-        dependencyMarker: ".includes(n)) continue",
+        dependencyMarker: "-1 !== e.indexOf(n)) continue",
     },
     {
         helper: "set",
