@@ -5,6 +5,7 @@
 #### Rust
 
 - change `base64` to `~0.23.0`
+- change `napi` to `^3.16.0`, `napi-build` to `^2.6.0`, and `napi-derive` to `^3.7.0`
 - change `oxc`, `oxc_compat`, `oxc_transformer_plugins`, and `oxc_traverse` to `~0.157.0`
 - change `oxc_estree_codec` to `~0.2.2`
 
