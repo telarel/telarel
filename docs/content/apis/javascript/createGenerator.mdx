@@ -34,6 +34,8 @@ Every field is required. In a `generate` hook, the stage options are available a
 
 `cwd` anchors resolution of `file`. A relative `sourceMap.input.path` resolves against the source file's directory; absolute paths are used as-is.
 
+The builtin generator records `file` as `map.file`. `GeneratorOptions` has no separate output name, so `file` also names the source when there is no input map.
+
 When `ast.language` is present, generation uses it. Otherwise, generation uses the `file` extension. `GeneratorOptions` has no `language` field.
 
 An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `inline` or `auto` and finds no map, the AST's own map is kept. An `external` request that cannot read its map rejects.

@@ -29,8 +29,8 @@ mod tests {
     use std::sync::Mutex;
 
     use telarel_common::{
-        Ast, CodeResult, CompileFromAstOptions, ResolvedOptions, SourceMap,
-        SourceType,
+        Ast, CodeResult, CompileFromAstOptions, OutputOptions, ResolvedOptions,
+        SourceMap, SourceType,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
@@ -86,6 +86,28 @@ mod tests {
                 .expect("compile_from_ast succeeds");
 
         assert_eq!(result.code, "\"replaced\";");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_from_ast_records_output_file_as_map_file() {
+        let ast: Ast = parse_fixture("const a = 1;").unwrap();
+
+        let options: CompileFromAstOptions = CompileFromAstOptions {
+            file: Some(String::from("src/index.ts")),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/index.js")),
+            }),
+            ..CompileFromAstOptions::default()
+        };
+
+        let result: CodeResult = compile_from_ast(ast, options, vec![])
+            .await
+            .expect("compile_from_ast succeeds");
+
+        let generated: SourceMap = result.map.expect("output map present");
+
+        assert_eq!(generated.get_file(), Some("dist/index.js"));
+        assert_eq!(generated.get_source(0), Some("src/index.ts"));
     }
 
     #[tokio::test(flavor = "current_thread")]

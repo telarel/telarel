@@ -93,9 +93,9 @@ Returning `null` or `void` defers. For `parse` and `generate`, a deferral passes
 
 Every entry point uses the options bag, which always uses `sourceMap`. `parse` and `rewrite` expose a flat `inputSourceMap` at the entry point. The pipeline normalizes it to `sourceMap.input` before the `options` hook runs.
 
-Those AST-producing entry points ignore `sourceMap.output` and `output`. A stage-agnostic plugin can set them for every stage without failing. The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
+Those AST-producing entry points ignore `sourceMap.output` and `output`. A stage-agnostic plugin can set them for every stage without failing.
 
-The `generate` hook's generator options carry an empty source-map request: `args.options.sourceMap` has no input or output request. Input resolution happens before the hook; output delivery happens after the winning result.
+The `generate` hook's generator options carry an empty source-map request: `args.options.sourceMap` has no input or output request. Input resolution happens before the hook; output delivery happens after the winning result. See [source maps](/apis#source-maps).
 
 The `options` hook observes the bag before the pipeline resolves it. An unset `cwd` or `file` is absent from `args.options`, so treat it as `undefined`, not `""`. A fixpoint repeats over new instances and settles when none remains. The pipeline applies the defaults (`process.cwd()` and `"index.ts"`) only after the fixpoint settles. `start` and later hooks then see the resolved values. Returning `{ ...args.options }` therefore preserves unset fields and cannot make them explicit empty strings.
 

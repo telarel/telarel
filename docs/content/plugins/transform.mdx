@@ -1,11 +1,11 @@
 ---
 title: Transform plugin
-description: Lower TypeScript, JSX, and modern syntax with the built-in transform plugin.
+description: Lower TypeScript and modern syntax with the built-in transform plugin, and lower JSX when configured.
 ---
 
 ## Introduction
 
-The transform plugin wraps the [oxc](https://oxc.rs) transformer. It lowers TypeScript, JSX, and modern JavaScript syntax to a set of compilation targets. It also applies `define` replacements and `inject` imports at compile time.
+The transform plugin wraps the [oxc](https://oxc.rs) transformer. It lowers TypeScript and modern JavaScript syntax to a set of compilation targets. It lowers JSX only when `jsx.runtime` selects `classic` or `automatic`. It also applies `define` replacements and `inject` imports at compile time.
 
 ## Installation
 
@@ -70,6 +70,22 @@ let result: CodeResult = compile(
 
 The Rust `TransformOptions` additionally exposes `helper_loader` for controlling how runtime helpers are emitted.
 
+### JSX
+
+`jsx.runtime` selects how the plugin handles JSX:
+
+| Runtime              | Behavior                               |
+| -------------------- | -------------------------------------- |
+| `preserve` (default) | Keeps JSX unchanged.                   |
+| `classic`            | Lowers JSX with `React.createElement`. |
+| `automatic`          | Lowers JSX with the automatic runtime. |
+
+In Rust, the runtime values are `JsxRuntime::Preserve`, `JsxRuntime::Classic`, and `JsxRuntime::Automatic`.
+
+`preserve` ignores every other `jsx` field: `development`, `refresh`, `importSource` (`import_source` in Rust), `pragma`, and `pragmaFrag` (`pragma_frag` in Rust).
+
+Field values in `oxc.jsx` do not enable JSX lowering by themselves. Set `jsx.runtime` to `classic` or `automatic` to lower JSX.
+
 ### Define
 
 `define` replaces free identifiers and member chains with expression source strings. Quote string literals in the value. Scalar values become strings:
@@ -90,3 +106,26 @@ Replacements run last, after `inject` and every transform.
 `inject` adds imports for identifiers that would otherwise be free. The key is the local binding name. A string value names a module source, and the transform plugin imports it as a named specifier. A `[source, imported]` pair names a source and a specifier, and the transform plugin imports `imported` from `source`. The object form selects the specifier explicitly. The transform plugin replaces dotted keys such as `"Object.assign"` as member chains.
 
 Injected imports run after all transforms, before `define`.
+
+### Output file
+
+See [output options](/apis#output-options) for the unset rules. The table below maps the resolved grammar and JSX mode to the derived name. Derived names drop any `?query` or `#hash` suffix.
+
+| Input suffix                                     | Output suffix |
+| ------------------------------------------------ | ------------- |
+| `.ts`                                            | `.js`         |
+| `.mts`                                           | `.mjs`        |
+| `.cts`                                           | `.cjs`        |
+| `.tsx` or `.jsx`, JSX preserved                  | `.jsx`        |
+| `.tsx` or `.jsx`, JSX lowered                    | `.js`         |
+| `.d.ts`, `.d.mts`, `.d.cts`, or any other suffix | unchanged     |
+
+A preserved `.tsx` file still strips TypeScript, so its output name is `.jsx`.
+
+The table assumes the grammar implied by the suffix. A file without an extension gains `.js` under `language: ts` or lowered JSX. It gains `.jsx` under preserved JSX. It stays unchanged without a `language`.
+
+An explicit `language` selects the mapping instead. `tsx` or `jsx` maps `.ts`, `.js`, `.mjs`, and `.cjs` inputs to `.jsx` when JSX is preserved. It maps the same inputs to `.js` when JSX is lowered. `js` and `dts` leave the name unchanged. Unknown suffixes stay unchanged in every grammar.
+
+The plugin derives the name in a `Post` options hook. A later `Post` options hook that changes `file` or `language` must set `output.file` itself. Otherwise, the derived name is stale.
+
+The `options` hook cannot see the AST language. In `compileFromAst`, when the AST language differs from the grammar implied by `file` and `language`, set `output.file` explicitly. `rewrite` has the same limitation but produces no output.

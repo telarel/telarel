@@ -208,6 +208,26 @@ mod tests {
     }
 
     #[test]
+    fn test_to_transform_options_jsx_preserve() {
+        let options: BindingTransformPluginOptions = fixtures(
+            None,
+            None,
+            Some(json!({ "runtime": "preserve" })),
+            None,
+            None,
+            None,
+        );
+
+        let parsed: TelarelTransformOptions =
+            to_transform_options(options).expect("preserve parses");
+
+        let jsx: telarel_plugin_transform::JsxOptions =
+            parsed.jsx.expect("jsx layer");
+
+        assert_eq!(jsx.runtime, Some(JsxRuntime::Preserve));
+    }
+
+    #[test]
     fn test_to_transform_options_jsx_unknown_field_errors() {
         let options: BindingTransformPluginOptions = fixtures(
             None,

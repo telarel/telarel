@@ -127,8 +127,9 @@ describe("sourcemap", (): void => {
         expect(typeof result.map).toBe("object");
         expect(result.map?.version).toBe(3);
         // Parse always runs, so the map is the real codegen map. It names the
-        // input file as its single source and carries the encoded mappings.
-        expect(result.map?.file).toBe(void 0);
+        // input file as its single source, records the resolved output file,
+        // and carries the encoded mappings.
+        expect(result.map?.file).toBe("index.ts");
         expect(result.map?.sourceRoot).toBe(void 0);
         expect(result.map?.ignoreList).toBe(void 0);
         expect(result.map?.sources).toEqual(["index.ts"]);
@@ -344,7 +345,7 @@ describe("sourcemap", (): void => {
 
         expect(result.code).toBe("const renamed = 1;");
         expect(result.map?.version).toBe(3);
-        expect(result.map?.file).toBe(void 0);
+        expect(result.map?.file).toBe("index.ts");
         expect(result.map?.sources).toEqual(["index.ts"]);
         expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
@@ -869,6 +870,19 @@ describe("sourcemap", (): void => {
 });
 
 describe("createGenerator source maps", (): void => {
+    it("records file as map.file", async (): Promise<void> => {
+        const ast: Ast = await plainAst();
+
+        const result: CodeResult = await createGenerator(ast, {
+            cwd: "/repo",
+            file: "src/index.ts",
+            sourceMap: {},
+        }).generate();
+
+        expect(result.map?.file).toBe("src/index.ts");
+        expect(result.map?.sources).toEqual(["src/index.ts"]);
+    });
+
     it("overrides the AST's own map with a value input request", async (): Promise<void> => {
         const ast: Ast = await astWithOwnMap();
 

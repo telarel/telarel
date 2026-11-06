@@ -1,24 +1,29 @@
 /// Configuration that names the generated code's intended output path.
 ///
-/// The compiler emits code in memory. `file` only labels that output, so the
-/// default external source-map URL can be derived.
+/// The compiler emits code in memory. `file` labels that output, so the
+/// pipeline can record `map.file` and derive the default external source-map
+/// URL.
 #[derive(Debug, Clone, Default)]
 pub struct OutputOptions {
     /// The intended path of the generated code.
     ///
-    /// The compiler does not write the file. When no external source-map URL
-    /// is configured, the path derives the default `<file>.map` URL. `None`
-    /// or an empty string falls back to the resolved `file`.
+    /// The compiler does not write the file. A non-empty value is used
+    /// verbatim. `None` or an empty string is unset. The transform plugin
+    /// derives an unset value in its options hook. Otherwise, the compiler
+    /// uses the resolved input `file`.
     pub file: Option<String>,
 }
 
 /// Output code configuration after defaults are applied.
 ///
-/// `file` is the configured `output.file`, or the resolved input `file` when
-/// that value is unset or empty.
+/// `file` is the configured `output.file`, the value derived by the transform
+/// plugin, or the resolved input `file`.
 #[derive(Debug, Clone)]
 pub struct ResolvedOutputOptions {
     /// The file the generated code is intended for.
+    ///
+    /// The resolved path is recorded as `map.file` and derives the default
+    /// `<file>.map` URL when no external source-map URL is configured.
     pub file: String,
 }
 

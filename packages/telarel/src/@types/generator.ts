@@ -10,7 +10,11 @@ type GeneratorOptions = {
      */
     cwd: string;
     /**
-     * The output file path recorded in the generated source map.
+     * The file being generated.
+     *
+     * The builtin generator records it as `map.file`. `createGenerator` has no
+     * separate output name. Without an input source map, the file also names
+     * the source.
      */
     file: string;
     /**

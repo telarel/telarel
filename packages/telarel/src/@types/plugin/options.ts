@@ -26,12 +26,13 @@ type CompleteOutputOptions = {
     /**
      * The intended path of the generated code.
      *
-     * The compiler does not write the file. The resolved path derives the
-     * default URL for an external source map by appending `.map`.
+     * The compiler does not write the file. A non-empty value is used verbatim.
+     * An empty string is treated as unset, the same as an absent `file`. When
+     * `output.file` is unset, the transform plugin derives the name from the
+     * input file. Without the plugin, the resolved `file` is used.
      *
-     * An empty string is treated as unset, the same as an absent `file`.
-     *
-     * By default, it is the resolved `file`.
+     * The resolved path is recorded as `map.file` and derives the default URL
+     * for an external source map by appending `.map`.
      */
     file: string;
 };

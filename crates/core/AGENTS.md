@@ -31,6 +31,8 @@ AST-entry stages resolve language in this order: explicit options, then AST lang
 
 Each stage runs once per invocation. `options` runs per plugin instance. `start` and `end` run per settled entry, duplicates included. No entry point re-enters another.
 
+`options` is not gated by `HookUsage`. It runs for every distinct instance. A `Post` options hook therefore sees `file` and `language` after the normal hooks have run. A later `Post` options hook that changes `file` or `language` must set `output.file` itself.
+
 `end` runs on every path after the options fixpoint settles. This includes stage failures and `start` failures. The only path that skips `end` is an options-fixpoint failure, because no driver exists yet. On a stage failure, a failing `end` returns its own error instead of the stage error. On the success path, the `end` error is the returned error.
 
 ## Stage plans
@@ -44,6 +46,8 @@ Shared input/output invariants: [common source maps](../common/AGENTS.md#source-
 The entry boundary applies the explicit input-map request exactly once per entry point. `parse_stage` applies it after a winning `parse` hook; `rewrite`, `generate`, and `compile_from_ast` apply it before their stages run. A map returned by a transform hook is downstream state, and the boundary request does not replace it.
 
 `parse_stage` clears the request on the builtin parser options. `generate_stage` clears `input` and `output` on the generator options that it passes to both the `generate` hook and the builtin. The hook payload therefore carries neither request, and the builtin does not resolve the input a second time. Output delivery happens after the winning result, whichever generator produced it.
+
+`generate_stage` applies the output-file rule from [common source maps](../common/AGENTS.md#source-maps) after the winning result, including when a plugin produced the map.
 
 ## Error propagation
 

@@ -33,6 +33,8 @@ Every field is required. In a `generate` hook, the stage options are available a
 
 `cwd` anchors resolution of `file`. A relative input-map `path` resolves against the source file's directory; absolute paths are used as-is.
 
+`file` is recorded as `map.file`. `GeneratorOptions` has no separate output name, so `file` also names the source when there is no input map.
+
 ## `Generator::generate`
 
 Generates code from the fixed AST. It resolves `source_map.input` against the AST source text, `cwd`, and `file`, then composes the resolved input map into the produced source map. An explicit request wins over the AST's own input map when it resolves to a map. If the request is `Inline` or `Auto` and finds no map, the AST's own map is kept. An `External` request that cannot read its map rejects.

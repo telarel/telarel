@@ -1,14 +1,19 @@
 /**
  * The JSX transform runtime.
+ *
+ * `preserve` keeps JSX unchanged. `classic` and `automatic` lower JSX with the
+ * corresponding runtime.
  */
-type JsxRuntime = "classic" | "automatic";
+type JsxRuntime = "preserve" | "classic" | "automatic";
 
 /**
  * Options for the JSX transform, a curated subset of the builtin's fields.
  */
 type JsxOptions = {
     /**
-     * The JSX runtime to emit. By default, it is `automatic`.
+     * The JSX runtime. By default, it is `preserve`, which keeps JSX unchanged.
+     *
+     * `preserve` overrides every other field in this object.
      */
     runtime?: JsxRuntime;
     /**

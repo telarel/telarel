@@ -20,12 +20,27 @@ They also share the same plugin interface. See the [Plugin API](/apis/plugin) fo
 
 Every pipeline entry point accepts the options for the stages it runs. You can omit any option. The compiler resolves omitted values against defaults before the stages run. Builtin constructors instead take fully resolved options. See each page for the exact fields.
 
+### Output options
+
+`output` configures the generated code. `output.file` is the intended path of that code.
+
+- A non-empty `output.file` is used verbatim.
+- An empty `output.file` is treated as unset, the same as absent.
+- When `output.file` is unset, the transform plugin derives it from the input file. Without the transform plugin, it defaults to the resolved input `file`.
+- The resolved path is the generated output name.
+
+See [output file](/plugins/transform#output-file) for the derivation table.
+
 ## Results
 
 - **AST result**: the parsed or rewritten AST, the source text its spans anchor to, and an optional source map.
 - **Code result**: the generated code and an optional source map.
 
 See the individual function pages for the exact shapes.
+
+## Source maps
+
+A generated source map keeps the input in `map.sources` and records the output name in `map.file`. After the winning `generate` result, the pipeline records the resolved `output.file` as `map.file`, including when a custom `generate` hook produced the map. An external source map without an explicit `sourceMap.output.url` appends a `sourceMappingURL` comment whose URL is `<output.file>.map`. An empty `sourceMap.output.url` is treated as unset, the same as absent.
 
 ## Types and errors
 

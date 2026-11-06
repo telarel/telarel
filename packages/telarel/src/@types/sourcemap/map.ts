@@ -9,6 +9,9 @@ type SourceMap = {
     /**
      * An optional name of the generated code that this source map is associated
      * with.
+     *
+     * For a generated map, Telarel records the resolved `output.file` here.
+     * `sources` keeps the input sources.
      */
     file?: string | undefined;
     /**

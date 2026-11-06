@@ -9,7 +9,8 @@ use crate::sourcemap::inline::{
 
 /// Apply the requested output source-map mode to a [`CodeResult`].
 ///
-/// `None` leaves the code and map unchanged. `output_file` derives the default
+/// A non-empty `output_file` is recorded in the map before the mode is applied.
+/// `None` leaves the code unchanged. `output_file` also derives the default
 /// external map URL for `External` requests without a URL. The pipeline calls
 /// this function after the winning generate hook, builtin or custom.
 pub fn apply_output_source_map_mode(
@@ -19,9 +20,13 @@ pub fn apply_output_source_map_mode(
 ) -> CodeResult {
     let CodeResult { code, map } = result;
 
-    let Some(map) = map else {
+    let Some(mut map) = map else {
         return CodeResult { code, map: None };
     };
+
+    if !output_file.is_empty() {
+        map.set_file(output_file);
+    }
 
     let Some(output) = output else {
         return CodeResult { code, map: Some(map) };
@@ -76,6 +81,12 @@ mod tests {
         builder.into_owned_sourcemap().into_inner()
     }
 
+    fn sample_map_with_file(file: &str) -> SourceMap {
+        let mut map: SourceMap = sample_map();
+        map.set_file(file);
+        map
+    }
+
     fn result_with_map() -> CodeResult {
         CodeResult {
             code: String::from("const a = 1;"),
@@ -102,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn test_no_output_request_returns_result_unchanged() {
+    fn test_no_output_request_stamps_file_and_keeps_code() {
         let result: CodeResult = apply_output_source_map_mode(
             result_with_map(),
             None,
@@ -110,11 +121,18 @@ mod tests {
         );
 
         assert_eq!(result.code, "const a = 1;");
-        assert!(result.map.is_some());
+
+        let map: SourceMap = result.map.expect("map kept");
+
+        assert_eq!(map.get_file(), Some("dist/index.js"));
+        assert_eq!(
+            map.to_json_string(),
+            sample_map_with_file("dist/index.js").to_json_string(),
+        );
     }
 
     #[test]
-    fn test_external_empty_output_file_returns_result_unchanged() {
+    fn test_external_empty_output_file_leaves_map_file_unchanged() {
         let result: CodeResult = apply_output_source_map_mode(
             result_with_map(),
             Some(&output(OutputSourceMapMode::External)),
@@ -122,7 +140,11 @@ mod tests {
         );
 
         assert_eq!(result.code, "const a = 1;");
-        assert!(result.map.is_some());
+
+        let map: SourceMap = result.map.expect("map kept");
+
+        assert_eq!(map.get_file(), Some("original.ts"));
+        assert_eq!(map.to_json_string(), sample_map().to_json_string());
     }
 
     #[test]
@@ -140,7 +162,10 @@ mod tests {
             result.code,
             "const a = 1;\n//# sourceMappingURL=dist/app.js.map\n",
         );
-        assert!(result.map.is_some());
+
+        let map: SourceMap = result.map.expect("map kept");
+
+        assert_eq!(map.get_file(), Some("original.ts"));
     }
 
     #[test]
@@ -155,7 +180,10 @@ mod tests {
             result.code,
             "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
         );
-        assert!(result.map.is_some());
+
+        let map: SourceMap = result.map.expect("map kept");
+
+        assert_eq!(map.get_file(), Some("dist/index.js"));
     }
 
     #[test]
@@ -173,7 +201,10 @@ mod tests {
             result.code,
             "const a = 1;\n//# sourceMappingURL=custom.js.map\n",
         );
-        assert!(result.map.is_some());
+
+        let map: SourceMap = result.map.expect("map kept");
+
+        assert_eq!(map.get_file(), Some("dist/index.js"));
     }
 
     #[test]
@@ -188,12 +219,15 @@ mod tests {
             result.code,
             "const a = 1;\n//# sourceMappingURL=dist/index.js.map\n",
         );
-        assert!(result.map.is_some());
+
+        let map: SourceMap = result.map.expect("map kept");
+
+        assert_eq!(map.get_file(), Some("dist/index.js"));
     }
 
     #[test]
     fn test_inline_appends_comment_and_drops_map() {
-        let map: SourceMap = sample_map();
+        let map: SourceMap = sample_map_with_file("dist/index.js");
 
         let result: CodeResult = apply_output_source_map_mode(
             result_with_map(),
@@ -230,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_both_appends_comment_and_keeps_map() {
-        let map: SourceMap = sample_map();
+        let map: SourceMap = sample_map_with_file("dist/index.js");
 
         let result: CodeResult = apply_output_source_map_mode(
             result_with_map(),

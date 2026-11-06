@@ -26,6 +26,9 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 
 `parse` and `rewrite` take a flat `inputSourceMap`. `compile`, `compileFromAst`, and `generate` keep the shared `sourceMap` bag plus `output`; `builtinParse` and `builtinGenerate` take only `sourceMap`. The `options` payload and the resolved `start` options carry both. The `parse` hook option payload carries only `sourceMap`. The `generate` hook payload carries `sourceMap` with both `input` and `output` unset, serialized as `{ input: null, output: null }`. AST and transform payloads carry neither.
 
+- Generated maps follow [common source maps](../common/AGENTS.md#source-maps).
+- `builtinGenerate` and `createGenerator` have no separate output name. Public contract: `docs/content/apis/javascript/createGenerator.mdx`.
+
 `cwd` stays a JS string at the napi boundary. The JS-facing option structs keep `String`, and both `_types/options.rs` and `unmarshal_options` convert it to `PathBuf` on entry. `_types/path.rs::path_label` renders it back at every outbound site. Non-UTF-8 paths become `U+FFFD`. `file` stays a UTF-8 string (`String`) in both directions. Because napi rejects non-UTF-8 paths on Unix, do not expose `PathBuf` in outbound napi structs.
 
 ## AST boundary
@@ -84,6 +87,8 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 - Telarel dispatches a plugin to Rust only when it carries the explicit `__builtin: true` property. The binding reserves no name prefix.
 - The descriptor is plain data: `{ __builtin: true, name, options }`.
 - Telarel names the constructed Rust plugin after the builtin's JS name (for transform, `builtin:transform`), so pipeline errors use the JS-facing name. Identity is the adapter instance, not the name.
+- The builtin transform's JSX behavior follows [the transform plugin contract](../plugin_transform/AGENTS.md#jsx). The binding forwards `jsx.runtime` and the raw `oxc.jsx` fields.
+- The builtin transform derives `output.file` in its `Post` options hook. See [the transform plugin contract](../plugin_transform/AGENTS.md#options-hook).
 - Builtins use the same `__PLUGIN_ID__` and `RefList` adapter memo path as JS hook plugins.
 - The same dispatch applies mid-fixpoint to plugins that `options` injects.
 

@@ -8,7 +8,8 @@ use oxc_transformer_plugins::{InjectGlobalVariables, ReplaceGlobalDefines};
 
 use telarel_common::{Ast, HookUsage, generate_program};
 use telarel_plugin::{
-    Plugin, PluginContext, PluginError, TransformArgs, TransformOutput,
+    CommonPluginContext, OptionsArgs, OptionsReturn, Plugin, PluginContext,
+    PluginError, PluginHookMeta, PluginOrder, TransformArgs, TransformOutput,
 };
 
 use crate::options::TransformOptions;
@@ -217,6 +218,30 @@ impl Plugin for TransformPlugin {
         HookUsage::Transform
     }
 
+    async fn options<'a>(
+        &'a self,
+        _ctx: &'a CommonPluginContext,
+        args: &'a OptionsArgs,
+    ) -> OptionsReturn {
+        // A `Post` options hook sees the final `file` and `language` chosen by
+        // the normal hooks.
+        let Some(output_file): Option<String> =
+            self.options.output_file(&args.options)
+        else {
+            return Ok(None);
+        };
+
+        let mut next: OptionsArgs = args.clone();
+
+        next.options.output.get_or_insert_default().file = Some(output_file);
+
+        Ok(Some(next))
+    }
+
+    fn options_meta(&self) -> Option<PluginHookMeta> {
+        Some(PluginHookMeta { order: Some(PluginOrder::Post) })
+    }
+
     async fn transform<'a>(
         &'a self,
         ctx: &'a PluginContext<'_>,
@@ -229,14 +254,20 @@ impl Plugin for TransformPlugin {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     use oxc::transformer::CompilerAssumptions;
     use oxc::transformer::DecoratorOptions;
     use oxc::transformer::PluginsOptions;
 
-    use telarel_common::{Ast, Language, ParseAstOptions, parse_ast};
+    use telarel_common::{
+        Ast, Language, OutputOptions, ParseAstOptions, ResolvableOptions,
+        parse_ast,
+    };
     use telarel_plugin::{
-        ModuleInfo, Plugin, PluginContext, PluginError, TransformOutput,
+        CommonPluginContext, ModuleInfo, OptionsArgs, OptionsReturn, Plugin,
+        PluginContext, PluginError, PluginHookMeta, PluginOrder,
+        SharedPluginable, TransformOutput, options_fixpoint,
     };
 
     use crate::helpers::sources::{DEPENDENCY_HELPERS, HELPERS, HelperSource};
@@ -260,6 +291,14 @@ mod tests {
     const SOURCE_TS: &str = "const value: number = 1;";
 
     const SOURCE_JSX: &str = "const element = <div className=\"x\">hi</div>;";
+
+    const SOURCE_JSX_COMPONENT: &str =
+        "function App() { return <div className=\"x\">hi</div>; }";
+
+    const SOURCE_TSX: &str = concat!(
+        "const value: number = 1;\n",
+        "const element = <div className=\"x\">{value}</div>;",
+    );
 
     const SOURCE_REGEX: &str = "const r = /(/;";
 
@@ -300,6 +339,48 @@ mod tests {
         let args: TransformArgs = TransformArgs { ast: ast.clone() };
 
         plugin.transform(&ctx, args).await
+    }
+
+    #[derive(Debug)]
+    struct RewriteFileOptionsPlugin {
+        file: &'static str,
+    }
+
+    impl Plugin for RewriteFileOptionsPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "rewrite-file".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Options
+        }
+
+        async fn options<'a>(
+            &'a self,
+            _ctx: &'a CommonPluginContext,
+            args: &'a OptionsArgs,
+        ) -> OptionsReturn {
+            let mut next: OptionsArgs = args.clone();
+
+            next.options.file = Some(self.file.to_string());
+
+            Ok(Some(next))
+        }
+    }
+
+    fn options_args(
+        file: Option<&str>,
+        output: Option<OutputOptions>,
+        plugins: Vec<SharedPluginable>,
+    ) -> OptionsArgs {
+        OptionsArgs {
+            options: ResolvableOptions {
+                file: file.map(String::from),
+                output,
+                ..ResolvableOptions::default()
+            },
+            plugins,
+        }
     }
 
     async fn codegen_after(
@@ -729,6 +810,139 @@ mod tests {
         assert!(plugin.register_hook_usage().contains(HookUsage::Transform));
     }
 
+    #[test]
+    fn test_options_meta_is_post() {
+        let plugin: TransformPlugin = TransformPlugin::new();
+
+        assert_eq!(
+            plugin.options_meta(),
+            Some(PluginHookMeta { order: Some(PluginOrder::Post) }),
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_derives_output_file_and_keeps_plugins() {
+        let plugin: TransformPlugin = TransformPlugin::new();
+        let preserved: SharedPluginable =
+            Plugin::new_shared(TransformPlugin::new());
+
+        let args: OptionsArgs = options_args(
+            Some("src/app.ts"),
+            None,
+            vec![Arc::clone(&preserved)],
+        );
+
+        let next: OptionsArgs = plugin
+            .options(&CommonPluginContext::default(), &args)
+            .await
+            .expect("options succeeds")
+            .expect("derivation returns Some");
+
+        assert_eq!(
+            next.options
+                .output
+                .as_ref()
+                .and_then(|output| output.file.as_deref()),
+            Some("src/app.js"),
+        );
+        assert_eq!(next.plugins.len(), 1);
+        assert!(Arc::ptr_eq(&next.plugins[0], &preserved));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_fills_empty_output() {
+        let plugin: TransformPlugin = TransformPlugin::new();
+
+        let args: OptionsArgs = options_args(
+            Some("src/app.ts"),
+            Some(OutputOptions { file: Some(String::new()) }),
+            Vec::new(),
+        );
+
+        let next: OptionsArgs = plugin
+            .options(&CommonPluginContext::default(), &args)
+            .await
+            .expect("options succeeds")
+            .expect("derivation returns Some");
+
+        assert_eq!(
+            next.options
+                .output
+                .as_ref()
+                .and_then(|output| output.file.as_deref()),
+            Some("src/app.js"),
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_explicit_output_returns_none() {
+        let plugin: TransformPlugin = TransformPlugin::new();
+
+        let args: OptionsArgs = options_args(
+            Some("src/app.ts"),
+            Some(OutputOptions { file: Some(String::from("dist/app.js")) }),
+            Vec::new(),
+        );
+
+        let next: Option<OptionsArgs> = plugin
+            .options(&CommonPluginContext::default(), &args)
+            .await
+            .expect("options succeeds");
+
+        assert!(next.is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_without_derivation_returns_none() {
+        let plugin: TransformPlugin = TransformPlugin::new();
+
+        for file in ["src/app.js", "src/app.d.ts"] {
+            let args: OptionsArgs = options_args(Some(file), None, Vec::new());
+
+            let next: Option<OptionsArgs> = plugin
+                .options(&CommonPluginContext::default(), &args)
+                .await
+                .expect("options succeeds");
+
+            assert!(next.is_none(), "{file}");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_fixpoint_derives_from_rewritten_file() {
+        let transform: SharedPluginable =
+            Plugin::new_shared(TransformPlugin::new());
+        let rewrite: SharedPluginable =
+            Plugin::new_shared(RewriteFileOptionsPlugin {
+                file: "src/component.tsx",
+            });
+
+        // The transform plugin is first in registration order. Only `Post`
+        // ordering makes it see the file set by the normal hook.
+        let args: OptionsArgs = options_args(
+            Some("src/original.ts"),
+            None,
+            vec![Arc::clone(&transform), Arc::clone(&rewrite)],
+        );
+
+        let (settled, list): (OptionsArgs, Vec<SharedPluginable>) =
+            options_fixpoint(&CommonPluginContext::default(), &args)
+                .await
+                .expect("options fixpoint settles");
+
+        assert_eq!(
+            settled
+                .options
+                .output
+                .as_ref()
+                .and_then(|output| output.file.as_deref()),
+            Some("src/component.jsx"),
+        );
+        assert_eq!(list.len(), 2);
+        assert!(Arc::ptr_eq(&list[0], &transform));
+        assert!(Arc::ptr_eq(&list[1], &rewrite));
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn test_transform_changed_returns_some_with_program() {
         // A lowering that rewrites the tree must return `Some` carrying the
@@ -811,6 +1025,80 @@ mod tests {
 
         assert!(code.contains("jsx"), "{}", code);
         assert!(!code.contains("<div"), "{}", code);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_default_preserves_jsx() {
+        let plugin: TransformPlugin = TransformPlugin::new();
+
+        let code: String = codegen_after(plugin, FILE_TSX, SOURCE_JSX).await;
+
+        assert!(code.contains("<div"), "{}", code);
+        assert!(!code.contains("React.createElement"), "{}", code);
+        assert!(!code.contains("jsx("), "{}", code);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_preserve_strips_typescript_from_tsx() {
+        let plugin: TransformPlugin = TransformPlugin::new();
+
+        let code: String = codegen_after(plugin, FILE_TSX, SOURCE_TSX).await;
+
+        assert!(!code.contains(": number"), "{}", code);
+        assert!(code.contains("<div"), "{}", code);
+        assert!(code.contains("{value}"), "{}", code);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_preserve_ignores_development_and_refresh() {
+        let plugin: TransformPlugin =
+            TransformPlugin::with_options(TransformOptions {
+                jsx: Some(JsxOptions {
+                    runtime: Some(JsxRuntime::Preserve),
+                    development: Some(true),
+                    refresh: Some(true),
+                    ..JsxOptions::default()
+                }),
+                ..TransformOptions::default()
+            });
+
+        let code: String =
+            codegen_after(plugin, FILE_TSX, SOURCE_JSX_COMPONENT).await;
+
+        assert!(code.contains("<div"), "{}", code);
+        assert!(!code.contains("__source"), "{}", code);
+        assert!(!code.contains("__self"), "{}", code);
+        assert!(!code.contains("$RefreshReg$"), "{}", code);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_raw_oxc_jsx_alone_preserves_by_default() {
+        // Raw `oxc.jsx` fields never enable lowering. Only `jsx.runtime` does.
+        let plugin: TransformPlugin =
+            TransformPlugin::with_options(TransformOptions {
+                oxc: Some(OxcTransformOptions {
+                    jsx: oxc::transformer::JsxOptions {
+                        runtime: oxc::transformer::JsxRuntime::Classic,
+                        pragma: Some(String::from("h")),
+                        development: true,
+                        refresh: Some(
+                            oxc::transformer::ReactRefreshOptions::default(),
+                        ),
+                        ..oxc::transformer::JsxOptions::default()
+                    },
+                    ..OxcTransformOptions::default()
+                }),
+                ..TransformOptions::default()
+            });
+
+        let code: String =
+            codegen_after(plugin, FILE_TSX, SOURCE_JSX_COMPONENT).await;
+
+        assert!(code.contains("<div"), "{}", code);
+        assert!(!code.contains("h("), "{}", code);
+        assert!(!code.contains("__source"), "{}", code);
+        assert!(!code.contains("__self"), "{}", code);
+        assert!(!code.contains("$RefreshReg$"), "{}", code);
     }
 
     #[tokio::test(flavor = "current_thread")]

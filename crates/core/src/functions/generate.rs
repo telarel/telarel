@@ -23,6 +23,8 @@ pub async fn generate(
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+    use std::future::Future;
     use std::sync::Arc;
     use std::sync::Mutex;
 
@@ -31,7 +33,10 @@ mod tests {
         OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
         ResolvedOptions, SourceMap, SourceMapOptions, SourceType,
     };
-    use telarel_plugin::{Plugin, SharedPluginable};
+    use telarel_plugin::{
+        GenerateArgs, GenerateReturn, HookUsage, Plugin, PluginContext,
+        SharedPluginable,
+    };
 
     use crate::common::test_util::{
         EndObserverPlugin, GenerateOptionsObserverPlugin, GenerateOutcome,
@@ -41,6 +46,43 @@ mod tests {
     };
 
     use super::generate;
+
+    /// A `generate` hook that wins with a caller-provided map.
+    #[derive(Debug)]
+    struct CustomMapGeneratePlugin {
+        code: &'static str,
+        map: SourceMap,
+    }
+
+    impl CustomMapGeneratePlugin {
+        fn new(
+            code: &'static str,
+            map: SourceMap,
+        ) -> Self {
+            Self { code, map }
+        }
+    }
+
+    impl Plugin for CustomMapGeneratePlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "custom-map-generate".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Generate
+        }
+
+        fn generate<'a>(
+            &'a self,
+            _ctx: &'a PluginContext<'_>,
+            _args: GenerateArgs<'a>,
+        ) -> impl Future<Output = GenerateReturn> + Send + 'a {
+            let code: String = String::from(self.code);
+            let map: SourceMap = self.map.clone();
+
+            async move { Ok(Some(CodeResult { code, map: Some(map) })) }
+        }
+    }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_generate_runs_only_its_hooks_once() {
@@ -276,6 +318,55 @@ mod tests {
             result.code,
             "const a = 1;\n//# sourceMappingURL=dist/app.js.map\n",
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_records_output_file_as_map_file() {
+        let ast: Ast = parse_fixture("const a = 1;").unwrap();
+
+        let options: GenerateOptions = GenerateOptions {
+            file: Some(String::from("src/index.ts")),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/index.js")),
+            }),
+            ..GenerateOptions::default()
+        };
+
+        let result: CodeResult =
+            generate(ast, options, vec![]).await.expect("generate succeeds");
+
+        let generated: SourceMap = result.map.expect("output map present");
+
+        assert_eq!(generated.get_file(), Some("dist/index.js"));
+        assert_eq!(generated.get_source(0), Some("src/index.ts"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_overrides_a_custom_map_file_with_output_file() {
+        let ast: Ast = parse_fixture("const a = 1;").unwrap();
+        let custom: SourceMap = sample_map("custom.ts", 3);
+
+        let options: GenerateOptions = GenerateOptions {
+            file: Some(String::from("src/index.ts")),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/app.js")),
+            }),
+            ..GenerateOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> = vec![Plugin::new_shared(
+            CustomMapGeneratePlugin::new("custom();", custom),
+        )];
+
+        let result: CodeResult =
+            generate(ast, options, plugins).await.expect("generate succeeds");
+
+        assert_eq!(result.code, "custom();");
+
+        let generated: SourceMap = result.map.expect("custom map kept");
+
+        assert_eq!(generated.get_file(), Some("dist/app.js"));
+        assert_eq!(generated.get_source(0), Some("custom.ts"));
     }
 
     #[tokio::test(flavor = "current_thread")]

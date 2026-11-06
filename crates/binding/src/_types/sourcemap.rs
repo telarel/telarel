@@ -7,6 +7,8 @@ pub struct JsSourceMap {
     /// Version of the source map format.
     pub version: u32,
     /// An optional name of the generated code that this source map describes.
+    /// For a generated map, Telarel records the resolved output file here.
+    /// `sources` keeps the input sources.
     pub file: Option<String>,
     /// A string with the encoded mapping data.
     pub mappings: String,

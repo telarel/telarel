@@ -2,6 +2,7 @@ pub mod define;
 pub mod helper_loader;
 pub mod inject;
 pub mod jsx;
+pub mod output;
 pub mod target;
 pub mod typescript;
 
@@ -15,6 +16,10 @@ use oxc_compat::Version;
 use oxc_transformer_plugins::{
     InjectGlobalVariablesConfig, ReplaceGlobalDefinesConfig,
 };
+use telarel_common::FILE_DEFAULT;
+use telarel_common::Language;
+use telarel_common::ResolvableOptions;
+use telarel_common::infer_language;
 
 use crate::options::define::DefineOptions;
 use crate::options::helper_loader::HelperLoaderOptions;
@@ -23,7 +28,10 @@ use crate::options::helper_loader::overlay_helper_loader;
 use crate::options::helper_loader::resolve_helpers;
 use crate::options::inject::InjectOptions;
 use crate::options::jsx::JsxOptions;
+use crate::options::jsx::JsxRuntime;
+use crate::options::jsx::effective_runtime;
 use crate::options::jsx::overlay_jsx;
+use crate::options::output::derive_output_file;
 use crate::options::target::TransformTarget;
 use crate::options::typescript::TypeScriptOptions;
 use crate::options::typescript::overlay_typescript;
@@ -87,9 +95,7 @@ impl TransformOptions {
             overlay_typescript(&mut base.typescript, typescript);
         }
 
-        if let Some(jsx) = &self.jsx {
-            overlay_jsx(&mut base.jsx, jsx);
-        }
+        overlay_jsx(&mut base.jsx, self.jsx.as_ref());
 
         if let Some(engine_targets) = Self::engine_targets(&self.targets) {
             base.env = oxc::transformer::EnvOptions::from(engine_targets);
@@ -101,6 +107,46 @@ impl TransformOptions {
         );
 
         base
+    }
+
+    /// Derive the output file name for `options` when `output.file` is unset
+    /// or empty.
+    ///
+    /// Returns `None` in three cases. The caller set a non-empty
+    /// `output.file`. The effective grammar has no output mapping. The derived
+    /// name would equal the input file.
+    pub(crate) fn output_file(
+        &self,
+        options: &ResolvableOptions,
+    ) -> Option<String> {
+        let explicit_output: bool = options
+            .output
+            .as_ref()
+            .and_then(|output| output.file.as_deref())
+            .is_some_and(|file| !file.is_empty());
+
+        if explicit_output {
+            return None;
+        }
+
+        let file: &str = options
+            .file
+            .as_deref()
+            .filter(|file: &&str| !file.is_empty())
+            .unwrap_or(FILE_DEFAULT);
+
+        let language: Language = infer_language(file, options.language);
+
+        if matches!(language, Language::JS | Language::DTS) {
+            return None;
+        }
+
+        let jsx_preserved: bool = matches!(
+            effective_runtime(self.jsx.as_ref()),
+            JsxRuntime::Preserve
+        );
+
+        derive_output_file(file, language, jsx_preserved)
     }
 
     /// Resolve the helper loader state from the telarel layer.
@@ -147,6 +193,7 @@ mod tests {
     use oxc::transformer::JsxOptions as OxcJsxOptions;
     use oxc::transformer::TransformOptions as OxcTransformOptions;
     use oxc_compat::Version;
+    use telarel_common::OutputOptions;
 
     use crate::options::define::DefineOptions;
     use crate::options::helper_loader::{
@@ -317,11 +364,56 @@ mod tests {
         let resolved: OxcTransformOptions = options.resolve();
 
         assert!(resolved.env.es2015.arrow_function.is_none());
-        assert_eq!(
-            resolved.jsx.runtime,
-            oxc::transformer::JsxRuntime::Automatic
-        );
-        assert!(resolved.jsx.jsx_plugin);
+        assert!(!resolved.jsx.jsx_plugin);
+        assert!(!resolved.jsx.development);
+        assert!(resolved.jsx.refresh.is_none());
+    }
+
+    #[test]
+    fn test_resolve_preserves_raw_oxc_jsx_passes_by_default() {
+        let options: TransformOptions = TransformOptions {
+            oxc: Some(OxcTransformOptions {
+                jsx: OxcJsxOptions {
+                    jsx_self_plugin: true,
+                    jsx_source_plugin: true,
+                    development: true,
+                    refresh: Some(
+                        oxc::transformer::ReactRefreshOptions::default(),
+                    ),
+                    ..OxcJsxOptions::default()
+                },
+                ..OxcTransformOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert!(!resolved.jsx.jsx_plugin);
+        assert!(!resolved.jsx.display_name_plugin);
+        assert!(!resolved.jsx.jsx_self_plugin);
+        assert!(!resolved.jsx.jsx_source_plugin);
+        assert!(!resolved.jsx.development);
+        assert!(resolved.jsx.refresh.is_none());
+    }
+
+    #[test]
+    fn test_resolve_jsx_runtime_none_preserves() {
+        let options: TransformOptions = TransformOptions {
+            jsx: Some(JsxOptions {
+                runtime: None,
+                development: Some(true),
+                refresh: Some(true),
+                ..JsxOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert!(!resolved.jsx.jsx_plugin);
+        assert!(!resolved.jsx.development);
+        assert!(resolved.jsx.refresh.is_none());
     }
 
     #[test]
@@ -668,5 +760,271 @@ mod tests {
         );
         assert!(helpers.inline());
         assert_eq!(helpers.module_name, DEFAULT_HELPER_MODULE_NAME);
+    }
+
+    fn resolvable(
+        file: Option<&str>,
+        language: Option<Language>,
+    ) -> ResolvableOptions {
+        ResolvableOptions {
+            file: file.map(String::from),
+            language,
+            ..ResolvableOptions::default()
+        }
+    }
+
+    fn assert_output_file(
+        options: &TransformOptions,
+        resolvable: &ResolvableOptions,
+        expected: Option<&str>,
+    ) {
+        assert_eq!(options.output_file(resolvable).as_deref(), expected);
+    }
+
+    #[test]
+    fn test_output_file_derives_typescript_suffixes() {
+        let options: TransformOptions = TransformOptions::default();
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.ts"), None),
+            Some("src/app.js"),
+        );
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.mts"), None),
+            Some("src/app.mjs"),
+        );
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.cts"), None),
+            Some("src/app.cjs"),
+        );
+    }
+
+    #[test]
+    fn test_output_file_keeps_typescript_module_flavors() {
+        let options: TransformOptions = TransformOptions::default();
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.mjs"), Some(Language::TS)),
+            None,
+        );
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.cjs"), Some(Language::TS)),
+            None,
+        );
+    }
+
+    #[test]
+    fn test_output_file_uses_default_for_missing_and_empty_file() {
+        let options: TransformOptions = TransformOptions::default();
+
+        assert_output_file(&options, &resolvable(None, None), Some("index.js"));
+        assert_output_file(
+            &options,
+            &resolvable(Some(""), None),
+            Some("index.js"),
+        );
+    }
+
+    #[test]
+    fn test_output_file_explicit_output_wins() {
+        let options: TransformOptions = TransformOptions::default();
+        let resolvable: ResolvableOptions = ResolvableOptions {
+            file: Some(String::from("src/app.ts")),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/custom.js")),
+            }),
+            ..ResolvableOptions::default()
+        };
+
+        assert_output_file(&options, &resolvable, None);
+    }
+
+    #[test]
+    fn test_output_file_fills_empty_output() {
+        let options: TransformOptions = TransformOptions::default();
+        let resolvable: ResolvableOptions = ResolvableOptions {
+            file: Some(String::from("src/app.ts")),
+            output: Some(OutputOptions { file: Some(String::new()) }),
+            ..ResolvableOptions::default()
+        };
+
+        assert_output_file(&options, &resolvable, Some("src/app.js"));
+    }
+
+    #[test]
+    fn test_output_file_javascript_and_declarations_are_unchanged() {
+        let options: TransformOptions = TransformOptions::default();
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.js"), None),
+            None,
+        );
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.d.ts"), None),
+            None,
+        );
+    }
+
+    #[test]
+    fn test_output_file_tsx_preserved_maps_to_jsx() {
+        let options: TransformOptions = TransformOptions::default();
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.tsx"), None),
+            Some("src/app.jsx"),
+        );
+    }
+
+    #[test]
+    fn test_output_file_tsx_lowered_maps_to_js() {
+        for runtime in [JsxRuntime::Classic, JsxRuntime::Automatic] {
+            let options: TransformOptions = TransformOptions {
+                jsx: Some(JsxOptions {
+                    runtime: Some(runtime),
+                    ..JsxOptions::default()
+                }),
+                ..TransformOptions::default()
+            };
+
+            assert_output_file(
+                &options,
+                &resolvable(Some("src/app.tsx"), None),
+                Some("src/app.js"),
+            );
+        }
+    }
+
+    #[test]
+    fn test_output_file_jsx_preserved_is_unchanged() {
+        let options: TransformOptions = TransformOptions::default();
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.jsx"), None),
+            None,
+        );
+    }
+
+    #[test]
+    fn test_output_file_jsx_lowered_maps_to_js() {
+        let options: TransformOptions = TransformOptions {
+            jsx: Some(JsxOptions {
+                runtime: Some(JsxRuntime::Automatic),
+                ..JsxOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.jsx"), None),
+            Some("src/app.js"),
+        );
+    }
+
+    #[test]
+    fn test_output_file_strips_query_and_hash() {
+        let options: TransformOptions = TransformOptions::default();
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.ts?v=1#hash"), None),
+            Some("src/app.js"),
+        );
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.tsx?v=1"), None),
+            Some("src/app.jsx"),
+        );
+    }
+
+    #[test]
+    fn test_output_file_extensionless_and_unknown() {
+        let options: TransformOptions = TransformOptions::default();
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app"), Some(Language::TS)),
+            Some("src/app.js"),
+        );
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app"), Some(Language::TSX)),
+            Some("src/app.jsx"),
+        );
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.css"), Some(Language::TS)),
+            None,
+        );
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.css"), Some(Language::TSX)),
+            None,
+        );
+    }
+
+    #[test]
+    fn test_output_file_explicit_language_wins() {
+        let options: TransformOptions = TransformOptions::default();
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.js"), Some(Language::TSX)),
+            Some("src/app.jsx"),
+        );
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.ts"), Some(Language::JS)),
+            None,
+        );
+    }
+
+    #[test]
+    fn test_output_file_raw_oxc_jsx_does_not_lower() {
+        let options: TransformOptions = TransformOptions {
+            oxc: Some(OxcTransformOptions {
+                jsx: OxcJsxOptions {
+                    runtime: oxc::transformer::JsxRuntime::Automatic,
+                    jsx_plugin: true,
+                    ..OxcJsxOptions::default()
+                },
+                ..OxcTransformOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.tsx"), None),
+            Some("src/app.jsx"),
+        );
+    }
+
+    #[test]
+    fn test_output_file_preserve_wins_over_development_and_refresh() {
+        let options: TransformOptions = TransformOptions {
+            jsx: Some(JsxOptions {
+                runtime: Some(JsxRuntime::Preserve),
+                development: Some(true),
+                refresh: Some(true),
+                ..JsxOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        assert_output_file(
+            &options,
+            &resolvable(Some("src/app.tsx"), None),
+            Some("src/app.jsx"),
+        );
     }
 }

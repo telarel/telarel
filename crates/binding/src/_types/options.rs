@@ -38,7 +38,10 @@ pub struct JsParseOptions {
 /// JS-facing options for output code.
 #[napi_derive::napi(object)]
 pub struct JsOutputOptions {
-    /// The intended path of the generated code.
+    /// The intended path of the generated code. A non-empty value is used
+    /// verbatim. An empty value is unset. When unset, the transform plugin
+    /// derives the name from the input file. The resolved value is recorded as
+    /// `map.file` and derives the default external source-map URL.
     pub file: Option<String>,
 }
 
@@ -172,8 +175,9 @@ pub struct JsGeneratorOptions {
     /// resolves to the process working directory. It anchors the source file
     /// used to resolve a relative `sourceMap.input.path`.
     pub cwd: Option<String>,
-    /// The file being generated. When the JS side omits it, the value
-    /// resolves to a default filename.
+    /// The file being generated. The builtin generator records it as
+    /// `map.file`. `builtinGenerate` has no separate output name. When the JS
+    /// side omits it, the value resolves to a default filename.
     pub file: Option<String>,
     /// The source-map inputs and outputs requested for the step.
     /// `builtinGenerate` resolves `input` and applies `output` delivery.
@@ -197,7 +201,7 @@ fn parse_source_type(text: &str) -> std::result::Result<SourceType, String> {
     }
 }
 
-pub(crate) fn parse_language_option(
+pub fn parse_language_option(
     language: Option<&str>
 ) -> Result<Option<Language>> {
     match language {

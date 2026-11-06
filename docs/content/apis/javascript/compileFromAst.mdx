@@ -35,15 +35,15 @@ The function accepts either an [Ast](/apis/javascript/Ast) instance or a bare ES
 
 ### `CompileFromAstOptions`
 
-| Field        | Type               | Default                    | Description                                                                  |
-| ------------ | ------------------ | -------------------------- | ---------------------------------------------------------------------------- |
-| `cwd`        | `string`           | `process.cwd()`            | Current working directory.                                                   |
-| `file`       | `string`           | `index.ts`                 | The file being compiled.                                                     |
-| `language`   | `Language`         | inferred                   | The grammar of the code.                                                     |
-| `sourceType` | `SourceType`       | AST module kind, then file | The module kind of the code.                                                 |
-| `output`     | `OutputOptions`    | `{ file: file }`           | Output code configuration. `output.file` derives the default source-map URL. |
-| `sourceMap`  | `SourceMapOptions` | off                        | The source-map inputs and outputs requested for the run.                     |
-| `plugins`    | `PluginOption[]`   | `[]`                       | The plugins to run.                                                          |
+| Field        | Type               | Default                    | Description                                                               |
+| ------------ | ------------------ | -------------------------- | ------------------------------------------------------------------------- |
+| `cwd`        | `string`           | `process.cwd()`            | Current working directory.                                                |
+| `file`       | `string`           | `index.ts`                 | The file being compiled.                                                  |
+| `language`   | `Language`         | inferred                   | The grammar of the code.                                                  |
+| `sourceType` | `SourceType`       | AST module kind, then file | The module kind of the code.                                              |
+| `output`     | `OutputOptions`    | unset                      | [Output code configuration](/apis#output-options).                        |
+| `sourceMap`  | `SourceMapOptions` | off                        | [Source-map inputs and outputs](/apis#source-maps) requested for the run. |
+| `plugins`    | `PluginOption[]`   | `[]`                       | The plugins to run.                                                       |
 
 The grammar comes from `options.language`, then the AST language, then the file extension.
 
@@ -51,7 +51,7 @@ The module kind comes from a concrete `sourceType`, then the AST module kind, th
 
 `compileFromAst` reads the AST language but returns only code and an optional map.
 
-The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
+See [output file](/plugins/transform#output-file) for how the transform plugin derives `output.file`.
 
 An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `inline` or `auto` and finds no map, the AST's own map is kept. An `external` request that cannot read its map rejects.
 

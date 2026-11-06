@@ -13,6 +13,7 @@ pub fn resolve_against(
     if path.is_absolute() { path.to_path_buf() } else { cwd.join(path) }
 }
 
+/// Remove a `?query` or `#hash` suffix from a file name.
 pub fn strip_file_suffix(file: &str) -> &str {
     let without_hash: &str =
         file.split_once('#').map_or(file, |(path, _)| path);

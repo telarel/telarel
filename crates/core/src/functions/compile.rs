@@ -190,6 +190,27 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_records_output_file_as_map_file() {
+        let options: CompileOptions = CompileOptions {
+            file: Some(String::from("src/index.ts")),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/index.js")),
+            }),
+            ..CompileOptions::default()
+        };
+
+        let result: CodeResult =
+            compile(String::from("const a = 1;"), options, vec![])
+                .await
+                .expect("compile succeeds");
+
+        let generated: SourceMap = result.map.expect("output map present");
+
+        assert_eq!(generated.get_file(), Some("dist/index.js"));
+        assert_eq!(generated.get_source(0), Some("src/index.ts"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn test_compile_inline_input_map_composes_output_map() {
         let map: SourceMap = sample_map("upstream.ts", 9);
 

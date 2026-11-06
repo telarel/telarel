@@ -1,3 +1,77 @@
+## Next
+
+### Common
+
+#### Features
+
+- add `FILE_DEFAULT` as the default input file name
+- add `strip_file_suffix` to remove a `?query` or `#hash` suffix from a file name
+
+#### Fixes
+
+- change `apply_output_source_map_mode` to overwrite `map.file` with a non-empty output file after the winning generate result
+- change `generate_code` to record the output file as `map.file` after composing the input map. `map.sources` keeps the input sources
+
+### Core
+
+#### Fixes
+
+- change the `generate` stage to overwrite `map.file` with the resolved `output.file` after the winning result, including a custom map
+
+### Plugin Transform
+
+#### Breaking
+
+- change the default `jsx.runtime` to `preserve`. JSX is lowered only when `jsx.runtime` is `classic` or `automatic`
+- change the default `output.file` to derive from the input file when unset or empty. `.ts` maps to `.js`, `.mts` to `.mjs`, and `.cts` to `.cjs`. Preserved JSX maps to `.jsx`, and lowered JSX maps to `.js`. Declaration and unknown suffixes stay unchanged. A non-empty `output.file` wins verbatim. Derived names drop `?query` and `#hash`.
+- change raw `oxc.jsx` fields to not enable JSX lowering on their own
+- change the `options` hook to run at `Post` order so it sees the `file` and `language` settled by normal hooks
+
+#### Features
+
+- add `JsxRuntime::Preserve`, which overrides `development`, `refresh`, `import_source`, `pragma`, and `pragma_frag`
+
+### Binding
+
+#### Breaking
+
+- change `output.file` to be derived by the transform plugin when unset or empty
+
+#### Features
+
+- add `preserve` to the transform plugin's `jsx.runtime` values
+
+#### Fixes
+
+- change `GeneratorOptions.file` to be recorded as `map.file`
+- change `SourceMap.file` to name the generated output. `sources` keeps the input sources
+
+### Telarel (Crate)
+
+#### Features
+
+- add `FILE_DEFAULT` and `strip_file_suffix` re-exports
+
+#### Fixes
+
+- change the re-exported `compile`, `compile_from_ast`, and `generate` entry points to record the resolved `output.file` as `map.file`
+
+### Telarel (NPM)
+
+#### Breaking
+
+- change the transform plugin's default JSX runtime to `preserve`. JSX is lowered only when `jsx.runtime` is `classic` or `automatic`
+- change the transform plugin's default `output.file` to derive from the input file when unset or empty. `.ts` maps to `.js`, `.mts` to `.mjs`, and `.cts` to `.cjs`. Preserved JSX maps to `.jsx`, and lowered JSX maps to `.js`. Declaration and unknown suffixes stay unchanged. A non-empty `output.file` wins verbatim. Derived names drop `?query` and `#hash`.
+
+#### Features
+
+- add `preserve` to `JsxRuntime`
+
+#### Fixes
+
+- change `compile`, `compileFromAst`, and `generate` to record the resolved `output.file` as `map.file`
+- change `createGenerator` to record `file` as `map.file`
+
 ## 0.2.0 (2026-11-05)
 
 ### Dependencies

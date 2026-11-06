@@ -10,6 +10,9 @@ use crate::_types::options::resolved::ResolvedOptions;
 use crate::_types::options::sourcemap::SourceMapOptions;
 use crate::helpers::path::{get_process_cwd, strip_file_suffix};
 
+/// The file name used when the caller does not supply one.
+pub const FILE_DEFAULT: &str = "index.ts";
+
 /// Infer the oxc source type from a file, falling back to the default
 /// (an ES module) for extensionless or unknown files.
 pub fn source_type_for_module_id(module_id: &str) -> OxcSourceType {
@@ -94,7 +97,7 @@ pub fn resolve_options(
     let file: String = options
         .file
         .filter(|file: &String| !file.is_empty())
-        .unwrap_or_else(|| String::from("index.ts"));
+        .unwrap_or_else(|| String::from(FILE_DEFAULT));
 
     let language: Language = infer_language(&file, options.language);
 

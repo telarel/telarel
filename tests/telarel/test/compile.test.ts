@@ -1758,6 +1758,17 @@ describe("compile", (): void => {
         expect(result.map?.sources).toEqual(["src/index.ts"]);
     });
 
+    it("records output.file as map.file and keeps the input file as the source", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "src/index.ts",
+            output: { file: "dist/index.js" },
+        });
+
+        expect(result.map?.file).toBe("dist/index.js");
+        expect(result.map?.sources).toEqual(["src/index.ts"]);
+    });
+
     it("appends an inline map and drops the map end-to-end", async (): Promise<void> => {
         const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",

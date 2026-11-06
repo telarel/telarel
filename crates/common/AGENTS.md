@@ -9,7 +9,7 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 | `src/_types/options/`          | Per-entry options structs, `ResolvableOptions`, `ResolvedOptions`                                                             |
 | `src/_types/options/sourcemap` | Input and output source-map modes                                                                                             |
 | `src/ast/ast.rs`               | `Ast` is an owned, self-referential AST. `AstOwner` keeps the allocator, source, semantic language/source type, and input map |
-| `src/ast/generator.rs`         | Builtin generator. Applies `source_map.input`, then produces code and an output map                                           |
+| `src/ast/generator.rs`         | Builtin generator. Applies `source_map.input`, then produces code and an output map that records the output file              |
 | `src/ast/parser.rs`            | Builtin parser. Resolves the requested input source map during parsing                                                        |
 | `src/ast/result.rs`            | `AstResult` and `CodeResult`                                                                                                  |
 | `src/contexts/compile.rs`      | `CompileContext`                                                                                                              |
@@ -18,7 +18,7 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 | `src/errors/source/mod.rs`     | `ErrorSource`                                                                                                                 |
 | `src/helpers/path.rs`          | Centralized process-cwd and path-resolution helpers                                                                           |
 | `src/helpers/resolve.rs`       | Option resolution helpers                                                                                                     |
-| `src/sourcemap/mode.rs`        | Applies the resolved output mode after code generation                                                                        |
+| `src/sourcemap/mode.rs`        | Applies the resolved output file and mode after code generation                                                               |
 | `src/sourcemap/resolve.rs`     | Input map resolution: `Value`, `Inline`, `External`, `Auto`; `attach_input_map` applies the precedence rule                   |
 
 ## AST invariants
@@ -42,6 +42,7 @@ The public modes are defined by `InputSourceMapMode` and `OutputSourceMapMode` i
 - Input path overrides resolve through `source_dir` and `external_map_path_for`. `source_dir` resolves `file` against `cwd`, then joins a relative `path` to the source file's directory. Public path semantics: `docs/content/apis/rust/Parser.mdx` and `docs/content/apis/javascript/createParser.mdx`.
 - Code-entry functions (`parse`, `compile`) apply the resolved input map after a winning `parse` hook. The builtin parser resolves an input-map request carried by its own options.
 - `Generator::generate` applies `source_map.input` before code generation and never `source_map.output`; output delivery remains a pipeline concern. `GeneratorOptions.cwd` anchors a relative input-map path through the source file. Public contract: `docs/content/apis/rust/Generator.mdx`.
+- `generate_code` sets `map.file` after composing the input map. `apply_output_source_map_mode` overwrites it with a non-empty `output.file` after the winning generate result, including a custom map. Public contract: `docs/content/apis/index.mdx#source-maps`.
 - When `Inline` or `Auto` resolves an inline map, the builtin parser and `attach_input_map` remove the consumed comment from `Program.comments` before generation. `Ast::source` is unchanged. Comments that were not consumed remain.
 - The pipeline applies output options uniformly after the winning `generate` hook. This rule holds whether the builtin or a plugin generated the code. Public output semantics: `docs/content/apis/rust/compile.mdx#compileoptions` and `docs/content/apis/rust/generate.mdx#generateoptions`.
 - The builtin generator's output-map composition delegates to `oxc_sourcemap::SourceMap::compose`. The codegen map is the `self` operand, so it must contain at most one source.
@@ -54,6 +55,8 @@ Each entry point has its own options struct. The pipeline converts every struct 
 `parse` and `rewrite` expose a flat `input_source_map` on their user options. Their conversions wrap it into the shared `source_map` bag with `output: None`. Plugin `options` hooks still receive the shared bag, and the parse and rewrite stages ignore an `output` that a hook sets. Public stage contract: `docs/content/apis/rust/parse.mdx` and `docs/content/apis/rust/rewrite.mdx`.
 
 All internal path joining goes through `helpers/path.rs`. Resolution is lexical and never canonicalizes. Internal code keeps path options as filesystem paths and converts them to strings only at a boundary.
+
+`FILE_DEFAULT` and `strip_file_suffix` are public in `telarel_common` and re-exported from `telarel`. The transform plugin uses them for output-file derivation. Do not add JavaScript package exports.
 
 ## Testing
 

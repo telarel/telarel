@@ -26,9 +26,11 @@ type OxcTransformOptions = {
      */
     decorator?: OxcDecoratorOptions;
     /**
-     * The raw oxc JSX options. The `refresh` field is narrowed to the object
-     * form, because the binding's serde rejects the `boolean` member that npm's
-     * type allows.
+     * The raw oxc JSX options. Field values do not enable JSX lowering by
+     * themselves. Set `jsx.runtime` to `classic` or `automatic` to lower JSX.
+     *
+     * The `refresh` field is narrowed to the object form, because the binding's
+     * serde rejects the `boolean` member that npm's type allows.
      */
     jsx?: Omit<OxcJsxOptions, "refresh"> & {
         /**

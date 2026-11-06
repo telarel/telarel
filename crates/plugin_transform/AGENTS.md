@@ -1,24 +1,25 @@
 # Transform Plugin Crate (`telarel_plugin_transform`)
 
-The transform plugin. It wraps the oxc transformer. It applies TypeScript, JSX, and syntax lowering. It also applies runtime-helper inlining, `inject`, and `define`. In Rust it is a regular plugin named `telarel_plugin_transform`. The JS package exposes it under the builtin name `builtin:transform`.
+The transform plugin. It wraps the oxc transformer. It applies TypeScript and syntax lowering. It lowers JSX only when configured. It also applies runtime-helper inlining, `inject`, and `define`. In Rust it is a regular plugin named `telarel_plugin_transform`. The JS package exposes it under the builtin name `builtin:transform`.
 
 ## Key files
 
-| Path                           | Responsibility                                                        |
-| ------------------------------ | --------------------------------------------------------------------- |
-| `src/helpers/`                 | Vendored helper sources, inliner, and rewriter                        |
-| `src/options/define.rs`        | Compile-time `define` entries                                         |
-| `src/options/helper_loader.rs` | Helper loading mode and module name                                   |
-| `src/options/inject.rs`        | Injected imports keyed by local binding                               |
-| `src/options/jsx.rs`           | JSX runtime and pragma options                                        |
-| `src/options/mod.rs`           | `TransformOptions`, option resolution, and the raw oxc escape hatch   |
-| `src/options/target.rs`        | `TransformTarget`                                                     |
-| `src/options/typescript.rs`    | TypeScript transform options                                          |
-| `src/plugin.rs`                | `TransformPlugin`, cached option resolution, and the transform passes |
+| Path                           | Responsibility                                                      |
+| ------------------------------ | ------------------------------------------------------------------- |
+| `src/helpers/`                 | Vendored helper sources, inliner, and rewriter                      |
+| `src/options/define.rs`        | Compile-time `define` entries                                       |
+| `src/options/helper_loader.rs` | Helper loading mode and module name                                 |
+| `src/options/inject.rs`        | Injected imports keyed by local binding                             |
+| `src/options/jsx.rs`           | JSX runtime and pragma options                                      |
+| `src/options/mod.rs`           | `TransformOptions`, option resolution, and the raw oxc escape hatch |
+| `src/options/output.rs`        | Output-file derivation from the input file                          |
+| `src/options/target.rs`        | `TransformTarget`                                                   |
+| `src/options/typescript.rs`    | TypeScript transform options                                        |
+| `src/plugin.rs`                | `TransformPlugin`, output derivation, cached options, and passes    |
 
 ## Contract
 
-The plugin is named `telarel_plugin_transform` by default. It declares `HookUsage::Transform` only. The JS builtin wrapper constructs the same plugin with the pipeline name `builtin:transform`. Rust-created instances keep `telarel_plugin_transform`.
+The plugin is named `telarel_plugin_transform` by default. It declares `HookUsage::Transform` only. The `options` hook runs unconditionally and is not gated by the declared usage. The JS builtin wrapper constructs the same plugin with the pipeline name `builtin:transform`. Rust-created instances keep `telarel_plugin_transform`.
 
 Internally:
 
@@ -26,6 +27,26 @@ Internally:
 - Change detection is per pass: the main pass compares code generation before and after the oxc transformer runs, helper inlining returns whether it edited the program, and `inject` and `define` report their own `changed` flag. The plugin returns `Some(TransformOutput)` when any pass reports a change.
 - Option resolution is cached in a `OnceLock`. The cache is cwd-free. The plugin context's `cwd` is overlaid per call.
 - Configuration errors are cached and replay on every call. Resolution happens before mutation, so a configuration error leaves the input AST untouched.
+
+## Options hook
+
+`options_meta` returns `Post`, so the `options` hook sees the `file` and `language` settled by the normal hooks. It derives `output.file` when the caller left it unset or empty, then returns the updated bag.
+
+A later `Post` options hook that changes `file` or `language` must set `output.file` itself. The plugin does not derive the name again for that instance after a later hook mutates the bag.
+
+The plugin cannot see the AST language when it derives `output.file`. In `compileFromAst`, a caller whose AST language differs from the grammar implied by `file` and `language` must set `output.file` explicitly. `rewrite` has the same limitation but produces no output.
+
+Without this plugin in the chain, nothing derives an output name. The resolved `output.file` stays `file`.
+
+## JSX
+
+JSX lowering follows the public contract at `docs/content/plugins/transform.mdx#jsx`. Internally, `Preserve` clears the oxc JSX pass flags.
+
+## Output file
+
+`TransformOptions::output_file` applies the mapping in `options/output.rs`. Public contract: `docs/content/plugins/transform.mdx#output-file`.
+
+`telarel_common::FILE_DEFAULT` names the fallback input and `strip_file_suffix` removes query and hash suffixes.
 
 ## Pass order
 

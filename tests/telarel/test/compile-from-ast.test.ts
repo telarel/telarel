@@ -250,6 +250,16 @@ describe("compileFromAst", (): void => {
         expect(result.map?.sources).toEqual(["src/index.ts"]);
     });
 
+    it("records output.file as map.file and keeps the input file as the source", async (): Promise<void> => {
+        const result: CodeResult = await compileFromAst((await parsed()).ast, {
+            file: "src/index.ts",
+            output: { file: "dist/index.js" },
+        });
+
+        expect(result.map?.file).toBe("dist/index.js");
+        expect(result.map?.sources).toEqual(["src/index.ts"]);
+    });
+
     it("accepts a bare program with its code", async (): Promise<void> => {
         const ast: AstResult = await parsed();
 

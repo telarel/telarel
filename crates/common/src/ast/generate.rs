@@ -26,7 +26,8 @@ fn strip_trailing_newline(mut source: String) -> String {
 }
 
 /// Generate code + map from an owned AST, composing the AST's input map
-/// into the produced map. Always produces a map.
+/// into the produced map. Always produces a map and records `options.file`
+/// as its file.
 pub fn generate_code(
     ast: &Ast,
     options: GenerateCodeOptions,
@@ -36,17 +37,14 @@ pub fn generate_code(
 
     let code: String = strip_trailing_newline(code);
 
-    let map: SourceMap = match ast.map() {
-        | Some(input_map) => {
-            let mut map: SourceMap = codegen_map.compose(input_map.clone());
-
-            // oxc codegen leaves `file` unset, so restore it after compose.
-            map.set_file(&options.file);
-
-            map
-        },
+    let mut map: SourceMap = match ast.map() {
+        | Some(input_map) => codegen_map.compose(input_map.clone()),
         | None => codegen_map,
     };
+
+    // oxc codegen leaves `file` unset and `compose` keeps the input map's
+    // `file`, so record the generated file after `compose`.
+    map.set_file(&options.file);
 
     CodeResult { code, map: Some(map) }
 }
@@ -212,6 +210,8 @@ mod tests {
             generate_code(&ast, GenerateCodeOptions { file: FILE.to_string() });
 
         let map: SourceMap = result.map.expect("map always produced");
+
+        assert_eq!(map.get_file(), Some(FILE));
 
         let token: oxc_sourcemap::Token =
             map.get_token(0).expect("first token exists");

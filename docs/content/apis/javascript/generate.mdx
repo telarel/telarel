@@ -36,20 +36,18 @@ The function accepts either an [Ast](/apis/javascript/Ast) instance or a bare ES
 
 ### `GenerateOptions`
 
-| Field       | Type               | Default          | Description                                                                       |
-| ----------- | ------------------ | ---------------- | --------------------------------------------------------------------------------- |
-| `cwd`       | `string`           | `process.cwd()`  | Current working directory.                                                        |
-| `file`      | `string`           | `index.ts`       | The file being generated. Its extension is the final fallback for the grammar.    |
-| `language`  | `Language`         | inferred         | The grammar to generate with. Overrides the AST language and extension inference. |
-| `output`    | `OutputOptions`    | `{ file: file }` | Output code configuration. `output.file` derives the default source-map URL.      |
-| `sourceMap` | `SourceMapOptions` | off              | The source-map inputs and outputs requested for the step.                         |
-| `plugins`   | `PluginOption[]`   | `[]`             | The plugins to run.                                                               |
+| Field       | Type               | Default         | Description                                                                       |
+| ----------- | ------------------ | --------------- | --------------------------------------------------------------------------------- |
+| `cwd`       | `string`           | `process.cwd()` | Current working directory.                                                        |
+| `file`      | `string`           | `index.ts`      | The file being generated. Its extension is the final fallback for the grammar.    |
+| `language`  | `Language`         | inferred        | The grammar to generate with. Overrides the AST language and extension inference. |
+| `output`    | `OutputOptions`    | unset           | [Output code configuration](/apis#output-options).                                |
+| `sourceMap` | `SourceMapOptions` | off             | [Source-map inputs and outputs](/apis#source-maps) requested for the step.        |
+| `plugins`   | `PluginOption[]`   | `[]`            | The plugins to run.                                                               |
 
 The grammar precedence is `options.language > Ast.language > file extension`.
 
 `ast.program.sourceType` owns the module kind. An options hook can still return `sourceType`; a value other than `"unambiguous"` replaces `ast.program.sourceType` before generation. `generate` has no `sourceType` option.
-
-The pipeline treats an empty `output.file` or `sourceMap.output.url` as unset, the same as absent.
 
 ## Returns
 
