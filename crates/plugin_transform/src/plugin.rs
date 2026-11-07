@@ -92,8 +92,14 @@ impl TransformPlugin {
                     },
                 };
 
+                let oxc: OxcTransformOptions = self.options.resolve();
+
+                if let Err(message) = self.options.validate(&oxc) {
+                    return Err(PluginError::new(message));
+                }
+
                 Ok(Resolved {
-                    oxc: self.options.resolve(),
+                    oxc,
                     helpers: self.options.resolve_helpers(),
                     define,
                     inject: self.options.resolve_inject(),
@@ -279,6 +285,7 @@ mod tests {
     use crate::options::inject::{InjectEntry, InjectOptions, InjectSpecifier};
     use crate::options::jsx::{JsxOptions, JsxRuntime};
     use crate::options::target::TransformTarget;
+    use crate::options::typescript::TypeScriptOptions;
 
     use super::*;
 
@@ -1629,6 +1636,166 @@ mod tests {
             "program must not be mutated on config error: {}",
             code
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_metadata_requires_legacy_decorators() {
+        let plugin: TransformPlugin =
+            TransformPlugin::with_options(TransformOptions {
+                typescript: Some(TypeScriptOptions {
+                    emit_decorator_metadata: Some(true),
+                    ..TypeScriptOptions::default()
+                }),
+                ..TransformOptions::default()
+            });
+
+        let ast: Ast = parse(FILE_TS, "@dec class C {}");
+
+        let result: Result<Option<TransformOutput>, PluginError> =
+            run_hook(&plugin, FILE_TS, &ast).await;
+
+        let error: PluginError =
+            result.expect_err("metadata requires experimental decorators");
+
+        assert!(
+            error.to_string().contains("emitDecoratorMetadata"),
+            "{}",
+            error
+        );
+
+        let replay: Result<Option<TransformOutput>, PluginError> =
+            run_hook(&plugin, FILE_TS, &ast).await;
+
+        let replay_error: PluginError =
+            replay.expect_err("cached config error must replay");
+
+        assert_eq!(replay_error.to_string(), error.to_string());
+
+        let code: String =
+            telarel_common::generate_program(ast.program(), FILE_TS).0;
+
+        assert!(
+            code.contains("@dec"),
+            "program must not be mutated on config error: {}",
+            code
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_experimental_decorators_lower() {
+        let plugin: TransformPlugin =
+            TransformPlugin::with_options(TransformOptions {
+                typescript: Some(TypeScriptOptions {
+                    experimental_decorators: Some(true),
+                    ..TypeScriptOptions::default()
+                }),
+                ..TransformOptions::default()
+            });
+
+        let code: String =
+            codegen_after(plugin, FILE_TS, "@dec class C {}").await;
+
+        assert!(!code.contains("@dec"), "{}", code);
+        assert!(code.contains("_decorate"), "{}", code);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_emit_decorator_metadata() {
+        let plugin: TransformPlugin =
+            TransformPlugin::with_options(TransformOptions {
+                typescript: Some(TypeScriptOptions {
+                    emit_decorator_metadata: Some(true),
+                    experimental_decorators: Some(true),
+                    ..TypeScriptOptions::default()
+                }),
+                ..TransformOptions::default()
+            });
+
+        let code: String =
+            codegen_after(plugin, FILE_TS, "class C { @dec value: number; }")
+                .await;
+
+        assert!(code.contains("design:type"), "{}", code);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_use_define_for_class_fields_false() {
+        let plugin: TransformPlugin =
+            TransformPlugin::with_options(TransformOptions {
+                typescript: Some(TypeScriptOptions {
+                    use_define_for_class_fields: Some(false),
+                    ..TypeScriptOptions::default()
+                }),
+                ..TransformOptions::default()
+            });
+
+        let code: String = codegen_after(
+            plugin,
+            FILE_TS,
+            "class C { x: number; y: number = 1; }",
+        )
+        .await;
+
+        assert!(!code.contains("_defineProperty"), "{}", code);
+        assert!(!code.contains("void 0"), "{}", code);
+        assert!(code.contains("this.y = 1"), "{}", code);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_use_define_for_class_fields_default() {
+        let plugin: TransformPlugin = TransformPlugin::new();
+
+        let code: String = codegen_after(
+            plugin,
+            FILE_TS,
+            "class C { x: number; y: number = 1; }",
+        )
+        .await;
+
+        assert!(!code.contains("this.y = 1"), "{}", code);
+        assert!(code.contains("y = 1"), "{}", code);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_use_define_for_class_fields_default_lowers() {
+        let plugin: TransformPlugin =
+            TransformPlugin::with_options(TransformOptions {
+                targets: vec![TransformTarget::Es2020],
+                ..TransformOptions::default()
+            });
+
+        let code: String = codegen_after(
+            plugin,
+            FILE_TS,
+            "class C { x: number; y: number = 1; }",
+        )
+        .await;
+
+        assert!(code.contains("_defineProperty"), "{}", code);
+        assert!(code.contains("void 0"), "{}", code);
+        assert!(!code.contains("this.y = 1"), "{}", code);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_transform_optimize_const_enums() {
+        let plugin: TransformPlugin =
+            TransformPlugin::with_options(TransformOptions {
+                typescript: Some(TypeScriptOptions {
+                    optimize_const_enums: Some(true),
+                    ..TypeScriptOptions::default()
+                }),
+                ..TransformOptions::default()
+            });
+
+        let code: String = codegen_after(
+            plugin,
+            FILE_TS,
+            "const enum E { A = 1 }\nconsole.log(E.A);",
+        )
+        .await;
+
+        assert!(code.contains("console.log(1)"), "{}", code);
+        assert!(!code.contains("E.A"), "{}", code);
     }
 
     #[tokio::test(flavor = "current_thread")]

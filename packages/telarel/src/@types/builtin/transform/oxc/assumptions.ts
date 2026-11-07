@@ -94,6 +94,9 @@ type OxcCompilerAssumptions = {
      * Assume public class fields do not shadow a getter in the class, its
      * subclasses, or its superclass. Direct assignment is then safe instead of
      * `Object.defineProperty`.
+     *
+     * When set, `TypeScriptOptions.useDefineForClassFields` overrides this
+     * field.
      */
     setPublicClassFields?: boolean;
     /**

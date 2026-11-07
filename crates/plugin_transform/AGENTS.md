@@ -38,6 +38,21 @@ The plugin cannot see the AST language when it derives `output.file`. In `compil
 
 Without this plugin in the chain, nothing derives an output name. The resolved `output.file` stays `file`.
 
+## TypeScript
+
+The curated option names follow `tsconfig`. `overlay_typescript` writes into three oxc layers: `typescript`, `decorator`, and `assumptions`.
+
+- `verbatimModuleSyntax` maps to `typescript.only_remove_type_imports`.
+- `rewriteRelativeImportExtensions` maps to `typescript.rewrite_import_extensions`.
+- `experimentalDecorators` maps to `decorator.legacy`. The binding cannot set that oxc field directly because oxc marks it `#[serde(skip)]`.
+- `emitDecoratorMetadata` maps to `decorator.emit_decorator_metadata`. The plugin validates that the resolved legacy flag is true when the curated option is true.
+- `useDefineForClassFields` sets `assumptions.set_public_class_fields` and `typescript.remove_class_fields_without_initializer` to the inverse of the option, and sets `typescript.allow_declare_fields` to `true`. Public default and precedence: `docs/content/plugins/transform.mdx#typescript`.
+- `optimizeConstEnums` maps to `typescript.optimize_const_enums`.
+
+`allowNamespaces` and `optimizeEnums` are raw oxc fields only.
+
+Classic JSX pragmas are copied from `jsx.pragma` and `jsx.pragma_frag` into `typescript.jsx_pragma` and `typescript.jsx_pragma_frag`. Public runtime behavior: `docs/content/plugins/transform.mdx#typescript`.
+
 ## JSX
 
 JSX lowering follows the public contract at `docs/content/plugins/transform.mdx#jsx`. Internally, `Preserve` clears the oxc JSX pass flags.

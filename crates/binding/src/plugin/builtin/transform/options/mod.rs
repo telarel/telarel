@@ -179,8 +179,12 @@ mod tests {
         let options: BindingTransformPluginOptions = fixtures(
             None,
             Some(json!({
-                "onlyRemoveTypeImports": true,
-                "jsxPragma": "h",
+                "rewriteRelativeImportExtensions": true,
+                "verbatimModuleSyntax": true,
+                "emitDecoratorMetadata": true,
+                "experimentalDecorators": true,
+                "useDefineForClassFields": false,
+                "optimizeConstEnums": true,
             })),
             Some(json!({
                 "runtime": "classic",
@@ -203,8 +207,40 @@ mod tests {
         let typescript: telarel_plugin_transform::TypeScriptOptions =
             parsed.typescript.expect("typescript layer");
 
-        assert_eq!(typescript.only_remove_type_imports, Some(true));
-        assert_eq!(typescript.jsx_pragma.as_deref(), Some("h"));
+        assert_eq!(typescript.rewrite_relative_import_extensions, Some(true));
+        assert_eq!(typescript.verbatim_module_syntax, Some(true));
+        assert_eq!(typescript.emit_decorator_metadata, Some(true));
+        assert_eq!(typescript.experimental_decorators, Some(true));
+        assert_eq!(typescript.use_define_for_class_fields, Some(false));
+        assert_eq!(typescript.optimize_const_enums, Some(true));
+    }
+
+    #[test]
+    fn test_to_transform_options_typescript_old_names_error() {
+        for old_name in [
+            "onlyRemoveTypeImports",
+            "jsxPragma",
+            "jsxPragmaFrag",
+            "allowNamespaces",
+            "optimizeEnums",
+        ] {
+            let typescript: serde_json::Value = json!({
+                (old_name): true,
+            });
+
+            let options: BindingTransformPluginOptions =
+                fixtures(None, Some(typescript), None, None, None, None);
+
+            let error: napi::Error = to_transform_options(options)
+                .expect_err("old TypeScript option name errors");
+
+            assert_eq!(error.status, napi::Status::InvalidArg);
+            assert!(
+                error.reason.contains("invalid `typescript options`"),
+                "{old_name}: {}",
+                error.reason
+            );
+        }
     }
 
     #[test]

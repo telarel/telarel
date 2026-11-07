@@ -103,6 +103,189 @@ describe("transform", (): void => {
         expect(result.code).toContain("h(");
     });
 
+    it("rewrites relative import extensions", async (): Promise<void> => {
+        const result: CodeResult = await compile(
+            'import { value } from "./value.ts";\nconsole.log(value);',
+            {
+                cwd: "/repo",
+                file: "index.ts",
+                plugins: [
+                    transform({
+                        typescript: {
+                            rewriteRelativeImportExtensions: true,
+                        },
+                    }),
+                ],
+            },
+        );
+
+        expect(result.code).toContain('"./value.js"');
+        expect(result.code).not.toContain('"./value.ts"');
+    });
+
+    it("keeps value imports with verbatim module syntax", async (): Promise<void> => {
+        const result: CodeResult = await compile(
+            [
+                'import { used } from "./used";',
+                'import { unused } from "./unused";',
+                'import { type OnlyType } from "./types";',
+                "console.log(used);",
+            ].join("\n"),
+            {
+                cwd: "/repo",
+                file: "index.ts",
+                plugins: [
+                    transform({
+                        typescript: { verbatimModuleSyntax: true },
+                    }),
+                ],
+            },
+        );
+
+        expect(result.code).toContain('from "./unused"');
+        expect(result.code).toContain('import "./types"');
+        expect(result.code).not.toContain("OnlyType");
+    });
+
+    it("lowers legacy decorators", async (): Promise<void> => {
+        const result: CodeResult = await compile(
+            "function dec(target: unknown): void {}\n@dec class Example {}",
+            {
+                cwd: "/repo",
+                file: "index.ts",
+                plugins: [
+                    transform({
+                        typescript: { experimentalDecorators: true },
+                    }),
+                ],
+            },
+        );
+
+        expect(result.code).not.toContain("@dec");
+        expect(result.code).toContain("_decorate");
+    });
+
+    it("emits decorator metadata with legacy decorators", async (): Promise<void> => {
+        const result: CodeResult = await compile(
+            "function dec(target: unknown, key?: unknown): void {}\nclass Example { @dec value!: number; }",
+            {
+                cwd: "/repo",
+                file: "index.ts",
+                plugins: [
+                    transform({
+                        typescript: {
+                            emitDecoratorMetadata: true,
+                            experimentalDecorators: true,
+                        },
+                    }),
+                ],
+            },
+        );
+
+        expect(result.code).toContain("design:type");
+    });
+
+    it("rejects decorator metadata without legacy decorators", async (): Promise<void> => {
+        const promise: Promise<CodeResult> = compile("class Example {}", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [
+                transform({
+                    typescript: { emitDecoratorMetadata: true },
+                }),
+            ],
+        });
+
+        await expect(promise).rejects.toThrow(/emitDecoratorMetadata/);
+        await expect(promise).rejects.toThrow(/experimentalDecorators/);
+    });
+
+    it("uses assignment semantics with useDefineForClassFields false", async (): Promise<void> => {
+        const result: CodeResult = await compile(
+            "class Example { value: number; initialized: number = 1; }",
+            {
+                cwd: "/repo",
+                file: "index.ts",
+                plugins: [
+                    transform({
+                        typescript: { useDefineForClassFields: false },
+                    }),
+                ],
+            },
+        );
+
+        expect(result.code).not.toContain("void 0");
+        expect(result.code).toContain("this.initialized = 1");
+    });
+
+    it("uses define semantics by default", async (): Promise<void> => {
+        const result: CodeResult = await compile(
+            "class Example { value: number; initialized: number = 1; }",
+            {
+                cwd: "/repo",
+                file: "index.ts",
+                plugins: [transform({ targets: ["es2020"] })],
+            },
+        );
+
+        expect(result.code).toContain("_defineProperty");
+        expect(result.code).toContain("void 0");
+        expect(result.code).not.toContain("this.initialized = 1");
+    });
+
+    it("inlines optimized const enums", async (): Promise<void> => {
+        const result: CodeResult = await compile(
+            "const enum Direction { Up = 1 }\nconsole.log(Direction.Up);",
+            {
+                cwd: "/repo",
+                file: "index.ts",
+                plugins: [
+                    transform({
+                        typescript: { optimizeConstEnums: true },
+                    }),
+                ],
+            },
+        );
+
+        expect(result.code).toContain("console.log(1)");
+        expect(result.code).not.toContain("Direction.Up");
+    });
+
+    it("uses jsx.pragma for classic import elision", async (): Promise<void> => {
+        const result: CodeResult = await compile(
+            'import React from "react";\nconst node = <div />;\nconsole.log(node);',
+            {
+                cwd: "/repo",
+                file: "index.tsx",
+                plugins: [
+                    transform({
+                        jsx: { runtime: "classic", pragma: "h" },
+                    }),
+                ],
+            },
+        );
+
+        expect(result.code).not.toContain('from "react"');
+        expect(result.code).toContain('h("div"');
+    });
+
+    it("rejects removed TypeScript option names", async (): Promise<void> => {
+        const options: TransformOptions = {
+            typescript: {
+                onlyRemoveTypeImports: true,
+            } as never,
+        };
+
+        const build = async (): Promise<CodeResult> =>
+            await compile("const value = 1;", {
+                cwd: "/repo",
+                file: "index.ts",
+                plugins: [transform(options)],
+            });
+
+        await expect(build()).rejects.toThrow(/typescript options/);
+    });
+
     it("applies oxc helper loader options", async (): Promise<void> => {
         const result: CodeResult = await compile(
             "async function run() { await work(); }",

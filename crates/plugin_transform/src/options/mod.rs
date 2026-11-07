@@ -91,11 +91,19 @@ impl TransformOptions {
         let mut base: OxcTransformOptions =
             self.oxc.clone().unwrap_or_default();
 
-        if let Some(typescript) = &self.typescript {
-            overlay_typescript(&mut base.typescript, typescript);
-        }
+        overlay_typescript(&mut base, self.typescript.as_ref());
 
         overlay_jsx(&mut base.jsx, self.jsx.as_ref());
+
+        if matches!(effective_runtime(self.jsx.as_ref()), JsxRuntime::Classic) {
+            if let Some(pragma) = &base.jsx.pragma {
+                base.typescript.jsx_pragma = pragma.clone().into();
+            }
+
+            if let Some(pragma_frag) = &base.jsx.pragma_frag {
+                base.typescript.jsx_pragma_frag = pragma_frag.clone().into();
+            }
+        }
 
         if let Some(engine_targets) = Self::engine_targets(&self.targets) {
             base.env = oxc::transformer::EnvOptions::from(engine_targets);
@@ -107,6 +115,26 @@ impl TransformOptions {
         );
 
         base
+    }
+
+    /// Reject option combinations that cannot produce the requested output.
+    pub(crate) fn validate(
+        &self,
+        resolved: &OxcTransformOptions,
+    ) -> Result<(), String> {
+        if self
+            .typescript
+            .as_ref()
+            .and_then(|typescript| typescript.emit_decorator_metadata)
+            == Some(true)
+            && !resolved.decorator.legacy
+        {
+            return Err(String::from(
+                "typescript.emitDecoratorMetadata requires typescript.experimentalDecorators",
+            ));
+        }
+
+        Ok(())
     }
 
     /// Derive the output file name for `options` when `output.file` is unset
@@ -188,6 +216,8 @@ impl TransformOptions {
 
 #[cfg(test)]
 mod tests {
+    use oxc::transformer::CompilerAssumptions;
+    use oxc::transformer::DecoratorOptions;
     use oxc::transformer::Engine;
     use oxc::transformer::EngineTargets;
     use oxc::transformer::JsxOptions as OxcJsxOptions;
@@ -367,6 +397,61 @@ mod tests {
         assert!(!resolved.jsx.jsx_plugin);
         assert!(!resolved.jsx.development);
         assert!(resolved.jsx.refresh.is_none());
+        assert!(!resolved.assumptions.set_public_class_fields);
+        assert!(!resolved.typescript.remove_class_fields_without_initializer);
+        assert!(resolved.typescript.allow_declare_fields);
+    }
+
+    #[test]
+    fn test_resolve_class_fields_keeps_oxc_when_curated_unset() {
+        let options: TransformOptions = TransformOptions {
+            oxc: Some(OxcTransformOptions {
+                assumptions: CompilerAssumptions {
+                    set_public_class_fields: true,
+                    ..CompilerAssumptions::default()
+                },
+                typescript: oxc::transformer::TypeScriptOptions {
+                    allow_declare_fields: false,
+                    ..oxc::transformer::TypeScriptOptions::default()
+                },
+                ..OxcTransformOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert!(resolved.assumptions.set_public_class_fields);
+        assert!(!resolved.typescript.remove_class_fields_without_initializer);
+        assert!(!resolved.typescript.allow_declare_fields);
+    }
+
+    #[test]
+    fn test_resolve_class_fields_explicit_wins_over_oxc() {
+        let options: TransformOptions = TransformOptions {
+            typescript: Some(TypeScriptOptions {
+                use_define_for_class_fields: Some(true),
+                ..TypeScriptOptions::default()
+            }),
+            oxc: Some(OxcTransformOptions {
+                assumptions: CompilerAssumptions {
+                    set_public_class_fields: true,
+                    ..CompilerAssumptions::default()
+                },
+                typescript: oxc::transformer::TypeScriptOptions {
+                    remove_class_fields_without_initializer: true,
+                    ..oxc::transformer::TypeScriptOptions::default()
+                },
+                ..OxcTransformOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert!(!resolved.assumptions.set_public_class_fields);
+        assert!(!resolved.typescript.remove_class_fields_without_initializer);
+        assert!(resolved.typescript.allow_declare_fields);
     }
 
     #[test]
@@ -512,13 +597,13 @@ mod tests {
     fn test_resolve_typescript_overlay() {
         let options: TransformOptions = TransformOptions {
             typescript: Some(TypeScriptOptions {
-                optimize_enums: Some(true),
-                jsx_pragma: Some(String::from("h")),
+                verbatim_module_syntax: Some(true),
+                optimize_const_enums: Some(true),
                 ..TypeScriptOptions::default()
             }),
             oxc: Some(OxcTransformOptions {
                 typescript: oxc::transformer::TypeScriptOptions {
-                    only_remove_type_imports: true,
+                    only_remove_type_imports: false,
                     ..oxc::transformer::TypeScriptOptions::default()
                 },
                 ..OxcTransformOptions::default()
@@ -529,8 +614,76 @@ mod tests {
         let resolved: OxcTransformOptions = options.resolve();
 
         assert!(resolved.typescript.only_remove_type_imports);
-        assert!(resolved.typescript.optimize_enums);
+        assert!(resolved.typescript.optimize_const_enums);
+    }
+
+    #[test]
+    fn test_resolve_typescript_classic_pragmas_sync_to_typescript() {
+        let options: TransformOptions = TransformOptions {
+            jsx: Some(JsxOptions {
+                runtime: Some(JsxRuntime::Classic),
+                pragma: Some(String::from("h")),
+                pragma_frag: Some(String::from("Fragment")),
+                ..JsxOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert_eq!(resolved.jsx.pragma.as_deref(), Some("h"));
         assert_eq!(resolved.typescript.jsx_pragma, "h");
+        assert_eq!(resolved.typescript.jsx_pragma_frag, "Fragment");
+    }
+
+    #[test]
+    fn test_resolve_typescript_raw_classic_pragmas_sync_to_typescript() {
+        let options: TransformOptions = TransformOptions {
+            jsx: Some(JsxOptions {
+                runtime: Some(JsxRuntime::Classic),
+                ..JsxOptions::default()
+            }),
+            oxc: Some(OxcTransformOptions {
+                jsx: OxcJsxOptions {
+                    pragma: Some(String::from("h")),
+                    pragma_frag: Some(String::from("Fragment")),
+                    ..OxcJsxOptions::default()
+                },
+                ..OxcTransformOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert_eq!(resolved.typescript.jsx_pragma, "h");
+        assert_eq!(resolved.typescript.jsx_pragma_frag, "Fragment");
+    }
+
+    #[test]
+    fn test_resolve_typescript_non_classic_pragmas_do_not_sync() {
+        for runtime in [JsxRuntime::Preserve, JsxRuntime::Automatic] {
+            let options: TransformOptions = TransformOptions {
+                jsx: Some(JsxOptions {
+                    runtime: Some(runtime),
+                    pragma: Some(String::from("h")),
+                    pragma_frag: Some(String::from("Fragment")),
+                    ..JsxOptions::default()
+                }),
+                ..TransformOptions::default()
+            };
+
+            let resolved: OxcTransformOptions = options.resolve();
+
+            assert_eq!(
+                resolved.typescript.jsx_pragma, "React.createElement",
+                "{runtime:?}"
+            );
+            assert_eq!(
+                resolved.typescript.jsx_pragma_frag, "React.Fragment",
+                "{runtime:?}"
+            );
+        }
     }
 
     #[test]
@@ -760,6 +913,59 @@ mod tests {
         );
         assert!(helpers.inline());
         assert_eq!(helpers.module_name, DEFAULT_HELPER_MODULE_NAME);
+    }
+
+    #[test]
+    fn test_validate_emit_decorator_metadata_requires_legacy() {
+        let options: TransformOptions = TransformOptions {
+            typescript: Some(TypeScriptOptions {
+                emit_decorator_metadata: Some(true),
+                ..TypeScriptOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert!(options.validate(&resolved).is_err());
+    }
+
+    #[test]
+    fn test_validate_emit_decorator_metadata_with_curated_legacy() {
+        let options: TransformOptions = TransformOptions {
+            typescript: Some(TypeScriptOptions {
+                emit_decorator_metadata: Some(true),
+                experimental_decorators: Some(true),
+                ..TypeScriptOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert!(options.validate(&resolved).is_ok());
+    }
+
+    #[test]
+    fn test_validate_emit_decorator_metadata_with_raw_legacy() {
+        let options: TransformOptions = TransformOptions {
+            typescript: Some(TypeScriptOptions {
+                emit_decorator_metadata: Some(true),
+                ..TypeScriptOptions::default()
+            }),
+            oxc: Some(OxcTransformOptions {
+                decorator: DecoratorOptions {
+                    legacy: true,
+                    ..DecoratorOptions::default()
+                },
+                ..OxcTransformOptions::default()
+            }),
+            ..TransformOptions::default()
+        };
+
+        let resolved: OxcTransformOptions = options.resolve();
+
+        assert!(options.validate(&resolved).is_ok());
     }
 
     fn resolvable(

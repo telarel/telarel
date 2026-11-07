@@ -25,11 +25,19 @@
 - change the default `jsx.runtime` to `preserve`. JSX is lowered only when `jsx.runtime` is `classic` or `automatic`
 - change the default `output.file` to derive from the input file when unset or empty. `.ts` maps to `.js`, `.mts` to `.mjs`, and `.cts` to `.cjs`. Preserved JSX maps to `.jsx`, and lowered JSX maps to `.js`. Declaration and unknown suffixes stay unchanged. A non-empty `output.file` wins verbatim. Derived names drop `?query` and `#hash`.
 - change raw `oxc.jsx` fields to not enable JSX lowering on their own
+- change `TypeScriptOptions` fields to `tsconfig` names: `only_remove_type_imports` becomes `verbatim_module_syntax`, and `jsx_pragma`/`jsx_pragma_frag` are replaced by `jsx.pragma`/`jsx.pragma_frag`
 - change the `options` hook to run at `Post` order so it sees the `file` and `language` settled by normal hooks
+- remove `typescript.allow_namespaces` and `typescript.optimize_enums` from the curated options
 
 #### Features
 
 - add `JsxRuntime::Preserve`, which overrides `development`, `refresh`, `import_source`, `pragma`, and `pragma_frag`
+- add `TypeScriptOptions.emit_decorator_metadata`, `experimental_decorators`, `optimize_const_enums`, `rewrite_relative_import_extensions`, `use_define_for_class_fields`, and `verbatim_module_syntax`
+- add a configuration error when `typescript.emit_decorator_metadata` is enabled without `typescript.experimental_decorators`
+
+#### Fixes
+
+- change JSX import elision in TypeScript to use `jsx.pragma` and `jsx.pragma_frag` when `jsx.runtime` is `classic`
 
 ### Binding
 
@@ -62,15 +70,21 @@
 
 - change the transform plugin's default JSX runtime to `preserve`. JSX is lowered only when `jsx.runtime` is `classic` or `automatic`
 - change the transform plugin's default `output.file` to derive from the input file when unset or empty. `.ts` maps to `.js`, `.mts` to `.mjs`, and `.cts` to `.cjs`. Preserved JSX maps to `.jsx`, and lowered JSX maps to `.js`. Declaration and unknown suffixes stay unchanged. A non-empty `output.file` wins verbatim. Derived names drop `?query` and `#hash`.
+- change `OxcDecoratorOptions` to omit `legacy`, which the binding rejects. Use `experimentalDecorators` instead
+- change `TypeScriptOptions` to `tsconfig` names: `onlyRemoveTypeImports` becomes `verbatimModuleSyntax`, and `jsxPragma`/`jsxPragmaFrag` are replaced by `jsx.pragma`/`jsx.pragmaFrag`
+- remove `allowNamespaces` and `optimizeEnums` from `TypeScriptOptions`
 
 #### Features
 
 - add `preserve` to `JsxRuntime`
+- add `TypeScriptOptions.emitDecoratorMetadata`, `experimentalDecorators`, `optimizeConstEnums`, `rewriteRelativeImportExtensions`, `useDefineForClassFields`, and `verbatimModuleSyntax`
+- add a configuration error when `emitDecoratorMetadata` is enabled without `experimentalDecorators`
 
 #### Fixes
 
 - change `compile`, `compileFromAst`, and `generate` to record the resolved `output.file` as `map.file`
 - change `createGenerator` to record `file` as `map.file`
+- change JSX import elision in TypeScript to use `jsx.pragma` and `jsx.pragmaFrag` when `jsx.runtime` is `classic`
 
 ## 0.2.0 (2026-11-05)
 

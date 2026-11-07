@@ -70,6 +70,27 @@ let result: CodeResult = compile(
 
 The Rust `TransformOptions` additionally exposes `helper_loader` for controlling how runtime helpers are emitted.
 
+### TypeScript
+
+`typescript` follows `tsconfig` field names where the transform can support them.
+
+| Option                            | Default | Description                                                                                                                |
+| --------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `rewriteRelativeImportExtensions` | `false` | Rewrites `.ts`, `.tsx`, `.mts`, and `.cts` import extensions in emitted code.                                              |
+| `verbatimModuleSyntax`            | `false` | Keeps value imports and exports, and removes only `type`-marked specifiers.                                                |
+| `emitDecoratorMetadata`           | `false` | Emits decorator metadata. Requires `experimentalDecorators`.                                                               |
+| `experimentalDecorators`          | `false` | Lowers legacy TypeScript decorators.                                                                                       |
+| `useDefineForClassFields`         | `true`  | Uses define semantics when `true`. When `false`, removes uninitialized fields and assigns initialized fields.              |
+| `optimizeConstEnums`              | `false` | Inlines const enum members and removes unused declarations. This is a Babel-compatible extension, not a `tsconfig` option. |
+
+With `verbatimModuleSyntax`, mark type-only re-exports with `export type`. The oxc backend still elides a re-export specifier with no value reference.
+
+`jsx.pragma` and `jsx.pragmaFrag` also drive JSX import elision in TypeScript when `jsx.runtime` is `classic`.
+
+`useDefineForClassFields` defaults to `true` and does not depend on `targets`. This differs from `tsc`, which derives the default from its `target`. An explicit value overrides class-field settings in raw `oxc`, and an explicit raw setting (`assumptions.setPublicClassFields`, `typescript.removeClassFieldsWithoutInitializer`, or `typescript.allowDeclareFields`) overrides the default.
+
+The oxc backend rewrites every import specifier that contains `/` and maps `.tsx` to `.js`. `tsc` only rewrites relative specifiers and maps `.tsx` to `.jsx`.
+
 ### JSX
 
 `jsx.runtime` selects how the plugin handles JSX:
@@ -86,6 +107,12 @@ In Rust, the runtime values are `JsxRuntime::Preserve`, `JsxRuntime::Classic`, a
 
 Field values in `oxc.jsx` do not enable JSX lowering by themselves. Set `jsx.runtime` to `classic` or `automatic` to lower JSX.
 
+### Inject
+
+`inject` adds imports for identifiers that would otherwise be free. The key is the local binding name. A string value names a module source, and the transform plugin imports it as a named specifier. A `[source, imported]` pair names a source and a specifier, and the transform plugin imports `imported` from `source`. The object form selects the specifier explicitly. The transform plugin replaces dotted keys such as `"Object.assign"` as member chains.
+
+Injected imports run after all transforms, before `define`.
+
 ### Define
 
 `define` replaces free identifiers and member chains with expression source strings. Quote string literals in the value. Scalar values become strings:
@@ -100,12 +127,6 @@ transform({
 ```
 
 Replacements run last, after `inject` and every transform.
-
-### Inject
-
-`inject` adds imports for identifiers that would otherwise be free. The key is the local binding name. A string value names a module source, and the transform plugin imports it as a named specifier. A `[source, imported]` pair names a source and a specifier, and the transform plugin imports `imported` from `source`. The object form selects the specifier explicitly. The transform plugin replaces dotted keys such as `"Object.assign"` as member chains.
-
-Injected imports run after all transforms, before `define`.
 
 ### Output file
 

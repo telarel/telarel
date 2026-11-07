@@ -12,7 +12,6 @@ const transform = (options?: TransformOptions): TransformPlugin => {
 };
 
 export type {
-    DecoratorOptions as OxcDecoratorOptions,
     JsxOptions as OxcJsxOptions,
     ReactRefreshOptions as OxcReactRefreshOptions,
     TypeScriptOptions as OxcTypeScriptOptions,
@@ -35,7 +34,10 @@ export type {
     OxcEnvOptions,
 } from "#/@types/builtin/transform/oxc/env";
 export type { JsxOptions, JsxRuntime } from "#/@types/builtin/transform/jsx";
-export type { OxcTransformOptions } from "#/@types/builtin/transform/oxc";
+export type {
+    OxcDecoratorOptions,
+    OxcTransformOptions,
+} from "#/@types/builtin/transform/oxc";
 export type { HelperLoaderMode } from "#/@types/builtin/transform/oxc/helper-loader";
 export type {
     EngineTarget,

@@ -1,5 +1,5 @@
 import type {
-    DecoratorOptions as OxcDecoratorOptions,
+    DecoratorOptions as RawOxcDecoratorOptions,
     JsxOptions as OxcJsxOptions,
     ReactRefreshOptions as OxcReactRefreshOptions,
     TypeScriptOptions as OxcTypeScriptOptions,
@@ -8,6 +8,14 @@ import type {
 import type { OxcCompilerAssumptions } from "#/@types/builtin/transform/oxc/assumptions";
 import type { OxcEnvOptions } from "#/@types/builtin/transform/oxc/env";
 import type { HelperLoaderMode } from "#/@types/builtin/transform/oxc/helper-loader";
+
+/**
+ * The decorator escape-hatch options.
+ *
+ * This type omits `legacy` because the binding's serde rejects it. Set
+ * `TypeScriptOptions.experimentalDecorators` instead.
+ */
+type OxcDecoratorOptions = Omit<RawOxcDecoratorOptions, "legacy">;
 
 /**
  * The oxc escape hatch: a serializable mirror of oxc's transform options.
@@ -19,6 +27,11 @@ type OxcTransformOptions = {
     assumptions?: OxcCompilerAssumptions;
     /**
      * The raw oxc TypeScript options.
+     *
+     * `allowDeclareFields` and `removeClassFieldsWithoutInitializer` are
+     * class-field settings. `TypeScriptOptions.useDefineForClassFields`
+     * overrides the raw value when set. Otherwise, an explicit raw value
+     * overrides the default.
      */
     typescript?: OxcTypeScriptOptions;
     /**
@@ -60,4 +73,4 @@ type OxcTransformOptions = {
     };
 };
 
-export type { OxcTransformOptions };
+export type { OxcDecoratorOptions, OxcTransformOptions };

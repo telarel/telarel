@@ -10,9 +10,9 @@ pub enum JsxRuntime {
     /// Keeps JSX unchanged.
     #[default]
     Preserve,
-    /// Lowers JSX with the classic `React.createElement` runtime.
+    /// Lowers JSX to `pragma` calls.
     Classic,
-    /// Lowers JSX with the automatic runtime.
+    /// Lowers JSX to helpers imported from `import_source`.
     Automatic,
 }
 
@@ -20,21 +20,33 @@ pub enum JsxRuntime {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JsxOptions {
-    /// Selects the JSX runtime. Defaults to `preserve`.
+    /// Selects the JSX runtime.
+    ///
+    /// By default, it is `preserve`.
     pub runtime: Option<JsxRuntime>,
-    /// Module imported for automatic-runtime helpers. Defaults to `react`.
+    /// Module imported for automatic-runtime helpers.
+    ///
+    /// By default, it is `react`.
     #[serde(default)]
     pub import_source: Option<String>,
-    /// Function used for JSX elements by the classic runtime. Defaults to `React.createElement`.
+    /// Function used for JSX elements by the classic runtime.
+    ///
+    /// By default, it is `React.createElement`.
     #[serde(default)]
     pub pragma: Option<String>,
-    /// Component used for JSX fragments by the classic runtime. Defaults to `React.Fragment`.
+    /// Component used for JSX fragments by the classic runtime.
+    ///
+    /// By default, it is `React.Fragment`.
     #[serde(default)]
     pub pragma_frag: Option<String>,
     /// Adds development-only `__source` and `__self` metadata to JSX elements.
+    ///
+    /// By default, it is `false`.
     #[serde(default)]
     pub development: Option<bool>,
     /// Enables React Fast Refresh instrumentation.
+    ///
+    /// By default, it is `false`.
     #[serde(default)]
     pub refresh: Option<bool>,
 }
