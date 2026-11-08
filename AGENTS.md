@@ -6,6 +6,7 @@ Telarel is an extensible JavaScript compiler written in Rust.
 
 - `docs/content` — public, published docs. Source of truth for user-facing API and behavior.
 - `crates/<crate>/AGENTS.md` — crate-local architecture, invariants, and where things live.
+- `skills/` — distributable agent skills for consumers of the public API.
 
 Read the one for the crate you are changing.
 
