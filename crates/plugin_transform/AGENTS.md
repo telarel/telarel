@@ -23,10 +23,10 @@ The plugin is named `telarel_plugin_transform` by default. It declares `HookUsag
 
 Internally:
 
-- `args.ast` is an owned cheap handle. The plugin moves it into a local and mutates through `Ast::with_mut`. `with_mut` copies on write because the driver retains the carried AST. `None` leaves the carried AST untouched.
-- Change detection is per pass: the main pass compares code generation before and after the oxc transformer runs, helper inlining returns whether it edited the program, and `inject` and `define` report their own `changed` flag. The plugin returns `Some(TransformOutput)` when any pass reports a change.
-- Option resolution is cached in a `OnceLock`. The cache is cwd-free. The plugin context's `cwd` is overlaid per call.
-- Configuration errors are cached and replay on every call. Resolution happens before mutation, so a configuration error leaves the input AST untouched.
+- `args.ast` is an owned cheap handle. The plugin moves it into a local and mutates through `Ast::with_mut`. `with_mut` copies on write because the driver retains the carried AST. `None` leaves the carried AST untouched
+- change detection is per pass: the main pass compares code generation before and after the oxc transformer runs, helper inlining returns whether it edited the program, and `inject` and `define` report their own `changed` flag. The plugin returns `Some(TransformOutput)` when any pass reports a change
+- option resolution is cached in a `OnceLock`. The cache is cwd-free. The plugin context's `cwd` is overlaid per call
+- configuration errors are cached and replay on every call. Resolution happens before mutation, so a configuration error leaves the input AST untouched
 
 ## Options hook
 
@@ -42,12 +42,12 @@ Without this plugin in the chain, nothing derives an output name. The resolved `
 
 The curated option names follow `tsconfig`. `overlay_typescript` writes into three oxc layers: `typescript`, `decorator`, and `assumptions`.
 
-- `verbatimModuleSyntax` maps to `typescript.only_remove_type_imports`.
-- `rewriteRelativeImportExtensions` maps to `typescript.rewrite_import_extensions`.
-- `experimentalDecorators` maps to `decorator.legacy`. The binding cannot set that oxc field directly because oxc marks it `#[serde(skip)]`.
-- `emitDecoratorMetadata` maps to `decorator.emit_decorator_metadata`. The plugin validates that the resolved legacy flag is true when the curated option is true.
-- `useDefineForClassFields` sets `assumptions.set_public_class_fields` and `typescript.remove_class_fields_without_initializer` to the inverse of the option, and sets `typescript.allow_declare_fields` to `true`. Public default and precedence: `docs/content/plugins/transform.mdx#typescript`.
-- `optimizeConstEnums` maps to `typescript.optimize_const_enums`.
+- `verbatimModuleSyntax` maps to `typescript.only_remove_type_imports`
+- `rewriteRelativeImportExtensions` maps to `typescript.rewrite_import_extensions`
+- `experimentalDecorators` maps to `decorator.legacy`. The binding cannot set that oxc field directly because oxc marks it `#[serde(skip)]`
+- `emitDecoratorMetadata` maps to `decorator.emit_decorator_metadata`. The plugin validates that the resolved legacy flag is true when the curated option is true
+- `useDefineForClassFields` sets `assumptions.set_public_class_fields` and `typescript.remove_class_fields_without_initializer` to the inverse of the option, and sets `typescript.allow_declare_fields` to `true`. Public default and precedence: `docs/content/plugins/transform.mdx#typescript`
+- `optimizeConstEnums` maps to `typescript.optimize_const_enums`
 
 `allowNamespaces` and `optimizeEnums` are raw oxc fields only.
 
@@ -65,8 +65,8 @@ JSX lowering follows the public contract at `docs/content/plugins/transform.mdx#
 
 ## Pass order
 
-1. Main oxc transformer (with a fresh semantic scoping)
-2. Helper inlining (when the resolved mode is inline)
+1. main oxc transformer (with a fresh semantic scoping)
+2. helper inlining (when the resolved mode is inline)
 3. `inject`
 4. `define`
 
@@ -74,9 +74,9 @@ JSX lowering follows the public contract at `docs/content/plugins/transform.mdx#
 
 The public API exposes the helper modes: see `docs/content/plugins/transform`. Internally:
 
-- `Inline` maps to oxc's `Runtime` mode during the transform, then a post-pass replaces the runtime imports with the vendored helper bodies.
-- `Runtime` leaves the runtime import untouched.
-- Inlining resolves the full dependency closure, emits dependencies before dependents, and renames helper bindings that collide with user bindings.
+- `Inline` maps to oxc's `Runtime` mode during the transform, then a post-pass replaces the runtime imports with the vendored helper bodies
+- `Runtime` leaves the runtime import untouched
+- inlining resolves the full dependency closure, emits dependencies before dependents, and renames helper bindings that collide with user bindings
 
 ## Testing
 

@@ -4,9 +4,9 @@ Telarel is an extensible JavaScript compiler written in Rust.
 
 ## Documentation Map
 
-- `docs/content` — public, published docs. Source of truth for user-facing API and behavior.
-- `crates/<crate>/AGENTS.md` — crate-local architecture, invariants, and where things live.
-- `skills/` — distributable agent skills for consumers of the public API.
+- `docs/content` — public, published docs. Source of truth for user-facing API and behavior
+- `crates/<crate>/AGENTS.md` — crate-local architecture, invariants, and where things live
+- `skills/` — distributable agent skills for consumers of the public API
 
 Read the one for the crate you are changing.
 
@@ -156,9 +156,9 @@ Within each group, use these `####` subheadings in order, omitting any that have
 
 If an entry fits more than one subheading, put it under the earliest one. Start each entry with `add`, `change`, `remove`, `rename`, or `replace`. Within a subheading, sort by:
 
-1. Leading verb, alphabetically: `add`, `change`, `remove`, `rename`, `replace`
-2. Public API surface: entry points, then options and types, then hooks and internals
-3. Primary API name, case-insensitively; for entries covering several related APIs, use the first listed one
+1. leading verb, alphabetically: `add`, `change`, `remove`, `rename`, `replace`
+2. public API surface: entry points, then options and types, then hooks and internals
+3. primary API name, case-insensitively; for entries covering several related APIs, use the first listed one
 
 Put catch-all entries that name no single API last within their verb.
 
@@ -166,9 +166,9 @@ The `### Dependencies` group keeps its own `#### Rust` and `#### JavaScript` str
 
 Cross-cutting dependency upgrades go in a `### Dependencies` group placed first under `## Next`. Within that group, order by upgrade impact:
 
-1. Runtime and compiler dependencies that can change emitted code or runtime behavior
-2. Public type dependencies
-3. Build, test, and tooling dependencies
+1. runtime and compiler dependencies that can change emitted code or runtime behavior
+2. public type dependencies
+3. build, test, and tooling dependencies
 
 Within a tier, list Rust workspace dependencies before JavaScript packages, then sort alphabetically. Keep crates that must move together in one entry.
 

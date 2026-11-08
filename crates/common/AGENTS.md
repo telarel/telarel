@@ -23,30 +23,30 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 
 ## AST invariants
 
-- `Ast` shares ownership of its allocator and source through `Arc`. `program()` borrows a tree whose spans anchor to that source.
-- `Ast` wraps `Arc<AstInner>`. `Clone` is O(1) and shares the arena.
-- `AstOwner` owns the allocator, source, semantic `Language`/`SourceType`, and input source map.
-- `Ast::language()` derives the grammar from the parsed program. `Ast::source_type()` returns the coarse `telarel_common::SourceType` resolved from the program. It never returns the parser-input `Unambiguous` for a normal parsed AST. An explicit `source_type` other than `Unambiguous` replaces `Program.source_type` when an AST enters the pipeline. The accessors read the program.
-- The raw oxc source type remains reachable through `ast.program().source_type`. `from_source` / `try_from_source` accept the Telarel `Language` and `SourceType`, not oxc's raw type.
-- `with_mut` is the only path to the arena. It takes `&mut self` and copy-on-writes through `Arc::make_mut` when another handle is alive, so mutating a clone never mutates the original.
-- `with_mut` debug-asserts that `Program::source_text` stays content-equal to `Ast::source`. Span conversion, codegen source maps, and error frames depend on that equality. Public contract: `docs/content/apis/rust/Ast.mdx`.
-- `with_input_map` rebuilds deeply into a fresh allocator. It shares the source `Arc` and carries the requested input map.
-- `Ast` is `Send + Sync`, so plugin futures can move owned handles or borrow it across threads. Callers that share `&Ast` across threads must use it read-only. Never mutate `Program`'s interior-mutable `Cell` fields through a shared `&Ast`.
-- `Ast::map` is the **input** map (how the source was produced upstream), never the generated output map.
+- `Ast` shares ownership of its allocator and source through `Arc`. `program()` borrows a tree whose spans anchor to that source
+- `Ast` wraps `Arc<AstInner>`. `Clone` is O(1) and shares the arena
+- `AstOwner` owns the allocator, source, semantic `Language`/`SourceType`, and input source map
+- `Ast::language()` derives the grammar from the parsed program. `Ast::source_type()` returns the coarse `telarel_common::SourceType` resolved from the program. It never returns the parser-input `Unambiguous` for a normal parsed AST. An explicit `source_type` other than `Unambiguous` replaces `Program.source_type` when an AST enters the pipeline. The accessors read the program
+- the raw oxc source type remains reachable through `ast.program().source_type`. `from_source` / `try_from_source` accept the Telarel `Language` and `SourceType`, not oxc's raw type
+- `with_mut` is the only path to the arena. It takes `&mut self` and copy-on-writes through `Arc::make_mut` when another handle is alive, so mutating a clone never mutates the original
+- `with_mut` debug-asserts that `Program::source_text` stays content-equal to `Ast::source`. Span conversion, codegen source maps, and error frames depend on that equality. Public contract: `docs/content/apis/rust/Ast.mdx`
+- `with_input_map` rebuilds deeply into a fresh allocator. It shares the source `Arc` and carries the requested input map
+- `Ast` is `Send + Sync`, so plugin futures can move owned handles or borrow it across threads. Callers that share `&Ast` across threads must use it read-only. Never mutate `Program`'s interior-mutable `Cell` fields through a shared `&Ast`
+- `Ast::map` is the **input** map (how the source was produced upstream), never the generated output map
 
 ## Source maps
 
 The public modes are defined by `InputSourceMapMode` and `OutputSourceMapMode` in `crates/common/src/_types/options/sourcemap/` and mirrored by the JS types in `packages/telarel/src/@types/sourcemap/`. Internal invariants:
 
-- An explicit input request replaces the AST's own input map when it resolves. A best-effort `Inline` or `Auto` miss keeps the AST's own map, and an `External` miss or corrupt map is an error. `attach_input_map` implements this rule for the pipeline entry boundaries and the builtin generator.
-- Input path overrides resolve through `source_dir` and `external_map_path_for`. `source_dir` resolves `file` against `cwd`, then joins a relative `path` to the source file's directory. Public path semantics: `docs/content/apis/rust/Parser.mdx` and `docs/content/apis/javascript/createParser.mdx`.
-- Code-entry functions (`parse`, `compile`) apply the resolved input map after a winning `parse` hook. The builtin parser resolves an input-map request carried by its own options.
-- `Generator::generate` applies `source_map.input` before code generation and never `source_map.output`; output delivery remains a pipeline concern. `GeneratorOptions.cwd` anchors a relative input-map path through the source file. Public contract: `docs/content/apis/rust/Generator.mdx`.
-- `generate_code` sets `map.file` after composing the input map. `apply_output_source_map_mode` overwrites it with a non-empty `output.file` after the winning generate result, including a custom map. Public contract: `docs/content/apis/index.mdx#source-maps`.
-- When `Inline` or `Auto` resolves an inline map, the builtin parser and `attach_input_map` remove the consumed comment from `Program.comments` before generation. `Ast::source` is unchanged. Comments that were not consumed remain.
-- The pipeline applies output options uniformly after the winning `generate` hook. This rule holds whether the builtin or a plugin generated the code. Public output semantics: `docs/content/apis/rust/compile.mdx#compileoptions` and `docs/content/apis/rust/generate.mdx#generateoptions`.
-- The builtin generator's output-map composition delegates to `oxc_sourcemap::SourceMap::compose`. The codegen map is the `self` operand, so it must contain at most one source.
-- When no map was produced, the code is returned byte-identical in every mode. Never fabricate an identity map.
+- an explicit input request replaces the AST's own input map when it resolves. A best-effort `Inline` or `Auto` miss keeps the AST's own map, and an `External` miss or corrupt map is an error. `attach_input_map` implements this rule for the pipeline entry boundaries and the builtin generator
+- input path overrides resolve through `source_dir` and `external_map_path_for`. `source_dir` resolves `file` against `cwd`, then joins a relative `path` to the source file's directory. Public path semantics: `docs/content/apis/rust/Parser.mdx` and `docs/content/apis/javascript/createParser.mdx`
+- code-entry functions (`parse`, `compile`) apply the resolved input map after a winning `parse` hook. The builtin parser resolves an input-map request carried by its own options
+- `Generator::generate` applies `source_map.input` before code generation and never `source_map.output`; output delivery remains a pipeline concern. `GeneratorOptions.cwd` anchors a relative input-map path through the source file. Public contract: `docs/content/apis/rust/Generator.mdx`
+- `generate_code` sets `map.file` after composing the input map. `apply_output_source_map_mode` overwrites it with a non-empty `output.file` after the winning generate result, including a custom map. Public contract: `docs/content/apis/index.mdx#source-maps`
+- when `Inline` or `Auto` resolves an inline map, the builtin parser and `attach_input_map` remove the consumed comment from `Program.comments` before generation. `Ast::source` is unchanged. Comments that were not consumed remain
+- the pipeline applies output options uniformly after the winning `generate` hook. This rule holds whether the builtin or a plugin generated the code. Public output semantics: `docs/content/apis/rust/compile.mdx#compileoptions` and `docs/content/apis/rust/generate.mdx#generateoptions`
+- the builtin generator's output-map composition delegates to `oxc_sourcemap::SourceMap::compose`. The codegen map is the `self` operand, so it must contain at most one source
+- when no map was produced, the code is returned byte-identical in every mode. Never fabricate an identity map
 
 ## Option resolution
 

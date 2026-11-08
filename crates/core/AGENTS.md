@@ -51,9 +51,9 @@ The entry boundary applies the explicit input-map request exactly once per entry
 
 ## Error propagation
 
-- Hook errors cross the pipeline unchanged. The pipeline adds no stage prefixes. The message and `ErrorSource` are exactly what the plugin or builtin produced.
-- The original stage error is passed to `end` as-is.
-- A failing `end` returns its own error instead of the stage error. A succeeding `end` leaves the stage error untouched.
+- hook errors cross the pipeline unchanged. The pipeline adds no stage prefixes. The message and `ErrorSource` are exactly what the plugin or builtin produced
+- the original stage error is passed to `end` as-is
+- a failing `end` returns its own error instead of the stage error. A succeeding `end` leaves the stage error untouched
 
 ## Dependency boundary
 

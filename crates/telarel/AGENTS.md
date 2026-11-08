@@ -10,10 +10,10 @@ The crate is the public Rust API surface. It re-exports the pipeline, the plugin
 
 ## Re-export rules
 
-- Add public API items as re-exports here. Do not add wrapper logic.
-- Keep each re-export tied to its owning crate: `telarel_common`, `telarel_plugin`, or `telarel_core`.
-- `ast_visit`, `semantic`, and `traverse` are feature-gated. `traverse` also enables `ast_visit` and `semantic`.
-- `allocator`, `span`, `str`, `syntax`, `ast`, and `sourcemap` are always exposed.
+- add public API items as re-exports here. Do not add wrapper logic
+- keep each re-export tied to its owning crate: `telarel_common`, `telarel_plugin`, or `telarel_core`
+- `ast_visit`, `semantic`, and `traverse` are feature-gated. `traverse` also enables `ast_visit` and `semantic`
+- `allocator`, `span`, `str`, `syntax`, `ast`, and `sourcemap` are always exposed
 
 ## Testing
 

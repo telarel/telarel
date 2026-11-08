@@ -19,11 +19,11 @@ This crate holds the plugin contract and hook engine. It covers the `Plugin` tra
 
 The public hook contract is documented in `docs/content/apis/plugin`. Internally:
 
-- `options` is not run by the driver. It is a sequential fixpoint over the plugin list (`options_fixpoint`).
-- `PluginDriver::new` partitions the other hooks by declared `HookUsage`. It collects `start` and `end` from every settled plugin. The partitioned stages run only on plugins that declare them.
-- Each driver-run hook implementation lives in `src/plugin_driver/hooks/`. The `options` hook is implemented by `options_fixpoint` in `src/options/fixpoint.rs`. Value stages return `Option`. Observers and notify hooks ignore their return value. The core owns all state and applies the returned value.
-- For AST entries, `ModuleInfo.source_type` uses an explicit module kind other than `Unambiguous`. When the option is `Unambiguous` or absent, the AST module kind applies. If the AST has no module kind, the file extension is the fallback.
-- Plugin-hook errors propagate unchanged, with the plugin's original message and `ErrorSource`. When every plugin defers, the builtin parse or generate error returns unchanged.
+- `options` is not run by the driver. It is a sequential fixpoint over the plugin list (`options_fixpoint`)
+- `PluginDriver::new` partitions the other hooks by declared `HookUsage`. It collects `start` and `end` from every settled plugin. The partitioned stages run only on plugins that declare them
+- each driver-run hook implementation lives in `src/plugin_driver/hooks/`. The `options` hook is implemented by `options_fixpoint` in `src/options/fixpoint.rs`. Value stages return `Option`. Observers and notify hooks ignore their return value. The core owns all state and applies the returned value
+- for AST entries, `ModuleInfo.source_type` uses an explicit module kind other than `Unambiguous`. When the option is `Unambiguous` or absent, the AST module kind applies. If the AST has no module kind, the file extension is the fallback
+- plugin-hook errors propagate unchanged, with the plugin's original message and `ErrorSource`. When every plugin defers, the builtin parse or generate error returns unchanged
 
 ## Ordering
 
@@ -31,14 +31,14 @@ Each hook has its own optional `PluginHookMeta { order }`. `sort_plugins_by_hook
 
 ## Options fixpoint
 
-- The fixpoint runs before any `PluginDriver` exists.
-- `Some(OptionsArgs)` replaces the entire args bag at struct level. Omitted fields fall back to defaults, not to the previous values.
-- The returned plugin list replaces the settled list wholesale, including same-length swaps, reorders, and truncations.
-- Newly injected plugins get their own `options` hook run on a later pass.
-- Identity is the plugin instance (`Arc::ptr_eq` on `SharedPluginable`), not the name. See the [plugin hook semantics](../../docs/content/apis/plugin/index.mdx#hook-semantics) for the public consequences.
-- Each pass re-ranks a copy of the current list by `options_meta` to drive execution order only. The persisted and returned list keeps append/registration order.
-- `MAX_OPTIONS_DEPTH` (10) guards cycles and reports the growing chain.
-- Errors propagate unchanged.
+- the fixpoint runs before any `PluginDriver` exists
+- `Some(OptionsArgs)` replaces the entire args bag at struct level. Omitted fields fall back to defaults, not to the previous values
+- the returned plugin list replaces the settled list wholesale, including same-length swaps, reorders, and truncations
+- newly injected plugins get their own `options` hook run on a later pass
+- identity is the plugin instance (`Arc::ptr_eq` on `SharedPluginable`), not the name. See the [plugin hook semantics](../../docs/content/apis/plugin/index.mdx#hook-semantics) for the public consequences
+- each pass re-ranks a copy of the current list by `options_meta` to drive execution order only. The persisted and returned list keeps append/registration order
+- `MAX_OPTIONS_DEPTH` (10) guards cycles and reports the growing chain
+- errors propagate unchanged
 
 ## Transform fold
 
