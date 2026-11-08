@@ -7,8 +7,8 @@ description: Function-level reference for Telarel in JavaScript and Rust.
 
 Telarel exposes almost the same compiler pipeline through a JavaScript package and a Rust crate.
 
-- **JavaScript API**: the `telarel` package, with TypeScript types. It uses a NAPI binding to the Rust core.
-- **Rust API**: the `telarel` crate, which re-exports the public-facing API.
+- the **JavaScript API**: the `telarel` package, with TypeScript types. It uses a NAPI binding to the Rust core
+- the **Rust API**: the `telarel` crate, which re-exports the public-facing API
 
 Both expose the same pipeline entry points. Each call takes a source text or an owned AST, an options value, and a list of plugins. It returns an AST result or a code result with an optional source map.
 
@@ -24,17 +24,17 @@ Every pipeline entry point accepts the options for the stages it runs. You can o
 
 `output` configures the generated code. `output.file` is the intended path of that code.
 
-- A non-empty `output.file` is used verbatim.
-- An empty `output.file` is treated as unset, the same as absent.
-- When `output.file` is unset, the transform plugin derives it from the input file. Without the transform plugin, it defaults to the resolved input `file`.
-- The resolved path is the generated output name.
+- a non-empty `output.file` is used verbatim
+- an empty `output.file` is treated as unset, the same as absent
+- when `output.file` is unset, the transform plugin derives it from the input file. Without the transform plugin, it defaults to the resolved input `file`
+- the resolved path is the generated output name
 
 See [output file](/plugins/transform#output-file) for the derivation table.
 
 ## Results
 
-- **AST result**: the parsed or rewritten AST, the source text its spans anchor to, and an optional source map.
-- **Code result**: the generated code and an optional source map.
+- the **AST result**: the parsed or rewritten AST, the source text its spans anchor to, and an optional source map
+- the **code result**: the generated code and an optional source map
 
 See the individual function pages for the exact shapes.
 

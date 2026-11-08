@@ -41,17 +41,19 @@ import { ErrorSource, PluginError } from "telarel";
 
 const noDebugger: Plugin = {
     name: "no-debugger",
-    parse(ctx, args) {
-        const start: number = args.code.indexOf("debugger");
+    prepare(ctx, { ast }) {
+        const start: number = ast.source.indexOf("debugger");
 
-        if (start !== -1) {
-            throw new PluginError("debugger statements are not allowed", {
-                source: ErrorSource.fromCode(ctx.module.file, args.code, {
-                    start,
-                    end: start + "debugger".length,
-                }),
-            });
+        if (start === -1) {
+            return;
         }
+
+        throw new PluginError("debugger statements are not allowed", {
+            source: ErrorSource.fromAst(ctx.module.file, ast, {
+                start,
+                end: start + "debugger".length,
+            }),
+        });
     },
 };
 ```
