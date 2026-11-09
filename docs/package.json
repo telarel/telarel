@@ -14,7 +14,7 @@
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.3.4",
-        "tailwindcss": "^4.3.4",
+        "tailwindcss": "^4.3.5",
         "vite": "catalog:dep"
     },
     "engines": {
