@@ -16,7 +16,7 @@
         "consola": "^3.4.2",
         "emnapi": "2.0.0-alpha.5",
         "oxfmt": "~0.77.0",
-        "oxlint": "^1.92.0",
+        "oxlint": "^1.93.0",
         "oxlint-tsgolint": "^7.0.2006",
         "tsdown": "~0.23.7",
         "typescript": "^7.0.2"
