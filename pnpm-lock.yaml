@@ -97,8 +97,8 @@ importers:
         specifier: ^16.18.4
         version: 16.18.4(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(flexsearch@0.8.212)(lucide-react@1.71.0(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       fumadocs-mdx:
-        specifier: ^15.5.3
-        version: 15.5.3(@types/mdast@4.0.4)(@types/mdx@2.0.14)(@types/react@19.3.0)(@vitejs/plugin-rsc@0.5.38(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(fumadocs-core@16.18.4(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(flexsearch@0.8.212)(lucide-react@1.71.0(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7))(react@19.3.1)(rolldown@1.3.0)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ^15.6.0
+        version: 15.6.0(@types/mdast@4.0.4)(@types/mdx@2.0.14)(@types/react@19.3.0)(@vitejs/plugin-rsc@0.5.38(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(fumadocs-core@16.18.4(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(flexsearch@0.8.212)(lucide-react@1.71.0(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7))(react@19.3.1)(rolldown@1.3.0)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       fumadocs-mermaid:
         specifier: ^1.3.1
         version: 1.3.1(@fumadocs/base-ui@16.17.4(@types/mdx@2.0.14)(@types/react@19.3.0)(fumadocs-core@16.18.4(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(flexsearch@0.8.212)(lucide-react@1.71.0(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(tailwindcss@4.3.5)(takumi-js@2.16.2(csstype@3.2.3)(react@19.3.1)))(lucide-react@1.71.0(@types/react@19.3.0)(react@19.3.1))(mermaid@12.3.0)(next-themes@0.4.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)
@@ -107,7 +107,7 @@ importers:
         version: '@fumadocs/base-ui@16.17.4(@types/mdx@2.0.14)(@types/react@19.3.0)(fumadocs-core@16.18.4(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(flexsearch@0.8.212)(lucide-react@1.71.0(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(tailwindcss@4.3.5)(takumi-js@2.16.2(csstype@3.2.3)(react@19.3.1))'
       fumapress:
         specifier: ^1.6.2
-        version: 1.6.2(b6df539b6036a01ab08db8988ffe4366)
+        version: 1.6.2(594c3df10c55716e3a65562a136631b9)
       lucide-react:
         specifier: ^1.71.0
         version: 1.71.0(@types/react@19.3.0)(react@19.3.1)
@@ -2798,8 +2798,8 @@ packages:
       zod:
         optional: true
 
-  fumadocs-mdx@15.5.3:
-    resolution: {integrity: sha512-IYUCkfO79rjohwJXEok1oyEz/rmyaQgDclrrKY37na5n4PCF7dPQxXJSHwscmHP0Zz5ynSDyqrQHV55Ga48+dg==}
+  fumadocs-mdx@15.6.0:
+    resolution: {integrity: sha512-xCeUMw5PqBcKg5jtKCHyhUPx4NBXeXsN8KHBwXGCQljNxWoKlOyCCDO8oI8fhK6RrZC+aWqwhClTYxx8lF31tA==}
     hasBin: true
     peerDependencies:
       '@fumadocs/satteri': 0.x.x
@@ -5887,7 +5887,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fumadocs-mdx@15.5.3(@types/mdast@4.0.4)(@types/mdx@2.0.14)(@types/react@19.3.0)(@vitejs/plugin-rsc@0.5.38(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(fumadocs-core@16.18.4(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(flexsearch@0.8.212)(lucide-react@1.71.0(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7))(react@19.3.1)(rolldown@1.3.0)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)):
+  fumadocs-mdx@15.6.0(@types/mdast@4.0.4)(@types/mdx@2.0.14)(@types/react@19.3.0)(@vitejs/plugin-rsc@0.5.38(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(fumadocs-core@16.18.4(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(flexsearch@0.8.212)(lucide-react@1.71.0(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7))(react@19.3.1)(rolldown@1.3.0)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)):
     dependencies:
       '@mdx-js/mdx': 3.1.1
       '@standard-schema/spec': 1.1.0
@@ -5932,7 +5932,7 @@ snapshots:
       react: 19.3.1
       unist-util-visit: 5.1.0
 
-  fumapress@1.6.2(b6df539b6036a01ab08db8988ffe4366):
+  fumapress@1.6.2(594c3df10c55716e3a65562a136631b9):
     dependencies:
       '@fuma-translate/react': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       class-variance-authority: 0.7.1
@@ -5951,7 +5951,7 @@ snapshots:
     optionalDependencies:
       '@types/mdx': 2.0.14
       '@types/react': 19.3.0
-      fumadocs-mdx: 15.5.3(@types/mdast@4.0.4)(@types/mdx@2.0.14)(@types/react@19.3.0)(@vitejs/plugin-rsc@0.5.38(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(fumadocs-core@16.18.4(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(flexsearch@0.8.212)(lucide-react@1.71.0(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7))(react@19.3.1)(rolldown@1.3.0)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      fumadocs-mdx: 15.6.0(@types/mdast@4.0.4)(@types/mdx@2.0.14)(@types/react@19.3.0)(@vitejs/plugin-rsc@0.5.38(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(fumadocs-core@16.18.4(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(flexsearch@0.8.212)(lucide-react@1.71.0(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7))(react@19.3.1)(rolldown@1.3.0)(vite@8.3.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       hono: 4.13.13
     transitivePeerDependencies:
       - '@rolldown/plugin-babel'
