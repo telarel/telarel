@@ -2,12 +2,16 @@ use std::path::PathBuf;
 
 use napi::bindgen_prelude::ObjectRef;
 use napi::{Error, Result, Status};
+use oxc::codegen::{CommentOptions, IndentChar, LegalComment};
 
 use telarel_common::{
-    CompileFromAstOptions, CompileOptions, GenerateOptions, InputSourceMap,
-    InputSourceMapMode, InputSourceMapOptions, Language, OutputOptions,
-    OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions, ParseOptions,
-    ResolvableOptions, RewriteOptions, SourceMap, SourceMapOptions, SourceType,
+    CompileFromAstOptions, CompileOptions, GenerateOptions, GeneratorOptions,
+    IndentStyle, InputSourceMap, InputSourceMapMode, InputSourceMapOptions,
+    Language, OutputOptions, OutputSourceMap, OutputSourceMapMode,
+    OutputSourceMapOptions, OxcCodegenOptions, OxcParseOptions, ParseOptions,
+    ParserOptions, PartialOxcCodegenOptions, PartialOxcCommentOptions,
+    PartialOxcParseOptions, ResolvableOptions, RewriteOptions, SourceMap,
+    SourceMapOptions, SourceType,
 };
 
 /// JS-facing options for `parse`.
@@ -26,6 +30,10 @@ pub struct JsParseOptions {
     /// kind stays the one that the grammar resolves.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
+    /// Parser-stage options.
+    ///
+    /// By default, it is `None`, which applies the `ParserOptions` defaults.
+    pub parser: Option<JsParserOptions>,
     /// The input source-map request for the step. When the JS side omits it,
     /// Telarel performs no input-map lookup.
     #[napi(js_name = "inputSourceMap")]
@@ -61,6 +69,14 @@ pub struct JsCompileOptions {
     /// kind stays the one that the grammar resolves.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
+    /// Parser-stage options.
+    ///
+    /// By default, it is `None`, which applies the `ParserOptions` defaults.
+    pub parser: Option<JsParserOptions>,
+    /// Generator-stage options.
+    ///
+    /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
+    pub generator: Option<JsGeneratorOptions>,
     /// The output code options.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
@@ -112,6 +128,10 @@ pub struct JsCompileFromAstOptions {
     /// kind stays the one that the grammar resolves.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
+    /// Generator-stage options.
+    ///
+    /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
+    pub generator: Option<JsGeneratorOptions>,
     /// The output code options.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
@@ -135,6 +155,10 @@ pub struct JsGenerateOptions {
     /// The grammar of the generated code. When the JS side omits it, the
     /// value falls back to the AST language, then the file extension.
     pub language: Option<String>,
+    /// Generator-stage options.
+    ///
+    /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
+    pub generator: Option<JsGeneratorOptions>,
     /// The output code options.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
@@ -145,10 +169,75 @@ pub struct JsGenerateOptions {
     pub plugins: Vec<ObjectRef<false>>,
 }
 
-/// JS-facing options for `builtinParse` (the builtin `createParser`). There
-/// are no plugins, because the builtin parser never runs the plugin chain.
+/// JS-facing parser-stage options.
+#[derive(Default)]
 #[napi_derive::napi(object)]
 pub struct JsParserOptions {
+    /// Whether parenthesized expressions stay in the AST as
+    /// `ParenthesizedExpression` nodes.
+    ///
+    /// By default, it is `false`.
+    #[napi(js_name = "preserveParens")]
+    pub preserve_parens: Option<bool>,
+    /// Whether `return` is accepted outside a function body.
+    ///
+    /// By default, it is `false`.
+    #[napi(js_name = "allowReturnOutsideFunction")]
+    pub allow_return_outside_function: Option<bool>,
+    /// A partial patch of raw oxc parser options.
+    ///
+    /// Only set fields override the Telarel defaults. A curated field wins
+    /// over the matching raw field. An empty patch changes nothing.
+    pub oxc: Option<serde_json::Value>,
+}
+
+/// JS-facing generator-stage options.
+#[derive(Default)]
+#[napi_derive::napi(object)]
+pub struct JsGeneratorOptions {
+    /// Whether string literals use single quotes instead of double quotes.
+    ///
+    /// By default, it is `false`.
+    #[napi(js_name = "singleQuote")]
+    pub single_quote: Option<bool>,
+    /// Whether non-ASCII characters are escaped in generated output.
+    ///
+    /// By default, it is `false`.
+    #[napi(js_name = "asciiOnly")]
+    pub ascii_only: Option<bool>,
+    /// The indentation style for generated code.
+    ///
+    /// By default, it is `"space"`.
+    #[napi(js_name = "indentStyle")]
+    pub indent_style: Option<String>,
+    /// The number of characters per indentation level.
+    ///
+    /// By default, it is `2`.
+    #[napi(js_name = "indentWidth")]
+    pub indent_width: Option<u32>,
+    /// Whether comments are printed in generated code.
+    ///
+    /// By default, it is `true`. When effective `minify` is `true`, comments
+    /// are disabled only when neither this field nor a raw `oxc.comments`
+    /// field is set.
+    pub comments: Option<bool>,
+    /// Whether generated code is minified.
+    ///
+    /// By default, it is `false`.
+    pub minify: Option<bool>,
+    /// A partial patch of raw oxc codegen options.
+    ///
+    /// Only set fields override the Telarel defaults. A curated field wins
+    /// over the matching raw field. An empty patch changes nothing.
+    /// `sourceMapPath` is owned by Telarel and is not accepted here.
+    pub oxc: Option<serde_json::Value>,
+}
+
+/// JS-facing resolved parser options for `builtinParse` (the builtin
+/// `createParser`). There are no plugins, because the builtin parser never
+/// runs the plugin chain.
+#[napi_derive::napi(object)]
+pub struct JsResolvedParserOptions {
     /// Current working directory. When the JS side omits it, the value
     /// resolves to the process working directory.
     pub cwd: Option<String>,
@@ -165,12 +254,20 @@ pub struct JsParserOptions {
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
+    /// Whether parenthesized expressions stay in the AST.
+    #[napi(js_name = "preserveParens")]
+    pub preserve_parens: Option<bool>,
+    /// Whether `return` is accepted outside a function body.
+    #[napi(js_name = "allowReturnOutsideFunction")]
+    pub allow_return_outside_function: Option<bool>,
+    /// The full effective options for the raw oxc parser.
+    pub oxc: Option<serde_json::Value>,
 }
 
-/// JS-facing options for `builtinGenerate` (the builtin `createGenerator`).
-/// There are no plugins, no grammar, and no module kind.
+/// JS-facing resolved generator options for `builtinGenerate` (the builtin
+/// `createGenerator`). There are no plugins, no grammar, and no module kind.
 #[napi_derive::napi(object)]
-pub struct JsGeneratorOptions {
+pub struct JsResolvedGeneratorOptions {
     /// Current working directory. When the JS side omits it, the value
     /// resolves to the process working directory. It anchors the source file
     /// used to resolve a relative `sourceMap.input.path`.
@@ -183,6 +280,24 @@ pub struct JsGeneratorOptions {
     /// `builtinGenerate` resolves `input` and applies `output` delivery.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
+    /// Whether string literals use single quotes.
+    #[napi(js_name = "singleQuote")]
+    pub single_quote: Option<bool>,
+    /// Whether non-ASCII characters are escaped.
+    #[napi(js_name = "asciiOnly")]
+    pub ascii_only: Option<bool>,
+    /// The resolved indentation style.
+    #[napi(js_name = "indentStyle")]
+    pub indent_style: Option<String>,
+    /// The resolved indentation width.
+    #[napi(js_name = "indentWidth")]
+    pub indent_width: Option<u32>,
+    /// Whether any comment category is printed.
+    pub comments: Option<bool>,
+    /// Whether generated code is minified.
+    pub minify: Option<bool>,
+    /// The full effective options for the raw oxc codegen.
+    pub oxc: Option<serde_json::Value>,
 }
 
 fn invalid_arg(message: String) -> Error {
@@ -538,6 +653,508 @@ impl SharedInputOptions {
     }
 }
 
+/// The camelCase JS wire shape for raw oxc parser options.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+struct BindingOxcParseOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parse_regular_expression: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allow_return_outside_function: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preserve_parens: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allow_v8_intrinsics: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enable_ident_hashes: Option<bool>,
+}
+
+impl BindingOxcParseOptions {
+    fn into_partial(self) -> PartialOxcParseOptions {
+        PartialOxcParseOptions {
+            parse_regular_expression: self.parse_regular_expression,
+            allow_return_outside_function: self.allow_return_outside_function,
+            preserve_parens: self.preserve_parens,
+            allow_v8_intrinsics: self.allow_v8_intrinsics,
+            enable_ident_hashes: self.enable_ident_hashes,
+        }
+    }
+}
+
+impl From<&OxcParseOptions> for BindingOxcParseOptions {
+    fn from(options: &OxcParseOptions) -> Self {
+        Self {
+            parse_regular_expression: Some(options.parse_regular_expression),
+            allow_return_outside_function: Some(
+                options.allow_return_outside_function,
+            ),
+            preserve_parens: Some(options.preserve_parens),
+            allow_v8_intrinsics: Some(options.allow_v8_intrinsics),
+            enable_ident_hashes: Some(options.enable_ident_hashes),
+        }
+    }
+}
+
+impl From<&PartialOxcParseOptions> for BindingOxcParseOptions {
+    fn from(options: &PartialOxcParseOptions) -> Self {
+        Self {
+            parse_regular_expression: options.parse_regular_expression,
+            allow_return_outside_function: options
+                .allow_return_outside_function,
+            preserve_parens: options.preserve_parens,
+            allow_v8_intrinsics: options.allow_v8_intrinsics,
+            enable_ident_hashes: options.enable_ident_hashes,
+        }
+    }
+}
+
+/// The JS label shared by the curated `indentStyle` and raw `indentChar`.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum BindingIndentStyle {
+    Space,
+    Tab,
+}
+
+impl From<BindingIndentStyle> for IndentChar {
+    fn from(value: BindingIndentStyle) -> Self {
+        match value {
+            | BindingIndentStyle::Space => IndentChar::Space,
+            | BindingIndentStyle::Tab => IndentChar::Tab,
+        }
+    }
+}
+
+impl From<IndentChar> for BindingIndentStyle {
+    fn from(value: IndentChar) -> Self {
+        match value {
+            | IndentChar::Space => BindingIndentStyle::Space,
+            | IndentChar::Tab => BindingIndentStyle::Tab,
+        }
+    }
+}
+
+impl From<BindingIndentStyle> for IndentStyle {
+    fn from(value: BindingIndentStyle) -> Self {
+        match value {
+            | BindingIndentStyle::Space => IndentStyle::Space,
+            | BindingIndentStyle::Tab => IndentStyle::Tab,
+        }
+    }
+}
+
+impl From<IndentStyle> for BindingIndentStyle {
+    fn from(value: IndentStyle) -> Self {
+        match value {
+            | IndentStyle::Space => BindingIndentStyle::Space,
+            | IndentStyle::Tab => BindingIndentStyle::Tab,
+        }
+    }
+}
+
+/// The JS wire shape for an oxc legal-comment policy.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum BindingOxcLegalComment {
+    None,
+    Inline,
+    Eof,
+    Linked(String),
+    External,
+}
+
+impl From<BindingOxcLegalComment> for LegalComment {
+    fn from(value: BindingOxcLegalComment) -> Self {
+        match value {
+            | BindingOxcLegalComment::None => LegalComment::None,
+            | BindingOxcLegalComment::Inline => LegalComment::Inline,
+            | BindingOxcLegalComment::Eof => LegalComment::Eof,
+            | BindingOxcLegalComment::Linked(value) => {
+                LegalComment::Linked(value)
+            },
+            | BindingOxcLegalComment::External => LegalComment::External,
+        }
+    }
+}
+
+impl From<&LegalComment> for BindingOxcLegalComment {
+    fn from(value: &LegalComment) -> Self {
+        match value {
+            | LegalComment::None => BindingOxcLegalComment::None,
+            | LegalComment::Inline => BindingOxcLegalComment::Inline,
+            | LegalComment::Eof => BindingOxcLegalComment::Eof,
+            | LegalComment::Linked(value) => {
+                BindingOxcLegalComment::Linked(value.clone())
+            },
+            | LegalComment::External => BindingOxcLegalComment::External,
+        }
+    }
+}
+
+/// The camelCase JS wire shape for raw oxc comment options.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+struct BindingOxcCommentOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    normal: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    jsdoc: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    annotation: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    legal: Option<BindingOxcLegalComment>,
+}
+
+impl BindingOxcCommentOptions {
+    fn into_partial(self) -> PartialOxcCommentOptions {
+        PartialOxcCommentOptions {
+            normal: self.normal,
+            jsdoc: self.jsdoc,
+            annotation: self.annotation,
+            legal: self.legal.map(Into::into),
+        }
+    }
+}
+
+impl From<&CommentOptions> for BindingOxcCommentOptions {
+    fn from(options: &CommentOptions) -> Self {
+        Self {
+            normal: Some(options.normal),
+            jsdoc: Some(options.jsdoc),
+            annotation: Some(options.annotation),
+            legal: Some(BindingOxcLegalComment::from(&options.legal)),
+        }
+    }
+}
+
+impl From<&PartialOxcCommentOptions> for BindingOxcCommentOptions {
+    fn from(options: &PartialOxcCommentOptions) -> Self {
+        Self {
+            normal: options.normal,
+            jsdoc: options.jsdoc,
+            annotation: options.annotation,
+            legal: options.legal.as_ref().map(BindingOxcLegalComment::from),
+        }
+    }
+}
+
+/// The camelCase JS wire shape for raw oxc codegen options.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+struct BindingOxcCodegenOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    single_quote: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    minify: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ascii_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comments: Option<BindingOxcCommentOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    indent_char: Option<BindingIndentStyle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    indent_width: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    initial_indent: Option<u32>,
+}
+
+impl BindingOxcCodegenOptions {
+    fn into_partial(self) -> PartialOxcCodegenOptions {
+        PartialOxcCodegenOptions {
+            single_quote: self.single_quote,
+            minify: self.minify,
+            ascii_only: self.ascii_only,
+            comments: self.comments.map(BindingOxcCommentOptions::into_partial),
+            indent_char: self.indent_char.map(Into::into),
+            indent_width: self.indent_width,
+            initial_indent: self.initial_indent,
+        }
+    }
+}
+
+impl From<&OxcCodegenOptions> for BindingOxcCodegenOptions {
+    fn from(options: &OxcCodegenOptions) -> Self {
+        Self {
+            single_quote: Some(options.single_quote),
+            minify: Some(options.minify),
+            ascii_only: Some(options.ascii_only),
+            comments: Some(BindingOxcCommentOptions::from(&options.comments)),
+            indent_char: Some(options.indent_char.into()),
+            indent_width: Some(options.indent_width),
+            initial_indent: Some(options.initial_indent),
+        }
+    }
+}
+
+impl From<&PartialOxcCodegenOptions> for BindingOxcCodegenOptions {
+    fn from(options: &PartialOxcCodegenOptions) -> Self {
+        Self {
+            single_quote: options.single_quote,
+            minify: options.minify,
+            ascii_only: options.ascii_only,
+            comments: options
+                .comments
+                .as_ref()
+                .map(BindingOxcCommentOptions::from),
+            indent_char: options.indent_char.map(Into::into),
+            indent_width: options.indent_width,
+            initial_indent: options.initial_indent,
+        }
+    }
+}
+
+/// The camelCase JS wire shape for parser-stage options.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+struct BindingParserOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preserve_parens: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allow_return_outside_function: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oxc: Option<serde_json::Value>,
+}
+
+impl BindingParserOptions {
+    fn into_options(self) -> Result<ParserOptions> {
+        Ok(ParserOptions {
+            preserve_parens: self.preserve_parens,
+            allow_return_outside_function: self.allow_return_outside_function,
+            oxc: match self.oxc.as_ref() {
+                | Some(value) => Some(parse_oxc_parser_options(value)?),
+                | None => None,
+            },
+        })
+    }
+}
+
+impl From<&ParserOptions> for BindingParserOptions {
+    fn from(options: &ParserOptions) -> Self {
+        Self {
+            preserve_parens: options.preserve_parens,
+            allow_return_outside_function: options
+                .allow_return_outside_function,
+            oxc: options.oxc.as_ref().map(partial_parser_oxc_to_js),
+        }
+    }
+}
+
+/// The camelCase JS wire shape for generator-stage options.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+struct BindingGeneratorOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    single_quote: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ascii_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    indent_style: Option<BindingIndentStyle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    indent_width: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comments: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    minify: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oxc: Option<serde_json::Value>,
+}
+
+impl BindingGeneratorOptions {
+    fn into_options(self) -> Result<GeneratorOptions> {
+        Ok(GeneratorOptions {
+            single_quote: self.single_quote,
+            ascii_only: self.ascii_only,
+            indent_style: self.indent_style.map(IndentStyle::from),
+            indent_width: self.indent_width,
+            comments: self.comments,
+            minify: self.minify,
+            oxc: match self.oxc.as_ref() {
+                | Some(value) => Some(parse_oxc_codegen_options(value)?),
+                | None => None,
+            },
+        })
+    }
+}
+
+impl From<&GeneratorOptions> for BindingGeneratorOptions {
+    fn from(options: &GeneratorOptions) -> Self {
+        Self {
+            single_quote: options.single_quote,
+            ascii_only: options.ascii_only,
+            indent_style: options.indent_style.map(BindingIndentStyle::from),
+            indent_width: options.indent_width,
+            comments: options.comments,
+            minify: options.minify,
+            oxc: options.oxc.as_ref().map(partial_codegen_oxc_to_js),
+        }
+    }
+}
+
+fn parse_oxc_parser_options(
+    value: &serde_json::Value
+) -> Result<PartialOxcParseOptions> {
+    serde_json::from_value::<BindingOxcParseOptions>(value.clone())
+        .map(BindingOxcParseOptions::into_partial)
+        .map_err(|error| invalid_arg(format!("invalid parser.oxc: {error}")))
+}
+
+fn parse_oxc_codegen_options(
+    value: &serde_json::Value
+) -> Result<PartialOxcCodegenOptions> {
+    serde_json::from_value::<BindingOxcCodegenOptions>(value.clone())
+        .map(BindingOxcCodegenOptions::into_partial)
+        .map_err(|error| invalid_arg(format!("invalid generator.oxc: {error}")))
+}
+
+/// Parse a JS parser-stage options object.
+pub(crate) fn parse_parser_options(
+    value: &serde_json::Value
+) -> Result<ParserOptions> {
+    serde_json::from_value::<BindingParserOptions>(value.clone())
+        .map_err(|error| {
+            invalid_arg(format!("invalid parser options: {error}"))
+        })?
+        .into_options()
+}
+
+/// Parse a JS generator-stage options object.
+pub(crate) fn parse_generator_options(
+    value: &serde_json::Value
+) -> Result<GeneratorOptions> {
+    serde_json::from_value::<BindingGeneratorOptions>(value.clone())
+        .map_err(|error| {
+            invalid_arg(format!("invalid generator options: {error}"))
+        })?
+        .into_options()
+}
+
+/// Serialize parser-stage options into their JS wire shape.
+pub(crate) fn parser_options_to_js(
+    options: &ParserOptions
+) -> serde_json::Value {
+    serde_json::to_value(BindingParserOptions::from(options))
+        .expect("parser options serialize")
+}
+
+/// Serialize generator-stage options into their JS wire shape.
+pub(crate) fn generator_options_to_js(
+    options: &GeneratorOptions
+) -> serde_json::Value {
+    serde_json::to_value(BindingGeneratorOptions::from(options))
+        .expect("generator options serialize")
+}
+
+/// Serialize the effective parser options into their JS wire shape.
+pub(crate) fn parser_oxc_to_js(options: &OxcParseOptions) -> serde_json::Value {
+    serde_json::to_value(BindingOxcParseOptions::from(options))
+        .expect("parser oxc options serialize")
+}
+
+/// Serialize the requested parser oxc patch into its JS wire shape. Only
+/// explicitly set fields are emitted.
+pub(crate) fn partial_parser_oxc_to_js(
+    options: &PartialOxcParseOptions
+) -> serde_json::Value {
+    serde_json::to_value(BindingOxcParseOptions::from(options))
+        .expect("partial parser oxc options serialize")
+}
+
+/// Serialize the effective generator options into their JS wire shape.
+pub(crate) fn codegen_oxc_to_js(
+    options: &OxcCodegenOptions
+) -> serde_json::Value {
+    serde_json::to_value(BindingOxcCodegenOptions::from(options))
+        .expect("codegen oxc options serialize")
+}
+
+/// Serialize the requested generator oxc patch into its JS wire shape. Only
+/// explicitly set fields are emitted.
+pub(crate) fn partial_codegen_oxc_to_js(
+    options: &PartialOxcCodegenOptions
+) -> serde_json::Value {
+    serde_json::to_value(BindingOxcCodegenOptions::from(options))
+        .expect("partial codegen oxc options serialize")
+}
+
+fn parse_indent_style(text: &str) -> Result<IndentStyle> {
+    match text {
+        | "space" => Ok(IndentStyle::Space),
+        | "tab" => Ok(IndentStyle::Tab),
+        | _ => Err(invalid_arg(format!(
+            "invalid indentStyle {text:?}: expected \"space\" or \"tab\""
+        ))),
+    }
+}
+
+/// Build parser-stage options from the fields shared by the optional group and
+/// the resolved builtin input.
+fn parser_options_from_parts(
+    preserve_parens: Option<bool>,
+    allow_return_outside_function: Option<bool>,
+    oxc: Option<&serde_json::Value>,
+) -> Result<ParserOptions> {
+    Ok(ParserOptions {
+        preserve_parens,
+        allow_return_outside_function,
+        oxc: match oxc {
+            | Some(value) => Some(parse_oxc_parser_options(value)?),
+            | None => None,
+        },
+    })
+}
+
+/// Build generator-stage options from the fields shared by the optional group
+/// and the resolved builtin input.
+fn generator_options_from_parts(
+    single_quote: Option<bool>,
+    ascii_only: Option<bool>,
+    indent_style: Option<&str>,
+    indent_width: Option<u32>,
+    comments: Option<bool>,
+    minify: Option<bool>,
+    oxc: Option<&serde_json::Value>,
+) -> Result<GeneratorOptions> {
+    Ok(GeneratorOptions {
+        single_quote,
+        ascii_only,
+        indent_style: match indent_style {
+            | Some(text) => Some(parse_indent_style(text)?),
+            | None => None,
+        },
+        indent_width: indent_width.map(|width| width as usize),
+        comments,
+        minify,
+        oxc: match oxc {
+            | Some(value) => Some(parse_oxc_codegen_options(value)?),
+            | None => None,
+        },
+    })
+}
+
+impl JsParserOptions {
+    fn to_options(&self) -> Result<ParserOptions> {
+        parser_options_from_parts(
+            self.preserve_parens,
+            self.allow_return_outside_function,
+            self.oxc.as_ref(),
+        )
+    }
+}
+
+impl JsGeneratorOptions {
+    fn to_options(&self) -> Result<GeneratorOptions> {
+        generator_options_from_parts(
+            self.single_quote,
+            self.ascii_only,
+            self.indent_style.as_deref(),
+            self.indent_width,
+            self.comments,
+            self.minify,
+            self.oxc.as_ref(),
+        )
+    }
+}
+
 impl JsParseOptions {
     /// Convert the JS-facing options into the Rust [`ParseOptions`]. Invalid
     /// labels or malformed source maps return `InvalidArg`.
@@ -550,11 +1167,17 @@ impl JsParseOptions {
             self.input_source_map.as_ref(),
         )?;
 
+        let parser: Option<ParserOptions> = match &self.parser {
+            | Some(parser) => Some(parser.to_options()?),
+            | None => None,
+        };
+
         Ok(ParseOptions {
             cwd: shared.cwd,
             file: shared.file,
             language: shared.language,
             source_type: shared.source_type,
+            parser,
             input_source_map: shared.input_source_map,
         })
     }
@@ -573,11 +1196,23 @@ impl JsCompileOptions {
             self.source_map.as_ref(),
         )?;
 
+        let parser: Option<ParserOptions> = match &self.parser {
+            | Some(parser) => Some(parser.to_options()?),
+            | None => None,
+        };
+
+        let generator: Option<GeneratorOptions> = match &self.generator {
+            | Some(generator) => Some(generator.to_options()?),
+            | None => None,
+        };
+
         Ok(CompileOptions {
             cwd: shared.cwd,
             file: shared.file,
             language: shared.language,
             source_type: shared.source_type,
+            parser,
+            generator,
             output: shared.output,
             source_map: shared.source_map,
         })
@@ -619,11 +1254,17 @@ impl JsCompileFromAstOptions {
             self.source_map.as_ref(),
         )?;
 
+        let generator: Option<GeneratorOptions> = match &self.generator {
+            | Some(generator) => Some(generator.to_options()?),
+            | None => None,
+        };
+
         Ok(CompileFromAstOptions {
             cwd: shared.cwd,
             file: shared.file,
             language: shared.language,
             source_type: shared.source_type,
+            generator,
             output: shared.output,
             source_map: shared.source_map,
         })
@@ -642,17 +1283,23 @@ impl JsGenerateOptions {
             | None => None,
         };
 
+        let generator: Option<GeneratorOptions> = match &self.generator {
+            | Some(generator) => Some(generator.to_options()?),
+            | None => None,
+        };
+
         Ok(GenerateOptions {
             cwd: self.cwd.clone().map(PathBuf::from),
             file: self.file.clone(),
             language,
+            generator,
             output: parse_output_options(self.output.as_ref())?,
             source_map,
         })
     }
 }
 
-impl JsParserOptions {
+impl JsResolvedParserOptions {
     /// Convert the JS-facing options into the resolvable form for the builtin
     /// parser. The builtin parser derives its options from that form. Invalid
     /// labels or malformed source maps return `InvalidArg`.
@@ -666,18 +1313,26 @@ impl JsParserOptions {
             self.source_map.as_ref(),
         )?;
 
+        let parser: ParserOptions = parser_options_from_parts(
+            self.preserve_parens,
+            self.allow_return_outside_function,
+            self.oxc.as_ref(),
+        )?;
+
         Ok(ResolvableOptions {
             cwd: shared.cwd,
             file: shared.file,
             language: shared.language,
             source_type: shared.source_type,
+            parser: Some(parser),
+            generator: None,
             output: None,
             source_map: shared.source_map,
         })
     }
 }
 
-impl JsGeneratorOptions {
+impl JsResolvedGeneratorOptions {
     /// Convert the JS-facing options into the resolvable form for the builtin
     /// generator. The form carries no grammar or module-kind field. The
     /// builtin generator resolves the grammar from the input AST's language,
@@ -689,11 +1344,23 @@ impl JsGeneratorOptions {
             | None => None,
         };
 
+        let generator: GeneratorOptions = generator_options_from_parts(
+            self.single_quote,
+            self.ascii_only,
+            self.indent_style.as_deref(),
+            self.indent_width,
+            self.comments,
+            self.minify,
+            self.oxc.as_ref(),
+        )?;
+
         Ok(ResolvableOptions {
             cwd: self.cwd.clone().map(PathBuf::from),
             file: self.file.clone(),
             language: None,
             source_type: None,
+            parser: None,
+            generator: Some(generator),
             output: None,
             source_map,
         })
@@ -705,7 +1372,7 @@ mod tests {
     use telarel_common::{
         InputSourceMapMode, InputSourceMapOptions, Language, OutputOptions,
         OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
-        SourceType,
+        ResolvedOptions, SourceType,
     };
 
     use super::*;
@@ -717,6 +1384,7 @@ mod tests {
             language: None,
             source_type: None,
             input_source_map: None,
+            parser: None,
             plugins: Vec::new(),
         }
     }
@@ -803,6 +1471,8 @@ mod tests {
             source_type: None,
             output: None,
             source_map: None,
+            parser: None,
+            generator: None,
             plugins: Vec::new(),
         }
         .to_compile_options()
@@ -826,6 +1496,7 @@ mod tests {
             source_type: None,
             output: None,
             source_map: None,
+            generator: None,
             plugins: Vec::new(),
         }
         .to_compile_from_ast_options()
@@ -1135,6 +1806,7 @@ mod tests {
             language: Some(String::from("tsx")),
             output: None,
             source_map: Some(serde_json::json!({ "output": "inline" })),
+            generator: None,
             plugins: Vec::new(),
         };
 
@@ -1155,6 +1827,7 @@ mod tests {
             language: None,
             output: None,
             source_map: None,
+            generator: None,
             plugins: Vec::new(),
         };
 
@@ -1172,6 +1845,7 @@ mod tests {
             language: Some(String::from("json")),
             output: None,
             source_map: None,
+            generator: None,
             plugins: Vec::new(),
         };
 
@@ -1192,6 +1866,8 @@ mod tests {
             source_type: None,
             output: None,
             source_map: Some(value),
+            parser: None,
+            generator: None,
             plugins: Vec::new(),
         }
     }
@@ -1263,6 +1939,8 @@ mod tests {
                 file: Some(String::from("dist/index.js")),
             }),
             source_map: None,
+            parser: None,
+            generator: None,
             plugins: Vec::new(),
         }
         .to_compile_options()
@@ -1282,6 +1960,8 @@ mod tests {
             source_type: None,
             output: Some(JsOutputOptions { file: Some(String::new()) }),
             source_map: None,
+            parser: None,
+            generator: None,
             plugins: Vec::new(),
         }
         .to_compile_options()
@@ -1303,6 +1983,7 @@ mod tests {
                 file: Some(String::from("dist/index.js")),
             }),
             source_map: None,
+            generator: None,
             plugins: Vec::new(),
         }
         .to_compile_from_ast_options()
@@ -1323,6 +2004,7 @@ mod tests {
                 file: Some(String::from("dist/index.js")),
             }),
             source_map: None,
+            generator: None,
             plugins: Vec::new(),
         }
         .to_generate_options()
@@ -1429,6 +2111,8 @@ mod tests {
             source_type: None,
             output: None,
             source_map: None,
+            parser: None,
+            generator: None,
             plugins: Vec::new(),
         };
 
@@ -1440,13 +2124,16 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_options_convert_to_resolvable() {
-        let options: JsParserOptions = JsParserOptions {
+    fn test_resolved_parser_options_convert_to_resolvable() {
+        let options: JsResolvedParserOptions = JsResolvedParserOptions {
             cwd: Some(String::from("/repo")),
             file: Some(String::from("app.tsx")),
             language: Some(String::from("tsx")),
             source_type: Some(String::from("module")),
             source_map: None,
+            preserve_parens: Some(true),
+            allow_return_outside_function: Some(true),
+            oxc: Some(serde_json::json!({ "enableIdentHashes": false })),
         };
 
         let resolvable: ResolvableOptions =
@@ -1457,14 +2144,30 @@ mod tests {
         assert_eq!(resolvable.language, Some(Language::TSX));
         assert_eq!(resolvable.source_type, Some(SourceType::Module));
         assert!(resolvable.source_map.is_none());
+
+        let parser: ParserOptions =
+            resolvable.parser.expect("the parser group is carried");
+        assert_eq!(parser.preserve_parens, Some(true));
+        assert_eq!(parser.allow_return_outside_function, Some(true));
+        assert_eq!(
+            parser.oxc.expect("raw oxc is carried").enable_ident_hashes,
+            Some(false)
+        );
     }
 
     #[test]
-    fn test_generator_options_convert_to_resolvable_without_grammar() {
-        let options: JsGeneratorOptions = JsGeneratorOptions {
+    fn test_resolved_generator_options_convert_to_resolvable_without_grammar() {
+        let options: JsResolvedGeneratorOptions = JsResolvedGeneratorOptions {
             cwd: Some(String::from("/repo")),
             file: Some(String::from("out.js")),
             source_map: None,
+            single_quote: Some(true),
+            ascii_only: Some(true),
+            indent_style: Some(String::from("tab")),
+            indent_width: Some(4),
+            comments: Some(false),
+            minify: Some(true),
+            oxc: Some(serde_json::json!({ "initialIndent": 1 })),
         };
 
         let resolvable: ResolvableOptions =
@@ -1474,5 +2177,372 @@ mod tests {
         assert_eq!(resolvable.file.as_deref(), Some("out.js"));
         assert_eq!(resolvable.language, None);
         assert_eq!(resolvable.source_type, None);
+
+        let generator: GeneratorOptions =
+            resolvable.generator.expect("the generator group is carried");
+        assert_eq!(generator.single_quote, Some(true));
+        assert_eq!(generator.ascii_only, Some(true));
+        assert_eq!(generator.indent_style, Some(IndentStyle::Tab));
+        assert_eq!(generator.indent_width, Some(4));
+        assert_eq!(generator.comments, Some(false));
+        assert_eq!(generator.minify, Some(true));
+        assert_eq!(
+            generator.oxc.expect("raw oxc is carried").initial_indent,
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn test_parse_options_parse_parser_group() {
+        let mut options: JsParseOptions = options();
+
+        options.parser = Some(JsParserOptions {
+            preserve_parens: Some(true),
+            allow_return_outside_function: Some(true),
+            oxc: Some(serde_json::json!({
+                "parseRegularExpression": true,
+                "enableIdentHashes": false,
+            })),
+        });
+
+        let parsed: ParseOptions =
+            options.to_parse_options().expect("parser group parses");
+
+        let parser: ParserOptions =
+            parsed.parser.expect("parser group present");
+
+        assert_eq!(parser.preserve_parens, Some(true));
+        assert_eq!(parser.allow_return_outside_function, Some(true));
+
+        let oxc: PartialOxcParseOptions = parser.oxc.expect("raw oxc present");
+
+        assert_eq!(oxc.parse_regular_expression, Some(true));
+        assert_eq!(oxc.enable_ident_hashes, Some(false));
+        assert_eq!(oxc.preserve_parens, None);
+    }
+
+    #[test]
+    fn test_parse_options_raw_partial_keeps_unset_curated_field_default() {
+        let mut options: JsParseOptions = options();
+
+        options.parser = Some(JsParserOptions {
+            preserve_parens: None,
+            allow_return_outside_function: None,
+            oxc: Some(serde_json::json!({ "parseRegularExpression": true })),
+        });
+
+        let parsed: ParseOptions =
+            options.to_parse_options().expect("raw partial parses");
+
+        let parser: &ParserOptions =
+            parsed.parser.as_ref().expect("parser group present");
+
+        assert_eq!(parser.preserve_parens, None);
+        assert_eq!(
+            parser.oxc.as_ref().expect("raw oxc present").preserve_parens,
+            None
+        );
+
+        let resolved: ResolvedOptions = telarel_common::resolve_options(
+            ResolvableOptions::from(parsed),
+            vec![],
+        );
+
+        assert!(!resolved.parser.preserve_parens);
+        assert!(!resolved.parser.oxc.preserve_parens);
+        assert!(resolved.parser.oxc.parse_regular_expression);
+    }
+
+    #[test]
+    fn test_compile_options_parse_parser_and_generator_groups() {
+        let options: JsCompileOptions = JsCompileOptions {
+            cwd: None,
+            file: Some(String::from("index.ts")),
+            language: None,
+            source_type: None,
+            output: None,
+            source_map: None,
+            parser: Some(JsParserOptions {
+                preserve_parens: Some(true),
+                ..JsParserOptions::default()
+            }),
+            generator: Some(JsGeneratorOptions {
+                single_quote: Some(true),
+                ..JsGeneratorOptions::default()
+            }),
+            plugins: Vec::new(),
+        };
+
+        let parsed: CompileOptions =
+            options.to_compile_options().expect("groups parse");
+
+        assert_eq!(
+            parsed.parser.expect("parser group").preserve_parens,
+            Some(true)
+        );
+        assert_eq!(
+            parsed.generator.expect("generator group").single_quote,
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn test_generate_options_parse_generator_group() {
+        let options: JsGenerateOptions = JsGenerateOptions {
+            cwd: None,
+            file: Some(String::from("out.js")),
+            language: None,
+            output: None,
+            source_map: None,
+            generator: Some(JsGeneratorOptions {
+                single_quote: Some(true),
+                indent_style: Some(String::from("tab")),
+                ..JsGeneratorOptions::default()
+            }),
+            plugins: Vec::new(),
+        };
+
+        let parsed: GenerateOptions =
+            options.to_generate_options().expect("generator group parses");
+
+        let generator: GeneratorOptions =
+            parsed.generator.expect("generator group present");
+
+        assert_eq!(generator.single_quote, Some(true));
+        assert_eq!(generator.indent_style, Some(IndentStyle::Tab));
+    }
+
+    #[test]
+    fn test_compile_from_ast_options_parse_generator_group() {
+        let options: JsCompileFromAstOptions = JsCompileFromAstOptions {
+            cwd: None,
+            file: Some(String::from("out.js")),
+            language: None,
+            source_type: None,
+            output: None,
+            source_map: None,
+            generator: Some(JsGeneratorOptions {
+                ascii_only: Some(true),
+                ..JsGeneratorOptions::default()
+            }),
+            plugins: Vec::new(),
+        };
+
+        let parsed: CompileFromAstOptions = options
+            .to_compile_from_ast_options()
+            .expect("generator group parses");
+
+        assert_eq!(
+            parsed.generator.expect("generator group").ascii_only,
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn test_parser_options_raw_oxc_accepts_camel_case_fields() {
+        let options: JsParserOptions = JsParserOptions {
+            oxc: Some(serde_json::json!({
+                "parseRegularExpression": true,
+                "allowReturnOutsideFunction": true,
+                "preserveParens": true,
+                "allowV8Intrinsics": true,
+                "enableIdentHashes": false,
+            })),
+            ..JsParserOptions::default()
+        };
+
+        let parsed: ParserOptions =
+            options.to_options().expect("raw parser oxc parses");
+
+        let oxc: PartialOxcParseOptions = parsed.oxc.expect("raw oxc present");
+
+        assert_eq!(oxc.parse_regular_expression, Some(true));
+        assert_eq!(oxc.allow_return_outside_function, Some(true));
+        assert_eq!(oxc.preserve_parens, Some(true));
+        assert_eq!(oxc.allow_v8_intrinsics, Some(true));
+        assert_eq!(oxc.enable_ident_hashes, Some(false));
+    }
+
+    #[test]
+    fn test_generator_options_raw_oxc_accepts_camel_case_fields() {
+        let options: JsGeneratorOptions = JsGeneratorOptions {
+            oxc: Some(serde_json::json!({
+                "singleQuote": true,
+                "minify": true,
+                "asciiOnly": true,
+                "comments": {
+                    "normal": false,
+                    "jsdoc": true,
+                    "annotation": false,
+                    "legal": { "linked": "preserve-me" },
+                },
+                "indentChar": "tab",
+                "indentWidth": 4,
+                "initialIndent": 2,
+            })),
+            ..JsGeneratorOptions::default()
+        };
+
+        let parsed: GeneratorOptions =
+            options.to_options().expect("raw codegen oxc parses");
+
+        let oxc: PartialOxcCodegenOptions =
+            parsed.oxc.expect("raw oxc present");
+
+        assert_eq!(oxc.single_quote, Some(true));
+        assert_eq!(oxc.minify, Some(true));
+        assert_eq!(oxc.ascii_only, Some(true));
+
+        let comments: PartialOxcCommentOptions =
+            oxc.comments.expect("raw comment categories present");
+
+        assert_eq!(comments.normal, Some(false));
+        assert_eq!(comments.jsdoc, Some(true));
+        assert_eq!(comments.annotation, Some(false));
+        assert_eq!(
+            comments.legal,
+            Some(oxc::codegen::LegalComment::Linked(String::from(
+                "preserve-me"
+            )))
+        );
+        assert_eq!(oxc.indent_char, Some(oxc::codegen::IndentChar::Tab));
+        assert_eq!(oxc.indent_width, Some(4));
+        assert_eq!(oxc.initial_indent, Some(2));
+    }
+
+    #[test]
+    fn test_parser_options_raw_oxc_unknown_field_errors() {
+        let options: JsParserOptions = JsParserOptions {
+            oxc: Some(serde_json::json!({ "sourceMapPath": "ignored.map" })),
+            ..JsParserOptions::default()
+        };
+
+        let error: napi::Error =
+            options.to_options().expect_err("unknown raw field errors");
+
+        assert_eq!(error.status, napi::Status::InvalidArg);
+        assert!(error.reason.contains("invalid parser.oxc"), "{error}");
+    }
+
+    #[test]
+    fn test_generator_options_raw_oxc_unknown_field_errors() {
+        let options: JsGeneratorOptions = JsGeneratorOptions {
+            oxc: Some(serde_json::json!({ "sourceMapPath": "ignored.map" })),
+            ..JsGeneratorOptions::default()
+        };
+
+        let error: napi::Error =
+            options.to_options().expect_err("unknown raw field errors");
+
+        assert_eq!(error.status, napi::Status::InvalidArg);
+        assert!(error.reason.contains("invalid generator.oxc"), "{error}");
+    }
+
+    #[test]
+    fn test_generator_options_invalid_indent_style_errors() {
+        let options: JsGeneratorOptions = JsGeneratorOptions {
+            indent_style: Some(String::from("tabs")),
+            ..JsGeneratorOptions::default()
+        };
+
+        let error: napi::Error =
+            options.to_options().expect_err("invalid indent style errors");
+
+        assert_eq!(error.status, napi::Status::InvalidArg);
+        assert!(error.reason.contains("invalid indentStyle"), "{error}");
+    }
+
+    #[test]
+    fn test_generator_options_raw_oxc_invalid_indent_char_errors() {
+        let options: JsGeneratorOptions = JsGeneratorOptions {
+            oxc: Some(serde_json::json!({ "indentChar": "spaces" })),
+            ..JsGeneratorOptions::default()
+        };
+
+        let error: napi::Error =
+            options.to_options().expect_err("invalid indent char errors");
+
+        assert_eq!(error.status, napi::Status::InvalidArg);
+        assert!(error.reason.contains("invalid generator.oxc"), "{error}");
+    }
+
+    #[test]
+    fn test_parser_options_to_js_omits_absent_fields() {
+        assert_eq!(
+            parser_options_to_js(&ParserOptions::default()),
+            serde_json::json!({})
+        );
+    }
+
+    #[test]
+    fn test_parser_options_to_js_keeps_curated_and_raw_fields() {
+        let options: ParserOptions = ParserOptions {
+            preserve_parens: Some(true),
+            allow_return_outside_function: Some(true),
+            oxc: Some(PartialOxcParseOptions {
+                enable_ident_hashes: Some(false),
+                ..PartialOxcParseOptions::default()
+            }),
+        };
+
+        assert_eq!(
+            parser_options_to_js(&options),
+            serde_json::json!({
+                "preserveParens": true,
+                "allowReturnOutsideFunction": true,
+                "oxc": {
+                    "enableIdentHashes": false,
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn test_generator_options_to_js_omits_absent_raw_fields() {
+        let options: GeneratorOptions = GeneratorOptions {
+            single_quote: Some(true),
+            oxc: Some(PartialOxcCodegenOptions {
+                indent_width: Some(4),
+                ..PartialOxcCodegenOptions::default()
+            }),
+            ..GeneratorOptions::default()
+        };
+
+        assert_eq!(
+            generator_options_to_js(&options),
+            serde_json::json!({
+                "singleQuote": true,
+                "oxc": {
+                    "indentWidth": 4,
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn test_generator_options_to_js_omits_absent_fields() {
+        assert_eq!(
+            generator_options_to_js(&GeneratorOptions::default()),
+            serde_json::json!({})
+        );
+    }
+
+    #[test]
+    fn test_generator_options_to_js_keeps_curated_and_raw_fields() {
+        let options: GeneratorOptions = GeneratorOptions {
+            single_quote: Some(true),
+            indent_style: Some(IndentStyle::Tab),
+            indent_width: Some(4),
+            ..GeneratorOptions::default()
+        };
+
+        assert_eq!(
+            generator_options_to_js(&options),
+            serde_json::json!({
+                "singleQuote": true,
+                "indentStyle": "tab",
+                "indentWidth": 4,
+            })
+        );
     }
 }

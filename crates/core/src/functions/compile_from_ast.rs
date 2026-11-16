@@ -29,14 +29,16 @@ mod tests {
     use std::sync::Mutex;
 
     use telarel_common::{
-        Ast, CodeResult, CompileFromAstOptions, OutputOptions, ResolvedOptions,
-        SourceMap, SourceType,
+        Ast, CodeResult, CompileFromAstOptions, GeneratorOptions,
+        OutputOptions, ResolvedGeneratorOptions, ResolvedOptions, SourceMap,
+        SourceType,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
-        ReplaceAstPlugin, SpyPlugin, StartObserverPlugin, first_token,
-        input_value, parse_as, parse_fixture, parse_with_map, sample_map,
+        GenerateHookOptionsObserverPlugin, ReplaceAstPlugin, SpyPlugin,
+        StartObserverPlugin, first_token, input_value, parse_as, parse_fixture,
+        parse_with_map, sample_map,
     };
 
     use super::compile_from_ast;
@@ -176,5 +178,36 @@ mod tests {
             .expect("compile_from_ast succeeds");
 
         assert_eq!(seen.lock().unwrap()[0].source_type, SourceType::Script);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_from_ast_carries_generator_options() {
+        let seen: Arc<Mutex<Vec<ResolvedGeneratorOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let ast: Ast = parse_fixture("const a = \"hello\";").unwrap();
+
+        let options: CompileFromAstOptions = CompileFromAstOptions {
+            generator: Some(GeneratorOptions {
+                single_quote: Some(true),
+                ..GeneratorOptions::default()
+            }),
+            ..CompileFromAstOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> = vec![Plugin::new_shared(
+            GenerateHookOptionsObserverPlugin::new(&seen),
+        )];
+
+        let result: CodeResult = compile_from_ast(ast, options, plugins)
+            .await
+            .expect("compile_from_ast succeeds");
+
+        assert_eq!(result.code, "const a = 'hello';");
+
+        let seen: Vec<ResolvedGeneratorOptions> = seen.lock().unwrap().clone();
+
+        assert_eq!(seen.len(), 1);
+        assert!(seen[0].single_quote);
     }
 }

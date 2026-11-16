@@ -20,6 +20,81 @@ They also share the same plugin interface. See the [Plugin API](/apis/plugin) fo
 
 Every pipeline entry point accepts the options for the stages it runs. You can omit any option. The compiler resolves omitted values against defaults before the stages run. Builtin constructors instead take fully resolved options. See each page for the exact fields.
 
+### Option layering
+
+`parser.oxc` and `generator.oxc` are partial override patches. Resolution applies three layers, in order:
+
+1. oxc engine defaults
+2. Telarel defaults, which override the oxc engine defaults. Parser defaults are `preserveParens: false` and `allowReturnOutsideFunction: false`. Generator defaults are `singleQuote: false`, `asciiOnly: false`, `indentStyle: "space"`, `indentWidth: 2`, `comments: true` (or `false` when `minify` is `true`), and `minify: false`
+3. explicitly set user fields, curated or raw
+
+Only a field present in `oxc` overrides the matching Telarel default. An omitted `oxc` field keeps the resolved value, so `oxc: {}` changes nothing. A curated field is a named field on the `parser` or `generator` group. A curated field wins over its matching raw field when both are set, except for `comments`; see [generator options](#generator-options).
+
+This request changes only the raw initial indentation:
+
+```ts
+await compile("const x = 1;", {
+    generator: { oxc: { initialIndent: 1 } },
+});
+```
+
+```rust
+use telarel::{CompileOptions, GeneratorOptions, PartialOxcCodegenOptions};
+
+let options: CompileOptions = CompileOptions {
+    generator: Some(GeneratorOptions {
+        oxc: Some(PartialOxcCodegenOptions {
+            initial_indent: Some(1),
+            ..PartialOxcCodegenOptions::default()
+        }),
+        ..GeneratorOptions::default()
+    }),
+    ..CompileOptions::default()
+};
+```
+
+### Parser options
+
+`parser` configures the builtin parser stage. Every field is optional. The pipeline resolves the group before the stages run. The `options` hook sees the requested values. `start` sees the resolved stage view. A `parse` hook sees the full resolved parser options.
+
+| Option                       | Type               | Default | Description                                                                                                        |
+| ---------------------------- | ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| `preserveParens`             | `boolean`          | `false` | Keeps parenthesized expressions in the AST as `ParenthesizedExpression` nodes.                                     |
+| `allowReturnOutsideFunction` | `boolean`          | `false` | Accepts `return` outside a function body.                                                                          |
+| `oxc`                        | `OxcParserOptions` | unset   | Raw oxc parser overrides. Only fields you set override the resolved defaults; a curated field wins on a collision. |
+
+In Rust, the fields are `preserve_parens` and `allow_return_outside_function`, and `oxc` is `PartialOxcParseOptions`. In JavaScript, `oxc` is a camelCase object that accepts `parseRegularExpression`, `allowReturnOutsideFunction`, `preserveParens`, `allowV8Intrinsics`, and `enableIdentHashes`. The entry point rejects unknown fields.
+
+### Generator options
+
+`generator` configures the builtin generator stage. Every field is optional. The pipeline resolves the group before the stages run. The `options` hook sees the requested values. `start` sees the resolved stage view. A `generate` hook sees the full resolved generator options.
+
+| Option        | Type                | Default                                    | Description                                                                                                                       |
+| ------------- | ------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `singleQuote` | `boolean`           | `false`                                    | Uses single quotes for string literals.                                                                                           |
+| `asciiOnly`   | `boolean`           | `false`                                    | Escapes non-ASCII characters in the generated output.                                                                             |
+| `indentStyle` | `"space" \| "tab"`  | `"space"`                                  | The indentation style. In Rust it is `IndentStyle::Space` or `IndentStyle::Tab`.                                                  |
+| `indentWidth` | `number`            | `2`                                        | The number of characters per indentation level.                                                                                   |
+| `comments`    | `boolean`           | `true`, or `false` when `minify` is `true` | Prints comments. The `minify` default applies only when no comment setting is explicit.                                           |
+| `minify`      | `boolean`           | `false`                                    | Minifies the generated code.                                                                                                      |
+| `oxc`         | `OxcCodegenOptions` | unset                                      | Raw oxc codegen overrides. Only fields you set override the resolved defaults; curated fields win, except `comments` (see below). |
+
+In Rust, the fields are `single_quote`, `ascii_only`, `indent_style`, `indent_width`, `comments`, `minify`, and `oxc`. `oxc` is `PartialOxcCodegenOptions`, and the indentation type is `IndentStyle`. In JavaScript, `indentStyle` is `"space"` or `"tab"`, and `oxc` is a camelCase object that accepts `singleQuote`, `minify`, `asciiOnly`, `comments`, `indentChar` (`"space"` or `"tab"`), `indentWidth`, and `initialIndent`. The entry point rejects unknown fields, including `sourceMapPath`.
+
+`comments: false` fully disables `oxc.comments`. `comments: true` restores the default policy only when raw `oxc.comments` disables every category; otherwise it preserves the categories that raw `oxc.comments` sets explicitly. When the resolved `minify` is `true`, comments are disabled only when the curated `comments` value is unset and raw `oxc.comments` sets no comment field.
+
+Raw `oxc.comments` is an object with optional `normal`, `jsdoc`, and `annotation` booleans and an optional `legal` value. In JavaScript, `legal` is `"none"`, `"inline"`, `"eof"`, `"external"`, or `{ linked: string }`.
+
+Telarel owns `source_map_path` / `sourceMapPath`. In Rust, `PartialOxcCodegenOptions` has no `source_map_path` field. In JavaScript, raw `sourceMapPath` is not accepted. The builtin generator sets the path from `file`.
+
+### Resolved options
+
+The `options` hook takes `ResolvableOptions`, which holds the requested values. Builtin constructors and the `start`, `parse`, and `generate` hooks take resolved values instead. `Parser` and `createParser` take `ResolvedParserOptions`. `Generator` and `createGenerator` take `ResolvedGeneratorOptions`. The `parse` and `generate` hooks receive the same full resolved values. `start` receives `ResolvedOptions`, whose `parser` and `generator` fields are `ResolvedParserStageOptions` and `ResolvedGeneratorStageOptions`.
+
+Entry points take only the groups whose stages they run: `compile` takes both `parser` and `generator`; `parse` takes `parser`; `generate` and `compileFromAst` take `generator`; `rewrite` takes neither.
+
+A resolved type holds the effective curated values and the full effective `oxc` object after every layer applies. It is not the requested patch. In JavaScript, the resolved `oxc` types are `ResolvedOxcParserOptions` and `ResolvedOxcCodegenOptions`, with required fields. A stage view holds only its stage fields, without the shared `cwd`, `file`, or source-map request. See [Parser](/apis/rust/Parser), [Generator](/apis/rust/Generator), [createParser](/apis/javascript/createParser), and [createGenerator](/apis/javascript/createGenerator).
+
 ### Output options
 
 `output` configures the generated code. `output.file` is the intended path of that code.

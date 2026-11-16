@@ -1,4 +1,4 @@
-import type { ParserOptions } from "#/@types/parser";
+import type { ResolvedParserOptions } from "#/@types/parser";
 
 /**
  * Arguments for the `parse` hook.
@@ -11,7 +11,7 @@ type ParseArgs = {
     /**
      * Resolved parser options.
      */
-    options: ParserOptions;
+    options: ResolvedParserOptions;
 };
 
 export type { ParseArgs };

@@ -60,6 +60,19 @@ describe("compileFromAst", (): void => {
         expect(result.map?.version).toBe(3);
     });
 
+    it("applies generator options", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse('const a = "hello";', { file: "index.ts" })
+        ).ast;
+
+        const result: CodeResult = await compileFromAst(ast, {
+            file: "index.ts",
+            generator: { singleQuote: true },
+        });
+
+        expect(result.code).toBe("const a = 'hello';");
+    });
+
     it("uses the AST language and lets an explicit language override it", async (): Promise<void> => {
         const tsx: AstResult = await parse("const f = <T,>(x: T) => x;", {
             language: "tsx",

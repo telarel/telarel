@@ -1,9 +1,19 @@
 use std::path::PathBuf;
 
+use oxc::codegen::{CommentOptions, IndentChar};
 use oxc::span::SourceType as OxcSourceType;
 
 use crate::_types::grammar::language::{Language, grammar_source_type};
 use crate::_types::grammar::source_type::{SourceType, with_module_kind};
+use crate::_types::options::OxcCodegenOptions;
+use crate::_types::options::OxcParseOptions;
+use crate::_types::options::builtin::generator::{
+    GeneratorOptions, IndentStyle, ResolvedGeneratorOptions,
+    ResolvedGeneratorStageOptions,
+};
+use crate::_types::options::builtin::parser::{
+    ParserOptions, ResolvedParserStageOptions,
+};
 use crate::_types::options::output::ResolvedOutputOptions;
 use crate::_types::options::resolvable::ResolvableOptions;
 use crate::_types::options::resolved::ResolvedOptions;
@@ -87,11 +97,196 @@ pub fn resolve_source_type(
     from_oxc_module_kind(resolved)
 }
 
+/// The raw oxc parser options that back the Telarel defaults.
+pub(crate) fn default_parser_oxc() -> OxcParseOptions {
+    OxcParseOptions { preserve_parens: false, ..OxcParseOptions::default() }
+}
+
+/// The raw oxc codegen options that back the Telarel defaults.
+pub(crate) fn default_codegen_oxc() -> OxcCodegenOptions {
+    OxcCodegenOptions {
+        indent_char: IndentChar::Space,
+        indent_width: 2,
+        ..OxcCodegenOptions::default()
+    }
+}
+
+/// The curated generator fields that override the effective oxc object.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct CuratedGeneratorOptions {
+    single_quote: Option<bool>,
+    ascii_only: Option<bool>,
+    indent_style: Option<IndentStyle>,
+    indent_width: Option<usize>,
+    comments: Option<bool>,
+    minify: Option<bool>,
+}
+
+impl From<&GeneratorOptions> for CuratedGeneratorOptions {
+    fn from(options: &GeneratorOptions) -> Self {
+        Self {
+            single_quote: options.single_quote,
+            ascii_only: options.ascii_only,
+            indent_style: options.indent_style,
+            indent_width: options.indent_width,
+            comments: options.comments,
+            minify: options.minify,
+        }
+    }
+}
+
+impl From<&ResolvedGeneratorOptions> for CuratedGeneratorOptions {
+    fn from(options: &ResolvedGeneratorOptions) -> Self {
+        Self {
+            single_quote: Some(options.single_quote),
+            ascii_only: Some(options.ascii_only),
+            indent_style: Some(options.indent_style),
+            indent_width: Some(options.indent_width),
+            comments: Some(options.comments),
+            minify: Some(options.minify),
+        }
+    }
+}
+
+/// Overlay the curated parser fields onto `oxc`.
+///
+/// The overlay is idempotent: applying it to an already-resolved object leaves
+/// that object unchanged.
+pub(crate) fn apply_curated_parser_options(
+    oxc: &mut OxcParseOptions,
+    preserve_parens: Option<bool>,
+    allow_return_outside_function: Option<bool>,
+) {
+    if let Some(value) = preserve_parens {
+        oxc.preserve_parens = value;
+    }
+
+    if let Some(value) = allow_return_outside_function {
+        oxc.allow_return_outside_function = value;
+    }
+}
+
+/// Overlay the curated generator fields onto `oxc`.
+///
+/// The overlay is idempotent: applying it to an already-resolved object leaves
+/// that object unchanged. Curated `comments: false` disables every category.
+/// Curated `comments: true` restores the default policy only when the effective
+/// categories are all disabled, so explicitly set raw categories survive.
+pub(crate) fn apply_curated_generator_options(
+    oxc: &mut OxcCodegenOptions,
+    curated: CuratedGeneratorOptions,
+) {
+    if let Some(value) = curated.single_quote {
+        oxc.single_quote = value;
+    }
+
+    if let Some(value) = curated.ascii_only {
+        oxc.ascii_only = value;
+    }
+
+    if let Some(value) = curated.indent_style {
+        oxc.indent_char = IndentChar::from(value);
+    }
+
+    if let Some(value) = curated.indent_width {
+        oxc.indent_width = value;
+    }
+
+    if let Some(value) = curated.minify {
+        oxc.minify = value;
+    }
+
+    match curated.comments {
+        | Some(true) => {
+            if oxc.comments == CommentOptions::disabled() {
+                oxc.comments = CommentOptions::default();
+            }
+        },
+        | Some(false) => oxc.comments = CommentOptions::disabled(),
+        | None => {},
+    }
+}
+
+/// Resolve the parser stage: the Telarel defaults are the base, the raw `oxc`
+/// patch overrides them, and curated fields win over both.
+pub(crate) fn resolve_parser_stage_options(
+    options: Option<&ParserOptions>
+) -> ResolvedParserStageOptions {
+    let mut oxc: OxcParseOptions = default_parser_oxc();
+
+    if let Some(raw) = options.and_then(|options| options.oxc.as_ref()) {
+        raw.apply_to(&mut oxc);
+    }
+
+    apply_curated_parser_options(
+        &mut oxc,
+        options.and_then(|options| options.preserve_parens),
+        options.and_then(|options| options.allow_return_outside_function),
+    );
+
+    ResolvedParserStageOptions {
+        preserve_parens: oxc.preserve_parens,
+        allow_return_outside_function: oxc.allow_return_outside_function,
+        oxc,
+    }
+}
+
+/// Resolve the generator stage: the Telarel defaults are the base, the raw
+/// `oxc` patch overrides them, and curated fields win over both.
+///
+/// An effective `minify` disables comments unless the raw patch sets comment
+/// categories explicitly. Curated comment settings follow the documented
+/// precedence.
+pub(crate) fn resolve_generator_stage_options(
+    options: Option<&GeneratorOptions>
+) -> ResolvedGeneratorStageOptions {
+    let mut oxc: OxcCodegenOptions = default_codegen_oxc();
+
+    let raw = options.and_then(|options| options.oxc.as_ref());
+
+    if let Some(raw) = raw {
+        raw.apply_to(&mut oxc);
+    }
+
+    let curated: CuratedGeneratorOptions =
+        options.map(CuratedGeneratorOptions::from).unwrap_or_default();
+
+    apply_curated_generator_options(&mut oxc, curated);
+
+    let raw_comments_explicit: bool = raw
+        .and_then(|raw| raw.comments.as_ref())
+        .is_some_and(|comments| !comments.is_empty());
+
+    if curated.comments.is_none() && oxc.minify && !raw_comments_explicit {
+        oxc.comments = CommentOptions::disabled();
+    }
+
+    // Telarel owns the map file name. The builtin generator sets it from
+    // `file` at generation time.
+    oxc.source_map_path = None;
+
+    ResolvedGeneratorStageOptions {
+        single_quote: oxc.single_quote,
+        ascii_only: oxc.ascii_only,
+        indent_style: IndentStyle::from(oxc.indent_char),
+        indent_width: oxc.indent_width,
+        comments: oxc.comments != CommentOptions::disabled(),
+        minify: oxc.minify,
+        oxc,
+    }
+}
+
 /// Resolve the optional run settings into concrete options.
 pub fn resolve_options(
     options: ResolvableOptions,
     plugin_names: Vec<String>,
 ) -> ResolvedOptions {
+    let parser: ResolvedParserStageOptions =
+        resolve_parser_stage_options(options.parser.as_ref());
+
+    let generator: ResolvedGeneratorStageOptions =
+        resolve_generator_stage_options(options.generator.as_ref());
+
     let cwd: PathBuf = options.cwd.unwrap_or_else(get_process_cwd);
 
     let file: String = options
@@ -117,6 +312,8 @@ pub fn resolve_options(
         file,
         language,
         source_type,
+        parser,
+        generator,
         output: ResolvedOutputOptions { file: output_file },
         source_map,
         plugins: plugin_names,
@@ -125,6 +322,10 @@ pub fn resolve_options(
 
 #[cfg(test)]
 mod tests {
+    use crate::_types::options::builtin::generator::{
+        PartialOxcCodegenOptions, PartialOxcCommentOptions,
+    };
+    use crate::_types::options::builtin::parser::PartialOxcParseOptions;
     use crate::_types::options::output::OutputOptions;
     use crate::_types::options::sourcemap::input::{
         InputSourceMap, InputSourceMapMode,
@@ -272,6 +473,7 @@ mod tests {
                 file: Some(String::from("dist/app.js")),
             }),
             source_map: Some(SourceMapOptions::default()),
+            ..ResolvableOptions::default()
         };
 
         let resolved: ResolvedOptions =
@@ -443,5 +645,496 @@ mod tests {
         );
 
         assert_eq!(resolved.plugins, vec!["first", "second", "first"]);
+    }
+
+    #[test]
+    fn test_resolve_parser_stage_options_applies_telarel_defaults() {
+        let resolved: ResolvedParserStageOptions =
+            resolve_parser_stage_options(None);
+
+        assert!(!resolved.preserve_parens);
+        assert!(!resolved.allow_return_outside_function);
+        assert!(!resolved.oxc.preserve_parens);
+        assert!(!resolved.oxc.allow_return_outside_function);
+        assert!(resolved.oxc.enable_ident_hashes);
+    }
+
+    #[test]
+    fn test_resolve_parser_stage_options_raw_partial_keeps_telarel_defaults() {
+        let resolved: ResolvedParserStageOptions =
+            resolve_parser_stage_options(Some(&ParserOptions {
+                oxc: Some(PartialOxcParseOptions {
+                    parse_regular_expression: Some(true),
+                    ..PartialOxcParseOptions::default()
+                }),
+                ..ParserOptions::default()
+            }));
+
+        assert!(resolved.oxc.parse_regular_expression);
+        assert!(!resolved.preserve_parens);
+        assert!(!resolved.oxc.preserve_parens);
+        assert!(!resolved.allow_return_outside_function);
+        assert!(resolved.oxc.enable_ident_hashes);
+    }
+
+    #[test]
+    fn test_resolve_parser_stage_options_raw_preserve_parens_wins() {
+        let resolved: ResolvedParserStageOptions =
+            resolve_parser_stage_options(Some(&ParserOptions {
+                oxc: Some(PartialOxcParseOptions {
+                    preserve_parens: Some(true),
+                    ..PartialOxcParseOptions::default()
+                }),
+                ..ParserOptions::default()
+            }));
+
+        assert!(resolved.preserve_parens);
+        assert!(resolved.oxc.preserve_parens);
+    }
+
+    #[test]
+    fn test_resolve_parser_stage_options_curated_overrides_raw() {
+        let resolved: ResolvedParserStageOptions =
+            resolve_parser_stage_options(Some(&ParserOptions {
+                preserve_parens: Some(true),
+                allow_return_outside_function: Some(true),
+                oxc: Some(PartialOxcParseOptions {
+                    preserve_parens: Some(false),
+                    allow_return_outside_function: Some(false),
+                    ..PartialOxcParseOptions::default()
+                }),
+            }));
+
+        assert!(resolved.preserve_parens);
+        assert!(resolved.allow_return_outside_function);
+        assert!(resolved.oxc.preserve_parens);
+        assert!(resolved.oxc.allow_return_outside_function);
+    }
+
+    #[test]
+    fn test_resolve_parser_stage_options_empty_patch_is_a_no_op() {
+        let base: ResolvedParserStageOptions =
+            resolve_parser_stage_options(None);
+
+        let resolved: ResolvedParserStageOptions =
+            resolve_parser_stage_options(Some(&ParserOptions {
+                oxc: Some(PartialOxcParseOptions::default()),
+                ..ParserOptions::default()
+            }));
+
+        assert_eq!(resolved.preserve_parens, base.preserve_parens);
+        assert_eq!(
+            resolved.allow_return_outside_function,
+            base.allow_return_outside_function
+        );
+        assert_eq!(
+            resolved.oxc.parse_regular_expression,
+            base.oxc.parse_regular_expression
+        );
+        assert_eq!(resolved.oxc.preserve_parens, base.oxc.preserve_parens);
+        assert_eq!(
+            resolved.oxc.allow_return_outside_function,
+            base.oxc.allow_return_outside_function
+        );
+        assert_eq!(
+            resolved.oxc.allow_v8_intrinsics,
+            base.oxc.allow_v8_intrinsics
+        );
+        assert_eq!(
+            resolved.oxc.enable_ident_hashes,
+            base.oxc.enable_ident_hashes
+        );
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_applies_telarel_defaults() {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(None);
+
+        assert!(!resolved.single_quote);
+        assert!(!resolved.ascii_only);
+        assert_eq!(resolved.indent_style, IndentStyle::Space);
+        assert_eq!(resolved.oxc.indent_char, IndentChar::Space);
+        assert_eq!(resolved.indent_width, 2);
+        assert_eq!(resolved.oxc.indent_width, 2);
+        assert!(resolved.comments);
+        assert!(resolved.oxc.comments.normal);
+        assert!(resolved.oxc.comments.jsdoc);
+        assert!(resolved.oxc.comments.annotation);
+        assert_eq!(
+            resolved.oxc.comments.legal,
+            oxc::codegen::LegalComment::Inline
+        );
+        assert!(!resolved.minify);
+        assert_eq!(resolved.oxc.initial_indent, 0);
+        assert!(resolved.oxc.source_map_path.is_none());
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_raw_indent_char_keeps_width() {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                oxc: Some(PartialOxcCodegenOptions {
+                    indent_char: Some(IndentChar::Tab),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+                ..GeneratorOptions::default()
+            }));
+
+        assert_eq!(resolved.indent_style, IndentStyle::Tab);
+        assert_eq!(resolved.oxc.indent_char, IndentChar::Tab);
+        assert_eq!(resolved.indent_width, 2);
+        assert_eq!(resolved.oxc.indent_width, 2);
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_raw_indent_width_wins() {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                oxc: Some(PartialOxcCodegenOptions {
+                    indent_width: Some(1),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+                ..GeneratorOptions::default()
+            }));
+
+        assert_eq!(resolved.indent_style, IndentStyle::Space);
+        assert_eq!(resolved.indent_width, 1);
+        assert_eq!(resolved.oxc.indent_width, 1);
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_curated_overrides_raw() {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                single_quote: Some(false),
+                ascii_only: Some(false),
+                indent_style: Some(IndentStyle::Space),
+                indent_width: Some(4),
+                minify: Some(false),
+                oxc: Some(PartialOxcCodegenOptions {
+                    single_quote: Some(true),
+                    ascii_only: Some(true),
+                    indent_char: Some(IndentChar::Tab),
+                    indent_width: Some(1),
+                    minify: Some(true),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(!resolved.single_quote);
+        assert!(!resolved.ascii_only);
+        assert_eq!(resolved.indent_style, IndentStyle::Space);
+        assert_eq!(resolved.indent_width, 4);
+        assert!(!resolved.minify);
+        assert_eq!(resolved.oxc.indent_width, 4);
+        assert_eq!(resolved.oxc.indent_char, IndentChar::Space);
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_empty_patch_is_a_no_op() {
+        let base: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(None);
+
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                oxc: Some(PartialOxcCodegenOptions::default()),
+                ..GeneratorOptions::default()
+            }));
+
+        assert_eq!(resolved.single_quote, base.single_quote);
+        assert_eq!(resolved.ascii_only, base.ascii_only);
+        assert_eq!(resolved.indent_style, base.indent_style);
+        assert_eq!(resolved.indent_width, base.indent_width);
+        assert_eq!(resolved.comments, base.comments);
+        assert_eq!(resolved.minify, base.minify);
+        assert_eq!(resolved.oxc.indent_char, base.oxc.indent_char);
+        assert_eq!(resolved.oxc.indent_width, base.oxc.indent_width);
+        assert_eq!(resolved.oxc.initial_indent, base.oxc.initial_indent);
+        assert_eq!(resolved.oxc.comments, base.oxc.comments);
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_minify_disables_comments_by_default()
+     {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                minify: Some(true),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(resolved.minify);
+        assert!(!resolved.comments);
+        assert!(!resolved.oxc.comments.normal);
+        assert!(!resolved.oxc.comments.jsdoc);
+        assert!(!resolved.oxc.comments.annotation);
+        assert_eq!(
+            resolved.oxc.comments.legal,
+            oxc::codegen::LegalComment::None
+        );
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_raw_minify_disables_comments() {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                oxc: Some(PartialOxcCodegenOptions {
+                    minify: Some(true),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(resolved.minify);
+        assert!(!resolved.comments);
+        assert_eq!(resolved.oxc.comments, CommentOptions::disabled());
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_explicit_comments_win_over_minify()
+    {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                comments: Some(true),
+                minify: Some(true),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(resolved.minify);
+        assert!(resolved.comments);
+        assert!(resolved.oxc.comments.normal);
+        assert!(resolved.oxc.comments.jsdoc);
+        assert!(resolved.oxc.comments.annotation);
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_comments_false_disables_all() {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                comments: Some(false),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(!resolved.comments);
+        assert_eq!(resolved.oxc.comments, CommentOptions::disabled());
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_comments_false_wins_over_minify() {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                comments: Some(false),
+                minify: Some(true),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(resolved.minify);
+        assert!(!resolved.comments);
+        assert_eq!(resolved.oxc.comments, CommentOptions::disabled());
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_comments_false_wins_over_raw_categories()
+     {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                comments: Some(false),
+                oxc: Some(PartialOxcCodegenOptions {
+                    comments: Some(PartialOxcCommentOptions {
+                        normal: Some(true),
+                        jsdoc: Some(true),
+                        annotation: Some(true),
+                        legal: Some(oxc::codegen::LegalComment::Inline),
+                    }),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(!resolved.comments);
+        assert_eq!(resolved.oxc.comments, CommentOptions::disabled());
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_comments_true_keeps_comments() {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                comments: Some(true),
+                minify: Some(false),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(!resolved.minify);
+        assert!(resolved.comments);
+        assert!(resolved.oxc.comments.normal);
+        assert!(resolved.oxc.comments.jsdoc);
+        assert!(resolved.oxc.comments.annotation);
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_keeps_raw_comments_when_not_minified()
+     {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                oxc: Some(PartialOxcCodegenOptions {
+                    comments: Some(PartialOxcCommentOptions {
+                        normal: Some(true),
+                        jsdoc: Some(false),
+                        annotation: Some(true),
+                        legal: Some(oxc::codegen::LegalComment::None),
+                    }),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(!resolved.minify);
+        assert!(resolved.comments);
+        assert!(resolved.oxc.comments.normal);
+        assert!(!resolved.oxc.comments.jsdoc);
+        assert!(resolved.oxc.comments.annotation);
+        assert_eq!(
+            resolved.oxc.comments.legal,
+            oxc::codegen::LegalComment::None
+        );
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_raw_comments_survive_minify() {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                oxc: Some(PartialOxcCodegenOptions {
+                    minify: Some(true),
+                    comments: Some(PartialOxcCommentOptions {
+                        normal: Some(true),
+                        ..PartialOxcCommentOptions::default()
+                    }),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(resolved.minify);
+        assert!(resolved.comments);
+        assert!(resolved.oxc.comments.normal);
+        assert!(resolved.oxc.comments.jsdoc);
+        assert!(resolved.oxc.comments.annotation);
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_enables_comments_when_raw_disabled()
+    {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                comments: Some(true),
+                oxc: Some(PartialOxcCodegenOptions {
+                    comments: Some(PartialOxcCommentOptions {
+                        normal: Some(false),
+                        jsdoc: Some(false),
+                        annotation: Some(false),
+                        legal: Some(oxc::codegen::LegalComment::None),
+                    }),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(resolved.comments);
+        assert!(resolved.oxc.comments.normal);
+        assert!(resolved.oxc.comments.jsdoc);
+        assert!(resolved.oxc.comments.annotation);
+    }
+
+    #[test]
+    fn test_resolve_generator_stage_options_preserves_partial_raw_comments() {
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(Some(&GeneratorOptions {
+                comments: Some(true),
+                oxc: Some(PartialOxcCodegenOptions {
+                    comments: Some(PartialOxcCommentOptions {
+                        normal: Some(false),
+                        jsdoc: Some(true),
+                        annotation: Some(false),
+                        legal: Some(oxc::codegen::LegalComment::None),
+                    }),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+                ..GeneratorOptions::default()
+            }));
+
+        assert!(resolved.comments);
+        assert!(!resolved.oxc.comments.normal);
+        assert!(resolved.oxc.comments.jsdoc);
+        assert!(!resolved.oxc.comments.annotation);
+        assert_eq!(
+            resolved.oxc.comments.legal,
+            oxc::codegen::LegalComment::None
+        );
+    }
+
+    #[test]
+    fn test_resolve_options_forwards_raw_only_fields() {
+        let resolved: ResolvedOptions = resolve_options(
+            ResolvableOptions {
+                parser: Some(ParserOptions {
+                    oxc: Some(PartialOxcParseOptions {
+                        enable_ident_hashes: Some(false),
+                        ..PartialOxcParseOptions::default()
+                    }),
+                    ..ParserOptions::default()
+                }),
+                generator: Some(GeneratorOptions {
+                    oxc: Some(PartialOxcCodegenOptions {
+                        initial_indent: Some(1),
+                        ..PartialOxcCodegenOptions::default()
+                    }),
+                    ..GeneratorOptions::default()
+                }),
+                ..ResolvableOptions::default()
+            },
+            vec![],
+        );
+
+        assert!(!resolved.parser.oxc.enable_ident_hashes);
+        assert_eq!(resolved.generator.oxc.initial_indent, 1);
+    }
+
+    #[test]
+    fn test_resolve_options_populates_parser_and_generator_stages() {
+        let resolved: ResolvedOptions = resolve_options(
+            ResolvableOptions {
+                parser: Some(ParserOptions {
+                    preserve_parens: Some(true),
+                    ..ParserOptions::default()
+                }),
+                generator: Some(GeneratorOptions {
+                    single_quote: Some(true),
+                    indent_style: Some(IndentStyle::Tab),
+                    ..GeneratorOptions::default()
+                }),
+                ..ResolvableOptions::default()
+            },
+            vec![],
+        );
+
+        assert!(resolved.parser.preserve_parens);
+        assert!(resolved.parser.oxc.preserve_parens);
+        assert!(resolved.generator.single_quote);
+        assert_eq!(resolved.generator.indent_style, IndentStyle::Tab);
+        assert_eq!(resolved.generator.oxc.indent_char, IndentChar::Tab);
+    }
+
+    #[test]
+    fn test_resolve_options_without_groups_uses_telarel_defaults() {
+        let resolved: ResolvedOptions =
+            resolve_options(ResolvableOptions::default(), vec![]);
+
+        assert!(!resolved.parser.preserve_parens);
+        assert!(!resolved.parser.allow_return_outside_function);
+        assert_eq!(resolved.generator.indent_style, IndentStyle::Space);
+        assert_eq!(resolved.generator.indent_width, 2);
+        assert!(resolved.generator.comments);
+        assert!(!resolved.generator.minify);
     }
 }

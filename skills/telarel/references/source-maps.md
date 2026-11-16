@@ -15,7 +15,7 @@ A source map is a v3 map with `version`, `mappings`, `sources`, `names`, and opt
 | `rewrite`         | `inputSourceMap`  | none               | No output map.                              |
 | `generate`        | `sourceMap.input` | `sourceMap.output` | Applies input at the boundary.              |
 | `compileFromAst`  | `sourceMap.input` | `sourceMap.output` | Applies input at the boundary.              |
-| `createParser`    | `sourceMap.input` | none               | Resolved `ParserOptions`.                   |
+| `createParser`    | `sourceMap.input` | none               | Takes `ResolvedParserOptions`.              |
 | `createGenerator` | `sourceMap.input` | `sourceMap.output` | Applies both when used standalone.          |
 
 The `createGenerator` row is JavaScript. In Rust, `Generator::generate` applies `source_map.input` but not `source_map.output`; output delivery is a pipeline concern.

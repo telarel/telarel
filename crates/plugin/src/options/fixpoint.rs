@@ -117,7 +117,10 @@ mod tests {
     use std::sync::Mutex;
     use std::sync::MutexGuard;
 
-    use telarel_common::HookUsage;
+    use telarel_common::{
+        GeneratorOptions, HookUsage, IndentStyle, ParserOptions,
+        ResolvableOptions,
+    };
 
     use crate::_types::hooks::options::OptionsReturn;
     use crate::_types::order::{PluginHookMeta, PluginOrder};
@@ -680,6 +683,73 @@ mod tests {
         );
 
         assert!(settled.options.language.is_none());
+        assert!(
+            settled.options.parser.is_none(),
+            "parser must be dropped by the whole-struct replace"
+        );
+        assert!(
+            settled.options.generator.is_none(),
+            "generator must be dropped by the whole-struct replace"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_some_replacement_preserves_parser_and_generator() {
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(OptionsPlugin { cwd: "/next" })];
+
+        let args: OptionsArgs = OptionsArgs {
+            options: ResolvableOptions {
+                file: Some(String::from("a.ts")),
+                parser: Some(ParserOptions {
+                    preserve_parens: Some(true),
+                    allow_return_outside_function: Some(true),
+                    ..ParserOptions::default()
+                }),
+                generator: Some(GeneratorOptions {
+                    single_quote: Some(true),
+                    indent_style: Some(IndentStyle::Tab),
+                    ..GeneratorOptions::default()
+                }),
+                ..ResolvableOptions::default()
+            },
+            plugins,
+        };
+
+        let (settled, _list): (OptionsArgs, Vec<SharedPluginable>) =
+            options_fixpoint(&common_ctx(), &args).await.unwrap();
+
+        assert_eq!(settled.options.cwd, Some(PathBuf::from("/next")));
+
+        let parser: ParserOptions = settled
+            .options
+            .parser
+            .expect("the parser group survives a Some replacement");
+
+        assert_eq!(parser.preserve_parens, Some(true));
+        assert_eq!(parser.allow_return_outside_function, Some(true));
+
+        let generator: GeneratorOptions = settled
+            .options
+            .generator
+            .expect("the generator group survives a Some replacement");
+
+        assert_eq!(generator.single_quote, Some(true));
+        assert_eq!(generator.indent_style, Some(IndentStyle::Tab));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_fixpoint_keeps_absent_groups_none() {
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(NoopOptionsPlugin)];
+
+        let args: OptionsArgs = make_args(plugins);
+
+        let (settled, _list): (OptionsArgs, Vec<SharedPluginable>) =
+            options_fixpoint(&common_ctx(), &args).await.unwrap();
+
+        assert!(settled.options.parser.is_none());
+        assert!(settled.options.generator.is_none());
     }
 
     #[derive(Debug)]

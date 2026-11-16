@@ -1,9 +1,9 @@
 use telarel_common::{
-    AstResult, Parser, ParserOptions, ResolvedOptions, resolve_options,
+    AstResult, Parser, ResolvedOptions, ResolvedParserOptions, resolve_options,
 };
 
 use crate::_types::ast::JsAstResult;
-use crate::_types::options::JsParserOptions;
+use crate::_types::options::JsResolvedParserOptions;
 use crate::tasks::anyhow_to_napi;
 use crate::tasks::error_to_napi;
 use crate::tasks::function::{FunctionTask, Run};
@@ -14,14 +14,15 @@ use crate::tasks::function::{FunctionTask, Run};
 #[napi_derive::napi(ts_return_type = "Promise<JsAstResult>")]
 pub fn builtin_parse(
     code: String,
-    options: JsParserOptions,
+    options: JsResolvedParserOptions,
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<FunctionTask<JsAstResult>>> {
     // Resolve the defaults (cwd, file, grammar, module kind, source map) as
     // the pipeline's builtin parser fallback does.
     let resolved: ResolvedOptions =
         resolve_options(options.to_resolvable()?, Vec::new());
 
-    let options_rust: ParserOptions = ParserOptions::from(&resolved);
+    let options_rust: ResolvedParserOptions =
+        ResolvedParserOptions::from(&resolved);
 
     let run: Run<JsAstResult> = Box::new(move || {
         let result: AstResult =

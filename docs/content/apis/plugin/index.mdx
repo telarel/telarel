@@ -11,16 +11,16 @@ Rust plugins use the bundled oxc version. JavaScript plugins remain backend-inde
 
 ## Hooks
 
-| Hook        | Arguments              | Return     | Semantics        |
-| ----------- | ---------------------- | ---------- | ---------------- |
-| `options`   | options, plugins       | options    | Fixpoint replace |
-| `start`     | resolved options       | —          | Notify           |
-| `parse`     | code, parser options   | ast        | First-win        |
-| `prepare`   | ast                    | —          | Observer         |
-| `transform` | ast                    | ast        | Carried fold     |
-| `finalize`  | ast                    | —          | Observer         |
-| `generate`  | ast, generator options | code, map? | First-win        |
-| `end`       | error?                 | —          | Notify           |
+| Hook        | Arguments                       | Return     | Semantics        |
+| ----------- | ------------------------------- | ---------- | ---------------- |
+| `options`   | options, plugins                | options    | Fixpoint replace |
+| `start`     | resolved options                | —          | Notify           |
+| `parse`     | code, resolved parser options   | ast        | First-win        |
+| `prepare`   | ast                             | —          | Observer         |
+| `transform` | ast                             | ast        | Carried fold     |
+| `finalize`  | ast                             | —          | Observer         |
+| `generate`  | ast, resolved generator options | code, map? | First-win        |
+| `end`       | error?                          | —          | Notify           |
 
 ### Hook semantics
 
@@ -37,13 +37,13 @@ flowchart TD
 
 - **identity**: the instance is the identity, not the `name`. Each distinct instance runs once
 - **replacement**: a same-name replacement counts as new work. The pipeline preserves duplicate entries of one instance
-- **return**: a returned bag replaces the whole bag at struct level. Omitted fields take their default values. Returning nothing keeps the current bag
-- **payload**: the payload is the resolvable options and the plugin list. It never includes the source. Unset fields stay absent until the fixpoint settles
+- **return**: a returned bag replaces the whole bag at struct level. Omitted fields take their default values, including the `parser` and `generator` groups. Returning nothing keeps the current bag
+- **payload**: the payload is the resolvable options and the plugin list. It never includes the source. Unset fields stay absent until the fixpoint settles. The payload can carry the caller's `parser` and `generator` groups. Absent groups stay unset. A hook can set or replace them. Each group's `oxc` field is the requested partial patch, not the resolved object
 - **depth**: an instance created every pass is new work every pass. It reaches `MAX_OPTIONS_DEPTH`
 
-**`start`: notify.** The pipeline runs `start` on every settled entry. The hook receives the fully resolved, read-only options. The pipeline ignores return values. The first error aborts.
+**`start`: notify.** The pipeline runs `start` on every settled entry. The hook receives the fully resolved, read-only options. The hook's `parser` and `generator` fields are the resolved stage views, and their `oxc` fields are the full effective objects. The pipeline ignores return values. The first error aborts.
 
-**`parse`: first-win.** The pipeline iterates over the plugins that implement this hook. In a first-win stage, the first plugin that returns an AST wins and the pipeline skips the rest. A plugin that returns nothing defers. A deferral passes control to the next plugin.
+**`parse`: first-win.** The pipeline iterates over the plugins that implement this hook. In a first-win stage, the first plugin that returns an AST wins and the pipeline skips the rest. A plugin that returns nothing defers. A deferral passes control to the next plugin. The hook receives the full `ResolvedParserOptions`, including the curated fields and the full effective `oxc` object. See [parser options](/apis#parser-options).
 
 If every hook defers, the builtin parser runs. The builtin is the compiler's own parser or generator.
 
@@ -56,7 +56,9 @@ After a `parse` hook wins, the pipeline applies the entry point's input source-m
 - in **Rust**: the argument is an owned cheap handle. The hook calls `Ast::with_mut` to mutate the AST
 - in **JavaScript**: the argument is an `Ast` instance. The hook calls `Ast.mutate` to mutate the AST, and the returned `Ast` replaces the instance
 
-**`generate`: first-win.** The pipeline iterates over the plugins that implement this hook. The first plugin that returns code wins and the pipeline skips the rest. A plugin that returns nothing defers to the next plugin. If every plugin defers, the builtin generator regenerates the code. The hook's generator options carry an empty source-map request: input resolution happens before the hook, and output delivery happens after the winning result. See [source maps](/apis#source-maps).
+**`generate`: first-win.** The pipeline iterates over the plugins that implement this hook. The first plugin that returns code wins and the pipeline skips the rest. A plugin that returns nothing defers to the next plugin. If every plugin defers, the builtin generator regenerates the code. The hook receives the full `ResolvedGeneratorOptions`, including the curated fields and the full effective `oxc` object. See [generator options](/apis#generator-options).
+
+The hook's generator options carry an empty source-map request: input resolution happens before the hook, and output delivery happens after the winning result. See [source maps](/apis#source-maps).
 
 **`parse` and `generate` are exclusive replacement stages.** One result wins each stage. A plugin that returns a result replaces the builtin parser or generator and skips every later hook for that stage. Declare `parse` only when your plugin owns the input language, and `generate` only when it owns the output format. For validation or observation, use `prepare` or `finalize`. For AST edits, use `transform`. To post-process generated code, use the returned `CodeResult` at the call site.
 

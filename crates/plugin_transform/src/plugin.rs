@@ -1923,7 +1923,7 @@ mod tests {
         )
         .await;
 
-        assert!(code.contains("function _typeof() {\n\treturn 1;"), "{code}");
+        assert!(code.contains("function _typeof() {\n  return 1;"), "{code}");
         assert!(
             code.contains("function _typeof2(o)"),
             "inlined typeof must be renamed: {code}"

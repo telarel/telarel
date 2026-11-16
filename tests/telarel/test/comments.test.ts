@@ -24,6 +24,7 @@ import {
 } from "telarel";
 import { describe, expect, it } from "vitest";
 
+import { resolvedGeneratorOptions } from "#/functions/options";
 import {
     appendInlineMap,
     buildMap,
@@ -170,11 +171,10 @@ describe("comments", (): void => {
 
     it("preserves comments through createGenerator", async (): Promise<void> => {
         const parsed: AstResult = await parsedSource(SOURCE);
-        const generator: Generator = createGenerator(parsed.ast, {
-            cwd: "/repo",
-            file: "index.js",
-            sourceMap: {},
-        });
+        const generator: Generator = createGenerator(
+            parsed.ast,
+            resolvedGeneratorOptions({ file: "index.js" }),
+        );
         const result: CodeResult = await generator.generate();
 
         expectPreserved(result.code);
@@ -214,11 +214,10 @@ describe("comments", (): void => {
 
             expect(compiled.code).toContain(comment);
 
-            const generator: Generator = createGenerator(parsed.ast, {
-                cwd: "/repo",
-                file: "index.js",
-                sourceMap: {},
-            });
+            const generator: Generator = createGenerator(
+                parsed.ast,
+                resolvedGeneratorOptions({ file: "index.js" }),
+            );
             const generatedByGenerator: CodeResult = await generator.generate();
 
             expect(generatedByGenerator.code).toContain(comment);

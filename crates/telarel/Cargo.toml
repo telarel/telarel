@@ -23,7 +23,7 @@ telarel_plugin = { workspace = true }
 telarel_core = { workspace = true }
 
 # Crates
-oxc = { workspace = true }
+oxc = { workspace = true, features = ["codegen"] }
 oxc_sourcemap = { workspace = true }
 oxc_traverse = { workspace = true, optional = true }
 

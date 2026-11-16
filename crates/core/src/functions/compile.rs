@@ -32,14 +32,16 @@ mod tests {
     use tempfile::TempDir;
 
     use telarel_common::{
-        CodeResult, CompileOptions, InputSourceMap, InputSourceMapMode,
-        InputSourceMapOptions, Language, OutputOptions, OutputSourceMap,
-        OutputSourceMapMode, ResolvedOptions, SourceMap, SourceMapOptions,
-        SourceType, append_inline_source_map,
+        CodeResult, CompileOptions, GeneratorOptions, InputSourceMap,
+        InputSourceMapMode, InputSourceMapOptions, Language, OutputOptions,
+        OutputSourceMap, OutputSourceMapMode, ParserOptions,
+        ResolvedGeneratorOptions, ResolvedOptions, ResolvedParserOptions,
+        SourceMap, SourceMapOptions, SourceType, append_inline_source_map,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
+        GenerateHookOptionsObserverPlugin, ParseHookOptionsObserverPlugin,
         ParseOutcome, ParseOutcomePlugin, ReplaceAstWithMapPlugin, SpyPlugin,
         StartObserverPlugin, first_token, input_value, path_buf, sample_map,
         temp_dir, write_file,
@@ -541,6 +543,49 @@ mod tests {
         assert_eq!(observed[0].file, "app.js");
         assert_eq!(observed[0].language, Language::JS);
         assert_eq!(observed[0].source_type, SourceType::Script);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_compile_carries_parser_and_generator_groups() {
+        let parser_seen: Arc<Mutex<Vec<ResolvedParserOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let generator_seen: Arc<Mutex<Vec<ResolvedGeneratorOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let options: CompileOptions = CompileOptions {
+            parser: Some(ParserOptions {
+                preserve_parens: Some(true),
+                ..ParserOptions::default()
+            }),
+            generator: Some(GeneratorOptions {
+                single_quote: Some(true),
+                ..GeneratorOptions::default()
+            }),
+            ..CompileOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(ParseHookOptionsObserverPlugin::new(
+                &parser_seen,
+            )),
+            Plugin::new_shared(GenerateHookOptionsObserverPlugin::new(
+                &generator_seen,
+            )),
+        ];
+
+        compile(String::from("const a = (1);"), options, plugins)
+            .await
+            .expect("compile succeeds");
+
+        let parser_seen: Vec<ResolvedParserOptions> =
+            parser_seen.lock().unwrap().clone();
+        let generator_seen: Vec<ResolvedGeneratorOptions> =
+            generator_seen.lock().unwrap().clone();
+
+        assert_eq!(parser_seen.len(), 1);
+        assert!(parser_seen[0].preserve_parens);
+        assert_eq!(generator_seen.len(), 1);
+        assert!(generator_seen[0].single_quote);
     }
 
     #[test]

@@ -14,10 +14,11 @@ use std::path::PathBuf;
 
 use telarel::{
     Ast, AstResult, CodeResult, CompileError, CompileFromAstOptions,
-    CompileOptions, GenerateOptions, Generator, GeneratorOptions, Language,
-    ParseOptions, Parser, ParserOptions, Plugin, RewriteOptions,
-    SharedPluginable, SourceMapOptions, SourceType, compile, compile_from_ast,
-    generate, parse, rewrite,
+    CompileOptions, GenerateOptions, Generator, GeneratorOptions, IndentStyle,
+    Language, ParseOptions, Parser, ParserOptions, PartialOxcCodegenOptions,
+    Plugin, ResolvedGeneratorOptions, ResolvedGeneratorStageOptions,
+    ResolvedParserOptions, RewriteOptions, SharedPluginable, SourceMapOptions,
+    SourceType, compile, compile_from_ast, generate, parse, rewrite,
 };
 use telarel_plugin_transform::{
     TransformOptions, TransformPlugin, TransformTarget,
@@ -40,6 +41,8 @@ async fn main() {
 
 Every entry-point option struct also accepts `cwd: Option<PathBuf>` (default: process working directory); `CompileOptions` lists it.
 
+`parser` and `generator` are optional groups. Each is a partial override patch: only fields set in `oxc` override the Telarel defaults, omitting `oxc` changes nothing, and a curated field wins over its raw counterpart, except for `comments` (see [generator options](https://telarel.github.io/apis#generator-options)). A resolved `oxc` is the full effective object.
+
 ## `compile`
 
 ```rust
@@ -57,6 +60,13 @@ let result: CodeResult = compile(
     String::from("const x: number = 1;"),
     CompileOptions {
         file: Some(String::from("src/index.ts")),
+        generator: Some(GeneratorOptions {
+            oxc: Some(PartialOxcCodegenOptions {
+                initial_indent: Some(1),
+                ..PartialOxcCodegenOptions::default()
+            }),
+            ..GeneratorOptions::default()
+        }),
         ..CompileOptions::default()
     },
     vec![Plugin::new_shared(TransformPlugin::with_options(
@@ -69,18 +79,22 @@ let result: CodeResult = compile(
 .await?;
 ```
 
+`generator.oxc` sets only the raw initial indentation; every other generator setting keeps its resolved default.
+
 ### `CompileOptions`
 
 Every field is optional.
 
-| Field         | Type                       | Default             | Description                                   |
-| ------------- | -------------------------- | ------------------- | --------------------------------------------- |
-| `cwd`         | `Option<PathBuf>`          | process working dir | Root for relative paths.                      |
-| `file`        | `Option<String>`           | `index.ts`          | Input file. The extension infers the grammar. |
-| `language`    | `Option<Language>`         | inferred            | Grammar. Overrides extension inference.       |
-| `source_type` | `Option<SourceType>`       | inferred            | Module kind.                                  |
-| `output`      | `Option<OutputOptions>`    | unset               | `OutputOptions { file: Option<String> }`.     |
-| `source_map`  | `Option<SourceMapOptions>` | off                 | Input and output source-map requests.         |
+| Field         | Type                       | Default             | Description                                                                  |
+| ------------- | -------------------------- | ------------------- | ---------------------------------------------------------------------------- |
+| `cwd`         | `Option<PathBuf>`          | process working dir | Root for relative paths.                                                     |
+| `file`        | `Option<String>`           | `index.ts`          | Input file. The extension infers the grammar.                                |
+| `language`    | `Option<Language>`         | inferred            | Grammar. Overrides extension inference.                                      |
+| `source_type` | `Option<SourceType>`       | inferred            | Module kind.                                                                 |
+| `parser`      | `Option<ParserOptions>`    | unset               | [Parser-stage options](https://telarel.github.io/apis#parser-options).       |
+| `generator`   | `Option<GeneratorOptions>` | unset               | [Generator-stage options](https://telarel.github.io/apis#generator-options). |
+| `output`      | `Option<OutputOptions>`    | unset               | `OutputOptions { file: Option<String> }`.                                    |
+| `source_map`  | `Option<SourceMapOptions>` | off                 | Input and output source-map requests.                                        |
 
 Without the transform plugin, `compile` parses and regenerates the source but does not lower TypeScript, modern syntax, or JSX.
 
@@ -96,12 +110,13 @@ pub async fn parse(
 
 ### `ParseOptions`
 
-| Field              | Type                     | Default    | Description               |
-| ------------------ | ------------------------ | ---------- | ------------------------- |
-| `file`             | `Option<String>`         | `index.ts` | Input file.               |
-| `language`         | `Option<Language>`       | inferred   | Grammar.                  |
-| `source_type`      | `Option<SourceType>`     | inferred   | Module kind.              |
-| `input_source_map` | `Option<InputSourceMap>` | off        | Input source-map request. |
+| Field              | Type                     | Default    | Description                                                            |
+| ------------------ | ------------------------ | ---------- | ---------------------------------------------------------------------- |
+| `file`             | `Option<String>`         | `index.ts` | Input file.                                                            |
+| `language`         | `Option<Language>`       | inferred   | Grammar.                                                               |
+| `source_type`      | `Option<SourceType>`     | inferred   | Module kind.                                                           |
+| `parser`           | `Option<ParserOptions>`  | unset      | [Parser-stage options](https://telarel.github.io/apis#parser-options). |
+| `input_source_map` | `Option<InputSourceMap>` | off        | Input source-map request.                                              |
 
 `parse` returns `{ ast }` and has no output map. `input_source_map` is normalized to `source_map.input` for the options hook. A plugin-set `source_map.output` or `output` is ignored.
 
@@ -138,12 +153,13 @@ pub async fn generate(
 
 ### `GenerateOptions`
 
-| Field        | Type                       | Default      | Description                               |
-| ------------ | -------------------------- | ------------ | ----------------------------------------- |
-| `file`       | `Option<String>`           | `index.ts`   | Output file hint and source-map fallback. |
-| `language`   | `Option<Language>`         | AST language | Grammar recorded for plugins.             |
-| `output`     | `Option<OutputOptions>`    | unset        | `OutputOptions { file: Option<String> }`. |
-| `source_map` | `Option<SourceMapOptions>` | off          | Input and output source-map requests.     |
+| Field        | Type                       | Default      | Description                                                                  |
+| ------------ | -------------------------- | ------------ | ---------------------------------------------------------------------------- |
+| `file`       | `Option<String>`           | `index.ts`   | Output file hint and source-map fallback.                                    |
+| `language`   | `Option<Language>`         | AST language | Grammar recorded for plugins.                                                |
+| `generator`  | `Option<GeneratorOptions>` | unset        | [Generator-stage options](https://telarel.github.io/apis#generator-options). |
+| `output`     | `Option<OutputOptions>`    | unset        | `OutputOptions { file: Option<String> }`.                                    |
+| `source_map` | `Option<SourceMapOptions>` | off          | Input and output source-map requests.                                        |
 
 Rust `generate` has no `source_type` option. The builtin generator uses `ast.program().source_type` for the module kind. `language` is resolved and visible to plugins, but the builtin generator emits from the AST grammar. To change the grammar for generation, build an AST with the desired grammar.
 
@@ -163,17 +179,38 @@ Runs prepare, transform, finalize, and generate on an existing AST. It does not 
 
 ### `CompileFromAstOptions`
 
-| Field         | Type                       | Default                    | Description                               |
-| ------------- | -------------------------- | -------------------------- | ----------------------------------------- |
-| `file`        | `Option<String>`           | `index.ts`                 | Input file.                               |
-| `language`    | `Option<Language>`         | AST language, then file    | Grammar.                                  |
-| `source_type` | `Option<SourceType>`       | AST module kind, then file | Module kind.                              |
-| `output`      | `Option<OutputOptions>`    | unset                      | `OutputOptions { file: Option<String> }`. |
-| `source_map`  | `Option<SourceMapOptions>` | off                        | Input and output source-map requests.     |
+| Field         | Type                       | Default                    | Description                                                                  |
+| ------------- | -------------------------- | -------------------------- | ---------------------------------------------------------------------------- |
+| `file`        | `Option<String>`           | `index.ts`                 | Input file.                                                                  |
+| `language`    | `Option<Language>`         | AST language, then file    | Grammar.                                                                     |
+| `source_type` | `Option<SourceType>`       | AST module kind, then file | Module kind.                                                                 |
+| `generator`   | `Option<GeneratorOptions>` | unset                      | [Generator-stage options](https://telarel.github.io/apis#generator-options). |
+| `output`      | `Option<OutputOptions>`    | unset                      | `OutputOptions { file: Option<String> }`.                                    |
+| `source_map`  | `Option<SourceMapOptions>` | off                        | Input and output source-map requests.                                        |
 
 ## Builtin Constructors
 
-`Parser` and `Generator` call the builtin stages directly. They do not run the plugin chain. Their options are fully resolved, so every field is required. `ParserOptions` has `cwd`, `file`, `language`, `source_type`, and `source_map`; `GeneratorOptions` has `cwd`, `file`, and `source_map`.
+`Parser` and `Generator` call the builtin stages directly. They do not run the plugin chain. Their options are fully resolved, so every field is required. `ResolvedParserOptions` adds `preserve_parens`, `allow_return_outside_function`, and the full effective `OxcParseOptions` to `cwd`, `file`, `language`, `source_type`, and `source_map`. `ResolvedGeneratorOptions` adds the generator fields and the full effective `OxcCodegenOptions` to `cwd`, `file`, and `source_map`.
+
+A resolved `oxc` object sets every field. Build it from `ResolvedGeneratorStageOptions::default().oxc` or `ResolvedParserStageOptions::default().oxc` instead of a partial patch:
+
+```rust
+let generator: Generator = Generator::new(
+    &ast,
+    ResolvedGeneratorOptions {
+        cwd: PathBuf::from("."),
+        file: String::from("index.ts"),
+        source_map: SourceMapOptions::default(),
+        single_quote: false,
+        ascii_only: false,
+        indent_style: IndentStyle::Space,
+        indent_width: 2,
+        comments: true,
+        minify: false,
+        oxc: ResolvedGeneratorStageOptions::default().oxc,
+    },
+);
+```
 
 `Generator::generate` applies `source_map.input` but not `source_map.output`. Output delivery is a pipeline concern. Inside a `generate` hook, pass `args.options` unchanged.
 

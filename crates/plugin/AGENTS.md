@@ -20,6 +20,7 @@ This crate holds the plugin contract and hook engine. It covers the `Plugin` tra
 The public hook contract is documented in `docs/content/apis/plugin`. Internally:
 
 - `options` is not run by the driver. It is a sequential fixpoint over the plugin list (`options_fixpoint`)
+- `ParseArgs.options` is `&ResolvedParserOptions`. `GenerateArgs.options` is `&ResolvedGeneratorOptions`. `StartArgs.options` is `ResolvedOptions` with `parser` and `generator` stage views. Public contract: `docs/content/apis/plugin`
 - `PluginDriver::new` partitions the other hooks by declared `HookUsage`. It collects `start` and `end` from every settled plugin. The partitioned stages run only on plugins that declare them
 - each driver-run hook implementation lives in `src/plugin_driver/hooks/`. The `options` hook is implemented by `options_fixpoint` in `src/options/fixpoint.rs`. Value stages return `Option`. Observers and notify hooks ignore their return value. The core owns all state and applies the returned value
 - for AST entries, `ModuleInfo.source_type` uses an explicit module kind other than `Unambiguous`. When the option is `Unambiguous` or absent, the AST module kind applies. If the AST has no module kind, the file extension is the fallback
@@ -32,7 +33,7 @@ Each hook has its own optional `PluginHookMeta { order }`. `sort_plugins_by_hook
 ## Options fixpoint
 
 - the fixpoint runs before any `PluginDriver` exists
-- `Some(OptionsArgs)` replaces the entire args bag at struct level. Omitted fields fall back to defaults, not to the previous values
+- `Some(OptionsArgs)` replaces the entire args bag at struct level. Omitted fields fall back to defaults, not to the previous values. The `parser` and `generator` groups follow this rule: a returned bag that omits a group drops it
 - the returned plugin list replaces the settled list wholesale, including same-length swaps, reorders, and truncations
 - newly injected plugins get their own `options` hook run on a later pass
 - identity is the plugin instance (`Arc::ptr_eq` on `SharedPluginable`), not the name. See the [plugin hook semantics](../../docs/content/apis/plugin/index.mdx#hook-semantics) for the public consequences

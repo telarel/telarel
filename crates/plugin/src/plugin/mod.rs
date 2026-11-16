@@ -182,8 +182,9 @@ mod tests {
     use oxc::span::SPAN;
     use telarel_common::{
         Ast, AstResult, CodeResult, CompileError, HookUsage, Language,
-        ParseAstOptions, ParserOptions, ResolvableOptions, SourceMapOptions,
-        SourceType, parse_ast,
+        ParseAstOptions, ResolvableOptions, ResolvedGeneratorOptions,
+        ResolvedGeneratorStageOptions, ResolvedParserOptions,
+        ResolvedParserStageOptions, SourceMapOptions, SourceType, parse_ast,
     };
 
     use crate::_types::context::{
@@ -535,13 +536,37 @@ mod tests {
         }
     }
 
-    fn parser_options() -> ParserOptions {
-        ParserOptions {
+    fn parser_options() -> ResolvedParserOptions {
+        let stage: ResolvedParserStageOptions =
+            ResolvedParserStageOptions::default();
+
+        ResolvedParserOptions {
             cwd: PathBuf::from("/repo"),
             file: String::from("a.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
             source_map: SourceMapOptions::default(),
+            preserve_parens: stage.preserve_parens,
+            allow_return_outside_function: stage.allow_return_outside_function,
+            oxc: stage.oxc,
+        }
+    }
+
+    fn generator_options() -> ResolvedGeneratorOptions {
+        let stage: ResolvedGeneratorStageOptions =
+            ResolvedGeneratorStageOptions::default();
+
+        ResolvedGeneratorOptions {
+            cwd: PathBuf::from("/repo"),
+            file: String::from("a.ts"),
+            source_map: SourceMapOptions::default(),
+            single_quote: stage.single_quote,
+            ascii_only: stage.ascii_only,
+            indent_style: stage.indent_style,
+            indent_width: stage.indent_width,
+            comments: stage.comments,
+            minify: stage.minify,
+            oxc: stage.oxc,
         }
     }
 
@@ -552,6 +577,8 @@ mod tests {
                 file: String::from("a.ts"),
                 language: Language::TS,
                 source_type: SourceType::Module,
+                parser: ResolvedParserStageOptions::default(),
+                generator: ResolvedGeneratorStageOptions::default(),
                 output: telarel_common::ResolvedOutputOptions {
                     file: String::from("dist/a.js"),
                 },
@@ -581,14 +608,9 @@ mod tests {
 
         let args: OptionsArgs = make_args(vec![]);
 
-        let options: ParserOptions = parser_options();
+        let options: ResolvedParserOptions = parser_options();
 
-        let generator: telarel_common::GeneratorOptions =
-            telarel_common::GeneratorOptions {
-                cwd: PathBuf::from("/repo"),
-                file: String::from("a.ts"),
-                source_map: SourceMapOptions::default(),
-            };
+        let generator: ResolvedGeneratorOptions = generator_options();
 
         assert!(shared.call_options(&common, &args).await.unwrap().is_none());
         assert!(
@@ -672,7 +694,7 @@ mod tests {
     async fn test_parse_returns_ast_result() {
         let ctx: PluginContext<'_> = make_context();
 
-        let options: ParserOptions = parser_options();
+        let options: ResolvedParserOptions = parser_options();
 
         let shared: SharedPluginable = Plugin::new_shared(ParsePlugin);
 
@@ -692,12 +714,7 @@ mod tests {
 
         let ast: Ast = parse_test_ast("console.log(1);");
 
-        let generator: telarel_common::GeneratorOptions =
-            telarel_common::GeneratorOptions {
-                cwd: PathBuf::from("/repo"),
-                file: String::from("a.ts"),
-                source_map: SourceMapOptions::default(),
-            };
+        let generator: ResolvedGeneratorOptions = generator_options();
 
         let shared: SharedPluginable = Plugin::new_shared(GeneratePlugin);
 

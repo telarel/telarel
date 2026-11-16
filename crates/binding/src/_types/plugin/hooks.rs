@@ -2,13 +2,15 @@ use napi::bindgen_prelude::{Array, JsValue, Object, ToNapiValue};
 use napi::sys;
 
 use telarel_common::{
-    GeneratorOptions, InputSourceMap, InputSourceMapMode, OutputOptions,
-    OutputSourceMap, OutputSourceMapMode, ParserOptions, ResolvedOptions,
-    SourceMapOptions,
+    IndentStyle, InputSourceMap, InputSourceMapMode, OutputOptions,
+    OutputSourceMap, OutputSourceMapMode, ResolvedGeneratorOptions,
+    ResolvedOptions, ResolvedParserOptions, SourceMapOptions,
 };
 
 use crate::_types::ast::{JsAst, JsAstInput};
-use crate::_types::options::JsOutputOptions;
+use crate::_types::options::{
+    JsOutputOptions, codegen_oxc_to_js, parser_oxc_to_js,
+};
 use crate::_types::path::path_label;
 use crate::_types::sourcemap::JsSourceMap;
 use crate::plugin::hooks::SharedRef;
@@ -121,10 +123,13 @@ pub struct JsTransformOutput {
     pub language: Option<String>,
 }
 
-/// Output of the `options` hook: the fields of the options bag after the JS
-/// hook. Omitted fields stay `None` (leave unspecified), and resolution
-/// defaults apply later. The plugins array is the returned bag's plugin list,
-/// as raw descriptor objects for plugins.
+/// Output of the `options` hook: a replacement options bag returned by the JS
+/// hook.
+///
+/// The bag is inbound. The JS wrapper omits an absent group, and Rust treats
+/// absence as unset; a returned bag replaces the whole options set. The
+/// `plugins` list is the returned bag's plugin list, as raw descriptor objects
+/// for plugins.
 #[derive(Default)]
 #[napi_derive::napi(object)]
 pub struct JsOptionsOutput {
@@ -137,10 +142,14 @@ pub struct JsOptionsOutput {
     /// Module system used for code generation.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
+    /// Parser-stage options after the hook. An absent value means unset.
+    pub parser: Option<serde_json::Value>,
+    /// Generator-stage options after the hook. An absent value means unset.
+    pub generator: Option<serde_json::Value>,
     /// The output code options after the hook.
     pub output: Option<JsOutputOptions>,
-    /// The source-map inputs and outputs after the hook. `None` means
-    /// unspecified, and Telarel omits it from the wire.
+    /// The source-map inputs and outputs after the hook. An absent value means
+    /// unset.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
     /// The bag's plugins after the hook, as raw descriptor objects. A missing
@@ -155,6 +164,46 @@ pub struct JsResolvedOutputOptions {
     pub file: String,
 }
 
+/// Effective parser-stage settings for the JS side, as presented to `start`.
+///
+/// `oxc` is the full merged object and the curated fields mirror it.
+#[napi_derive::napi(object)]
+pub struct JsResolvedParserStageOptions {
+    /// Whether parenthesized expressions stay in the AST.
+    #[napi(js_name = "preserveParens")]
+    pub preserve_parens: bool,
+    /// Whether `return` is accepted outside a function body.
+    #[napi(js_name = "allowReturnOutsideFunction")]
+    pub allow_return_outside_function: bool,
+    /// The effective options for the raw oxc parser.
+    pub oxc: serde_json::Value,
+}
+
+/// Effective generator-stage settings for the JS side, as presented to `start`.
+///
+/// `oxc` is the full merged object and the curated fields mirror it.
+#[napi_derive::napi(object)]
+pub struct JsResolvedGeneratorStageOptions {
+    /// Whether string literals use single quotes.
+    #[napi(js_name = "singleQuote")]
+    pub single_quote: bool,
+    /// Whether non-ASCII characters are escaped.
+    #[napi(js_name = "asciiOnly")]
+    pub ascii_only: bool,
+    /// The resolved indentation style.
+    #[napi(js_name = "indentStyle")]
+    pub indent_style: String,
+    /// The resolved indentation width.
+    #[napi(js_name = "indentWidth")]
+    pub indent_width: u32,
+    /// Whether any comment category is printed.
+    pub comments: bool,
+    /// Whether generated code is minified.
+    pub minify: bool,
+    /// The effective options for the raw oxc codegen.
+    pub oxc: serde_json::Value,
+}
+
 /// Resolved options for the JS side, as presented to the `start` hook.
 #[napi_derive::napi(object)]
 pub struct JsResolvedOptions {
@@ -167,6 +216,10 @@ pub struct JsResolvedOptions {
     /// Module system used for code generation.
     #[napi(js_name = "sourceType")]
     pub source_type: String,
+    /// Resolved parser-stage settings.
+    pub parser: JsResolvedParserStageOptions,
+    /// Resolved generator-stage settings.
+    pub generator: JsResolvedGeneratorStageOptions,
     /// The output code options.
     pub output: JsResolvedOutputOptions,
     /// The source-map inputs and outputs requested for the run.
@@ -277,6 +330,14 @@ fn source_map_options_to_js(options: &SourceMapOptions) -> serde_json::Value {
     })
 }
 
+/// The JS label for an indentation style.
+fn indent_style_label(style: IndentStyle) -> String {
+    match style {
+        | IndentStyle::Space => String::from("space"),
+        | IndentStyle::Tab => String::from("tab"),
+    }
+}
+
 impl From<&ResolvedOptions> for JsResolvedOptions {
     fn from(options: &ResolvedOptions) -> Self {
         Self {
@@ -285,6 +346,24 @@ impl From<&ResolvedOptions> for JsResolvedOptions {
             language: language_label(Some(options.language)).to_owned(),
             source_type: source_type_label(Some(options.source_type))
                 .to_owned(),
+            parser: JsResolvedParserStageOptions {
+                preserve_parens: options.parser.preserve_parens,
+                allow_return_outside_function: options
+                    .parser
+                    .allow_return_outside_function,
+                oxc: parser_oxc_to_js(&options.parser.oxc),
+            },
+            generator: JsResolvedGeneratorStageOptions {
+                single_quote: options.generator.single_quote,
+                ascii_only: options.generator.ascii_only,
+                indent_style: indent_style_label(
+                    options.generator.indent_style,
+                ),
+                indent_width: options.generator.indent_width as u32,
+                comments: options.generator.comments,
+                minify: options.generator.minify,
+                oxc: codegen_oxc_to_js(&options.generator.oxc),
+            },
             output: JsResolvedOutputOptions {
                 file: options.output.file.clone(),
             },
@@ -326,7 +405,8 @@ pub fn optional_source_map_options_to_js(
     options.map(source_map_options_to_js)
 }
 
-/// JS-facing parser options, as presented to the `parse` hook.
+/// Parser options presented to the `parse` hook. `oxc` is the full effective
+/// object and the curated fields mirror it.
 #[napi_derive::napi(object)]
 pub struct JsParserHookOptions {
     /// Working directory used to resolve relative paths.
@@ -341,10 +421,18 @@ pub struct JsParserHookOptions {
     /// The source-map inputs and outputs requested for the step.
     #[napi(js_name = "sourceMap")]
     pub source_map: serde_json::Value,
+    /// Whether parenthesized expressions stay in the AST.
+    #[napi(js_name = "preserveParens")]
+    pub preserve_parens: bool,
+    /// Whether `return` is accepted outside a function body.
+    #[napi(js_name = "allowReturnOutsideFunction")]
+    pub allow_return_outside_function: bool,
+    /// The effective options for the raw oxc parser.
+    pub oxc: serde_json::Value,
 }
 
-impl From<&ParserOptions> for JsParserHookOptions {
-    fn from(options: &ParserOptions) -> Self {
+impl From<&ResolvedParserOptions> for JsParserHookOptions {
+    fn from(options: &ResolvedParserOptions) -> Self {
         Self {
             cwd: path_label(&options.cwd),
             file: options.file.clone(),
@@ -352,11 +440,16 @@ impl From<&ParserOptions> for JsParserHookOptions {
             source_type: source_type_label(Some(options.source_type))
                 .to_owned(),
             source_map: source_map_options_to_js(&options.source_map),
+            preserve_parens: options.preserve_parens,
+            allow_return_outside_function: options
+                .allow_return_outside_function,
+            oxc: parser_oxc_to_js(&options.oxc),
         }
     }
 }
 
-/// JS-facing generator options, as presented to the `generate` hook.
+/// Generator options presented to the `generate` hook. `oxc` is the full
+/// effective object and the curated fields mirror it.
 #[napi_derive::napi(object)]
 pub struct JsGeneratorHookOptions {
     /// Current working directory (reserved).
@@ -369,14 +462,39 @@ pub struct JsGeneratorHookOptions {
     /// `{ input: null, output: null }`.
     #[napi(js_name = "sourceMap")]
     pub source_map: serde_json::Value,
+    /// Whether string literals use single quotes.
+    #[napi(js_name = "singleQuote")]
+    pub single_quote: bool,
+    /// Whether non-ASCII characters are escaped.
+    #[napi(js_name = "asciiOnly")]
+    pub ascii_only: bool,
+    /// The resolved indentation style.
+    #[napi(js_name = "indentStyle")]
+    pub indent_style: String,
+    /// The resolved indentation width.
+    #[napi(js_name = "indentWidth")]
+    pub indent_width: u32,
+    /// Whether any comment category is printed.
+    pub comments: bool,
+    /// Whether generated code is minified.
+    pub minify: bool,
+    /// The effective options for the raw oxc codegen.
+    pub oxc: serde_json::Value,
 }
 
-impl From<&GeneratorOptions> for JsGeneratorHookOptions {
-    fn from(options: &GeneratorOptions) -> Self {
+impl From<&ResolvedGeneratorOptions> for JsGeneratorHookOptions {
+    fn from(options: &ResolvedGeneratorOptions) -> Self {
         Self {
             cwd: path_label(&options.cwd),
             file: options.file.clone(),
             source_map: source_map_options_to_js(&options.source_map),
+            single_quote: options.single_quote,
+            ascii_only: options.ascii_only,
+            indent_style: indent_style_label(options.indent_style),
+            indent_width: options.indent_width as u32,
+            comments: options.comments,
+            minify: options.minify,
+            oxc: codegen_oxc_to_js(&options.oxc),
         }
     }
 }
@@ -434,7 +552,8 @@ mod tests {
     use telarel_common::{
         InputSourceMap, InputSourceMapMode, InputSourceMapOptions, Language,
         OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
-        SourceMapOptions, SourceType,
+        OxcCodegenOptions, OxcParseOptions, ResolvedGeneratorStageOptions,
+        ResolvedParserStageOptions, SourceMapOptions, SourceType,
     };
 
     use super::*;
@@ -583,7 +702,7 @@ mod tests {
 
     #[test]
     fn test_parser_options_to_js_labels() {
-        let options: ParserOptions = ParserOptions {
+        let options: ResolvedParserOptions = ResolvedParserOptions {
             cwd: PathBuf::from("/repo"),
             file: String::from("a.tsx"),
             language: Language::TSX,
@@ -591,6 +710,14 @@ mod tests {
             source_map: SourceMapOptions {
                 input: Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
                 output: Some(OutputSourceMap::Mode(OutputSourceMapMode::Both)),
+            },
+            preserve_parens: true,
+            allow_return_outside_function: true,
+            oxc: OxcParseOptions {
+                preserve_parens: true,
+                allow_return_outside_function: true,
+                enable_ident_hashes: false,
+                ..OxcParseOptions::default()
             },
         };
 
@@ -604,11 +731,23 @@ mod tests {
             js.source_map,
             serde_json::json!({ "input": "auto", "output": "both" })
         );
+        assert!(js.preserve_parens);
+        assert!(js.allow_return_outside_function);
+        assert_eq!(
+            js.oxc,
+            serde_json::json!({
+                "parseRegularExpression": false,
+                "allowReturnOutsideFunction": true,
+                "preserveParens": true,
+                "allowV8Intrinsics": false,
+                "enableIdentHashes": false,
+            })
+        );
     }
 
     #[test]
     fn test_generator_options_to_js() {
-        let options: GeneratorOptions = GeneratorOptions {
+        let options: ResolvedGeneratorOptions = ResolvedGeneratorOptions {
             cwd: PathBuf::from("/repo"),
             file: String::from("out.js"),
             source_map: SourceMapOptions {
@@ -616,6 +755,21 @@ mod tests {
                 output: Some(OutputSourceMap::Mode(
                     OutputSourceMapMode::Inline,
                 )),
+            },
+            single_quote: true,
+            ascii_only: true,
+            indent_style: IndentStyle::Tab,
+            indent_width: 4,
+            comments: false,
+            minify: true,
+            oxc: OxcCodegenOptions {
+                single_quote: true,
+                ascii_only: true,
+                indent_char: oxc::codegen::IndentChar::Tab,
+                indent_width: 4,
+                comments: oxc::codegen::CommentOptions::disabled(),
+                minify: true,
+                ..OxcCodegenOptions::default()
             },
         };
 
@@ -627,6 +781,16 @@ mod tests {
             js.source_map,
             serde_json::json!({ "input": null, "output": "inline" })
         );
+        assert!(js.single_quote);
+        assert!(js.ascii_only);
+        assert_eq!(js.indent_style, "tab");
+        assert_eq!(js.indent_width, 4);
+        assert!(!js.comments);
+        assert!(js.minify);
+        assert_eq!(js.oxc["indentChar"], "tab");
+        assert_eq!(js.oxc["indentWidth"], 4);
+        assert_eq!(js.oxc["minify"], true);
+        assert_eq!(js.oxc["comments"]["normal"], false);
     }
 
     #[test]
@@ -636,6 +800,32 @@ mod tests {
             file: String::from("index.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
+            parser: ResolvedParserStageOptions {
+                preserve_parens: true,
+                allow_return_outside_function: true,
+                oxc: OxcParseOptions {
+                    preserve_parens: true,
+                    allow_return_outside_function: true,
+                    ..OxcParseOptions::default()
+                },
+            },
+            generator: ResolvedGeneratorStageOptions {
+                single_quote: true,
+                ascii_only: true,
+                indent_style: IndentStyle::Tab,
+                indent_width: 4,
+                comments: false,
+                minify: true,
+                oxc: OxcCodegenOptions {
+                    single_quote: true,
+                    ascii_only: true,
+                    indent_char: oxc::codegen::IndentChar::Tab,
+                    indent_width: 4,
+                    comments: oxc::codegen::CommentOptions::disabled(),
+                    minify: true,
+                    ..OxcCodegenOptions::default()
+                },
+            },
             output: telarel_common::ResolvedOutputOptions {
                 file: String::from("dist/index.js"),
             },
@@ -657,6 +847,16 @@ mod tests {
             js.source_map,
             serde_json::json!({ "input": "auto", "output": "both" })
         );
+        assert!(js.parser.preserve_parens);
+        assert!(js.parser.allow_return_outside_function);
+        assert_eq!(js.parser.oxc["preserveParens"], true);
+        assert!(js.generator.single_quote);
+        assert!(js.generator.ascii_only);
+        assert_eq!(js.generator.indent_style, "tab");
+        assert_eq!(js.generator.indent_width, 4);
+        assert!(!js.generator.comments);
+        assert!(js.generator.minify);
+        assert_eq!(js.generator.oxc["indentChar"], "tab");
         assert_eq!(js.plugins, vec![String::from("observe")]);
     }
 
@@ -667,6 +867,8 @@ mod tests {
             file: String::from("index.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
+            parser: ResolvedParserStageOptions::default(),
+            generator: ResolvedGeneratorStageOptions::default(),
             output: telarel_common::ResolvedOutputOptions {
                 file: String::from("dist/index.js"),
             },
@@ -680,6 +882,10 @@ mod tests {
             js.source_map,
             serde_json::json!({ "input": null, "output": null })
         );
+        assert!(!js.parser.preserve_parens);
+        assert!(!js.generator.minify);
+        assert_eq!(js.generator.indent_style, "space");
+        assert_eq!(js.generator.indent_width, 2);
     }
 
     #[test]
@@ -691,6 +897,8 @@ mod tests {
             file: file.clone(),
             language: Language::TS,
             source_type: SourceType::Module,
+            parser: ResolvedParserStageOptions::default(),
+            generator: ResolvedGeneratorStageOptions::default(),
             output: telarel_common::ResolvedOutputOptions {
                 file: String::from("dist/index.js"),
             },
@@ -700,9 +908,10 @@ mod tests {
 
         let js_resolved: JsResolvedOptions = JsResolvedOptions::from(&resolved);
         let js_parser: JsParserHookOptions =
-            JsParserHookOptions::from(&ParserOptions::from(&resolved));
-        let js_generator: JsGeneratorHookOptions =
-            JsGeneratorHookOptions::from(&GeneratorOptions::from(&resolved));
+            JsParserHookOptions::from(&ResolvedParserOptions::from(&resolved));
+        let js_generator: JsGeneratorHookOptions = JsGeneratorHookOptions::from(
+            &ResolvedGeneratorOptions::from(&resolved),
+        );
 
         assert_eq!(js_resolved.file, file);
         assert_eq!(js_parser.file, file);

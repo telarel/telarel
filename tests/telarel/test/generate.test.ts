@@ -17,6 +17,10 @@ import { CompileError, createGenerator, generate, parse } from "telarel";
 import { describe, expect, it } from "vitest";
 
 import {
+    resolvedGeneratorOptions,
+    resolvedOxcCodegenOptions,
+} from "#/functions/options";
+import {
     buildMap,
     firstMappingSegment,
     SOURCE_MAPPING_COMMENT,
@@ -210,14 +214,175 @@ describe("generate", (): void => {
                 language: "tsx",
             })
         ).ast;
-        const generator: Generator = createGenerator(ast, {
-            cwd: "/repo",
-            file: "index.ts",
-            sourceMap: {},
-        });
+        const generator: Generator = createGenerator(
+            ast,
+            resolvedGeneratorOptions(),
+        );
         const result: CodeResult = await generator.generate();
 
         expect(result.code).toBe("const f = <T,>(x: T) => x;");
+    });
+
+    it("applies generator options to generated code", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse('// lead\nfunction f() {\n    return "hello";\n}', {
+                file: "index.ts",
+            })
+        ).ast;
+
+        const result: CodeResult = await generate(ast, {
+            file: "index.ts",
+            generator: {
+                singleQuote: true,
+                indentStyle: "space",
+                indentWidth: 4,
+                comments: false,
+            },
+        });
+
+        expect(result.code).toBe("function f() {\n    return 'hello';\n}");
+        expect(result.code).not.toContain("lead");
+    });
+
+    it("applies minify through generator options", async (): Promise<void> => {
+        const result: CodeResult = await generate((await parsed()).ast, {
+            file: "index.ts",
+            generator: { minify: true },
+        });
+
+        expect(result.code).not.toContain("const a = 1;");
+        expect(result.code).toContain("const a=1;");
+    });
+
+    it("drops comments when minify is set without a comments choice", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("// lead\nconst a = 1;", { file: "index.ts" })
+        ).ast;
+
+        const result: CodeResult = await generate(ast, {
+            file: "index.ts",
+            generator: { minify: true },
+        });
+
+        expect(result.code).not.toContain("lead");
+    });
+
+    it("keeps comments when minify and comments are both set", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse("// lead\nconst a = 1;", { file: "index.ts" })
+        ).ast;
+
+        const result: CodeResult = await generate(ast, {
+            file: "index.ts",
+            generator: { minify: true, comments: true },
+        });
+
+        expect(result.code).toContain("lead");
+    });
+
+    it("keeps the Telarel indent width when raw oxc sets only the indent char", async (): Promise<void> => {
+        const seen: Array<{ indentWidth: number; indentChar: string }> = [];
+        const ast: Ast = (
+            await parse("function f() {\n  return 1;\n}", { file: "index.ts" })
+        ).ast;
+
+        const result: CodeResult = await generate(ast, {
+            file: "index.ts",
+            generator: { oxc: { indentChar: "tab" } },
+            plugins: [
+                {
+                    name: "observe-raw-indent",
+                    generate: (
+                        _ctx: PluginContext,
+                        args: GenerateArgs,
+                    ): null => {
+                        seen.push({
+                            indentWidth: args.options.indentWidth,
+                            indentChar: args.options.oxc.indentChar,
+                        });
+
+                        return null;
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([{ indentWidth: 2, indentChar: "tab" }]);
+        expect(result.code).toBe("function f() {\n\t\treturn 1;\n}");
+    });
+
+    it("lets curated indent style win over raw oxc indent char", async (): Promise<void> => {
+        const seen: Array<{ indentWidth: number; indentChar: string }> = [];
+        const ast: Ast = (
+            await parse("function f() {\n  return 1;\n}", { file: "index.ts" })
+        ).ast;
+
+        const result: CodeResult = await generate(ast, {
+            file: "index.ts",
+            generator: { indentStyle: "space", oxc: { indentChar: "tab" } },
+            plugins: [
+                {
+                    name: "observe-curated-indent",
+                    generate: (
+                        _ctx: PluginContext,
+                        args: GenerateArgs,
+                    ): null => {
+                        seen.push({
+                            indentWidth: args.options.indentWidth,
+                            indentChar: args.options.oxc.indentChar,
+                        });
+
+                        return null;
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([{ indentWidth: 2, indentChar: "space" }]);
+        expect(result.code).toBe("function f() {\n  return 1;\n}");
+    });
+
+    it("lets createGenerator apply curated options over raw oxc", async (): Promise<void> => {
+        const ast: Ast = (
+            await parse('function f() {\n    return "hello";\n}', {
+                file: "index.ts",
+            })
+        ).ast;
+        const generator: Generator = createGenerator(
+            ast,
+            resolvedGeneratorOptions({
+                singleQuote: true,
+                oxc: resolvedOxcCodegenOptions({
+                    singleQuote: false,
+                    indentChar: "tab",
+                }),
+            }),
+        );
+        const result: CodeResult = await generator.generate();
+
+        expect(result.code).toBe("function f() {\n  return 'hello';\n}");
+    });
+
+    it("rejects invalid raw oxc generator options", async (): Promise<void> => {
+        const ast: Ast = (await parsed()).ast;
+
+        await expect(
+            generate(ast, {
+                file: "index.ts",
+                generator: {
+                    oxc: { sourceMapPath: "custom.map" } as never,
+                },
+            }),
+        ).rejects.toThrow("invalid generator.oxc");
+
+        await expect(
+            generate(ast, {
+                file: "index.ts",
+                generator: {
+                    oxc: { indentChar: "spaces" } as never,
+                },
+            }),
+        ).rejects.toThrow("invalid generator.oxc");
     });
 
     it("exposes the AST language to the generate hook", async (): Promise<void> => {
@@ -339,6 +504,12 @@ describe("generate", (): void => {
             astKeys: Array<string>;
             file: string;
             sourceMap: unknown;
+            singleQuote: boolean;
+            indentStyle: string;
+            indentWidth: number;
+            comments: boolean;
+            minify: boolean;
+            oxc: unknown;
         }> = [];
 
         await generate((await parsed()).ast, {
@@ -347,6 +518,7 @@ describe("generate", (): void => {
                 input: upstreamMap(),
                 output: "external",
             },
+            generator: { singleQuote: true },
             plugins: [
                 {
                     name: "observe-generate",
@@ -359,6 +531,12 @@ describe("generate", (): void => {
                             astKeys: Object.keys(args.ast),
                             file: args.options.file,
                             sourceMap: args.options.sourceMap,
+                            singleQuote: args.options.singleQuote,
+                            indentStyle: args.options.indentStyle,
+                            indentWidth: args.options.indentWidth,
+                            comments: args.options.comments,
+                            minify: args.options.minify,
+                            oxc: args.options.oxc,
                         });
 
                         return null;
@@ -373,6 +551,25 @@ describe("generate", (): void => {
                 astKeys: [],
                 file: "index.ts",
                 sourceMap: { input: null, output: null },
+                singleQuote: true,
+                indentStyle: "space",
+                indentWidth: 2,
+                comments: true,
+                minify: false,
+                oxc: {
+                    singleQuote: true,
+                    minify: false,
+                    asciiOnly: false,
+                    comments: {
+                        normal: true,
+                        jsdoc: true,
+                        annotation: true,
+                        legal: "inline",
+                    },
+                    indentChar: "space",
+                    indentWidth: 2,
+                    initialIndent: 0,
+                },
             },
         ]);
     });

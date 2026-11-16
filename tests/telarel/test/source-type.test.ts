@@ -359,7 +359,7 @@ describe("source type", (): void => {
             ],
         });
 
-        expect(result.code).toBe("if (true) {\n\treturn;\n}");
+        expect(result.code).toBe("if (true) {\n  return;\n}");
         expect(result.map?.mappings.length).toBeGreaterThan(0);
     });
 

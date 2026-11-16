@@ -1,5 +1,5 @@
 import type { CodeResult } from "#/@types/ast";
-import type { GeneratorOptions } from "#/@types/generator";
+import type { ResolvedGeneratorOptions } from "#/@types/generator";
 import type { Ast } from "#/classes/ast";
 
 import { builtinGenerate } from "#/binding";
@@ -14,7 +14,7 @@ import { CompileError } from "#/errors/compile";
  */
 const createGenerator = (
     ast: Ast,
-    options: GeneratorOptions,
+    options: ResolvedGeneratorOptions,
 ): {
     /**
      * Generates code from the fixed AST with the builtin generator.
@@ -30,6 +30,13 @@ const createGenerator = (
                     cwd: options.cwd,
                     file: options.file,
                     sourceMap: options.sourceMap,
+                    singleQuote: options.singleQuote,
+                    asciiOnly: options.asciiOnly,
+                    indentStyle: options.indentStyle,
+                    indentWidth: options.indentWidth,
+                    comments: options.comments,
+                    minify: options.minify,
+                    oxc: options.oxc,
                 });
             } catch (error: unknown) {
                 throw CompileError.from(error);

@@ -47,6 +47,7 @@ async function generate(
             cwd: options?.cwd,
             file: options?.file,
             language: options?.language,
+            generator: options?.generator,
             output: options?.output,
             sourceMap: options?.sourceMap,
             plugins,

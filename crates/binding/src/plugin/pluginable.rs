@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use napi::bindgen_prelude::{
-    Either, Object, Promise, ToNapiValue, Undefined, Unknown,
+    Either, Object, ObjectRef, Promise, ToNapiValue, Undefined, Unknown,
 };
 use napi::sys;
 use napi::threadsafe_function::ThreadsafeFunctionCallMode;
@@ -27,6 +27,10 @@ use telarel_plugin::{
 };
 
 use crate::_types::ast::JsAst;
+use crate::_types::options::{
+    generator_options_to_js, parse_generator_options, parse_parser_options,
+    parser_options_to_js,
+};
 use crate::_types::path::path_label;
 use crate::_types::plugin::hooks::{
     JsCodeOutput, JsGeneratorHookOptions, JsOptionsOutput, JsParseOutput,
@@ -388,6 +392,36 @@ fn finish_transform_batch_output(
     }
 }
 
+/// Holds a returned options bag's rooted plugin descriptors until `to_plugins`
+/// adopts them.
+///
+/// The descriptors arrive already rooted. `ObjectRef`'s `Drop` is a no-op, so
+/// an unmarshal error before `to_plugins` would leak every root. The guard
+/// moves them onto the release list on drop, and `FunctionTask::finally`
+/// drains that list when the compile aborts.
+struct PendingPluginRoots<'a> {
+    descriptors: Option<Vec<ObjectRef<false>>>,
+    refs: &'a Arc<RefList>,
+}
+
+impl PendingPluginRoots<'_> {
+    fn take(&mut self) -> Vec<ObjectRef<false>> {
+        self.descriptors.take().unwrap_or_default()
+    }
+}
+
+impl Drop for PendingPluginRoots<'_> {
+    fn drop(&mut self) {
+        let Some(descriptors) = self.descriptors.take() else {
+            return;
+        };
+
+        for descriptor in descriptors {
+            self.refs.push_ref(SharedRef::from_ref(descriptor));
+        }
+    }
+}
+
 /// Unmarshal an `options` hook return into the pipeline bag on the JS thread,
 /// where the returned plugin descriptors are reachable.
 ///
@@ -403,21 +437,21 @@ fn unmarshal_options(
         return Ok(None);
     };
 
-    // The descriptor references arrive already rooted. The `Option<
-    // JsOptionsOutput>` conversion (`ObjectRef`'s `FromNapiValue`) created one
-    // `napi_create_reference` root per descriptor, owned by `ctx.value` in the
-    // resolution callback. These roots must move onto the release list as-is.
-    // Re-rooting them with `SharedRef::new` (`create_ref`) would leak one
-    // `napi_ref` per descriptor per options call. `ObjectRef`'s `Drop` is a
-    // no-op, so the conversion-created root would stay un-unref'd when the
-    // callback's value drops. `to_plugins` wraps the same roots, as does the
-    // entry bridge in `compile`.
-    //
+    // The `Option<JsOptionsOutput>` conversion (`ObjectRef`'s `FromNapiValue`)
+    // created one `napi_create_reference` root per descriptor, owned by
+    // `ctx.value` in the resolution callback. These roots must move onto the
+    // release list as-is. Re-rooting them with `SharedRef::new` (`create_ref`)
+    // would leak one `napi_ref` per descriptor per options call. `to_plugins`
+    // wraps the same roots. The entry bridge in `compile` does too. The guard
+    // keeps every early error path from dropping them unrooted.
+    let mut pending_plugins: PendingPluginRoots<'_> =
+        PendingPluginRoots { descriptors: output.plugins, refs };
+
     // Parse the scalar fields before touching the descriptor table. The
     // returned bag is the new current bag, and `to_plugins` replaces its
-    // table only after every fallible step succeeds. Any error therefore
-    // leaves the view untouched: the compile aborts and the release list
-    // still drains every rooted descriptor.
+    // table only after every fallible step succeeds. On an error the compile
+    // aborts. `pending_plugins` moves the roots onto the release list for
+    // `FunctionTask::finally`.
     let language: Option<telarel_common::Language> = match &output.language {
         | Some(text) => parse_language(text).map_err(hook_error)?,
         | None => None,
@@ -442,14 +476,26 @@ fn unmarshal_options(
             | None => None,
         };
 
+    let parser: Option<telarel_common::ParserOptions> = match &output.parser {
+        | Some(value) => Some(parse_parser_options(value).map_err(hook_error)?),
+        | None => None,
+    };
+
+    let generator: Option<telarel_common::GeneratorOptions> =
+        match &output.generator {
+            | Some(value) => {
+                Some(parse_generator_options(value).map_err(hook_error)?)
+            },
+            | None => None,
+        };
+
     // The returned bag replaces the whole plugin list, because the wrapper
     // echoes the payload's `plugins` array. An omitted field means the default
     // empty list (see `JsOptionsOutput`'s docs). `to_plugins` bridges the
     // whole bag and replaces the current descriptor view. On failure it
     // releases the rooted references and leaves the view untouched.
     let plugins: Vec<telarel_plugin::SharedPluginable> =
-        to_plugins(env, output.plugins.into_iter().flatten().collect(), refs)
-            .map_err(hook_error)?;
+        to_plugins(env, pending_plugins.take(), refs).map_err(hook_error)?;
 
     let args: OptionsArgs = OptionsArgs {
         options: ResolvableOptions {
@@ -457,6 +503,8 @@ fn unmarshal_options(
             file: output.file,
             language,
             source_type,
+            parser,
+            generator,
             output: output_options,
             source_map,
         },
@@ -600,6 +648,28 @@ async fn call_options_tsfn(
     })?
 }
 
+/// Build the `options` hook payload from the current options bag.
+///
+/// An absent stage group stays `None`, so Telarel omits it from the payload.
+fn options_call(
+    options: &ResolvableOptions,
+    plugins: Vec<SharedRef>,
+) -> OptionsCall {
+    OptionsCall {
+        cwd: options.cwd.as_deref().map(|cwd| SharedStr::new(&path_label(cwd))),
+        file: options.file.as_deref().map(SharedStr::new),
+        language: SharedStr::new(language_label(options.language)),
+        source_type: SharedStr::new(source_type_label(options.source_type)),
+        parser: options.parser.as_ref().map(parser_options_to_js),
+        generator: options.generator.as_ref().map(generator_options_to_js),
+        output: optional_output_options_to_js(options.output.as_ref()),
+        source_map: optional_source_map_options_to_js(
+            options.source_map.as_ref(),
+        ),
+        plugins,
+    }
+}
+
 /// The transform hooks that a JS plugin carries.
 struct TransformHookSet {
     transform: bool,
@@ -659,25 +729,8 @@ impl Pluginable for JsPlugin {
                 return Ok(None);
             };
 
-            let call: OptionsCall = OptionsCall {
-                cwd: args
-                    .options
-                    .cwd
-                    .as_deref()
-                    .map(|cwd| SharedStr::new(&path_label(cwd))),
-                file: args.options.file.as_deref().map(SharedStr::new),
-                language: SharedStr::new(language_label(args.options.language)),
-                source_type: SharedStr::new(source_type_label(
-                    args.options.source_type,
-                )),
-                output: optional_output_options_to_js(
-                    args.options.output.as_ref(),
-                ),
-                source_map: optional_source_map_options_to_js(
-                    args.options.source_map.as_ref(),
-                ),
-                plugins: self.refs.bag_snapshot(),
-            };
+            let call: OptionsCall =
+                options_call(&args.options, self.refs.bag_snapshot());
 
             call_options_tsfn(tsfn, call, &self.refs).await
         })
@@ -1075,7 +1128,9 @@ mod tests {
     use std::path::PathBuf;
 
     use telarel_common::{
-        Language, OutputOptions, SourceMap, SourceMapOptions, SourceType,
+        GeneratorOptions, IndentStyle, Language, OutputOptions, ParserOptions,
+        PartialOxcCodegenOptions, PartialOxcParseOptions, SourceMap,
+        SourceMapOptions, SourceType,
     };
 
     use crate::_types::ast::JsAstInput;
@@ -1105,6 +1160,8 @@ mod tests {
             source_type,
             output: None,
             source_map: None,
+            parser: None,
+            generator: None,
             plugins: None,
         }
     }
@@ -1160,7 +1217,178 @@ mod tests {
         assert_eq!(outcome.options.source_type, None);
         assert!(outcome.options.output.is_none());
         assert!(outcome.options.source_map.is_none());
+        assert!(outcome.options.parser.is_none());
+        assert!(outcome.options.generator.is_none());
         assert!(outcome.plugins.is_empty());
+    }
+
+    #[test]
+    fn test_unmarshal_options_bag_preserves_echoed_groups() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.parser = Some(serde_json::json!({
+            "preserveParens": true,
+            "allowReturnOutsideFunction": true,
+            "oxc": { "enableIdentHashes": false },
+        }));
+
+        bag.generator = Some(serde_json::json!({
+            "singleQuote": true,
+            "asciiOnly": true,
+            "indentStyle": "tab",
+            "indentWidth": 4,
+            "comments": false,
+            "minify": true,
+            "oxc": { "initialIndent": 1 },
+        }));
+
+        let outcome: OptionsArgs = unmarshal_options(Some(bag), &env, &refs)
+            .unwrap()
+            .expect("a returned bag is Some");
+
+        let parser: ParserOptions =
+            outcome.options.parser.expect("the parser group is carried");
+
+        assert_eq!(parser.preserve_parens, Some(true));
+        assert_eq!(parser.allow_return_outside_function, Some(true));
+        assert_eq!(
+            parser.oxc.expect("raw oxc is carried").enable_ident_hashes,
+            Some(false)
+        );
+
+        let generator: GeneratorOptions =
+            outcome.options.generator.expect("the generator group is carried");
+
+        assert_eq!(generator.single_quote, Some(true));
+        assert_eq!(generator.ascii_only, Some(true));
+        assert_eq!(generator.indent_style, Some(IndentStyle::Tab));
+        assert_eq!(generator.indent_width, Some(4));
+        assert_eq!(generator.comments, Some(false));
+        assert_eq!(generator.minify, Some(true));
+        assert_eq!(
+            generator.oxc.expect("raw oxc is carried").initial_indent,
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn test_options_call_payload_carries_stage_groups() {
+        let options: ResolvableOptions = ResolvableOptions {
+            parser: Some(ParserOptions {
+                preserve_parens: Some(true),
+                allow_return_outside_function: Some(true),
+                oxc: Some(PartialOxcParseOptions {
+                    enable_ident_hashes: Some(false),
+                    ..PartialOxcParseOptions::default()
+                }),
+            }),
+            generator: Some(GeneratorOptions {
+                single_quote: Some(true),
+                indent_style: Some(IndentStyle::Tab),
+                oxc: Some(PartialOxcCodegenOptions {
+                    indent_width: Some(4),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+                ..GeneratorOptions::default()
+            }),
+            ..ResolvableOptions::default()
+        };
+
+        let call: OptionsCall = options_call(&options, Vec::new());
+
+        let parser: serde_json::Value =
+            call.parser.expect("the payload carries the parser group");
+        assert_eq!(parser["preserveParens"], serde_json::json!(true));
+        assert_eq!(
+            parser["allowReturnOutsideFunction"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            parser["oxc"],
+            serde_json::json!({ "enableIdentHashes": false })
+        );
+
+        let generator: serde_json::Value =
+            call.generator.expect("the payload carries the generator group");
+        assert_eq!(generator["singleQuote"], serde_json::json!(true));
+        assert_eq!(generator["indentStyle"], serde_json::json!("tab"));
+        assert_eq!(generator["oxc"], serde_json::json!({ "indentWidth": 4 }));
+    }
+
+    #[test]
+    fn test_options_call_payload_omits_absent_stage_groups() {
+        let call: OptionsCall =
+            options_call(&ResolvableOptions::default(), Vec::new());
+
+        assert!(call.parser.is_none());
+        assert!(call.generator.is_none());
+    }
+
+    #[test]
+    fn test_unmarshal_options_bag_invalid_parser_group_errors() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.parser = Some(serde_json::json!({ "sourceMapPath": "a.map" }));
+
+        let error: PluginError = unmarshal_options(Some(bag), &env, &refs)
+            .expect_err("an unknown parser field is the hook error");
+
+        assert!(
+            error.to_string().contains("invalid parser options"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn test_unmarshal_options_bag_invalid_generator_group_errors() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.generator = Some(serde_json::json!({
+            "indentStyle": "tabs",
+        }));
+
+        let error: PluginError = unmarshal_options(Some(bag), &env, &refs)
+            .expect_err("an invalid generator field is the hook error");
+
+        assert!(
+            error.to_string().contains("invalid generator options"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn test_unmarshal_options_bag_invalid_raw_oxc_errors() {
+        let env: Env = env();
+        let refs: Arc<RefList> = Arc::new(RefList::new());
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.parser =
+            Some(serde_json::json!({ "oxc": { "sourceMapPath": "a.map" } }));
+
+        let error: PluginError = unmarshal_options(Some(bag), &env, &refs)
+            .expect_err("an unknown raw parser field is the hook error");
+
+        assert!(error.to_string().contains("invalid parser.oxc"), "{error}");
+
+        let mut bag: JsOptionsOutput = output(None, None, None, None);
+
+        bag.generator =
+            Some(serde_json::json!({ "oxc": { "indentChar": "spaces" } }));
+
+        let error: PluginError = unmarshal_options(Some(bag), &env, &refs)
+            .expect_err("an invalid raw indentChar is the hook error");
+
+        assert!(error.to_string().contains("invalid generator.oxc"), "{error}");
     }
 
     #[test]

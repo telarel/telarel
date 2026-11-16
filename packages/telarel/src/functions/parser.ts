@@ -1,5 +1,5 @@
 import type { AstResult } from "#/@types/ast";
-import type { ParserOptions } from "#/@types/parser";
+import type { ResolvedParserOptions } from "#/@types/parser";
 import type { Program } from "#/@types/program";
 
 import { builtinParse } from "#/binding";
@@ -14,7 +14,7 @@ import { CompileError } from "#/errors/compile";
  */
 const createParser = (
     code: string,
-    options: ParserOptions,
+    options: ResolvedParserOptions,
 ): {
     /**
      * Parses the fixed source text with the builtin parser.
@@ -33,6 +33,10 @@ const createParser = (
                         language: options.language,
                         sourceType: options.sourceType,
                         sourceMap: options.sourceMap,
+                        preserveParens: options.preserveParens,
+                        allowReturnOutsideFunction:
+                            options.allowReturnOutsideFunction,
+                        oxc: options.oxc,
                     });
 
                 ast = new Ast({

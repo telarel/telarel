@@ -29,9 +29,11 @@ mod tests {
     use std::sync::Mutex;
 
     use telarel_common::{
-        Ast, CodeResult, CompileError, GenerateOptions, OutputOptions,
-        OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
-        ResolvedOptions, SourceMap, SourceMapOptions, SourceType,
+        Ast, CodeResult, CompileError, GenerateOptions, GeneratorOptions,
+        IndentStyle, OutputOptions, OutputSourceMap, OutputSourceMapMode,
+        OutputSourceMapOptions, PartialOxcCodegenOptions,
+        ResolvedGeneratorOptions, ResolvedOptions, SourceMap, SourceMapOptions,
+        SourceType,
     };
     use telarel_plugin::{
         GenerateArgs, GenerateReturn, HookUsage, Plugin, PluginContext,
@@ -39,8 +41,9 @@ mod tests {
     };
 
     use crate::common::test_util::{
-        EndObserverPlugin, GenerateOptionsObserverPlugin, GenerateOutcome,
-        GenerateOutcomePlugin, OptionsObserverPlugin, SpyPlugin,
+        EndObserverPlugin, GenerateHookOptionsObserverPlugin,
+        GenerateOptionsObserverPlugin, GenerateOutcome, GenerateOutcomePlugin,
+        OptionsGroupsPlugin, OptionsObserverPlugin, SpyPlugin,
         StartObserverPlugin, first_token, input_map, input_value, output_mode,
         parse_as, parse_fixture, parse_with_map, sample_map,
     };
@@ -558,5 +561,69 @@ mod tests {
             *log.lock().unwrap(),
             vec![String::from("a"), String::from("fail-generate")],
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_options_hook_changes_generated_code() {
+        let ast: Ast = parse_fixture("const a = \"hello\";").unwrap();
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(OptionsGroupsPlugin::new(
+                None,
+                Some(GeneratorOptions {
+                    single_quote: Some(true),
+                    ..GeneratorOptions::default()
+                }),
+            ))];
+
+        let result: CodeResult =
+            generate(ast, GenerateOptions::default(), plugins)
+                .await
+                .expect("generate succeeds");
+
+        assert_eq!(result.code, "const a = 'hello';");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_generate_hook_sees_resolved_generator_options() {
+        let seen: Arc<Mutex<Vec<ResolvedGeneratorOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let ast: Ast = parse_fixture("function f() {\nreturn;\n}").unwrap();
+
+        let options: GenerateOptions = GenerateOptions {
+            generator: Some(GeneratorOptions {
+                single_quote: Some(true),
+                ascii_only: Some(true),
+                indent_style: Some(IndentStyle::Tab),
+                indent_width: Some(4),
+                comments: Some(false),
+                minify: Some(true),
+                oxc: Some(PartialOxcCodegenOptions {
+                    initial_indent: Some(1),
+                    ..PartialOxcCodegenOptions::default()
+                }),
+            }),
+            ..GenerateOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> = vec![Plugin::new_shared(
+            GenerateHookOptionsObserverPlugin::new(&seen),
+        )];
+
+        generate(ast, options, plugins).await.expect("generate succeeds");
+
+        let seen: Vec<ResolvedGeneratorOptions> = seen.lock().unwrap().clone();
+
+        assert_eq!(seen.len(), 1);
+        assert!(seen[0].single_quote);
+        assert!(seen[0].ascii_only);
+        assert_eq!(seen[0].indent_style, IndentStyle::Tab);
+        assert_eq!(seen[0].indent_width, 4);
+        assert!(!seen[0].comments);
+        assert!(seen[0].minify);
+        assert_eq!(seen[0].oxc.indent_char, oxc::codegen::IndentChar::Tab);
+        assert_eq!(seen[0].oxc.indent_width, 4);
+        assert_eq!(seen[0].oxc.initial_indent, 1);
     }
 }

@@ -28,16 +28,20 @@ mod tests {
 
     use tempfile::TempDir;
 
+    use oxc::ast::ast::{Expression, Statement};
+
     use telarel_common::{
         AstResult, CompileError, InputSourceMap, InputSourceMapMode,
-        ParseOptions, SourceMap, append_inline_source_map,
+        ParseOptions, ParserOptions, PartialOxcParseOptions,
+        ResolvedParserOptions, SourceMap, append_inline_source_map,
     };
     use telarel_plugin::{Plugin, SharedPluginable};
 
     use crate::common::test_util::{
-        EndObserverPlugin, FailPlugin, FailStage, ParseOutcome,
-        ParseOutcomePlugin, ParseWithMapPlugin, SpyPlugin, assert_same_map,
-        input_map, path_buf, sample_map, temp_dir,
+        EndObserverPlugin, FailPlugin, FailStage, OptionsGroupsPlugin,
+        ParseHookOptionsObserverPlugin, ParseOutcome, ParseOutcomePlugin,
+        ParseWithMapPlugin, SpyPlugin, assert_same_map, input_map, path_buf,
+        sample_map, temp_dir,
     };
 
     use super::parse;
@@ -427,5 +431,79 @@ mod tests {
         .expect("parse succeeds");
 
         assert_eq!(result.ast.source().as_ref(), "let builtin;");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_parse_options_hook_changes_parse_output() {
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(OptionsGroupsPlugin::new(
+                Some(ParserOptions {
+                    preserve_parens: Some(true),
+                    ..ParserOptions::default()
+                }),
+                None,
+            ))];
+
+        let result: AstResult = parse(
+            String::from("const a = (1);"),
+            ParseOptions::default(),
+            plugins,
+        )
+        .await
+        .expect("parse succeeds");
+
+        let Statement::VariableDeclaration(declaration) =
+            &result.ast.program().body[0]
+        else {
+            panic!("expected a variable declaration");
+        };
+
+        let initializer: &Expression<'_> = declaration
+            .declarations
+            .first()
+            .and_then(|declarator| declarator.init.as_ref())
+            .expect("declaration has an initializer");
+
+        assert!(matches!(initializer, Expression::ParenthesizedExpression(_)));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_parse_hook_sees_resolved_parser_options() {
+        let seen: Arc<Mutex<Vec<ResolvedParserOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let options: ParseOptions = ParseOptions {
+            parser: Some(ParserOptions {
+                preserve_parens: Some(true),
+                allow_return_outside_function: Some(true),
+                oxc: Some(PartialOxcParseOptions {
+                    enable_ident_hashes: Some(false),
+                    ..PartialOxcParseOptions::default()
+                }),
+            }),
+            input_source_map: Some(input_map(sample_map("upstream.ts", 3))),
+            ..ParseOptions::default()
+        };
+
+        let plugins: Vec<SharedPluginable> = vec![Plugin::new_shared(
+            ParseHookOptionsObserverPlugin::new(&seen),
+        )];
+
+        parse(String::from("const a = (1);"), options, plugins)
+            .await
+            .expect("parse succeeds");
+
+        let seen: Vec<ResolvedParserOptions> = seen.lock().unwrap().clone();
+
+        assert_eq!(seen.len(), 1);
+        assert!(seen[0].preserve_parens);
+        assert!(seen[0].allow_return_outside_function);
+        assert!(seen[0].oxc.preserve_parens);
+        assert!(seen[0].oxc.allow_return_outside_function);
+        assert!(!seen[0].oxc.enable_ident_hashes);
+        assert!(
+            seen[0].source_map.input.is_some(),
+            "the parse hook must see the input request"
+        );
     }
 }

@@ -1,8 +1,10 @@
-use crate::_types::options::builtin::parser::ParserOptions;
+use crate::_types::options::OxcParseOptions;
+use crate::_types::options::builtin::parser::ResolvedParserOptions;
 use crate::ast::ast::Ast;
-use crate::ast::parse::{ParseAstOptions, parse_ast};
+use crate::ast::parse::{ParseAstOptions, parse_ast_with_parser_options};
 use crate::ast::result::AstResult;
 use crate::errors::compile::CompileError;
+use crate::helpers::resolve::apply_curated_parser_options;
 use crate::sourcemap::SourceMap;
 use crate::sourcemap::inline::strip_consumed_inline_source_map_comment;
 use crate::sourcemap::resolve::resolve_input_source_map;
@@ -11,14 +13,14 @@ use crate::sourcemap::resolve::resolve_input_source_map;
 #[derive(Debug, Clone)]
 pub struct Parser {
     code: String,
-    options: ParserOptions,
+    options: ResolvedParserOptions,
 }
 
 impl Parser {
     /// Create a parser over `code`.
     pub fn new(
         code: String,
-        options: ParserOptions,
+        options: ResolvedParserOptions,
     ) -> Self {
         Self { code, options }
     }
@@ -36,7 +38,15 @@ impl Parser {
             | None => None,
         };
 
-        let mut ast: Ast = parse_ast(
+        let mut parser_options: OxcParseOptions = self.options.oxc;
+
+        apply_curated_parser_options(
+            &mut parser_options,
+            Some(self.options.preserve_parens),
+            Some(self.options.allow_return_outside_function),
+        );
+
+        let mut ast: Ast = parse_ast_with_parser_options(
             self.code,
             ParseAstOptions {
                 cwd: self.options.cwd.clone(),
@@ -45,6 +55,7 @@ impl Parser {
                 source_type: Some(self.options.source_type),
                 input_map,
             },
+            parser_options,
         )?;
 
         if let Some(input) = self.options.source_map.input.as_ref() {
@@ -59,7 +70,7 @@ impl Parser {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use oxc::ast::ast::Comment;
+    use oxc::ast::ast::{Comment, Expression, Statement};
     use oxc_sourcemap::SourceMapBuilder;
     use tempfile::TempDir;
 
@@ -70,8 +81,9 @@ mod tests {
         InputSourceMap, InputSourceMapMode, InputSourceMapOptions,
     };
     use crate::ast::ast::Ast;
+    use crate::helpers::resolve::default_parser_oxc;
     use crate::helpers::test_util::{
-        comment_text, path_buf, temp_dir, write_file,
+        comment_text, first_initializer, path_buf, temp_dir, write_file,
     };
     use crate::sourcemap::inline::append_inline_source_map;
 
@@ -98,13 +110,16 @@ mod tests {
         cwd: &Path,
         file: &str,
         source_map: SourceMapOptions,
-    ) -> ParserOptions {
-        ParserOptions {
+    ) -> ResolvedParserOptions {
+        ResolvedParserOptions {
             cwd: cwd.to_path_buf(),
             file: file.to_string(),
             language: Language::TS,
             source_type: SourceType::Unambiguous,
             source_map,
+            preserve_parens: false,
+            allow_return_outside_function: false,
+            oxc: default_parser_oxc(),
         }
     }
 
@@ -137,12 +152,15 @@ mod tests {
     fn test_parse_respects_concrete_language_and_source_type() {
         let parser: Parser = Parser::new(
             String::from("const a: number = 1;"),
-            ParserOptions {
+            ResolvedParserOptions {
                 cwd: PathBuf::new(),
                 file: String::from("app.js"),
                 language: Language::TS,
                 source_type: SourceType::Script,
                 source_map: SourceMapOptions::default(),
+                preserve_parens: false,
+                allow_return_outside_function: false,
+                oxc: default_parser_oxc(),
             },
         );
 
@@ -163,6 +181,92 @@ mod tests {
         let error: CompileError = result.expect_err("invalid syntax errors");
 
         assert!(error.to_string().contains("index.ts"));
+    }
+
+    #[test]
+    fn test_parse_preserve_parens_false_removes_parenthesized_expression() {
+        let result: AstResult = Parser::new(
+            String::from("const a = (1);"),
+            options(Path::new(""), "index.ts", SourceMapOptions::default()),
+        )
+        .parse()
+        .expect("valid source parses");
+
+        assert!(matches!(
+            first_initializer(&result.ast),
+            Expression::NumericLiteral(_),
+        ));
+    }
+
+    #[test]
+    fn test_parse_preserve_parens_true_keeps_parenthesized_expression() {
+        let mut parser_options: ResolvedParserOptions =
+            options(Path::new(""), "index.ts", SourceMapOptions::default());
+
+        parser_options.preserve_parens = true;
+
+        let result: AstResult =
+            Parser::new(String::from("const a = (1);"), parser_options)
+                .parse()
+                .expect("valid source parses");
+
+        assert!(matches!(
+            first_initializer(&result.ast),
+            Expression::ParenthesizedExpression(_),
+        ));
+    }
+
+    #[test]
+    fn test_parse_rejects_top_level_return_by_default() {
+        let result: Result<AstResult, CompileError> = Parser::new(
+            String::from("return;"),
+            options(Path::new(""), "index.ts", SourceMapOptions::default()),
+        )
+        .parse();
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_allow_return_outside_function_accepts_top_level_return() {
+        let mut parser_options: ResolvedParserOptions =
+            options(Path::new(""), "index.ts", SourceMapOptions::default());
+
+        parser_options.allow_return_outside_function = true;
+
+        let result: AstResult =
+            Parser::new(String::from("return;"), parser_options)
+                .parse()
+                .expect("top-level return is accepted");
+
+        assert!(matches!(
+            &result.ast.program().body[0],
+            Statement::ReturnStatement(_),
+        ));
+    }
+
+    #[test]
+    fn test_parse_uses_raw_oxc_parser_options() {
+        let mut parser_options: ResolvedParserOptions =
+            options(Path::new(""), "index.ts", SourceMapOptions::default());
+
+        parser_options.oxc.allow_v8_intrinsics = true;
+
+        let result: AstResult =
+            Parser::new(String::from("%DebugPrint('x')"), parser_options)
+                .parse()
+                .expect("v8 intrinsic parses when enabled");
+
+        let Statement::ExpressionStatement(statement) =
+            &result.ast.program().body[0]
+        else {
+            panic!("expected an expression statement");
+        };
+
+        assert!(matches!(
+            &statement.expression,
+            Expression::V8IntrinsicExpression(_),
+        ));
     }
 
     #[test]

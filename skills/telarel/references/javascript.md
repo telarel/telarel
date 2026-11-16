@@ -15,6 +15,7 @@ import type {
     Generator,
     Parser,
     PluginOption,
+    ResolvedOxcCodegenOptions,
 } from "telarel";
 
 import {
@@ -35,6 +36,8 @@ import { walk } from "telarel/walker";
 
 `telarel` also re-exports `transform`; the documented entry point is `telarel/plugins/transform`. Every entry-point option type also accepts `cwd` (default `process.cwd()`); `CompileOptions` lists it.
 
+`parser` and `generator` are optional groups. Each is a partial override patch: only fields set in `oxc` override the Telarel defaults, `oxc: {}` changes nothing, and a curated field wins over its raw counterpart, except for `comments` (see [generator options](https://telarel.github.io/apis#generator-options)). Resolved `oxc` values are the full effective object.
+
 ## `compile`
 
 ```ts
@@ -46,21 +49,26 @@ Runs parse, prepare, transform, finalize, and generate.
 ```ts
 const result: CodeResult = await compile("const x: number = 1;", {
     file: "src/index.ts",
+    generator: { oxc: { initialIndent: 1 } },
     plugins: [transform({ targets: ["es2015"] })],
 });
 ```
 
+`generator.oxc` sets only the raw initial indentation; every other generator setting keeps its resolved default.
+
 ### `CompileOptions`
 
-| Field        | Type               | Default         | Description                                       |
-| ------------ | ------------------ | --------------- | ------------------------------------------------- |
-| `cwd`        | `string`           | `process.cwd()` | Current working directory.                        |
-| `file`       | `string`           | `index.ts`      | Input file. The extension infers the grammar.     |
-| `language`   | `Language`         | inferred        | Grammar. Overrides extension inference.           |
-| `sourceType` | `SourceType`       | inferred        | Module kind. Overrides the grammar's module kind. |
-| `output`     | `OutputOptions`    | unset           | `{ file?: string }`. Labels the generated code.   |
-| `sourceMap`  | `SourceMapOptions` | off             | Input and output source-map requests.             |
-| `plugins`    | `PluginOption[]`   | `[]`            | Plugins to run.                                   |
+| Field        | Type               | Default         | Description                                                                  |
+| ------------ | ------------------ | --------------- | ---------------------------------------------------------------------------- |
+| `cwd`        | `string`           | `process.cwd()` | Current working directory.                                                   |
+| `file`       | `string`           | `index.ts`      | Input file. The extension infers the grammar.                                |
+| `language`   | `Language`         | inferred        | Grammar. Overrides extension inference.                                      |
+| `sourceType` | `SourceType`       | inferred        | Module kind. Overrides the grammar's module kind.                            |
+| `parser`     | `ParserOptions`    | unset           | [Parser-stage options](https://telarel.github.io/apis#parser-options).       |
+| `generator`  | `GeneratorOptions` | unset           | [Generator-stage options](https://telarel.github.io/apis#generator-options). |
+| `output`     | `OutputOptions`    | unset           | `{ file?: string }`. Labels the generated code.                              |
+| `sourceMap`  | `SourceMapOptions` | off             | Input and output source-map requests.                                        |
+| `plugins`    | `PluginOption[]`   | `[]`            | Plugins to run.                                                              |
 
 Without the transform plugin, `compile` parses and regenerates the source but does not lower TypeScript, modern syntax, or JSX.
 
@@ -74,13 +82,14 @@ Parses source text into an AST. Plugins can replace the parse result.
 
 ### `ParseOptions`
 
-| Field            | Type             | Default    | Description               |
-| ---------------- | ---------------- | ---------- | ------------------------- |
-| `file`           | `string`         | `index.ts` | Input file.               |
-| `language`       | `Language`       | inferred   | Grammar.                  |
-| `sourceType`     | `SourceType`     | inferred   | Module kind.              |
-| `inputSourceMap` | `InputSourceMap` | off        | Input source-map request. |
-| `plugins`        | `PluginOption[]` | `[]`       | Plugins to run.           |
+| Field            | Type             | Default    | Description                                                            |
+| ---------------- | ---------------- | ---------- | ---------------------------------------------------------------------- |
+| `file`           | `string`         | `index.ts` | Input file.                                                            |
+| `language`       | `Language`       | inferred   | Grammar.                                                               |
+| `sourceType`     | `SourceType`     | inferred   | Module kind.                                                           |
+| `parser`         | `ParserOptions`  | unset      | [Parser-stage options](https://telarel.github.io/apis#parser-options). |
+| `inputSourceMap` | `InputSourceMap` | off        | Input source-map request.                                              |
+| `plugins`        | `PluginOption[]` | `[]`       | Plugins to run.                                                        |
 
 `parse` returns `{ ast }` and has no output map. `inputSourceMap` is normalized to `sourceMap.input` for the options hook. A plugin-set `sourceMap.output` or `output` is ignored.
 
@@ -126,13 +135,14 @@ Generates code from an AST. It runs only the generate stage.
 
 ### `GenerateOptions`
 
-| Field       | Type               | Default    | Description                                                              |
-| ----------- | ------------------ | ---------- | ------------------------------------------------------------------------ |
-| `file`      | `string`           | `index.ts` | Output file hint and final grammar fallback.                             |
-| `language`  | `Language`         | inferred   | Grammar. Overrides the AST language; the file extension is the fallback. |
-| `output`    | `OutputOptions`    | unset      | `{ file?: string }`. Labels the generated code.                          |
-| `sourceMap` | `SourceMapOptions` | off        | Input and output source-map requests.                                    |
-| `plugins`   | `PluginOption[]`   | `[]`       | Plugins to run.                                                          |
+| Field       | Type               | Default    | Description                                                                  |
+| ----------- | ------------------ | ---------- | ---------------------------------------------------------------------------- |
+| `file`      | `string`           | `index.ts` | Output file hint and final grammar fallback.                                 |
+| `language`  | `Language`         | inferred   | Grammar. Overrides the AST language; the file extension is the fallback.     |
+| `generator` | `GeneratorOptions` | unset      | [Generator-stage options](https://telarel.github.io/apis#generator-options). |
+| `output`    | `OutputOptions`    | unset      | `{ file?: string }`. Labels the generated code.                              |
+| `sourceMap` | `SourceMapOptions` | off        | Input and output source-map requests.                                        |
+| `plugins`   | `PluginOption[]`   | `[]`       | Plugins to run.                                                              |
 
 `generate` has no `sourceType` option. `ast.program.sourceType` owns the module kind; an `options` hook can still replace it before generation. An explicit `language` overrides the AST language for generation:
 
@@ -164,22 +174,57 @@ Runs prepare, transform, finalize, and generate on an existing AST. It does not 
 
 ### `CompileFromAstOptions`
 
-| Field        | Type               | Default                    | Description                           |
-| ------------ | ------------------ | -------------------------- | ------------------------------------- |
-| `file`       | `string`           | `index.ts`                 | Input file.                           |
-| `language`   | `Language`         | AST language, then file    | Grammar.                              |
-| `sourceType` | `SourceType`       | AST module kind, then file | Module kind.                          |
-| `output`     | `OutputOptions`    | unset                      | `{ file?: string }`.                  |
-| `sourceMap`  | `SourceMapOptions` | off                        | Input and output source-map requests. |
-| `plugins`    | `PluginOption[]`   | `[]`                       | Plugins to run.                       |
+| Field        | Type               | Default                    | Description                                                                  |
+| ------------ | ------------------ | -------------------------- | ---------------------------------------------------------------------------- |
+| `file`       | `string`           | `index.ts`                 | Input file.                                                                  |
+| `language`   | `Language`         | AST language, then file    | Grammar.                                                                     |
+| `sourceType` | `SourceType`       | AST module kind, then file | Module kind.                                                                 |
+| `generator`  | `GeneratorOptions` | unset                      | [Generator-stage options](https://telarel.github.io/apis#generator-options). |
+| `output`     | `OutputOptions`    | unset                      | `{ file?: string }`.                                                         |
+| `sourceMap`  | `SourceMapOptions` | off                        | Input and output source-map requests.                                        |
+| `plugins`    | `PluginOption[]`   | `[]`                       | Plugins to run.                                                              |
 
 The input AST's source text and spans must stay consistent. Build a new `Ast` when you need different source text.
 
 ## Builtin Constructors
 
-`createParser` and `createGenerator` call the builtin stages directly. They do not run the plugin chain and take fully resolved options, so every field is required. `ParserOptions` has `cwd`, `file`, `language`, `sourceType`, and `sourceMap`; `GeneratorOptions` has `cwd`, `file`, and `sourceMap`.
+`createParser` and `createGenerator` call the builtin stages directly. They do not run the plugin chain and take fully resolved options, so every field is required. `ResolvedParserOptions` adds `preserveParens`, `allowReturnOutsideFunction`, and the full effective `ResolvedOxcParserOptions` to `cwd`, `file`, `language`, `sourceType`, and `sourceMap`. `ResolvedGeneratorOptions` adds the generator fields and the full effective `ResolvedOxcCodegenOptions` to `cwd`, `file`, and `sourceMap`.
 
 `createGenerator` applies `sourceMap.input` and `sourceMap.output` standalone. Inside a `generate` hook, pass `args.options` unchanged; the pipeline has resolved the input and owns output delivery.
+
+A resolved `oxc` object sets every field. This object matches the Telarel defaults:
+
+```ts
+const { ast }: AstResult = await parse("const x: number = 1;");
+
+const resolvedOxc: ResolvedOxcCodegenOptions = {
+    singleQuote: false,
+    minify: false,
+    asciiOnly: false,
+    comments: {
+        normal: true,
+        jsdoc: true,
+        annotation: true,
+        legal: "inline",
+    },
+    indentChar: "space",
+    indentWidth: 2,
+    initialIndent: 0,
+};
+
+const generator: Generator = createGenerator(ast, {
+    cwd: process.cwd(),
+    file: "index.ts",
+    sourceMap: {},
+    singleQuote: false,
+    asciiOnly: false,
+    indentStyle: "space",
+    indentWidth: 2,
+    comments: true,
+    minify: false,
+    oxc: resolvedOxc,
+});
+```
 
 ## `Ast`
 

@@ -9,11 +9,13 @@ use oxc::span::{SourceType as OxcSourceType, Span};
 
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::{SourceType, with_module_kind};
+use crate::_types::options::OxcParseOptions;
 use crate::ast::ast::Ast;
 use crate::contexts::compile::CompileContext;
 use crate::errors::compile::CompileError;
 use crate::helpers::resolve::{
-    from_oxc_language, from_oxc_module_kind, resolve_grammar,
+    default_parser_oxc, from_oxc_language, from_oxc_module_kind,
+    resolve_grammar,
 };
 use crate::sourcemap::SourceMap;
 
@@ -98,10 +100,24 @@ fn parse_error(
     None
 }
 
-/// Parse source code into a [`Program`] borrowed from `allocator`.
+/// Parse source code into a [`Program`] borrowed from `allocator`, using the
+/// Telarel parser defaults.
 pub fn parse_program<'ctx, 'a>(
     code: &'a str,
     options: ParseProgramOptions<'ctx, 'a>,
+) -> Result<ParseProgramResult<'a>, CompileError> {
+    parse_program_with_parser_options(code, options, default_parser_oxc())
+}
+
+/// Parse source code into a [`Program`] borrowed from `allocator`, using the
+/// supplied raw oxc parser options.
+///
+/// Telarel defaults are not applied: `parser_options` is used verbatim. Use
+/// [`parse_program`] for the Telarel defaults.
+pub fn parse_program_with_parser_options<'ctx, 'a>(
+    code: &'a str,
+    options: ParseProgramOptions<'ctx, 'a>,
+    parser_options: OxcParseOptions,
 ) -> Result<ParseProgramResult<'a>, CompileError> {
     let grammar: OxcSourceType =
         resolve_grammar(options.file, options.language);
@@ -112,7 +128,9 @@ pub fn parse_program<'ctx, 'a>(
     };
 
     let parser_return: oxc::parser::ParserReturn<'_> =
-        Parser::new(options.allocator, code, source_type).parse();
+        Parser::new(options.allocator, code, source_type)
+            .with_options(parser_options)
+            .parse();
 
     if let Some(error) = parse_error(options.context, &parser_return) {
         return Err(error);
@@ -121,10 +139,23 @@ pub fn parse_program<'ctx, 'a>(
     Ok(ParseProgramResult { program: parser_return.program })
 }
 
-/// Parse source code into an owned [`Ast`].
+/// Parse source code into an owned [`Ast`], using the Telarel parser defaults.
 pub fn parse_ast(
     code: String,
     options: ParseAstOptions,
+) -> Result<Ast, CompileError> {
+    parse_ast_with_parser_options(code, options, default_parser_oxc())
+}
+
+/// Parse source code into an owned [`Ast`], using the supplied raw oxc parser
+/// options.
+///
+/// Telarel defaults are not applied: `parser_options` is used verbatim. Use
+/// [`parse_ast`] for the Telarel defaults.
+pub fn parse_ast_with_parser_options(
+    code: String,
+    options: ParseAstOptions,
+    parser_options: OxcParseOptions,
 ) -> Result<Ast, CompileError> {
     let grammar: OxcSourceType =
         resolve_grammar(&options.file, options.language);
@@ -149,7 +180,9 @@ pub fn parse_ast(
         options.input_map,
         |src: &str, allocator: &Allocator| {
             let parser_return: oxc::parser::ParserReturn<'_> =
-                Parser::new(allocator, src, raw_source_type).parse();
+                Parser::new(allocator, src, raw_source_type)
+                    .with_options(parser_options)
+                    .parse();
 
             if let Some(error) = parse_error(&context, &parser_return) {
                 return Err(error);
@@ -165,9 +198,11 @@ mod tests {
     use std::path::Path;
 
     use oxc::allocator::Allocator;
+    use oxc::ast::ast::{Expression, Statement};
     use oxc_sourcemap::SourceMapBuilder;
 
     use crate::_types::grammar::language::grammar_source_type;
+    use crate::helpers::test_util::first_initializer;
 
     use super::*;
 
@@ -319,6 +354,117 @@ mod tests {
 
         assert_eq!(clone.program().body.len(), ast.program().body.len());
         assert_eq!(clone.program().source_text, ast.program().source_text);
+    }
+
+    #[test]
+    fn test_parse_ast_default_removes_parenthesized_expression() {
+        let ast: Ast = parse_ast_code(FILE, None, None, "const a = (1);")
+            .expect("valid source parses");
+
+        assert!(matches!(
+            first_initializer(&ast),
+            Expression::NumericLiteral(_),
+        ));
+    }
+
+    #[test]
+    fn test_parse_ast_with_parser_options_preserves_parens() {
+        let options: ParseAstOptions = ParseAstOptions {
+            cwd: PathBuf::new(),
+            file: FILE.to_string(),
+            language: None,
+            source_type: None,
+            input_map: None,
+        };
+
+        let ast: Ast = parse_ast_with_parser_options(
+            String::from("const a = (1);"),
+            options,
+            OxcParseOptions {
+                preserve_parens: true,
+                ..OxcParseOptions::default()
+            },
+        )
+        .expect("valid source parses");
+
+        assert!(matches!(
+            first_initializer(&ast),
+            Expression::ParenthesizedExpression(_),
+        ));
+    }
+
+    #[test]
+    fn test_parse_program_with_parser_options_preserves_parens() {
+        let allocator: Allocator = Allocator::default();
+        let code: &str = "const a = (1);";
+        let context: CompileContext<'_> =
+            CompileContext::new(Path::new(""), FILE, code);
+
+        let options: ParseProgramOptions<'_, '_> = ParseProgramOptions {
+            context: &context,
+            allocator: &allocator,
+            file: FILE,
+            language: None,
+            source_type: None,
+        };
+
+        let result: ParseProgramResult<'_> = parse_program_with_parser_options(
+            code,
+            options,
+            OxcParseOptions {
+                preserve_parens: true,
+                ..OxcParseOptions::default()
+            },
+        )
+        .expect("valid source parses");
+
+        let Statement::VariableDeclaration(declaration) =
+            &result.program.body[0]
+        else {
+            panic!("expected a variable declaration");
+        };
+
+        let init: &Expression<'_> = declaration
+            .declarations
+            .first()
+            .and_then(|declarator| declarator.init.as_ref())
+            .expect("declaration has an initializer");
+
+        assert!(matches!(init, Expression::ParenthesizedExpression(_),));
+    }
+
+    #[test]
+    fn test_parse_ast_default_rejects_top_level_return() {
+        let result: Result<Ast, CompileError> =
+            parse_ast_code(FILE, None, None, "return;");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ast_with_parser_options_allows_top_level_return() {
+        let options: ParseAstOptions = ParseAstOptions {
+            cwd: PathBuf::new(),
+            file: FILE.to_string(),
+            language: None,
+            source_type: None,
+            input_map: None,
+        };
+
+        let ast: Ast = parse_ast_with_parser_options(
+            String::from("return;"),
+            options,
+            OxcParseOptions {
+                allow_return_outside_function: true,
+                ..OxcParseOptions::default()
+            },
+        )
+        .expect("top-level return is accepted");
+
+        assert!(matches!(
+            &ast.program().body[0],
+            Statement::ReturnStatement(_),
+        ));
     }
 
     #[test]

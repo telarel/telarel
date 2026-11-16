@@ -9,11 +9,11 @@
 //! `options`-fixpoint failure, where no driver exists yet.
 
 use telarel_common::{
-    Ast, AstResult, CodeResult, CompileError, Generator, GeneratorOptions,
-    Language, OutputSourceMap, Parser, ParserOptions, ResolvableOptions,
-    ResolvedOptions, SourceType, apply_output_source_map_mode,
-    grammar_source_type, resolve_options, resolve_source_type,
-    with_module_kind,
+    Ast, AstResult, CodeResult, CompileError, Generator, Language,
+    OutputSourceMap, Parser, ResolvableOptions, ResolvedGeneratorOptions,
+    ResolvedOptions, ResolvedParserOptions, SourceType,
+    apply_output_source_map_mode, grammar_source_type, resolve_options,
+    resolve_source_type, with_module_kind,
 };
 use telarel_plugin::__internal::PluginDriver;
 use telarel_plugin::{
@@ -79,12 +79,12 @@ async fn parse_stage(
     resolved: &ResolvedOptions,
     code: &str,
 ) -> Result<AstResult, CompileError> {
-    let options: ParserOptions = ParserOptions::from(resolved);
+    let options: ResolvedParserOptions = ResolvedParserOptions::from(resolved);
 
     // The entry boundary applies the input request exactly once, after the
     // winning parse result. The builtin parser must not resolve it a second
     // time.
-    let mut builtin_options: ParserOptions = options.clone();
+    let mut builtin_options: ResolvedParserOptions = options.clone();
     builtin_options.source_map.input = None;
 
     let builtin: Parser = Parser::new(code.to_string(), builtin_options);
@@ -136,7 +136,8 @@ async fn generate_stage(
 ) -> Result<CodeResult, CompileError> {
     // The hook payload carries neither request: the AST already holds the
     // resolved input map, and the pipeline owns output delivery.
-    let mut hook_options: GeneratorOptions = GeneratorOptions::from(resolved);
+    let mut hook_options: ResolvedGeneratorOptions =
+        ResolvedGeneratorOptions::from(resolved);
 
     hook_options.source_map.input = None;
     hook_options.source_map.output = None;
@@ -425,8 +426,11 @@ mod tests {
 
     use oxc::span::Span;
     use telarel_common::{
-        Ast, CompileError, CompileOptions, ErrorSource, Language, ParseOptions,
-        ResolvedOptions, RewriteOptions, SourceType,
+        Ast, CompileError, CompileOptions, ErrorSource, GeneratorOptions,
+        IndentStyle, Language, ParseOptions, ParserOptions,
+        PartialOxcCodegenOptions, PartialOxcParseOptions,
+        ResolvedGeneratorOptions, ResolvedOptions, ResolvedParserOptions,
+        RewriteOptions, SourceType,
     };
     use telarel_plugin::{
         EndArgs, HookUsage, NotifyReturn, ParseArgs, ParseReturn, Plugin,
@@ -435,8 +439,9 @@ mod tests {
     };
 
     use crate::common::test_util::{
-        EndObserverPlugin, FailPlugin, FailStage, StartObserverPlugin,
-        parse_fixture,
+        EndObserverPlugin, FailPlugin, FailStage,
+        GenerateHookOptionsObserverPlugin, OptionsGroupsPlugin,
+        ParseHookOptionsObserverPlugin, StartObserverPlugin, parse_fixture,
     };
     use crate::functions::compile::compile;
     use crate::functions::parse::parse;
@@ -686,5 +691,106 @@ mod tests {
         assert_eq!(options[0].language, Language::TS);
         assert_eq!(options[0].source_type, SourceType::Unambiguous);
         assert_eq!(options[0].plugins, vec![String::from("start-observer")]);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_start_sees_resolved_stage_views() {
+        let seen: Arc<Mutex<Vec<ResolvedOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(StartObserverPlugin::new(&seen))];
+
+        let options: CompileOptions = CompileOptions {
+            parser: Some(ParserOptions {
+                preserve_parens: Some(true),
+                allow_return_outside_function: Some(true),
+                ..ParserOptions::default()
+            }),
+            generator: Some(GeneratorOptions {
+                single_quote: Some(true),
+                indent_style: Some(IndentStyle::Tab),
+                indent_width: Some(4),
+                ..GeneratorOptions::default()
+            }),
+            ..CompileOptions::default()
+        };
+
+        compile(String::from("const a = (1);"), options, plugins)
+            .await
+            .expect("compile succeeds");
+
+        let options: Vec<ResolvedOptions> = seen.lock().unwrap().clone();
+
+        assert_eq!(options.len(), 1);
+        assert!(options[0].parser.preserve_parens);
+        assert!(options[0].parser.allow_return_outside_function);
+        assert!(options[0].parser.oxc.preserve_parens);
+        assert!(options[0].generator.single_quote);
+        assert_eq!(options[0].generator.indent_style, IndentStyle::Tab);
+        assert_eq!(options[0].generator.indent_width, 4);
+        assert_eq!(options[0].generator.oxc.indent_width, 4);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_hook_raw_patch_joins_parse_and_generate_payloads() {
+        let parse_seen: Arc<Mutex<Vec<ResolvedParserOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let generate_seen: Arc<Mutex<Vec<ResolvedGeneratorOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(OptionsGroupsPlugin::new(
+                Some(ParserOptions {
+                    oxc: Some(PartialOxcParseOptions {
+                        parse_regular_expression: Some(true),
+                        ..PartialOxcParseOptions::default()
+                    }),
+                    ..ParserOptions::default()
+                }),
+                Some(GeneratorOptions {
+                    oxc: Some(PartialOxcCodegenOptions {
+                        indent_char: Some(oxc::codegen::IndentChar::Tab),
+                        ..PartialOxcCodegenOptions::default()
+                    }),
+                    ..GeneratorOptions::default()
+                }),
+            )),
+            Plugin::new_shared(ParseHookOptionsObserverPlugin::new(
+                &parse_seen,
+            )),
+            Plugin::new_shared(GenerateHookOptionsObserverPlugin::new(
+                &generate_seen,
+            )),
+        ];
+
+        compile(
+            String::from("const a = (1);"),
+            CompileOptions::default(),
+            plugins,
+        )
+        .await
+        .expect("compile succeeds");
+
+        let parse_seen: Vec<ResolvedParserOptions> =
+            parse_seen.lock().unwrap().clone();
+
+        assert_eq!(parse_seen.len(), 1);
+        assert!(parse_seen[0].oxc.parse_regular_expression);
+        assert!(!parse_seen[0].preserve_parens);
+        assert!(!parse_seen[0].oxc.preserve_parens);
+
+        let generate_seen: Vec<ResolvedGeneratorOptions> =
+            generate_seen.lock().unwrap().clone();
+
+        assert_eq!(generate_seen.len(), 1);
+        assert_eq!(generate_seen[0].indent_style, IndentStyle::Tab);
+        assert_eq!(generate_seen[0].indent_width, 2);
+        assert_eq!(
+            generate_seen[0].oxc.indent_char,
+            oxc::codegen::IndentChar::Tab
+        );
+        assert_eq!(generate_seen[0].oxc.indent_width, 2);
+        assert!(generate_seen[0].comments);
     }
 }

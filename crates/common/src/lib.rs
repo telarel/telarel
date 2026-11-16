@@ -16,8 +16,17 @@ pub use crate::_types::grammar::language::grammar_source_type;
 pub use crate::_types::grammar::source_type::SourceType;
 pub use crate::_types::grammar::source_type::with_module_kind;
 pub use crate::_types::hooks::usage::HookUsage;
-pub use crate::_types::options::builtin::generator::GeneratorOptions;
-pub use crate::_types::options::builtin::parser::ParserOptions;
+pub use crate::_types::options::OxcCodegenOptions;
+pub use crate::_types::options::OxcParseOptions;
+pub use crate::_types::options::builtin::generator::{
+    GeneratorOptions, IndentStyle, PartialOxcCodegenOptions,
+    PartialOxcCommentOptions, ResolvedGeneratorOptions,
+    ResolvedGeneratorStageOptions,
+};
+pub use crate::_types::options::builtin::parser::{
+    ParserOptions, PartialOxcParseOptions, ResolvedParserOptions,
+    ResolvedParserStageOptions,
+};
 pub use crate::_types::options::functions::compile::CompileOptions;
 pub use crate::_types::options::functions::compile_from_ast::CompileFromAstOptions;
 pub use crate::_types::options::functions::generate::GenerateOptions;
@@ -37,12 +46,14 @@ pub use crate::_types::options::sourcemap::output::{
 };
 pub use crate::ast::ast::Ast;
 pub use crate::ast::generate::{
-    GenerateCodeOptions, generate_code, generate_program,
+    GenerateCodeOptions, generate_code, generate_code_with_codegen,
+    generate_program, generate_program_with_codegen,
 };
 pub use crate::ast::generator::Generator;
 pub use crate::ast::parse::{
     ParseAstOptions, ParseProgramOptions, ParseProgramResult, parse_ast,
-    parse_program,
+    parse_ast_with_parser_options, parse_program,
+    parse_program_with_parser_options,
 };
 pub use crate::ast::parser::Parser;
 pub use crate::ast::result::{AstResult, CodeResult};

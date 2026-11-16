@@ -27,6 +27,8 @@ const compile = async (
             file: options?.file,
             language: options?.language,
             sourceType: options?.sourceType,
+            parser: options?.parser,
+            generator: options?.generator,
             output: options?.output,
             sourceMap: options?.sourceMap,
             plugins,

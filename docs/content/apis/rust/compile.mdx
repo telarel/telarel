@@ -37,8 +37,12 @@ Every field is optional. The pipeline resolves each field against defaults befor
 | `file`        | `Option<String>`           | `index.ts`          | The file being compiled. The language is inferred from its extension.     |
 | `language`    | `Option<Language>`         | inferred            | The grammar of the code. Overrides the extension inference.               |
 | `source_type` | `Option<SourceType>`       | inferred            | The module system of the code. Overrides the grammar's module kind.       |
+| `parser`      | `Option<ParserOptions>`    | unset               | [Parser-stage options](/apis#parser-options).                             |
+| `generator`   | `Option<GeneratorOptions>` | unset               | [Generator-stage options](/apis#generator-options).                       |
 | `output`      | `Option<OutputOptions>`    | unset               | [Output code configuration](/apis#output-options).                        |
 | `source_map`  | `Option<SourceMapOptions>` | off                 | [Source-map inputs and outputs](/apis#source-maps) requested for the run. |
+
+See [resolved options](/apis#resolved-options) for the resolved types that the hooks receive.
 
 ## Returns
 

@@ -12,7 +12,8 @@ mod tests {
     use std::path::PathBuf;
 
     use telarel_common::{
-        Language, ResolvedOptions, ResolvedOutputOptions, SourceMapOptions,
+        IndentStyle, Language, ResolvedGeneratorStageOptions, ResolvedOptions,
+        ResolvedOutputOptions, ResolvedParserStageOptions, SourceMapOptions,
         SourceType,
     };
 
@@ -26,6 +27,20 @@ mod tests {
                 file: String::from("a.ts"),
                 language: Language::TS,
                 source_type: SourceType::Module,
+                parser: ResolvedParserStageOptions {
+                    preserve_parens: true,
+                    allow_return_outside_function: true,
+                    ..ResolvedParserStageOptions::default()
+                },
+                generator: ResolvedGeneratorStageOptions {
+                    single_quote: true,
+                    ascii_only: true,
+                    indent_style: IndentStyle::Tab,
+                    indent_width: 4,
+                    comments: false,
+                    minify: true,
+                    ..ResolvedGeneratorStageOptions::default()
+                },
                 output: ResolvedOutputOptions {
                     file: String::from("dist/a.js"),
                 },
@@ -36,5 +51,13 @@ mod tests {
 
         assert_eq!(args.options.cwd, PathBuf::from("/repo"));
         assert_eq!(args.options.plugins.len(), 0);
+        assert!(args.options.parser.preserve_parens);
+        assert!(args.options.parser.allow_return_outside_function);
+        assert!(args.options.generator.single_quote);
+        assert!(args.options.generator.ascii_only);
+        assert_eq!(args.options.generator.indent_style, IndentStyle::Tab);
+        assert_eq!(args.options.generator.indent_width, 4);
+        assert!(!args.options.generator.comments);
+        assert!(args.options.generator.minify);
     }
 }

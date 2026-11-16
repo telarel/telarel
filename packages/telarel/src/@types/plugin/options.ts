@@ -2,7 +2,15 @@ import type { Omit, Partial } from "ts-vista";
 
 import type { BuiltinPlugin } from "#/@types/builtin";
 import type { MaybePromise } from "#/@types/common";
+import type {
+    GeneratorOptions,
+    ResolvedGeneratorStageOptions,
+} from "#/@types/generator";
 import type { Language, SourceType } from "#/@types/grammar";
+import type {
+    ParserOptions,
+    ResolvedParserStageOptions,
+} from "#/@types/parser";
 import type { Plugin } from "#/@types/plugin";
 import type { SourceMapOptions } from "#/@types/sourcemap";
 import type { InputSourceMap } from "#/@types/sourcemap/input";
@@ -50,11 +58,15 @@ type OutputOptions = Partial<CompleteOutputOptions>;
  */
 type CompleteOptions = {
     /**
-     * Current working directory. By default, it is `process.cwd()`.
+     * Current working directory.
+     *
+     * By default, it is `process.cwd()`.
      */
     cwd: string;
     /**
-     * The file to be compiled. By default, it is `"index.ts"`.
+     * The file to be compiled.
+     *
+     * By default, it is `"index.ts"`.
      */
     file: string;
     /**
@@ -95,6 +107,10 @@ type ParseOptions = Partial<
     >
 > & {
     /**
+     * Parser-stage options.
+     */
+    parser?: ParserOptions;
+    /**
      * The input source-map request for the step.
      *
      * `parse` returns an AST and has no output source map.
@@ -127,12 +143,20 @@ type RewriteOptions = Partial<
  * file extension.
  */
 type GenerateOptions = Partial<
-    Pick<CompleteOptions, "cwd" | "file" | "language" | "sourceMap" | "plugins">
+    Pick<CompleteOptions, "cwd" | "file" | "language" | "plugins">
 > & {
+    /**
+     * Generator-stage options.
+     */
+    generator?: GeneratorOptions;
     /**
      * The output code options.
      */
     output?: OutputOptions;
+    /**
+     * The source-map inputs and outputs requested for the step.
+     */
+    sourceMap?: SourceMapOptions;
 };
 
 /**
@@ -141,13 +165,21 @@ type GenerateOptions = Partial<
 type CompileFromAstOptions = Partial<
     Pick<
         CompleteOptions,
-        "cwd" | "file" | "language" | "sourceType" | "sourceMap" | "plugins"
+        "cwd" | "file" | "language" | "sourceType" | "plugins"
     >
 > & {
+    /**
+     * Generator-stage options.
+     */
+    generator?: GeneratorOptions;
     /**
      * The output code options.
      */
     output?: OutputOptions;
+    /**
+     * The source-map inputs and outputs requested for the step.
+     */
+    sourceMap?: SourceMapOptions;
 };
 
 /**
@@ -156,23 +188,47 @@ type CompileFromAstOptions = Partial<
 type CompileOptions = Partial<
     Pick<
         CompleteOptions,
-        "cwd" | "file" | "language" | "sourceType" | "sourceMap" | "plugins"
+        "cwd" | "file" | "language" | "sourceType" | "plugins"
     >
 > & {
+    /**
+     * Parser-stage options.
+     */
+    parser?: ParserOptions;
+    /**
+     * Generator-stage options.
+     */
+    generator?: GeneratorOptions;
     /**
      * The output code options.
      */
     output?: OutputOptions;
+    /**
+     * The source-map inputs and outputs requested for the run.
+     */
+    sourceMap?: SourceMapOptions;
 };
 
 /**
  * User options for a compile run.
  */
-type Options = Partial<Omit<CompleteOptions, "output">> & {
+type Options = Partial<Omit<CompleteOptions, "output" | "sourceMap">> & {
+    /**
+     * Parser-stage options.
+     */
+    parser?: ParserOptions;
+    /**
+     * Generator-stage options.
+     */
+    generator?: GeneratorOptions;
     /**
      * The output code options.
      */
     output?: OutputOptions;
+    /**
+     * The source-map inputs and outputs requested for the run.
+     */
+    sourceMap?: SourceMapOptions;
 };
 
 /**
@@ -182,11 +238,25 @@ type Options = Partial<Omit<CompleteOptions, "output">> & {
  * applied only after the options fixpoint settles, so returning the bag
  * unchanged keeps the defaults.
  */
-type ResolvableOptions = Partial<Omit<CompleteOptions, "output">> & {
+type ResolvableOptions = Partial<
+    Omit<CompleteOptions, "output" | "sourceMap">
+> & {
+    /**
+     * Parser-stage options requested for the run.
+     */
+    parser?: ParserOptions;
+    /**
+     * Generator-stage options requested for the run.
+     */
+    generator?: GeneratorOptions;
     /**
      * The output code options.
      */
     output?: OutputOptions;
+    /**
+     * The source-map inputs and outputs requested for the run.
+     */
+    sourceMap?: SourceMapOptions;
 };
 
 /**
@@ -202,7 +272,26 @@ type OptionsArgs = {
 /**
  * Resolved options, as seen by `start` and later hooks.
  */
-type ResolvedOptions = Omit<CompleteOptions, "plugins"> & {
+type ResolvedOptions = Omit<
+    CompleteOptions,
+    "output" | "sourceMap" | "plugins"
+> & {
+    /**
+     * Resolved parser-stage settings.
+     */
+    parser: ResolvedParserStageOptions;
+    /**
+     * Resolved generator-stage settings.
+     */
+    generator: ResolvedGeneratorStageOptions;
+    /**
+     * The output code options.
+     */
+    output: CompleteOutputOptions;
+    /**
+     * The source-map inputs and outputs requested for the run.
+     */
+    sourceMap: SourceMapOptions;
     /**
      * The settled plugin list, after the options fixpoint.
      */

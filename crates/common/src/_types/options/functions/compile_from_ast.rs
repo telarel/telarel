@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
+use crate::_types::options::builtin::generator::GeneratorOptions;
 use crate::_types::options::output::OutputOptions;
 use crate::_types::options::sourcemap::SourceMapOptions;
 
@@ -26,6 +27,10 @@ pub struct CompileFromAstOptions {
     ///
     /// `None` falls back to the input AST module kind, then the file extension.
     pub source_type: Option<SourceType>,
+    /// Generator-stage options.
+    ///
+    /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
+    pub generator: Option<GeneratorOptions>,
     /// The output code configuration.
     pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the step.

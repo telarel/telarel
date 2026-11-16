@@ -1,4 +1,4 @@
-use telarel_common::{AstResult, ParserOptions};
+use telarel_common::{AstResult, ResolvedParserOptions};
 
 use crate::PluginError;
 
@@ -8,7 +8,7 @@ pub struct ParseArgs<'a> {
     /// The code to parse.
     pub code: &'a str,
     /// The resolved parser options.
-    pub options: &'a ParserOptions,
+    pub options: &'a ResolvedParserOptions,
 }
 
 /// The `parse` hook return: a parsed AST, `None` (defer), or an error.
@@ -19,25 +19,31 @@ mod tests {
     use std::path::PathBuf;
 
     use telarel_common::{
-        AstResult, Language, ParseAstOptions, ParserOptions, SourceMapOptions,
-        SourceType, parse_ast,
+        AstResult, Language, ParseAstOptions, ResolvedParserOptions,
+        ResolvedParserStageOptions, SourceMapOptions, SourceType, parse_ast,
     };
 
     use super::*;
 
-    fn options() -> ParserOptions {
-        ParserOptions {
+    fn options() -> ResolvedParserOptions {
+        let stage: ResolvedParserStageOptions =
+            ResolvedParserStageOptions::default();
+
+        ResolvedParserOptions {
             cwd: PathBuf::from("/repo"),
             file: String::from("a.ts"),
             language: Language::TS,
             source_type: SourceType::Module,
             source_map: SourceMapOptions::default(),
+            preserve_parens: stage.preserve_parens,
+            allow_return_outside_function: stage.allow_return_outside_function,
+            oxc: stage.oxc,
         }
     }
 
     #[test]
     fn test_parse_args_read_code_and_options() {
-        let options: ParserOptions = options();
+        let options: ResolvedParserOptions = options();
 
         let args: ParseArgs<'_> =
             ParseArgs { code: "let a;", options: &options };

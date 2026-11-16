@@ -7,9 +7,25 @@ export type {
     CommentType,
 } from "#/@types/comment";
 export type { DeepReadonly } from "#/@types/common";
-export type { GeneratorOptions } from "#/@types/generator";
+export type {
+    GeneratorOptions,
+    IndentStyle,
+    OxcCodegenOptions,
+    OxcCommentOptions,
+    OxcLegalComment,
+    ResolvedGeneratorOptions,
+    ResolvedGeneratorStageOptions,
+    ResolvedOxcCodegenOptions,
+    ResolvedOxcCommentOptions,
+} from "#/@types/generator";
 export type { Language, SourceType } from "#/@types/grammar";
-export type { ParserOptions } from "#/@types/parser";
+export type {
+    OxcParserOptions,
+    ParserOptions,
+    ResolvedOxcParserOptions,
+    ResolvedParserOptions,
+    ResolvedParserStageOptions,
+} from "#/@types/parser";
 export type { ObjectHook, Plugin, PluginOrder } from "#/@types/plugin";
 export type {
     CommonPluginContext,

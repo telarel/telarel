@@ -1,4 +1,4 @@
-use telarel_common::{AstResult, CompileError, Parser, ParserOptions};
+use telarel_common::{AstResult, CompileError, Parser, ResolvedParserOptions};
 
 use crate::_types::context::PluginContext;
 use crate::_types::hooks::parse::ParseArgs;
@@ -15,7 +15,7 @@ pub async fn parse(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,
     code: &str,
-    options: &ParserOptions,
+    options: &ResolvedParserOptions,
     builtin: &Parser,
 ) -> Result<AstResult, CompileError> {
     for plugin in plugins {

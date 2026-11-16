@@ -380,6 +380,12 @@ pub struct OptionsCall {
     /// Module system used for code generation. The wire value is `""` when
     /// unspecified.
     pub source_type: SharedStr,
+    /// The parser-stage options requested so far, as a JS object. `None`
+    /// means unspecified, and Telarel omits it from the payload.
+    pub parser: Option<serde_json::Value>,
+    /// The generator-stage options requested so far, as a JS object. `None`
+    /// means unspecified, and Telarel omits it from the payload.
+    pub generator: Option<serde_json::Value>,
     /// The output code options requested so far, as a JS object. `None`
     /// means unspecified, and Telarel omits it from the payload.
     pub output: Option<serde_json::Value>,
@@ -414,6 +420,16 @@ impl ToNapiValue for OptionsCall {
 
         object.set("language", val.language)?;
         object.set("sourceType", val.source_type)?;
+
+        // An omitted stage group means "unspecified" on the wire. Telarel
+        // transmits only a requested group.
+        if let Some(parser) = val.parser {
+            object.set("parser", parser)?;
+        }
+
+        if let Some(generator) = val.generator {
+            object.set("generator", generator)?;
+        }
 
         // An omitted `output` means "unspecified" on the wire. Telarel
         // transmits only a requested output.
@@ -1020,6 +1036,23 @@ mod tests {
                 file: String::from("index.ts"),
                 language: String::from("ts"),
                 source_type: String::from("module"),
+                parser:
+                    crate::_types::plugin::hooks::JsResolvedParserStageOptions {
+                        preserve_parens: false,
+                        allow_return_outside_function: false,
+                        oxc: serde_json::json!({}),
+                    },
+                generator:
+                    crate::_types::plugin::hooks::JsResolvedGeneratorStageOptions
+                    {
+                        single_quote: false,
+                        ascii_only: false,
+                        indent_style: String::from("space"),
+                        indent_width: 2,
+                        comments: true,
+                        minify: false,
+                        oxc: serde_json::json!({}),
+                    },
                 output: crate::_types::plugin::hooks::JsResolvedOutputOptions {
                     file: String::from("dist/index.js"),
                 },

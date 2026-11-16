@@ -1,8 +1,12 @@
-use crate::_types::options::builtin::generator::GeneratorOptions;
+use crate::_types::options::OxcCodegenOptions;
+use crate::_types::options::builtin::generator::ResolvedGeneratorOptions;
 use crate::ast::ast::Ast;
-use crate::ast::generate::{GenerateCodeOptions, generate_code};
+use crate::ast::generate::{GenerateCodeOptions, generate_code_with_codegen};
 use crate::ast::result::CodeResult;
 use crate::errors::compile::CompileError;
+use crate::helpers::resolve::{
+    CuratedGeneratorOptions, apply_curated_generator_options,
+};
 use crate::sourcemap::resolve::attach_input_map;
 
 /// A builtin generator over a borrowed [`Ast`].
@@ -11,14 +15,27 @@ use crate::sourcemap::resolve::attach_input_map;
 #[derive(Debug, Clone)]
 pub struct Generator<'a> {
     ast: &'a Ast,
-    options: GeneratorOptions,
+    options: ResolvedGeneratorOptions,
+}
+
+fn resolved_codegen_options(
+    options: &ResolvedGeneratorOptions
+) -> OxcCodegenOptions {
+    let mut codegen: OxcCodegenOptions = options.oxc.clone();
+
+    apply_curated_generator_options(
+        &mut codegen,
+        CuratedGeneratorOptions::from(options),
+    );
+
+    codegen
 }
 
 impl<'a> Generator<'a> {
     /// Create a generator over `ast`.
     pub fn new(
         ast: &'a Ast,
-        options: GeneratorOptions,
+        options: ResolvedGeneratorOptions,
     ) -> Self {
         Self { ast, options }
     }
@@ -36,9 +53,13 @@ impl<'a> Generator<'a> {
             self.options.source_map.input.as_ref(),
         )?;
 
-        let result: CodeResult = generate_code(
+        let codegen: OxcCodegenOptions =
+            resolved_codegen_options(&self.options);
+
+        let result: CodeResult = generate_code_with_codegen(
             &ast,
             GenerateCodeOptions { file: self.options.file },
+            codegen,
         );
 
         Ok(result)
@@ -49,9 +70,11 @@ impl<'a> Generator<'a> {
 mod tests {
     use std::path::PathBuf;
 
+    use oxc::codegen::CommentOptions;
     use oxc_sourcemap::SourceMapBuilder;
     use tempfile::TempDir;
 
+    use crate::_types::options::builtin::generator::IndentStyle;
     use crate::_types::options::sourcemap::SourceMapOptions;
     use crate::_types::options::sourcemap::input::{
         InputSourceMap, InputSourceMapMode,
@@ -60,6 +83,7 @@ mod tests {
         OutputSourceMap, OutputSourceMapMode,
     };
     use crate::ast::parse::{ParseAstOptions, parse_ast};
+    use crate::helpers::resolve::default_codegen_oxc;
     use crate::helpers::test_util::{path_buf, temp_dir, write_file};
     use crate::sourcemap::SourceMap;
     use crate::sourcemap::inline::append_inline_source_map;
@@ -115,11 +139,18 @@ mod tests {
         assert_eq!(actual.to_json_string(), expected.to_json_string());
     }
 
-    fn options() -> GeneratorOptions {
-        GeneratorOptions {
+    fn options() -> ResolvedGeneratorOptions {
+        ResolvedGeneratorOptions {
             cwd: PathBuf::new(),
             file: FILE.to_string(),
             source_map: SourceMapOptions::default(),
+            single_quote: false,
+            ascii_only: false,
+            indent_style: IndentStyle::Space,
+            indent_width: 2,
+            comments: true,
+            minify: false,
+            oxc: default_codegen_oxc(),
         }
     }
 
@@ -176,7 +207,7 @@ mod tests {
         let ast: Ast = parse_with_input_map(Some(input_map()));
         let replacement: SourceMap = map_to("replacement.ts", 4);
 
-        let mut options: GeneratorOptions = options();
+        let mut options: ResolvedGeneratorOptions = options();
         options.source_map.input =
             Some(InputSourceMap::Mode(InputSourceMapMode::Value(replacement)));
 
@@ -199,7 +230,7 @@ mod tests {
             append_inline_source_map(String::from("const a = 1;"), &inline_map);
         let ast: Ast = parse_code_with_input_map(&code, Some(input_map()));
 
-        let mut options: GeneratorOptions = options();
+        let mut options: ResolvedGeneratorOptions = options();
         options.source_map.input =
             Some(InputSourceMap::Mode(InputSourceMapMode::Inline));
 
@@ -236,7 +267,7 @@ mod tests {
 
         let ast: Ast = parse_with_input_map(None);
 
-        let mut options: GeneratorOptions = options();
+        let mut options: ResolvedGeneratorOptions = options();
         options.cwd = path_buf(&dir);
         options.source_map.input =
             Some(InputSourceMap::Mode(InputSourceMapMode::External));
@@ -264,7 +295,7 @@ mod tests {
             append_inline_source_map(String::from("const a = 1;"), &inline_map);
         let inline_ast: Ast = parse_code_with_input_map(&code, None);
 
-        let mut inline_options: GeneratorOptions = options();
+        let mut inline_options: ResolvedGeneratorOptions = options();
         inline_options.cwd = path_buf(&dir);
         inline_options.source_map.input =
             Some(InputSourceMap::Mode(InputSourceMapMode::Auto));
@@ -284,7 +315,7 @@ mod tests {
 
         let external_ast: Ast = parse_with_input_map(None);
 
-        let mut external_options: GeneratorOptions = options();
+        let mut external_options: ResolvedGeneratorOptions = options();
         external_options.cwd = path_buf(&dir);
         external_options.source_map.input =
             Some(InputSourceMap::Mode(InputSourceMapMode::Auto));
@@ -309,7 +340,7 @@ mod tests {
         let ast: Ast = parse_with_input_map(Some(input_map()));
 
         for mode in [InputSourceMapMode::Inline, InputSourceMapMode::Auto] {
-            let mut options: GeneratorOptions = options();
+            let mut options: ResolvedGeneratorOptions = options();
             options.cwd = path_buf(&dir);
             options.source_map.input = Some(InputSourceMap::Mode(mode));
 
@@ -329,7 +360,7 @@ mod tests {
     fn test_generate_without_input_request_composes_ast_map() {
         let ast: Ast = parse_with_input_map(Some(input_map()));
 
-        let mut options: GeneratorOptions = options();
+        let mut options: ResolvedGeneratorOptions = options();
         options.source_map.output =
             Some(OutputSourceMap::Mode(OutputSourceMapMode::Inline));
 
@@ -344,5 +375,115 @@ mod tests {
         assert_eq!(token.get_src_col(), 0);
         assert_eq!(map.get_source(0), Some("upstream.ts"));
         assert!(!result.code.contains("sourceMappingURL"));
+    }
+
+    #[test]
+    fn test_generate_applies_single_quote() {
+        let ast: Ast = parse_code_with_input_map("const a = \"hello\";", None);
+
+        let mut options: ResolvedGeneratorOptions = options();
+        options.single_quote = true;
+
+        let result: CodeResult =
+            Generator::new(&ast, options).generate().expect("generates");
+
+        assert_eq!(result.code, "const a = 'hello';");
+    }
+
+    #[test]
+    fn test_generate_applies_ascii_only() {
+        let ast: Ast = parse_code_with_input_map("const µ = 1;", None);
+
+        let mut options: ResolvedGeneratorOptions = options();
+        options.ascii_only = true;
+
+        let result: CodeResult =
+            Generator::new(&ast, options).generate().expect("generates");
+
+        assert_eq!(result.code, "const \\u00B5 = 1;");
+    }
+
+    #[test]
+    fn test_generate_applies_tab_indentation() {
+        let ast: Ast =
+            parse_code_with_input_map("function f() {\nreturn;\n}", None);
+
+        let mut options: ResolvedGeneratorOptions = options();
+        options.indent_style = IndentStyle::Tab;
+        options.indent_width = 1;
+
+        let result: CodeResult =
+            Generator::new(&ast, options).generate().expect("generates");
+
+        assert_eq!(result.code, "function f() {\n\treturn;\n}");
+    }
+
+    #[test]
+    fn test_generate_applies_space_indentation_width() {
+        let ast: Ast =
+            parse_code_with_input_map("function f() {\nreturn;\n}", None);
+
+        let mut options: ResolvedGeneratorOptions = options();
+        options.indent_style = IndentStyle::Space;
+        options.indent_width = 4;
+
+        let result: CodeResult =
+            Generator::new(&ast, options).generate().expect("generates");
+
+        assert_eq!(result.code, "function f() {\n    return;\n}");
+    }
+
+    #[test]
+    fn test_generate_applies_comments_true() {
+        let ast: Ast = parse_code_with_input_map("// lead\nconst a = 1;", None);
+
+        let options: ResolvedGeneratorOptions = options();
+
+        let result: CodeResult =
+            Generator::new(&ast, options).generate().expect("generates");
+
+        assert!(result.code.contains("// lead"), "{}", result.code);
+    }
+
+    #[test]
+    fn test_generate_applies_comments_false() {
+        let ast: Ast = parse_code_with_input_map("// lead\nconst a = 1;", None);
+
+        let mut options: ResolvedGeneratorOptions = options();
+        options.comments = false;
+
+        let result: CodeResult =
+            Generator::new(&ast, options).generate().expect("generates");
+
+        assert!(!result.code.contains("// lead"), "{}", result.code);
+    }
+
+    #[test]
+    fn test_generate_explicit_comments_survive_minify() {
+        let ast: Ast = parse_code_with_input_map("// lead\nconst a = 1;", None);
+
+        let mut options: ResolvedGeneratorOptions = options();
+        options.minify = true;
+        options.comments = true;
+        options.oxc.comments = CommentOptions::disabled();
+
+        let result: CodeResult =
+            Generator::new(&ast, options).generate().expect("generates");
+
+        assert!(result.code.contains("// lead"), "{}", result.code);
+        assert!(!result.code.contains("const a = 1;"), "{}", result.code);
+    }
+
+    #[test]
+    fn test_generate_uses_raw_oxc_codegen_options() {
+        let ast: Ast = parse_code_with_input_map("const a = 1;", None);
+
+        let mut options: ResolvedGeneratorOptions = options();
+        options.oxc.initial_indent = 1;
+
+        let result: CodeResult =
+            Generator::new(&ast, options).generate().expect("generates");
+
+        assert_eq!(result.code, "  const a = 1;");
     }
 }

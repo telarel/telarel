@@ -16,8 +16,9 @@ use telarel::str::JSStr;
 use telarel::{
     Ast, AstResult, CodeResult, CommonPluginContext, CompileError,
     CompileOptions, HookUsage, Language, OptionsArgs, OptionsReturn, ParseArgs,
-    ParseReturn, Parser, ParserOptions, Plugin, PluginContext, PluginError,
-    SourceType, TransformArgs, TransformOutput, TransformReturn, compile,
+    ParseReturn, Parser, Plugin, PluginContext, PluginError,
+    ResolvedParserOptions, SourceType, TransformArgs, TransformOutput,
+    TransformReturn, compile,
 };
 ```
 
@@ -169,7 +170,7 @@ fn parse<'a>(
 
         let js: String = format!("console.log({message:?});");
 
-        let mut options: ParserOptions = args.options.clone();
+        let mut options: ResolvedParserOptions = args.options.clone();
 
         options.language = Language::JS;
         options.source_type = SourceType::Script;
@@ -188,7 +189,7 @@ fn parse<'a>(
 - `parse` replaces the builtin parser. Only declare it when the plugin owns the input language; every later `parse` hook is skipped when it returns an AST
 - return `Ok(None)` for source that is not yours
 - the returned AST's source is the translated JavaScript. If spans must point at the original source, build the `Ast` yourself with `Ast::from_source` or `Ast::try_from_source`
-- `Parser::new` takes fully resolved `ParserOptions`. Clone `args.options` and override the grammar or module kind. Do not use `parse` for validation; use `prepare`
+- `Parser::new` takes fully resolved `ResolvedParserOptions`. Clone `args.options` and override the grammar or module kind. Do not use `parse` for validation; use `prepare`
 
 ### Generate a custom output format (exclusive)
 

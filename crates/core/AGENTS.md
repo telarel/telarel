@@ -29,6 +29,8 @@ Every invocation runs:
 
 AST-entry stages resolve language in this order: explicit options, then AST language. They resolve the module kind in this order: explicit `source_type`, then the AST `source_type`, then the file extension. A concrete explicit kind replaces `Program.source_type` before the stages run. `ModuleInfo` and post-resolution hooks see the resolved values.
 
+Option resolution also produces the parser and generator stage views. `parse_stage` builds `ResolvedParserOptions` for the `parse` hook and the builtin parser. `generate_stage` builds `ResolvedGeneratorOptions` for the `generate` hook and the builtin generator. `start` receives `ResolvedOptions` with `parser` and `generator` stage views. Public contract: `docs/content/apis/index.mdx#parser-options` and `docs/content/apis/index.mdx#generator-options`.
+
 Each stage runs once per invocation. `options` runs per plugin instance. `start` and `end` run per settled entry, duplicates included. No entry point re-enters another.
 
 `options` is not gated by `HookUsage`. It runs for every distinct instance. A `Post` options hook therefore sees `file` and `language` after the normal hooks have run. A later `Post` options hook that changes `file` or `language` must set `output.file` itself.
@@ -45,7 +47,7 @@ Shared input/output invariants: [common source maps](../common/AGENTS.md#source-
 
 The entry boundary applies the explicit input-map request exactly once per entry point. `parse_stage` applies it after a winning `parse` hook; `rewrite`, `generate`, and `compile_from_ast` apply it before their stages run. A map returned by a transform hook is downstream state, and the boundary request does not replace it.
 
-`parse_stage` clears the request on the builtin parser options. `generate_stage` clears `input` and `output` on the generator options that it passes to both the `generate` hook and the builtin. The hook payload therefore carries neither request, and the builtin does not resolve the input a second time. Output delivery happens after the winning result, whichever generator produced it.
+`parse_stage` clears the request on the builtin `ResolvedParserOptions`. `generate_stage` clears `input` and `output` on the `ResolvedGeneratorOptions` that it passes to both the `generate` hook and the builtin. The hook payload therefore carries neither request, and the builtin does not resolve the input a second time. Output delivery happens after the winning result, whichever generator produced it.
 
 `generate_stage` applies the output-file rule from [common source maps](../common/AGENTS.md#source-maps) after the winning result, including when a plugin produced the map.
 

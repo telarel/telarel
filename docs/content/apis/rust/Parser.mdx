@@ -7,7 +7,7 @@ description: A builtin parser over fixed source text and options.
 pub struct Parser { /* private fields */ }
 
 impl Parser {
-    pub fn new(code: String, options: ParserOptions) -> Self;
+    pub fn new(code: String, options: ResolvedParserOptions) -> Self;
 
     pub fn parse(self) -> Result<AstResult, CompileError>;
 }
@@ -17,21 +17,26 @@ The pipeline uses `Parser` as the builtin parser and terminal fallback after eve
 
 ## `Parser::new`
 
-Creates a parser over `code` and its resolved `ParserOptions`.
+Creates a parser over `code` and its resolved `ResolvedParserOptions`.
 
-### `ParserOptions`
+### `ResolvedParserOptions`
 
-Every field is required. In a `parse` hook, the stage options are available as `args.options`.
+Every field is required. This is the resolved type. To request the values, set the `parser` group on `ParseOptions` or `CompileOptions`, or return it from an `options` hook. In a `parse` hook, the same value is available as `args.options`.
 
-| Field         | Type               | Description                                      |
-| ------------- | ------------------ | ------------------------------------------------ |
-| `cwd`         | `PathBuf`          | Filesystem root used to resolve the source file. |
-| `file`        | `String`           | The file being parsed.                           |
-| `language`    | `Language`         | The grammar of the code.                         |
-| `source_type` | `SourceType`       | The module system of the code.                   |
-| `source_map`  | `SourceMapOptions` | Source-map request for the step.                 |
+| Field                           | Type               | Description                                                             |
+| ------------------------------- | ------------------ | ----------------------------------------------------------------------- |
+| `cwd`                           | `PathBuf`          | Working directory used to resolve `file` and a relative input-map path. |
+| `file`                          | `String`           | The file being parsed.                                                  |
+| `language`                      | `Language`         | The grammar of the code.                                                |
+| `source_type`                   | `SourceType`       | The module system of the code.                                          |
+| `source_map`                    | `SourceMapOptions` | Source-map request for the step.                                        |
+| `preserve_parens`               | `bool`             | Whether parenthesized expressions stay in the AST.                      |
+| `allow_return_outside_function` | `bool`             | Whether `return` is accepted outside a function body.                   |
+| `oxc`                           | `OxcParseOptions`  | The full effective options for the raw oxc parser.                      |
 
 `cwd` anchors resolution of `file`. A relative input-map `path` resolves against the source file's directory; absolute paths are used as-is.
+
+`oxc` is the full effective object after the three [option layers](/apis#option-layering) apply. It is not the requested partial patch. See [parser options](/apis#parser-options).
 
 ## `Parser::parse`
 
@@ -45,17 +50,21 @@ Parses the fixed source text and returns the resulting AST. The parser resolves 
 use std::path::PathBuf;
 
 use telarel::{
-    AstResult, Language, Parser, ParserOptions, SourceMapOptions, SourceType,
+    AstResult, Language, Parser, ResolvedParserOptions,
+    ResolvedParserStageOptions, SourceMapOptions, SourceType,
 };
 
 let parser: Parser = Parser::new(
     String::from("const x: number = 1;"),
-    ParserOptions {
+    ResolvedParserOptions {
         cwd: PathBuf::from("."),
         file: String::from("index.ts"),
         language: Language::TS,
         source_type: SourceType::Module,
         source_map: SourceMapOptions::default(),
+        preserve_parens: false,
+        allow_return_outside_function: false,
+        oxc: ResolvedParserStageOptions::default().oxc,
     },
 );
 

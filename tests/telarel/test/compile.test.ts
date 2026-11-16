@@ -3,6 +3,7 @@ import type {
     CommonPluginContext,
     EndArgs,
     FinalizeArgs,
+    GenerateArgs,
     Language,
     OptionsArgs,
     Plugin,
@@ -41,6 +42,14 @@ type InitFixture = {
     }>;
 };
 
+type DeclarationProgramFixture = {
+    body: Array<{
+        declarations?: Array<{
+            init?: { type: string } | null;
+        }>;
+    }>;
+};
+
 describe("compile", (): void => {
     it("returns original code with no plugins", async (): Promise<void> => {
         const result: CodeResult = await compile("const a = 1;", {
@@ -51,6 +60,19 @@ describe("compile", (): void => {
         expect(result.code).toBe("const a = 1;");
         expect(result.map?.version).toBe(3);
         expect(result.map?.mappings.length).toBeGreaterThan(0);
+    });
+
+    it("applies generator options", async (): Promise<void> => {
+        const result: CodeResult = await compile('const a = "hello";', {
+            file: "index.ts",
+            generator: {
+                singleQuote: true,
+                indentStyle: "space",
+                indentWidth: 4,
+            },
+        });
+
+        expect(result.code).toBe("const a = 'hello';");
     });
 
     it("defaults the file to index.ts with the ts grammar", async (): Promise<void> => {
@@ -296,6 +318,104 @@ describe("compile", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
+    it("lets an options hook set parser and generator options", async (): Promise<void> => {
+        const seenAst: Array<string> = [];
+        const seenBag: Array<{
+            preserveParens: boolean | void;
+            singleQuote: boolean | void;
+            asciiOnly: boolean | void;
+        }> = [];
+        const seenGenerator: Array<{
+            singleQuote: boolean;
+            asciiOnly: boolean;
+            indentWidth: number;
+        }> = [];
+
+        const result: CodeResult = await compile(
+            'const µ = "hello";\nconst b = (1);\nfunction f() {\nreturn b;\n}',
+            {
+                file: "index.ts",
+                parser: { preserveParens: false },
+                generator: {
+                    singleQuote: false,
+                    oxc: { asciiOnly: false },
+                },
+                plugins: [
+                    {
+                        name: "set-stage-options",
+                        options: (
+                            _ctx: CommonPluginContext,
+                            args: OptionsArgs,
+                        ): OptionsArgs => {
+                            seenBag.push({
+                                preserveParens:
+                                    args.options.parser?.preserveParens,
+                                singleQuote:
+                                    args.options.generator?.singleQuote,
+                                asciiOnly:
+                                    args.options.generator?.oxc?.asciiOnly,
+                            });
+
+                            return {
+                                options: {
+                                    ...args.options,
+                                    parser: {
+                                        ...args.options.parser,
+                                        preserveParens: true,
+                                    },
+                                    generator: {
+                                        ...args.options.generator,
+                                        singleQuote: true,
+                                        oxc: { asciiOnly: true },
+                                    },
+                                },
+                            };
+                        },
+                        prepare: (
+                            _ctx: PluginContext,
+                            args: PrepareArgs,
+                        ): void => {
+                            const program: DeclarationProgramFixture = args.ast
+                                .program as unknown as DeclarationProgramFixture;
+
+                            seenAst.push(
+                                program.body[1]?.declarations?.[0]?.init
+                                    ?.type ?? "",
+                            );
+                        },
+                        generate: (
+                            _ctx: PluginContext,
+                            args: GenerateArgs,
+                        ): null => {
+                            seenGenerator.push({
+                                singleQuote: args.options.singleQuote,
+                                asciiOnly: args.options.asciiOnly,
+                                indentWidth: args.options.indentWidth,
+                            });
+
+                            return null;
+                        },
+                    },
+                ],
+            },
+        );
+
+        expect(seenBag).toEqual([
+            {
+                preserveParens: false,
+                singleQuote: false,
+                asciiOnly: false,
+            },
+        ]);
+        expect(seenAst).toEqual(["ParenthesizedExpression"]);
+        expect(seenGenerator).toEqual([
+            { singleQuote: true, asciiOnly: true, indentWidth: 2 },
+        ]);
+        expect(result.code).toContain("const \\u00B5 = 'hello';");
+        expect(result.code).toContain("const b = 1;");
+        expect(result.code).toContain("function f() {\n  return b;\n}");
+    });
+
     it("omits unset cwd and file from the options hook and resolves their defaults", async (): Promise<void> => {
         // The `options` fixpoint runs before resolution, so the options bag
         // has no `cwd` or `file` when the caller omits them. If an unset field
@@ -356,6 +476,48 @@ describe("compile", (): void => {
             },
         ]);
         expect(seenResolved).toEqual([{ cwd: expectedCwd, file: "index.ts" }]);
+        expect(result.code).toBe("const a = 1;");
+    });
+
+    it("omits absent parser and generator groups from the options hook", async (): Promise<void> => {
+        // An absent group means unset, so resolution applies the stage
+        // defaults. An echoed empty group must not shadow them.
+        const seen: Array<{
+            hasParser: boolean;
+            hasGenerator: boolean;
+            parser: unknown;
+            generator: unknown;
+        }> = [];
+
+        const result: CodeResult = await compile("const a = 1;", {
+            plugins: [
+                {
+                    name: "observe-absent-groups",
+                    options: (
+                        _ctx: CommonPluginContext,
+                        args: OptionsArgs,
+                    ): null => {
+                        seen.push({
+                            hasParser: "parser" in args.options,
+                            hasGenerator: "generator" in args.options,
+                            parser: args.options.parser,
+                            generator: args.options.generator,
+                        });
+
+                        return null;
+                    },
+                },
+            ],
+        });
+
+        expect(seen).toEqual([
+            {
+                hasParser: false,
+                hasGenerator: false,
+                parser: void 0,
+                generator: void 0,
+            },
+        ]);
         expect(result.code).toBe("const a = 1;");
     });
 
@@ -1434,6 +1596,39 @@ describe("compile", (): void => {
         expect(options.sourceType).toBe("unambiguous");
         expect(options.file).toBe("index.ts");
         expect(options.sourceMap).toEqual({ input: null, output: null });
+        expect(options.parser).toEqual({
+            preserveParens: false,
+            allowReturnOutsideFunction: false,
+            oxc: {
+                parseRegularExpression: false,
+                allowReturnOutsideFunction: false,
+                preserveParens: false,
+                allowV8Intrinsics: false,
+                enableIdentHashes: true,
+            },
+        });
+        expect(options.generator).toEqual({
+            singleQuote: false,
+            asciiOnly: false,
+            indentStyle: "space",
+            indentWidth: 2,
+            comments: true,
+            minify: false,
+            oxc: {
+                singleQuote: false,
+                minify: false,
+                asciiOnly: false,
+                comments: {
+                    normal: true,
+                    jsdoc: true,
+                    annotation: true,
+                    legal: "inline",
+                },
+                indentChar: "space",
+                indentWidth: 2,
+                initialIndent: 0,
+            },
+        });
         // The settled plugin-name list preserves order and duplicates.
         expect(options.plugins).toEqual(["first", "observe"]);
     });

@@ -22,7 +22,12 @@ telarel_core = { workspace = true }
 anyhow = { workspace = true }
 napi = { workspace = true, features = ["napi4", "tokio_rt", "serde-json"] }
 napi-derive = { workspace = true }
-oxc = { workspace = true, features = ["ast_visit", "serialize"] }
+oxc = { workspace = true, features = [
+    "ast_visit",
+    "codegen",
+    "regular_expression",
+    "serialize",
+] }
 oxc_estree_codec = { workspace = true }
 oxc_sourcemap = { workspace = true }
 serde = { workspace = true }

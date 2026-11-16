@@ -14,6 +14,7 @@ import { Ast, createParser, generate, parse, rewrite } from "telarel";
 import { describe, expect, it } from "vitest";
 
 import { renameRootIdentifier } from "#/functions/ast";
+import { resolvedParserOptions } from "#/functions/options";
 
 type Program = AstOptions["program"];
 
@@ -202,13 +203,13 @@ describe("Ast", (): void => {
     });
 
     it("populates language from createParser", async (): Promise<void> => {
-        const parser: Parser = createParser("declare const a: number;", {
-            cwd: "/repo",
-            file: "index.js",
-            language: "dts",
-            sourceType: "unambiguous",
-            sourceMap: {},
-        });
+        const parser: Parser = createParser(
+            "declare const a: number;",
+            resolvedParserOptions({
+                file: "index.js",
+                language: "dts",
+            }),
+        );
 
         const result: AstResult = await parser.parse();
 

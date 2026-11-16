@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
 use oxc::ast::ast::Program;
-use oxc::codegen::{Codegen, CodegenOptions as OxcCodegenOptions};
+use oxc::codegen::Codegen;
 
+use crate::_types::options::OxcCodegenOptions;
 use crate::ast::ast::Ast;
 use crate::ast::result::CodeResult;
+use crate::helpers::resolve::default_codegen_oxc;
 use crate::sourcemap::SourceMap;
 
 /// Options for [`generate_code`].
@@ -26,14 +28,30 @@ fn strip_trailing_newline(mut source: String) -> String {
 }
 
 /// Generate code + map from an owned AST, composing the AST's input map
-/// into the produced map. Always produces a map and records `options.file`
-/// as its file.
+/// into the produced map. The Telarel defaults back the codegen options. The
+/// function always produces a map and records `options.file` as its file.
 pub fn generate_code(
     ast: &Ast,
     options: GenerateCodeOptions,
 ) -> CodeResult {
+    generate_code_with_codegen(ast, options, default_codegen_oxc())
+}
+
+/// Generate code + map from an owned AST with explicit raw oxc codegen
+/// options.
+///
+/// Telarel defaults are not applied: `codegen` is used verbatim. Use
+/// [`generate_code`] for the Telarel defaults. The AST's input map is composed
+/// into the produced map. The function always produces a map and records
+/// `options.file` as its file. The function ignores `codegen.source_map_path`;
+/// the file comes from `options`.
+pub fn generate_code_with_codegen(
+    ast: &Ast,
+    options: GenerateCodeOptions,
+    codegen: OxcCodegenOptions,
+) -> CodeResult {
     let (code, codegen_map): (String, SourceMap) =
-        generate_program(ast.program(), &options.file);
+        generate_program_with_codegen(ast.program(), &options.file, codegen);
 
     let code: String = strip_trailing_newline(code);
 
@@ -50,19 +68,29 @@ pub fn generate_code(
 }
 
 /// Low-level program codegen (raw oxc output, no newline strip, no
-/// composition). Retained for internal consumers (plugin_transform change
-/// detection).
+/// composition). The Telarel defaults back the codegen options. Retained for
+/// internal consumers (plugin_transform change detection).
 pub fn generate_program(
     program: &Program<'_>,
     file: &str,
 ) -> (String, SourceMap) {
-    let codegen_options: OxcCodegenOptions = OxcCodegenOptions {
-        source_map_path: Some(PathBuf::from(file)),
-        ..OxcCodegenOptions::default()
-    };
+    generate_program_with_codegen(program, file, default_codegen_oxc())
+}
+
+/// Low-level program codegen with explicit raw oxc codegen options.
+///
+/// Telarel defaults are not applied: `codegen` is used verbatim. Use
+/// [`generate_program`] for the Telarel defaults. The function ignores
+/// `codegen.source_map_path`. The map records `file` instead.
+pub fn generate_program_with_codegen(
+    program: &Program<'_>,
+    file: &str,
+    mut codegen: OxcCodegenOptions,
+) -> (String, SourceMap) {
+    codegen.source_map_path = Some(PathBuf::from(file));
 
     let result: oxc::codegen::CodegenReturn<'_> =
-        Codegen::new().with_options(codegen_options).build(program);
+        Codegen::new().with_options(codegen).build(program);
 
     let map: SourceMap = result
         .map
@@ -76,6 +104,7 @@ pub fn generate_program(
 mod tests {
     use oxc::allocator::Allocator;
     use oxc::ast::ast::{BindingPattern, Ident, Statement, VariableDeclarator};
+    use oxc::codegen::CommentOptions;
     use oxc_sourcemap::SourceMapBuilder;
 
     use crate::ast::parse::{ParseAstOptions, parse_ast};
@@ -200,6 +229,16 @@ mod tests {
             generate_code(&ast, GenerateCodeOptions { file: FILE.to_string() });
 
         assert_eq!(result.code, "const a = 1;");
+    }
+
+    #[test]
+    fn test_generate_code_uses_telarel_default_indentation() {
+        let ast: Ast = parse_code("function f() {\nreturn;\n}");
+
+        let result: CodeResult =
+            generate_code(&ast, GenerateCodeOptions { file: FILE.to_string() });
+
+        assert_eq!(result.code, "function f() {\n  return;\n}");
     }
 
     #[test]
@@ -410,5 +449,209 @@ mod tests {
         let map: SourceMap = result.map.expect("map always produced");
 
         assert_eq!(map.get_file(), Some(file));
+    }
+
+    #[test]
+    fn test_generate_code_with_codegen_sets_single_quote() {
+        let ast: Ast = parse_code("const a = \"hello\";");
+
+        let result: CodeResult = generate_code_with_codegen(
+            &ast,
+            GenerateCodeOptions { file: FILE.to_string() },
+            OxcCodegenOptions {
+                single_quote: true,
+                ..OxcCodegenOptions::default()
+            },
+        );
+
+        assert_eq!(result.code, "const a = 'hello';");
+    }
+
+    #[test]
+    fn test_generate_code_with_codegen_sets_ascii_only() {
+        let ast: Ast = parse_code("const µ = 1;");
+
+        let result: CodeResult = generate_code_with_codegen(
+            &ast,
+            GenerateCodeOptions { file: FILE.to_string() },
+            OxcCodegenOptions {
+                ascii_only: true,
+                ..OxcCodegenOptions::default()
+            },
+        );
+
+        assert_eq!(result.code, "const \\u00B5 = 1;");
+    }
+
+    #[test]
+    fn test_generate_code_with_codegen_uses_space_indentation() {
+        let ast: Ast = parse_code("function f() {\nreturn;\n}");
+
+        let result: CodeResult = generate_code_with_codegen(
+            &ast,
+            GenerateCodeOptions { file: FILE.to_string() },
+            OxcCodegenOptions {
+                indent_char: oxc::codegen::IndentChar::Space,
+                indent_width: 2,
+                ..OxcCodegenOptions::default()
+            },
+        );
+
+        assert_eq!(result.code, "function f() {\n  return;\n}");
+    }
+
+    #[test]
+    fn test_generate_code_with_codegen_uses_tab_indentation() {
+        let ast: Ast = parse_code("function f() {\nreturn;\n}");
+
+        let result: CodeResult = generate_code_with_codegen(
+            &ast,
+            GenerateCodeOptions { file: FILE.to_string() },
+            OxcCodegenOptions {
+                indent_char: oxc::codegen::IndentChar::Tab,
+                indent_width: 1,
+                ..OxcCodegenOptions::default()
+            },
+        );
+
+        assert_eq!(result.code, "function f() {\n\treturn;\n}");
+    }
+
+    #[test]
+    fn test_generate_code_with_codegen_uses_indent_width() {
+        let ast: Ast = parse_code("function f() {\nreturn;\n}");
+
+        let result: CodeResult = generate_code_with_codegen(
+            &ast,
+            GenerateCodeOptions { file: FILE.to_string() },
+            OxcCodegenOptions {
+                indent_char: oxc::codegen::IndentChar::Space,
+                indent_width: 4,
+                ..OxcCodegenOptions::default()
+            },
+        );
+
+        assert_eq!(result.code, "function f() {\n    return;\n}");
+    }
+
+    #[test]
+    fn test_generate_code_with_codegen_prints_comments() {
+        let ast: Ast = parse_code("// lead\nconst a = 1;");
+
+        let result: CodeResult = generate_code_with_codegen(
+            &ast,
+            GenerateCodeOptions { file: FILE.to_string() },
+            OxcCodegenOptions::default(),
+        );
+
+        assert!(result.code.contains("// lead"), "{}", result.code);
+    }
+
+    #[test]
+    fn test_generate_code_with_codegen_disables_comments() {
+        let ast: Ast = parse_code("// lead\nconst a = 1;");
+
+        let result: CodeResult = generate_code_with_codegen(
+            &ast,
+            GenerateCodeOptions { file: FILE.to_string() },
+            OxcCodegenOptions {
+                comments: CommentOptions::disabled(),
+                ..OxcCodegenOptions::default()
+            },
+        );
+
+        assert!(!result.code.contains("// lead"), "{}", result.code);
+    }
+
+    #[test]
+    fn test_generate_code_with_codegen_minifies_and_drops_comments() {
+        let ast: Ast = parse_code("// lead\nconst a = 1;");
+
+        let result: CodeResult = generate_code_with_codegen(
+            &ast,
+            GenerateCodeOptions { file: FILE.to_string() },
+            OxcCodegenOptions::minify(),
+        );
+
+        assert_eq!(result.code, "const a=1;");
+    }
+
+    #[test]
+    fn test_generate_code_with_codegen_explicit_comments_survive_minify() {
+        let ast: Ast = parse_code("// lead\nconst a = 1;");
+
+        let result: CodeResult = generate_code_with_codegen(
+            &ast,
+            GenerateCodeOptions { file: FILE.to_string() },
+            OxcCodegenOptions {
+                minify: true,
+                comments: CommentOptions::default(),
+                ..OxcCodegenOptions::default()
+            },
+        );
+
+        assert!(result.code.contains("// lead"), "{}", result.code);
+        assert!(!result.code.contains("const a = 1;"), "{}", result.code);
+    }
+
+    #[test]
+    fn test_generate_code_with_codegen_ignores_source_map_path() {
+        let ast: Ast = parse_code("const a = 1;");
+
+        let result: CodeResult = generate_code_with_codegen(
+            &ast,
+            GenerateCodeOptions { file: FILE.to_string() },
+            OxcCodegenOptions {
+                source_map_path: Some(PathBuf::from("ignored.ts")),
+                ..OxcCodegenOptions::default()
+            },
+        );
+
+        let map: SourceMap = result.map.expect("map always produced");
+
+        assert_eq!(map.get_file(), Some(FILE));
+        assert_eq!(map.get_source(0), Some(FILE));
+    }
+
+    #[test]
+    fn test_generate_program_uses_telarel_default_indentation() {
+        let ast: Ast = parse_code("function f() {\nreturn;\n}");
+
+        let (code, _): (String, SourceMap) =
+            generate_program(ast.program(), FILE);
+
+        assert_eq!(code, "function f() {\n  return;\n}\n");
+    }
+
+    #[test]
+    fn test_generate_program_with_codegen_uses_supplied_options() {
+        let ast: Ast = parse_code("const a = \"hello\";");
+
+        let (code, _): (String, SourceMap) = generate_program_with_codegen(
+            ast.program(),
+            FILE,
+            OxcCodegenOptions {
+                single_quote: true,
+                ..OxcCodegenOptions::default()
+            },
+        );
+
+        assert_eq!(code, "const a = 'hello';\n");
+    }
+
+    #[test]
+    fn test_generate_program_with_codegen_ignores_source_map_path() {
+        let ast: Ast = parse_code("const a = 1;");
+
+        let (_, map): (String, SourceMap) = generate_program_with_codegen(
+            ast.program(),
+            FILE,
+            OxcCodegenOptions {
+                source_map_path: Some(PathBuf::from("ignored.ts")),
+                ..OxcCodegenOptions::default()
+            },
+        );
+
+        assert_eq!(map.get_source(0), Some(FILE));
     }
 }

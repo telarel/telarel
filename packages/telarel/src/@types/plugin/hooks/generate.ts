@@ -1,4 +1,4 @@
-import type { GeneratorOptions } from "#/@types/generator";
+import type { ResolvedGeneratorOptions } from "#/@types/generator";
 import type { Ast } from "#/classes/ast";
 
 /**
@@ -12,7 +12,7 @@ type GenerateArgs = {
     /**
      * Resolved generator options.
      */
-    options: GeneratorOptions;
+    options: ResolvedGeneratorOptions;
 };
 
 export type { GenerateArgs };

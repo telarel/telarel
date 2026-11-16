@@ -2,9 +2,25 @@
 
 ### Common
 
+#### Breaking
+
+- change `CompileFromAstOptions`, `CompileOptions`, `GenerateOptions`, `ParseOptions`, `ResolvableOptions`, and `ResolvedOptions` to add the parser and generator fields. Existing struct literals must add the new fields. All named types except `ResolvedOptions` also accept `..Default::default()`; `ResolvedOptions` does not implement `Default`
+- change `generate_code` and `generate_program` default indentation to spaces of width `2`
+- change `parse_ast` and `parse_program` default `preserve_parens` to `false`
+- change `ResolvedGeneratorOptions` and `ResolvedParserOptions` to add the curated fields and the full effective `oxc` object. Existing struct literals must add the new fields
+- rename the resolved builtin `GeneratorOptions` and `ParserOptions` to `ResolvedGeneratorOptions` and `ResolvedParserOptions`
+
 #### Features
 
 - add `FILE_DEFAULT` as the default input file name
+- add `generate_code_with_codegen` and `generate_program_with_codegen` as low-level entry points for caller-supplied raw oxc codegen options
+- add `GeneratorOptions` as an optional generator-stage group with `single_quote`, `ascii_only`, `indent_style`, `indent_width`, `comments`, `minify`, and `oxc`. Only fields set in `oxc` override the Telarel defaults, `oxc: {}` changes nothing, and a curated field wins over its raw counterpart, except for `comments`: when set to `false` it disables every category, and when set to `true` it preserves explicitly set raw categories unless raw comments are fully disabled
+- add `IndentStyle` for generator indentation
+- add `OxcCodegenOptions` and `OxcParseOptions` as raw oxc aliases for resolved and low-level values
+- add `parse_ast_with_parser_options` and `parse_program_with_parser_options` as low-level entry points for caller-supplied raw oxc parser options
+- add `ParserOptions` as an optional parser-stage group with `preserve_parens`, `allow_return_outside_function`, and `oxc`. Only fields set in `oxc` override the Telarel defaults, `oxc: {}` changes nothing, and a curated field wins over its raw counterpart
+- add `PartialOxcCodegenOptions`, `PartialOxcCommentOptions`, and `PartialOxcParseOptions` as the raw oxc override patches
+- add `ResolvedGeneratorStageOptions` and `ResolvedParserStageOptions` as the resolved parser and generator stage views. The generator view defaults to spaces of width `2`; the parser view defaults to `preserve_parens = false`
 - add `strip_file_suffix` to remove a `?query` or `#hash` suffix from a file name
 
 #### Fixes
@@ -14,9 +30,20 @@
 
 ### Core
 
+#### Features
+
+- add parser and generator option groups to the `options` hook and apply them to the parse and generate stages
+- add parser and generator stage views to the resolved options seen by `start`
+
 #### Fixes
 
 - change the `generate` stage to overwrite `map.file` with the resolved `output.file` after the winning result, including a custom map
+
+### Plugin
+
+#### Breaking
+
+- rename the `ParseArgs.options` and `GenerateArgs.options` types to `ResolvedParserOptions` and `ResolvedGeneratorOptions`
 
 ### Plugin Transform
 
@@ -47,6 +74,8 @@
 
 #### Features
 
+- add `JsGeneratorOptions` and `JsParserOptions` option groups, curated fields on `JsParserHookOptions` and `JsGeneratorHookOptions`, and camelCase raw `oxc` payloads
+- add resolved parser and generator stage views to `JsResolvedOptions`
 - add `preserve` to the transform plugin's `jsx.runtime` values
 
 #### Fixes
@@ -56,9 +85,14 @@
 
 ### Telarel (Crate)
 
+#### Breaking
+
+- rename the resolved builtin re-exports `GeneratorOptions` and `ParserOptions` to `ResolvedGeneratorOptions` and `ResolvedParserOptions`
+
 #### Features
 
-- add `FILE_DEFAULT` and `strip_file_suffix` re-exports
+- add re-exports for `GeneratorOptions`, `IndentStyle`, `OxcCodegenOptions`, `OxcParseOptions`, `ParserOptions`, `PartialOxcCodegenOptions`, `PartialOxcCommentOptions`, `PartialOxcParseOptions`, `ResolvedGeneratorOptions`, `ResolvedGeneratorStageOptions`, `ResolvedParserOptions`, and `ResolvedParserStageOptions`
+- add the `oxc` module, which re-exports the raw `oxc::parser` and `oxc::codegen` option types
 
 #### Fixes
 
@@ -68,14 +102,21 @@
 
 #### Breaking
 
+- change `GeneratorOptions.comments` to default to `false` when `minify` is `true` and neither `comments` nor raw `oxc.comments` sets a comment field
+- change `GeneratorOptions.indentStyle` to default to `"space"` and `indentWidth` to `2`
 - change the transform plugin's default JSX runtime to `preserve`. JSX is lowered only when `jsx.runtime` is `classic` or `automatic`
 - change the transform plugin's default `output.file` to derive from the input file when unset or empty. `.ts` maps to `.js`, `.mts` to `.mjs`, and `.cts` to `.cjs`. Preserved JSX maps to `.jsx`, and lowered JSX maps to `.js`. Declaration and unknown suffixes stay unchanged. A non-empty `output.file` wins verbatim. Derived names drop `?query` and `#hash`.
 - change `OxcDecoratorOptions` to omit `legacy`, which the binding rejects. Use `experimentalDecorators` instead
+- change `ParserOptions.preserveParens` to default to `false`
+- change `ResolvedGeneratorOptions` and `ResolvedParserOptions` to add required generator fields (`singleQuote`, `asciiOnly`, `indentStyle`, `indentWidth`, `comments`, `minify`, and full effective `oxc`) and required parser fields (`preserveParens`, `allowReturnOutsideFunction`, and full effective `oxc`)
 - change `TypeScriptOptions` to `tsconfig` names: `onlyRemoveTypeImports` becomes `verbatimModuleSyntax`, and `jsxPragma`/`jsxPragmaFrag` are replaced by `jsx.pragma`/`jsx.pragmaFrag`
 - remove `allowNamespaces` and `optimizeEnums` from `TypeScriptOptions`
+- rename the resolved `GeneratorOptions` and `ParserOptions` types to `ResolvedGeneratorOptions` and `ResolvedParserOptions`
 
 #### Features
 
+- add `GeneratorOptions` and `ParserOptions` option groups with camelCase raw `oxc` payloads. Only fields set in `oxc` override the Telarel defaults, `oxc: {}` changes nothing, and a curated field wins over its raw counterpart, except for `comments`: when set to `false` it disables every category, and when set to `true` it preserves explicitly set raw categories unless raw comments are fully disabled. The entry point rejects unknown raw fields.
+- add `IndentStyle`, `OxcCodegenOptions`, `OxcCommentOptions`, `OxcLegalComment`, `OxcParserOptions`, `ResolvedGeneratorStageOptions`, `ResolvedOxcCodegenOptions`, `ResolvedOxcCommentOptions`, `ResolvedOxcParserOptions`, and `ResolvedParserStageOptions` types
 - add `preserve` to `JsxRuntime`
 - add `TypeScriptOptions.emitDecoratorMetadata`, `experimentalDecorators`, `optimizeConstEnums`, `rewriteRelativeImportExtensions`, `useDefineForClassFields`, and `verbatimModuleSyntax`
 - add a configuration error when `emitDecoratorMetadata` is enabled without `experimentalDecorators`

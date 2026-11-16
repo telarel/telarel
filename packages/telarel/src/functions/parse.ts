@@ -31,6 +31,7 @@ const parse = async (
                 file: options?.file,
                 language: options?.language,
                 sourceType: options?.sourceType,
+                parser: options?.parser,
                 inputSourceMap: options?.inputSourceMap,
                 plugins,
             });

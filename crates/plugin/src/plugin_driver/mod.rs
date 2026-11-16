@@ -3,8 +3,8 @@ pub mod hooks;
 use std::sync::Arc;
 
 use telarel_common::{
-    Ast, AstResult, CodeResult, CompileError, Generator, GeneratorOptions,
-    HookUsage, Parser, ParserOptions,
+    Ast, AstResult, CodeResult, CompileError, Generator, HookUsage, Parser,
+    ResolvedGeneratorOptions, ResolvedParserOptions,
 };
 
 use crate::_types::context::PluginContext;
@@ -181,7 +181,7 @@ impl PluginDriver {
         &self,
         ctx: &PluginContext<'_>,
         code: &str,
-        options: &ParserOptions,
+        options: &ResolvedParserOptions,
         builtin: &Parser,
     ) -> Result<AstResult, CompileError> {
         hooks::parse::parse(&self.parse_plugins, ctx, code, options, builtin)
@@ -234,7 +234,7 @@ impl PluginDriver {
         &self,
         ctx: &PluginContext<'_>,
         ast: &Ast,
-        options: &GeneratorOptions,
+        options: &ResolvedGeneratorOptions,
         builtin: &Generator<'_>,
     ) -> Result<CodeResult, CompileError> {
         hooks::generate::generate(
@@ -275,9 +275,10 @@ mod tests {
     use oxc::span::SPAN;
 
     use telarel_common::{
-        Ast, AstResult, CodeResult, Generator, GeneratorOptions, HookUsage,
-        Language, ParseAstOptions, Parser, ParserOptions, SourceMapOptions,
-        SourceType, parse_ast,
+        Ast, AstResult, CodeResult, Generator, HookUsage, Language,
+        ParseAstOptions, Parser, ResolvedGeneratorOptions,
+        ResolvedGeneratorStageOptions, ResolvedParserOptions,
+        ResolvedParserStageOptions, SourceMapOptions, SourceType, parse_ast,
     };
 
     use crate::_types::context::{CommonPluginContext, ModuleInfo};
@@ -329,21 +330,37 @@ mod tests {
         parse_fixture("console.log(1);").expect("fixture parses")
     }
 
-    fn parser_options(file: &str) -> ParserOptions {
-        ParserOptions {
+    fn parser_options(file: &str) -> ResolvedParserOptions {
+        let stage: ResolvedParserStageOptions =
+            ResolvedParserStageOptions::default();
+
+        ResolvedParserOptions {
             cwd: PathBuf::from("/repo"),
             file: file.to_string(),
             language: Language::TS,
             source_type: SourceType::Module,
             source_map: SourceMapOptions::default(),
+            preserve_parens: stage.preserve_parens,
+            allow_return_outside_function: stage.allow_return_outside_function,
+            oxc: stage.oxc,
         }
     }
 
-    fn generator_options(file: &str) -> GeneratorOptions {
-        GeneratorOptions {
+    fn generator_options(file: &str) -> ResolvedGeneratorOptions {
+        let stage: ResolvedGeneratorStageOptions =
+            ResolvedGeneratorStageOptions::default();
+
+        ResolvedGeneratorOptions {
             cwd: PathBuf::from("/repo"),
             file: file.to_string(),
             source_map: SourceMapOptions::default(),
+            single_quote: stage.single_quote,
+            ascii_only: stage.ascii_only,
+            indent_style: stage.indent_style,
+            indent_width: stage.indent_width,
+            comments: stage.comments,
+            minify: stage.minify,
+            oxc: stage.oxc,
         }
     }
 
@@ -1048,6 +1065,8 @@ mod tests {
                 file: String::from("a.ts"),
                 language: Language::TS,
                 source_type: SourceType::Module,
+                parser: ResolvedParserStageOptions::default(),
+                generator: ResolvedGeneratorStageOptions::default(),
                 output: telarel_common::ResolvedOutputOptions {
                     file: String::from("dist/a.js"),
                 },
@@ -1317,7 +1336,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let options: ParserOptions = parser_options("a.ts");
+        let options: ResolvedParserOptions = parser_options("a.ts");
 
         let builtin: Parser =
             Parser::new(String::from("let builtin;"), parser_options("a.ts"));
@@ -1353,7 +1372,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let options: ParserOptions = parser_options("a.ts");
+        let options: ResolvedParserOptions = parser_options("a.ts");
 
         let builtin: Parser =
             Parser::new(String::from("let builtin;"), parser_options("a.ts"));
@@ -1397,7 +1416,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let options: ParserOptions = parser_options("a.ts");
+        let options: ResolvedParserOptions = parser_options("a.ts");
 
         let builtin: Parser =
             Parser::new(String::from("let builtin;"), parser_options("a.ts"));
@@ -1424,7 +1443,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let options: ParserOptions = parser_options("index.ts");
+        let options: ResolvedParserOptions = parser_options("index.ts");
 
         let builtin: Parser = Parser::new(
             String::from("const a = 1;"),
@@ -1458,7 +1477,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let options: ParserOptions = parser_options("index.ts");
+        let options: ResolvedParserOptions = parser_options("index.ts");
 
         let builtin: Parser =
             Parser::new(String::from("const = ;"), parser_options("index.ts"));
@@ -1493,7 +1512,7 @@ mod tests {
 
         assert_eq!(driver.usage(), HookUsage::Prepare);
 
-        let options: ParserOptions = parser_options("a.ts");
+        let options: ResolvedParserOptions = parser_options("a.ts");
 
         let builtin: Parser =
             Parser::new(String::from("let builtin;"), parser_options("a.ts"));
@@ -1521,7 +1540,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let options: ParserOptions = parser_options("input.ts");
+        let options: ResolvedParserOptions = parser_options("input.ts");
 
         let builtin: Parser =
             Parser::new(String::from("let a;"), parser_options("input.ts"));
@@ -1557,7 +1576,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let options: GeneratorOptions = generator_options("a.ts");
+        let options: ResolvedGeneratorOptions = generator_options("a.ts");
 
         let builtin: Generator<'_> =
             Generator::new(&ast, generator_options("a.ts"));
@@ -1593,7 +1612,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let options: GeneratorOptions = generator_options("a.ts");
+        let options: ResolvedGeneratorOptions = generator_options("a.ts");
 
         let builtin: Generator<'_> =
             Generator::new(&ast, generator_options("a.ts"));
@@ -1634,7 +1653,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let options: GeneratorOptions = generator_options("a.ts");
+        let options: ResolvedGeneratorOptions = generator_options("a.ts");
 
         let builtin: Generator<'_> =
             Generator::new(&ast, generator_options("a.ts"));
@@ -1660,7 +1679,7 @@ mod tests {
 
         let driver: PluginDriver = PluginDriver::new(plugins);
 
-        let options: GeneratorOptions = generator_options("input.ts");
+        let options: ResolvedGeneratorOptions = generator_options("input.ts");
 
         let builtin: Generator<'_> =
             Generator::new(&ast, generator_options("input.ts"));

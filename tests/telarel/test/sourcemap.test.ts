@@ -32,6 +32,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { renameRootIdentifier } from "#/functions/ast";
+import { resolvedGeneratorOptions } from "#/functions/options";
 import {
     appendInlineMap,
     buildMap,
@@ -873,11 +874,10 @@ describe("createGenerator source maps", (): void => {
     it("records file as map.file", async (): Promise<void> => {
         const ast: Ast = await plainAst();
 
-        const result: CodeResult = await createGenerator(ast, {
-            cwd: "/repo",
-            file: "src/index.ts",
-            sourceMap: {},
-        }).generate();
+        const result: CodeResult = await createGenerator(
+            ast,
+            resolvedGeneratorOptions({ file: "src/index.ts" }),
+        ).generate();
 
         expect(result.map?.file).toBe("src/index.ts");
         expect(result.map?.sources).toEqual(["src/index.ts"]);
@@ -888,11 +888,12 @@ describe("createGenerator source maps", (): void => {
 
         expect(ast.map?.sources).toEqual(["own.ts"]);
 
-        const result: CodeResult = await createGenerator(ast, {
-            cwd: "/repo",
-            file: "index.ts",
-            sourceMap: { input: upstreamMap() },
-        }).generate();
+        const result: CodeResult = await createGenerator(
+            ast,
+            resolvedGeneratorOptions({
+                sourceMap: { input: upstreamMap() },
+            }),
+        ).generate();
 
         expect(result.map?.sources).toEqual(["upstream.ts"]);
         expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
@@ -915,11 +916,10 @@ describe("createGenerator source maps", (): void => {
 
         expect(ast.source).toContain(SOURCE_MAPPING_COMMENT);
 
-        const result: CodeResult = await createGenerator(ast, {
-            cwd: "/repo",
-            file: "index.ts",
-            sourceMap: { input: "inline" },
-        }).generate();
+        const result: CodeResult = await createGenerator(
+            ast,
+            resolvedGeneratorOptions({ sourceMap: { input: "inline" } }),
+        ).generate();
 
         expect(result.code).toBe("const a = 1;");
         expect(countSourceMappingComments(result.code)).toBe(0);
@@ -956,11 +956,13 @@ describe("createGenerator source maps", (): void => {
                     file: "index.ts",
                 })
             ).ast;
-            const result: CodeResult = await createGenerator(ast, {
-                cwd: directory,
-                file: "index.ts",
-                sourceMap: { input: "external" },
-            }).generate();
+            const result: CodeResult = await createGenerator(
+                ast,
+                resolvedGeneratorOptions({
+                    cwd: directory,
+                    sourceMap: { input: "external" },
+                }),
+            ).generate();
 
             expect(result.map?.sources).toEqual(["external.ts"]);
             expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
@@ -1006,11 +1008,13 @@ describe("createGenerator source maps", (): void => {
                     file: "index.ts",
                 })
             ).ast;
-            const inlineResult: CodeResult = await createGenerator(inlineAst, {
-                cwd: directory,
-                file: "index.ts",
-                sourceMap: { input: "auto" },
-            }).generate();
+            const inlineResult: CodeResult = await createGenerator(
+                inlineAst,
+                resolvedGeneratorOptions({
+                    cwd: directory,
+                    sourceMap: { input: "auto" },
+                }),
+            ).generate();
 
             expect(inlineResult.map?.sources).toEqual(["inline.ts"]);
             expect(
@@ -1030,11 +1034,10 @@ describe("createGenerator source maps", (): void => {
             ).ast;
             const externalResult: CodeResult = await createGenerator(
                 externalAst,
-                {
+                resolvedGeneratorOptions({
                     cwd: directory,
-                    file: "index.ts",
                     sourceMap: { input: "auto" },
-                },
+                }),
             ).generate();
 
             expect(externalResult.map?.sources).toEqual(["external.ts"]);
@@ -1054,11 +1057,13 @@ describe("createGenerator source maps", (): void => {
         const ast: Ast = await astWithOwnMap();
 
         for (const input of ["inline", "auto"] as const) {
-            const result: CodeResult = await createGenerator(ast, {
-                cwd: directory,
-                file: "index.ts",
-                sourceMap: { input },
-            }).generate();
+            const result: CodeResult = await createGenerator(
+                ast,
+                resolvedGeneratorOptions({
+                    cwd: directory,
+                    sourceMap: { input },
+                }),
+            ).generate();
 
             expect(result.map?.sources).toEqual(["own.ts"]);
             expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
@@ -1077,11 +1082,10 @@ describe("createGenerator source maps", (): void => {
                 file: "index.ts",
             })
         ).ast;
-        const result: CodeResult = await createGenerator(ast, {
-            cwd: "/repo",
-            file: "index.ts",
-            sourceMap: { output: "inline" },
-        }).generate();
+        const result: CodeResult = await createGenerator(
+            ast,
+            resolvedGeneratorOptions({ sourceMap: { output: "inline" } }),
+        ).generate();
 
         expect(result.map).toBeNull();
         expect(countSourceMappingComments(result.code)).toBe(1);
@@ -1099,16 +1103,17 @@ describe("createGenerator source maps", (): void => {
                 file: "index.ts",
             })
         ).ast;
-        const result: CodeResult = await createGenerator(ast, {
-            cwd: "/repo",
-            file: "index.ts",
-            sourceMap: {
-                output: {
-                    mode: "external",
-                    url: "dist/index.js.map",
+        const result: CodeResult = await createGenerator(
+            ast,
+            resolvedGeneratorOptions({
+                sourceMap: {
+                    output: {
+                        mode: "external",
+                        url: "dist/index.js.map",
+                    },
                 },
-            },
-        }).generate();
+            }),
+        ).generate();
 
         expect(result.code).toBe(
             `const a = 1;\n${SOURCE_MAPPING_COMMENT}dist/index.js.map\n`,
@@ -1130,11 +1135,10 @@ describe("createGenerator source maps", (): void => {
                 file: "index.ts",
             })
         ).ast;
-        const result: CodeResult = await createGenerator(ast, {
-            cwd: "/repo",
-            file: "index.ts",
-            sourceMap: { output: "external" },
-        }).generate();
+        const result: CodeResult = await createGenerator(
+            ast,
+            resolvedGeneratorOptions({ sourceMap: { output: "external" } }),
+        ).generate();
 
         expect(result.code).toBe(
             `const a = 1;\n${SOURCE_MAPPING_COMMENT}index.ts.map\n`,
@@ -1150,11 +1154,10 @@ describe("createGenerator source maps", (): void => {
                 file: "index.ts",
             })
         ).ast;
-        const result: CodeResult = await createGenerator(ast, {
-            cwd: "/repo",
-            file: "index.ts",
-            sourceMap: { output: "both" },
-        }).generate();
+        const result: CodeResult = await createGenerator(
+            ast,
+            resolvedGeneratorOptions({ sourceMap: { output: "both" } }),
+        ).generate();
 
         expect(result.map?.sources).toEqual(["index.ts"]);
         expect(countSourceMappingComments(result.code)).toBe(1);
@@ -1524,11 +1527,13 @@ describe("output path edges: createGenerator", (): void => {
     it("derives the external map URL from file", async (): Promise<void> => {
         const ast: Ast = await plainAst();
 
-        const result: CodeResult = await createGenerator(ast, {
-            cwd: "/repo",
-            file: "src/index.ts",
-            sourceMap: { output: "external" },
-        }).generate();
+        const result: CodeResult = await createGenerator(
+            ast,
+            resolvedGeneratorOptions({
+                file: "src/index.ts",
+                sourceMap: { output: "external" },
+            }),
+        ).generate();
 
         expectExternalMap(result, {
             source: "src/index.ts",
@@ -1539,11 +1544,13 @@ describe("output path edges: createGenerator", (): void => {
     it("uses index.ts.map when file is empty", async (): Promise<void> => {
         const ast: Ast = await plainAst();
 
-        const result: CodeResult = await createGenerator(ast, {
-            cwd: "/repo",
-            file: "",
-            sourceMap: { output: "external" },
-        }).generate();
+        const result: CodeResult = await createGenerator(
+            ast,
+            resolvedGeneratorOptions({
+                file: "",
+                sourceMap: { output: "external" },
+            }),
+        ).generate();
 
         expectExternalMap(result, {
             source: "index.ts",
@@ -1554,16 +1561,18 @@ describe("output path edges: createGenerator", (): void => {
     it("falls back to file when sourceMap.output.url is empty", async (): Promise<void> => {
         const ast: Ast = await plainAst();
 
-        const result: CodeResult = await createGenerator(ast, {
-            cwd: "/repo",
-            file: "src/index.ts",
-            sourceMap: {
-                output: {
-                    mode: "external",
-                    url: "",
+        const result: CodeResult = await createGenerator(
+            ast,
+            resolvedGeneratorOptions({
+                file: "src/index.ts",
+                sourceMap: {
+                    output: {
+                        mode: "external",
+                        url: "",
+                    },
                 },
-            },
-        }).generate();
+            }),
+        ).generate();
 
         expectExternalMap(result, {
             source: "src/index.ts",

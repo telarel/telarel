@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
+use crate::_types::options::builtin::generator::GeneratorOptions;
+use crate::_types::options::builtin::parser::ParserOptions;
 use crate::_types::options::output::OutputOptions;
 use crate::_types::options::resolvable::ResolvableOptions;
 use crate::_types::options::sourcemap::SourceMapOptions;
@@ -27,6 +29,14 @@ pub struct CompileOptions {
     ///
     /// `None` keeps the module kind resolved from the grammar.
     pub source_type: Option<SourceType>,
+    /// Parser-stage options.
+    ///
+    /// By default, it is `None`, which applies the `ParserOptions` defaults.
+    pub parser: Option<ParserOptions>,
+    /// Generator-stage options.
+    ///
+    /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
+    pub generator: Option<GeneratorOptions>,
     /// The output code configuration.
     pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the run.
@@ -40,6 +50,8 @@ impl From<CompileOptions> for ResolvableOptions {
             file: options.file,
             language: options.language,
             source_type: options.source_type,
+            parser: options.parser,
+            generator: options.generator,
             output: options.output,
             source_map: options.source_map,
         }
@@ -57,6 +69,14 @@ mod tests {
             file: Some("src/app.ts".into()),
             language: Some(Language::TS),
             source_type: Some(SourceType::Module),
+            parser: Some(ParserOptions {
+                preserve_parens: Some(true),
+                ..ParserOptions::default()
+            }),
+            generator: Some(GeneratorOptions {
+                single_quote: Some(true),
+                ..GeneratorOptions::default()
+            }),
             output: Some(OutputOptions {
                 file: Some(String::from("dist/app.js")),
             }),
@@ -72,6 +92,17 @@ mod tests {
             Some("dist/app.js"),
         );
         assert!(options.source_map.is_some());
+        assert_eq!(
+            options.parser.as_ref().and_then(|parser| parser.preserve_parens),
+            Some(true),
+        );
+        assert_eq!(
+            options
+                .generator
+                .as_ref()
+                .and_then(|generator| generator.single_quote),
+            Some(true),
+        );
     }
 
     #[test]
@@ -84,6 +115,8 @@ mod tests {
         assert!(options.source_type.is_none());
         assert!(options.output.is_none());
         assert!(options.source_map.is_none());
+        assert!(options.parser.is_none());
+        assert!(options.generator.is_none());
     }
 
     #[test]
@@ -93,6 +126,14 @@ mod tests {
             file: Some(String::from("src/app.tsx")),
             language: Some(Language::TSX),
             source_type: Some(SourceType::Script),
+            parser: Some(ParserOptions {
+                allow_return_outside_function: Some(true),
+                ..ParserOptions::default()
+            }),
+            generator: Some(GeneratorOptions {
+                minify: Some(true),
+                ..GeneratorOptions::default()
+            }),
             output: Some(OutputOptions {
                 file: Some(String::from("dist/app.mjs")),
             }),
@@ -113,5 +154,19 @@ mod tests {
             Some("dist/app.mjs"),
         );
         assert!(resolvable.source_map.is_some());
+        assert_eq!(
+            resolvable
+                .parser
+                .as_ref()
+                .and_then(|parser| parser.allow_return_outside_function),
+            Some(true),
+        );
+        assert_eq!(
+            resolvable
+                .generator
+                .as_ref()
+                .and_then(|generator| generator.minify),
+            Some(true),
+        );
     }
 }

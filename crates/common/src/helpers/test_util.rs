@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use oxc::ast::ast::Comment;
+use oxc::ast::ast::{Comment, Expression, Statement};
 use tempfile::TempDir;
 
 use crate::ast::ast::Ast;
@@ -34,4 +34,17 @@ pub fn comment_text(
     let end: usize = comment.span.end as usize;
 
     ast.source()[start..end].to_string()
+}
+
+pub fn first_initializer(ast: &Ast) -> &Expression<'_> {
+    let Statement::VariableDeclaration(declaration) = &ast.program().body[0]
+    else {
+        panic!("expected a variable declaration");
+    };
+
+    declaration
+        .declarations
+        .first()
+        .and_then(|declarator| declarator.init.as_ref())
+        .expect("declaration has an initializer")
 }

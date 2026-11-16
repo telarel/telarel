@@ -7,13 +7,16 @@
 
 pub use telarel_common::{
     Ast, AstResult, CodeResult, CompileContext, CompileError,
-    CompileFromAstOptions, CompileOptions, ErrorSource, FILE_DEFAULT,
-    GenerateOptions, Generator, GeneratorOptions, HookUsage, InputSourceMap,
+    CompileFromAstOptions, CompileOptions, ErrorSource, GenerateOptions,
+    Generator, GeneratorOptions, HookUsage, IndentStyle, InputSourceMap,
     InputSourceMapMode, InputSourceMapOptions, Language, OutputOptions,
-    OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions, ParseOptions,
-    Parser, ParserOptions, ResolvableOptions, ResolvedOptions,
-    ResolvedOutputOptions, RewriteOptions, SourceMap, SourceMapOptions,
-    SourceType, strip_file_suffix,
+    OutputSourceMap, OutputSourceMapMode, OutputSourceMapOptions,
+    OxcCodegenOptions, OxcParseOptions, ParseOptions, Parser, ParserOptions,
+    PartialOxcCodegenOptions, PartialOxcCommentOptions, PartialOxcParseOptions,
+    ResolvableOptions, ResolvedGeneratorOptions, ResolvedGeneratorStageOptions,
+    ResolvedOptions, ResolvedOutputOptions, ResolvedParserOptions,
+    ResolvedParserStageOptions, RewriteOptions, SourceMap, SourceMapOptions,
+    SourceType,
 };
 
 pub use telarel_plugin::{
@@ -44,6 +47,18 @@ pub mod syntax {
 
 pub mod ast {
     pub use oxc::ast::*;
+}
+
+pub mod oxc {
+    pub mod parser {
+        pub use ::oxc::parser::ParseOptions;
+    }
+
+    pub mod codegen {
+        pub use ::oxc::codegen::{
+            CodegenOptions, CommentOptions, IndentChar, LegalComment,
+        };
+    }
 }
 
 #[cfg(feature = "ast_visit")]

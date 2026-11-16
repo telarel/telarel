@@ -4,37 +4,42 @@ description: Create a builtin parser over fixed source text and options.
 ---
 
 ```ts
-function createParser(code: string, options: ParserOptions): Parser;
+function createParser(code: string, options: ResolvedParserOptions): Parser;
 
 type Parser = {
     parse: () => Promise<AstResult>;
 };
 ```
 
-Creates a builtin parser over `code` and `options`.
+Creates a builtin parser over `code` and its resolved `ResolvedParserOptions`.
 
 The returned parser calls the builtin parser directly and never runs the plugin chain. When you need plugins to replace the parse result, use [parse](/apis/javascript/parse).
 
 ## Parameters
 
-| Name      | Type            | Description                           |
-| --------- | --------------- | ------------------------------------- |
-| `code`    | `string`        | The source text to parse.             |
-| `options` | `ParserOptions` | The parser's fixed, resolved options. |
+| Name      | Type                    | Description                           |
+| --------- | ----------------------- | ------------------------------------- |
+| `code`    | `string`                | The source text to parse.             |
+| `options` | `ResolvedParserOptions` | The parser's fixed, resolved options. |
 
-### `ParserOptions`
+### `ResolvedParserOptions`
 
-Every field is required. In a `parse` hook, the stage options are available as `args.options`.
+Every field is required. This is the resolved type. To request the values through an entry point, set the `parser` group. In a `parse` hook, the same value is available as `args.options`.
 
-| Field        | Type               | Description                                      |
-| ------------ | ------------------ | ------------------------------------------------ |
-| `cwd`        | `string`           | Filesystem root used to resolve the source file. |
-| `file`       | `string`           | The file being parsed.                           |
-| `language`   | `Language`         | The grammar of the code.                         |
-| `sourceType` | `SourceType`       | The module system of the code.                   |
-| `sourceMap`  | `SourceMapOptions` | Source-map request for the step.                 |
+| Field                        | Type                       | Description                                                                     |
+| ---------------------------- | -------------------------- | ------------------------------------------------------------------------------- |
+| `cwd`                        | `string`                   | Working directory used to resolve `file` and a relative `sourceMap.input.path`. |
+| `file`                       | `string`                   | The file being parsed.                                                          |
+| `language`                   | `Language`                 | The grammar of the code.                                                        |
+| `sourceType`                 | `SourceType`               | The module system of the code.                                                  |
+| `sourceMap`                  | `SourceMapOptions`         | Source-map request for the step.                                                |
+| `preserveParens`             | `boolean`                  | Whether parenthesized expressions stay in the AST.                              |
+| `allowReturnOutsideFunction` | `boolean`                  | Whether `return` is accepted outside a function body.                           |
+| `oxc`                        | `ResolvedOxcParserOptions` | The full effective options for the raw oxc parser.                              |
 
 `cwd` anchors resolution of `file`. A relative `sourceMap.input.path` resolves against the source file's directory; absolute paths are used as-is.
+
+`oxc` is the full effective object after the three [option layers](/apis#option-layering) apply. It is not the requested partial patch. See [parser options](/apis#parser-options).
 
 The builtin parser resolves `sourceMap.input`. It attaches the requested input map to the returned AST. The pipeline applies output source-map delivery. The builtin parser does not apply it.
 
@@ -59,6 +64,15 @@ const parser: Parser = createParser("const x: number = 1;", {
     language: "ts",
     sourceType: "module",
     sourceMap: {},
+    preserveParens: false,
+    allowReturnOutsideFunction: false,
+    oxc: {
+        parseRegularExpression: false,
+        allowReturnOutsideFunction: false,
+        preserveParens: false,
+        allowV8Intrinsics: false,
+        enableIdentHashes: true,
+    },
 });
 
 const result: AstResult = await parser.parse();

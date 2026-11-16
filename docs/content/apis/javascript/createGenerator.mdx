@@ -4,39 +4,51 @@ description: Create a builtin generator over a fixed AST and options.
 ---
 
 ```ts
-function createGenerator(ast: Ast, options: GeneratorOptions): Generator;
+function createGenerator(
+    ast: Ast,
+    options: ResolvedGeneratorOptions,
+): Generator;
 
 type Generator = {
     generate: () => Promise<CodeResult>;
 };
 ```
 
-Creates a builtin generator over `ast` and `options`.
+Creates a builtin generator over `ast` and its resolved `ResolvedGeneratorOptions`.
 
 The returned generator calls the builtin generator directly and never runs the plugin chain. When you need plugins to replace the generated result, use [generate](/apis/javascript/generate).
 
 ## Parameters
 
-| Name      | Type               | Description                              |
-| --------- | ------------------ | ---------------------------------------- |
-| `ast`     | `Ast`              | The AST to generate from.                |
-| `options` | `GeneratorOptions` | The generator's fixed, resolved options. |
+| Name      | Type                       | Description                              |
+| --------- | -------------------------- | ---------------------------------------- |
+| `ast`     | `Ast`                      | The AST to generate from.                |
+| `options` | `ResolvedGeneratorOptions` | The generator's fixed, resolved options. |
 
-### `GeneratorOptions`
+### `ResolvedGeneratorOptions`
 
-Every field is required. In a `generate` hook, the stage options are available as `args.options`.
+Every field is required. This is the resolved type. To request the values through an entry point, set the `generator` group. In a `generate` hook, the same value is available as `args.options`.
 
-| Field       | Type               | Description                                      |
-| ----------- | ------------------ | ------------------------------------------------ |
-| `cwd`       | `string`           | Filesystem root used to resolve the source file. |
-| `file`      | `string`           | The file being generated.                        |
-| `sourceMap` | `SourceMapOptions` | Source-map request for the step.                 |
+| Field         | Type                        | Description                                                                     |
+| ------------- | --------------------------- | ------------------------------------------------------------------------------- |
+| `cwd`         | `string`                    | Working directory used to resolve `file` and a relative `sourceMap.input.path`. |
+| `file`        | `string`                    | The file being generated.                                                       |
+| `sourceMap`   | `SourceMapOptions`          | Source-map request for the step.                                                |
+| `singleQuote` | `boolean`                   | Whether string literals use single quotes.                                      |
+| `asciiOnly`   | `boolean`                   | Whether non-ASCII characters are escaped.                                       |
+| `indentStyle` | `IndentStyle`               | The resolved indentation style.                                                 |
+| `indentWidth` | `number`                    | The resolved indentation width.                                                 |
+| `comments`    | `boolean`                   | Whether any comment category is printed.                                        |
+| `minify`      | `boolean`                   | Whether generated code is minified.                                             |
+| `oxc`         | `ResolvedOxcCodegenOptions` | The full effective options for the raw oxc codegen.                             |
 
 `cwd` anchors resolution of `file`. A relative `sourceMap.input.path` resolves against the source file's directory; absolute paths are used as-is.
 
-The builtin generator records `file` as `map.file`. `GeneratorOptions` has no separate output name, so `file` also names the source when there is no input map.
+The builtin generator records `file` as `map.file`. `ResolvedGeneratorOptions` has no separate output name, so `file` also names the source when there is no input map.
 
-When `ast.language` is present, generation uses it. Otherwise, generation uses the `file` extension. `GeneratorOptions` has no `language` field.
+`oxc` is the full effective camelCase object after the three [option layers](/apis#option-layering) apply. It is not the requested partial patch. `sourceMapPath` is owned by Telarel and is not accepted here. See [generator options](/apis#generator-options).
+
+When `ast.language` is present, generation uses it. Otherwise, generation uses the `file` extension. `ResolvedGeneratorOptions` has no `language` field.
 
 An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `inline` or `auto` and finds no map, the AST's own map is kept. An `external` request that cannot read its map rejects.
 
@@ -68,6 +80,26 @@ const generator: Generator = createGenerator(ast, {
     cwd: process.cwd(),
     file: "index.ts",
     sourceMap: {},
+    singleQuote: false,
+    asciiOnly: false,
+    indentStyle: "space",
+    indentWidth: 2,
+    comments: true,
+    minify: false,
+    oxc: {
+        singleQuote: false,
+        minify: false,
+        asciiOnly: false,
+        comments: {
+            normal: true,
+            jsdoc: true,
+            annotation: true,
+            legal: "inline",
+        },
+        indentChar: "space",
+        indentWidth: 2,
+        initialIndent: 0,
+    },
 });
 
 const result: CodeResult = await generator.generate();

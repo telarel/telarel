@@ -1,8 +1,17 @@
 import type { AstResult, CodeResult } from "#/@types/ast";
 import type { BuiltinPlugin } from "#/@types/builtin";
-import type { GeneratorOptions } from "#/@types/generator";
+import type {
+    GeneratorOptions,
+    IndentStyle,
+    ResolvedGeneratorOptions,
+    ResolvedOxcCodegenOptions,
+} from "#/@types/generator";
 import type { Language } from "#/@types/grammar";
-import type { ParserOptions } from "#/@types/parser";
+import type {
+    ParserOptions,
+    ResolvedOxcParserOptions,
+    ResolvedParserOptions,
+} from "#/@types/parser";
 import type { Plugin } from "#/@types/plugin";
 import type {
     CommonPluginContext,
@@ -75,6 +84,8 @@ type RawOptionsArgs = {
     file?: string;
     language: string;
     sourceType: string;
+    parser?: ParserOptions;
+    generator?: GeneratorOptions;
     output?: OutputOptions;
     sourceMap?: SourceMapOptions;
     plugins: Array<RawPlugin>;
@@ -85,9 +96,27 @@ type RawOptionsOutput = {
     file?: string;
     language?: string;
     sourceType?: string;
+    parser?: ParserOptions;
+    generator?: GeneratorOptions;
     output?: OutputOptions;
     sourceMap?: SourceMapOptions;
     plugins?: Array<RawPlugin>;
+};
+
+type RawParserStageOptions = {
+    preserveParens: boolean;
+    allowReturnOutsideFunction: boolean;
+    oxc: ResolvedOxcParserOptions;
+};
+
+type RawGeneratorStageOptions = {
+    singleQuote: boolean;
+    asciiOnly: boolean;
+    indentStyle: string;
+    indentWidth: number;
+    comments: boolean;
+    minify: boolean;
+    oxc: ResolvedOxcCodegenOptions;
 };
 
 type RawStartArgs = {
@@ -96,6 +125,8 @@ type RawStartArgs = {
         file: string;
         language: string;
         sourceType: string;
+        parser: RawParserStageOptions;
+        generator: RawGeneratorStageOptions;
         output: CompleteOutputOptions;
         sourceMap: SourceMapOptions;
         plugins: Array<string>;
@@ -108,6 +139,9 @@ type RawParserOptions = {
     language: string;
     sourceType: string;
     sourceMap: SourceMapOptions;
+    preserveParens: boolean;
+    allowReturnOutsideFunction: boolean;
+    oxc: ResolvedOxcParserOptions;
 };
 
 type RawParseArgs = {
@@ -121,6 +155,13 @@ type RawGeneratorOptions = {
     cwd: string;
     file: string;
     sourceMap: SourceMapOptions;
+    singleQuote: boolean;
+    asciiOnly: boolean;
+    indentStyle: string;
+    indentWidth: number;
+    comments: boolean;
+    minify: boolean;
+    oxc: ResolvedOxcCodegenOptions;
 };
 
 type RawGenerateArgs = {
@@ -241,20 +282,46 @@ const toContext = (rawCtx: RawPluginContext): PluginContext => ({
     },
 });
 
-const toParserOptions = (rawOptions: RawParserOptions): ParserOptions => ({
+const toParserOptions = (
+    rawOptions: RawParserOptions,
+): ResolvedParserOptions => ({
     cwd: rawOptions.cwd,
     file: rawOptions.file,
     language: parseLanguage(rawOptions.language),
     sourceType: parseSourceType(rawOptions.sourceType),
     sourceMap: rawOptions.sourceMap,
+    preserveParens: rawOptions.preserveParens,
+    allowReturnOutsideFunction: rawOptions.allowReturnOutsideFunction,
+    oxc: rawOptions.oxc,
 });
+
+const toIndentStyle = (label: string): IndentStyle => {
+    switch (label) {
+        case "space":
+        case "tab": {
+            return label;
+        }
+        default: {
+            throw new TypeError(
+                `invalid indent style label from the binding: ${JSON.stringify(label)}`,
+            );
+        }
+    }
+};
 
 const toGeneratorOptions = (
     rawOptions: RawGeneratorOptions,
-): GeneratorOptions => ({
+): ResolvedGeneratorOptions => ({
     cwd: rawOptions.cwd,
     file: rawOptions.file,
     sourceMap: rawOptions.sourceMap,
+    singleQuote: rawOptions.singleQuote,
+    asciiOnly: rawOptions.asciiOnly,
+    indentStyle: toIndentStyle(rawOptions.indentStyle),
+    indentWidth: rawOptions.indentWidth,
+    comments: rawOptions.comments,
+    minify: rawOptions.minify,
+    oxc: rawOptions.oxc,
 });
 
 type ToRawPluginOptions = {
@@ -600,6 +667,14 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                     bag.sourceType = parseSourceType(rawArgs.sourceType);
                 }
 
+                if (rawArgs.parser !== void 0) {
+                    bag.parser = rawArgs.parser;
+                }
+
+                if (rawArgs.generator !== void 0) {
+                    bag.generator = rawArgs.generator;
+                }
+
                 if (rawArgs.output !== void 0) {
                     bag.output = rawArgs.output;
                 }
@@ -645,6 +720,14 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                     output.sourceType = next.sourceType;
                 }
 
+                if (next.parser !== void 0) {
+                    output.parser = next.parser;
+                }
+
+                if (next.generator !== void 0) {
+                    output.generator = next.generator;
+                }
+
                 if (next.output !== void 0) {
                     output.output = next.output;
                 }
@@ -679,6 +762,25 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                         file: rawArgs.options.file,
                         language: parseLanguage(rawArgs.options.language),
                         sourceType: parseSourceType(rawArgs.options.sourceType),
+                        parser: {
+                            preserveParens:
+                                rawArgs.options.parser.preserveParens,
+                            allowReturnOutsideFunction:
+                                rawArgs.options.parser
+                                    .allowReturnOutsideFunction,
+                            oxc: rawArgs.options.parser.oxc,
+                        },
+                        generator: {
+                            singleQuote: rawArgs.options.generator.singleQuote,
+                            asciiOnly: rawArgs.options.generator.asciiOnly,
+                            indentStyle: toIndentStyle(
+                                rawArgs.options.generator.indentStyle,
+                            ),
+                            indentWidth: rawArgs.options.generator.indentWidth,
+                            comments: rawArgs.options.generator.comments,
+                            minify: rawArgs.options.generator.minify,
+                            oxc: rawArgs.options.generator.oxc,
+                        },
                         output: rawArgs.options.output,
                         sourceMap: rawArgs.options.sourceMap,
                         plugins: rawArgs.options.plugins,

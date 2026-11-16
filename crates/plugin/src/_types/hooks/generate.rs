@@ -1,4 +1,4 @@
-use telarel_common::{Ast, CodeResult, GeneratorOptions};
+use telarel_common::{Ast, CodeResult, ResolvedGeneratorOptions};
 
 use crate::PluginError;
 
@@ -8,7 +8,7 @@ pub struct GenerateArgs<'a> {
     /// The AST to generate from, read-only.
     pub ast: &'a Ast,
     /// The resolved generator options.
-    pub options: &'a GeneratorOptions,
+    pub options: &'a ResolvedGeneratorOptions,
 }
 
 /// The `generate` hook return: generated code, `None` (defer), or an error.
@@ -19,17 +19,27 @@ mod tests {
     use std::path::PathBuf;
 
     use telarel_common::{
-        CodeResult, GeneratorOptions, ParseAstOptions, SourceMapOptions,
-        parse_ast,
+        CodeResult, ParseAstOptions, ResolvedGeneratorOptions,
+        ResolvedGeneratorStageOptions, SourceMapOptions, parse_ast,
     };
 
     use super::*;
 
-    fn options() -> GeneratorOptions {
-        GeneratorOptions {
+    fn options() -> ResolvedGeneratorOptions {
+        let stage: ResolvedGeneratorStageOptions =
+            ResolvedGeneratorStageOptions::default();
+
+        ResolvedGeneratorOptions {
             cwd: PathBuf::from("/repo"),
             file: String::from("a.ts"),
             source_map: SourceMapOptions::default(),
+            single_quote: stage.single_quote,
+            ascii_only: stage.ascii_only,
+            indent_style: stage.indent_style,
+            indent_width: stage.indent_width,
+            comments: stage.comments,
+            minify: stage.minify,
+            oxc: stage.oxc,
         }
     }
 
@@ -47,7 +57,7 @@ mod tests {
         )
         .unwrap();
 
-        let options: GeneratorOptions = options();
+        let options: ResolvedGeneratorOptions = options();
 
         let args: GenerateArgs<'_> =
             GenerateArgs { ast: &ast, options: &options };

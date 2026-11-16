@@ -1,12 +1,13 @@
 use oxc::span::SourceType as OxcSourceType;
 
 use telarel_common::{
-    Ast, CodeResult, Generator, GeneratorOptions, Language, OutputSourceMap,
-    ResolvedOptions, apply_output_source_map_mode, resolve_options,
+    Ast, CodeResult, Generator, Language, OutputSourceMap,
+    ResolvedGeneratorOptions, ResolvedOptions, apply_output_source_map_mode,
+    resolve_options,
 };
 
 use crate::_types::ast::JsAstInput;
-use crate::_types::options::JsGeneratorOptions;
+use crate::_types::options::JsResolvedGeneratorOptions;
 use crate::_types::results::JsCodeResult;
 use crate::ast::normalized::js_to_ast;
 use crate::ast::resolve::{
@@ -22,7 +23,7 @@ use crate::tasks::function::{FunctionTask, Run};
 #[napi_derive::napi(ts_return_type = "Promise<JsCodeResult>")]
 pub fn builtin_generate(
     ast: JsAstInput,
-    options: JsGeneratorOptions,
+    options: JsResolvedGeneratorOptions,
 ) -> napi::Result<napi::bindgen_prelude::AsyncTask<FunctionTask<JsCodeResult>>>
 {
     // The generator options carry no grammar. The input AST's language wins,
@@ -30,7 +31,8 @@ pub fn builtin_generate(
     let resolved: ResolvedOptions =
         resolve_options(options.to_resolvable()?, Vec::new());
 
-    let options_rust: GeneratorOptions = GeneratorOptions::from(&resolved);
+    let options_rust: ResolvedGeneratorOptions =
+        ResolvedGeneratorOptions::from(&resolved);
 
     let input: crate::ast::normalized::JsAstInput = ast.into();
 

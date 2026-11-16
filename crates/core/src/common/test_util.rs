@@ -13,9 +13,10 @@ use oxc_sourcemap::SourceMapBuilder;
 use tempfile::TempDir;
 
 use telarel_common::{
-    Ast, AstResult, CodeResult, CompileError, InputSourceMap,
+    Ast, AstResult, CodeResult, CompileError, GeneratorOptions, InputSourceMap,
     InputSourceMapMode, OutputSourceMap, OutputSourceMapMode, ParseAstOptions,
-    ResolvedOptions, SourceMap, SourceMapOptions, SourceType, parse_ast,
+    ParserOptions, ResolvedGeneratorOptions, ResolvedOptions,
+    ResolvedParserOptions, SourceMap, SourceMapOptions, SourceType, parse_ast,
 };
 use telarel_plugin::{
     CommonPluginContext, EndArgs, FinalizeArgs, GenerateArgs, GenerateReturn,
@@ -658,6 +659,122 @@ impl Plugin for OptionsObserverPlugin {
 
         async move {
             self.seen.lock().unwrap().push(source_map);
+
+            Ok(None)
+        }
+    }
+}
+
+/// An `options` hook that sets the parser and generator groups on the bag.
+#[derive(Debug)]
+pub struct OptionsGroupsPlugin {
+    parser: Option<ParserOptions>,
+    generator: Option<GeneratorOptions>,
+}
+
+impl OptionsGroupsPlugin {
+    pub fn new(
+        parser: Option<ParserOptions>,
+        generator: Option<GeneratorOptions>,
+    ) -> Self {
+        Self { parser, generator }
+    }
+}
+
+impl Plugin for OptionsGroupsPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        "options-groups".into()
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Options
+    }
+
+    fn options<'a>(
+        &'a self,
+        _ctx: &'a CommonPluginContext,
+        args: &'a OptionsArgs,
+    ) -> impl Future<Output = OptionsReturn> + Send {
+        let parser: Option<ParserOptions> = self.parser.clone();
+        let generator: Option<GeneratorOptions> = self.generator.clone();
+
+        async move {
+            let mut next: OptionsArgs = args.clone();
+
+            next.options.parser = parser;
+            next.options.generator = generator;
+
+            Ok(Some(next))
+        }
+    }
+}
+
+/// Records the resolved parser options passed to every `parse` hook.
+#[derive(Debug)]
+pub struct ParseHookOptionsObserverPlugin {
+    seen: Arc<Mutex<Vec<ResolvedParserOptions>>>,
+}
+
+impl ParseHookOptionsObserverPlugin {
+    pub fn new(seen: &Arc<Mutex<Vec<ResolvedParserOptions>>>) -> Self {
+        Self { seen: Arc::clone(seen) }
+    }
+}
+
+impl Plugin for ParseHookOptionsObserverPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        "parse-options-observer".into()
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Parse
+    }
+
+    fn parse<'a>(
+        &'a self,
+        _ctx: &'a PluginContext<'_>,
+        args: ParseArgs<'a>,
+    ) -> impl Future<Output = ParseReturn> + Send + 'a {
+        let options: ResolvedParserOptions = args.options.clone();
+
+        async move {
+            self.seen.lock().unwrap().push(options);
+
+            Ok(None)
+        }
+    }
+}
+
+/// Records the resolved generator options passed to every `generate` hook.
+#[derive(Debug)]
+pub struct GenerateHookOptionsObserverPlugin {
+    seen: Arc<Mutex<Vec<ResolvedGeneratorOptions>>>,
+}
+
+impl GenerateHookOptionsObserverPlugin {
+    pub fn new(seen: &Arc<Mutex<Vec<ResolvedGeneratorOptions>>>) -> Self {
+        Self { seen: Arc::clone(seen) }
+    }
+}
+
+impl Plugin for GenerateHookOptionsObserverPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        "generate-hook-options-observer".into()
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::Generate
+    }
+
+    fn generate<'a>(
+        &'a self,
+        _ctx: &'a PluginContext<'_>,
+        args: GenerateArgs<'a>,
+    ) -> impl Future<Output = GenerateReturn> + Send + 'a {
+        let options: ResolvedGeneratorOptions = args.options.clone();
+
+        async move {
+            self.seen.lock().unwrap().push(options);
 
             Ok(None)
         }

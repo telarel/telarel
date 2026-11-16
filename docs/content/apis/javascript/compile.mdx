@@ -24,9 +24,13 @@ Compiles `code` from source text into generated output, with plugins, in memory.
 | `file`       | `string`           | `index.ts`      | The file being compiled. The compiler infers the language from its extension. |
 | `language`   | `Language`         | inferred        | The grammar of the code. Overrides the extension inference.                   |
 | `sourceType` | `SourceType`       | inferred        | The module system of the code. Overrides the grammar's module kind.           |
+| `parser`     | `ParserOptions`    | unset           | [Parser-stage options](/apis#parser-options).                                 |
+| `generator`  | `GeneratorOptions` | unset           | [Generator-stage options](/apis#generator-options).                           |
 | `output`     | `OutputOptions`    | unset           | [Output code configuration](/apis#output-options).                            |
 | `sourceMap`  | `SourceMapOptions` | off             | [Source-map inputs and outputs](/apis#source-maps) requested for the run.     |
 | `plugins`    | `PluginOption[]`   | `[]`            | The plugins to run.                                                           |
+
+See [resolved options](/apis#resolved-options) for the resolved types that the hooks receive.
 
 An explicit input source-map request wins over the AST's own input map when it resolves to a map. If the request is `inline` or `auto` and finds no map, the AST's own map is kept. An `external` request that cannot read its map rejects. The pipeline applies the request to the AST that the winning `parse` hook returns. The builtin parser is the terminal fallback when every `parse` hook defers.
 

@@ -4,17 +4,23 @@ import type {
     CommonPluginContext,
     OptionsArgs,
     ParseArgs,
+    Parser,
     ParserOptions,
     Plugin,
     PluginContext,
+    ResolvedParserOptions,
 } from "telarel";
 
 import * as Fsp from "node:fs/promises";
 import * as Path from "node:path";
 
-import { Ast, CompileError, generate, parse } from "telarel";
+import { Ast, CompileError, createParser, generate, parse } from "telarel";
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+    resolvedOxcParserOptions,
+    resolvedParserOptions,
+} from "#/functions/options";
 import {
     appendInlineMap,
     buildMap,
@@ -51,6 +57,45 @@ const upstreamMap = (): ReturnType<typeof buildMap> =>
         sources: ["upstream.ts"],
         sourcesContent: ["const a = 1;"],
     });
+
+type DeclarationProgramFixture = {
+    body: Array<{
+        declarations?: Array<{
+            init?: { type: string } | null;
+        }>;
+    }>;
+};
+
+const firstInitializerType = (program: unknown): string | void =>
+    (program as DeclarationProgramFixture).body[0]?.declarations?.[0]?.init
+        ?.type;
+
+const observeParserOptions = async (
+    parser?: ParserOptions,
+): Promise<ResolvedParserOptions> => {
+    const seen: Array<ResolvedParserOptions> = [];
+
+    await parse("const a = (1);", {
+        file: "index.ts",
+        parser,
+        plugins: [
+            {
+                name: "observe-empty-raw-parser",
+                parse: (_ctx: PluginContext, args: ParseArgs): void => {
+                    seen.push(args.options);
+                },
+            },
+        ],
+    });
+
+    const options: ResolvedParserOptions | undefined = seen[0];
+
+    if (options === void 0) {
+        throw new Error("expected the parse hook to observe options");
+    }
+
+    return options;
+};
 
 describe("parse", (): void => {
     it("returns the source and program in an AST result", async (): Promise<void> => {
@@ -138,7 +183,10 @@ describe("parse", (): void => {
     });
 
     it("exposes the code and resolved parser options to the parse hook", async (): Promise<void> => {
-        const seen: Array<{ keys: Array<string>; options: ParserOptions }> = [];
+        const seen: Array<{
+            keys: Array<string>;
+            options: ResolvedParserOptions;
+        }> = [];
 
         await parse("const a = 1;", {
             cwd: "/repo",
@@ -162,6 +210,92 @@ describe("parse", (): void => {
         expect(seen[0]?.options.cwd).toBe("/repo");
         expect(seen[0]?.options.language).toBe("ts");
         expect(seen[0]?.options.sourceType).toBe("unambiguous");
+        expect(seen[0]?.options.preserveParens).toBe(false);
+        expect(seen[0]?.options.allowReturnOutsideFunction).toBe(false);
+        expect(seen[0]?.options.oxc).toEqual({
+            parseRegularExpression: false,
+            allowReturnOutsideFunction: false,
+            preserveParens: false,
+            allowV8Intrinsics: false,
+            enableIdentHashes: true,
+        });
+    });
+
+    it("keeps parenthesized expressions when parser.preserveParens is set", async (): Promise<void> => {
+        const preserved: AstResult = await parse("const a = (1);", {
+            file: "index.ts",
+            parser: { preserveParens: true },
+        });
+        const flattened: AstResult = await parse("const a = (1);", {
+            file: "index.ts",
+        });
+
+        expect(firstInitializerType(preserved.ast.program)).toBe(
+            "ParenthesizedExpression",
+        );
+        expect(firstInitializerType(flattened.ast.program)).toBe("Literal");
+    });
+
+    it("lets createParser apply curated options over raw oxc", async (): Promise<void> => {
+        const parser: Parser = createParser(
+            "const a = (1);",
+            resolvedParserOptions({
+                preserveParens: true,
+                oxc: resolvedOxcParserOptions({ preserveParens: false }),
+            }),
+        );
+
+        const result: AstResult = await parser.parse();
+
+        expect(firstInitializerType(result.ast.program)).toBe(
+            "ParenthesizedExpression",
+        );
+    });
+
+    it("keeps the Telarel parser defaults when raw oxc sets only preserveParens", async (): Promise<void> => {
+        const seen: Array<ResolvedParserOptions> = [];
+
+        const result: AstResult = await parse("const a = (1);", {
+            file: "index.ts",
+            parser: { oxc: { preserveParens: true } },
+            plugins: [
+                {
+                    name: "observe-raw-parser",
+                    parse: (_ctx: PluginContext, args: ParseArgs): void => {
+                        seen.push(args.options);
+                    },
+                },
+            ],
+        });
+
+        expect(firstInitializerType(result.ast.program)).toBe(
+            "ParenthesizedExpression",
+        );
+        expect(seen[0]?.preserveParens).toBe(true);
+        expect(seen[0]?.oxc).toEqual({
+            parseRegularExpression: false,
+            allowReturnOutsideFunction: false,
+            preserveParens: true,
+            allowV8Intrinsics: false,
+            enableIdentHashes: true,
+        });
+    });
+
+    it("treats an empty raw oxc parser object as a no-op", async (): Promise<void> => {
+        expect(await observeParserOptions({ oxc: {} })).toEqual(
+            await observeParserOptions(),
+        );
+    });
+
+    it("rejects unknown raw oxc parser options", async (): Promise<void> => {
+        await expect(
+            parse("const a = 1;", {
+                file: "index.ts",
+                parser: {
+                    oxc: { sourceMapPath: "custom.map" } as never,
+                },
+            }),
+        ).rejects.toThrow("invalid parser.oxc");
     });
 
     it("attaches a value input map to the AST", async (): Promise<void> => {

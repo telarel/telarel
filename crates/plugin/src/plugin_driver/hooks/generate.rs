@@ -1,5 +1,5 @@
 use telarel_common::{
-    Ast, CodeResult, CompileError, Generator, GeneratorOptions,
+    Ast, CodeResult, CompileError, Generator, ResolvedGeneratorOptions,
 };
 
 use crate::_types::context::PluginContext;
@@ -17,7 +17,7 @@ pub async fn generate(
     plugins: &[SharedPluginable],
     ctx: &PluginContext<'_>,
     ast: &Ast,
-    options: &GeneratorOptions,
+    options: &ResolvedGeneratorOptions,
     builtin: &Generator<'_>,
 ) -> Result<CodeResult, CompileError> {
     for plugin in plugins {

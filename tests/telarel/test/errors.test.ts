@@ -17,6 +17,8 @@ import {
 } from "telarel";
 import { describe, expect, it } from "vitest";
 
+import { resolvedParserOptions } from "#/functions/options";
+
 const rejection = async (promise: Promise<unknown>): Promise<unknown> => {
     try {
         await promise;
@@ -80,13 +82,13 @@ describe("errors", (): void => {
 
     it("exposes the same span from createParser", async (): Promise<void> => {
         const code: string = "const 😀 = ;";
-        const parser: Parser = createParser(code, {
-            cwd: "/repo",
-            file: "index.ts",
-            language: "js",
-            sourceType: "module",
-            sourceMap: {},
-        });
+        const parser: Parser = createParser(
+            code,
+            resolvedParserOptions({
+                language: "js",
+                sourceType: "module",
+            }),
+        );
         const error: CompileError = asCompileError(
             await rejection(parser.parse()),
         );

@@ -2,7 +2,7 @@ import * as Url from "node:url";
 
 import { defineConfig } from "vitest/config";
 
-import { VITEST_EXCLUDE_DEFAULT } from "./src/const/vitest";
+import { VITEST_EXCLUDE_DEFAULT } from "./src/consts/vitest";
 
 process.env.NAPI_RS_FORCE_WASI = "error";
 

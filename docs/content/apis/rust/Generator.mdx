@@ -7,7 +7,7 @@ description: A builtin generator over a borrowed AST and fixed options.
 pub struct Generator<'a> { /* private fields */ }
 
 impl<'a> Generator<'a> {
-    pub fn new(ast: &'a Ast, options: GeneratorOptions) -> Self;
+    pub fn new(ast: &'a Ast, options: ResolvedGeneratorOptions) -> Self;
 
     pub fn generate(self) -> Result<CodeResult, CompileError>;
 }
@@ -17,23 +17,32 @@ The pipeline uses `Generator` as the builtin generator and terminal fallback aft
 
 ## `Generator::new`
 
-Creates a generator over `ast` and its resolved `GeneratorOptions`.
+Creates a generator over `ast` and its resolved `ResolvedGeneratorOptions`.
 
 `Generator::new` borrows the AST because hook arguments are read-only.
 
-### `GeneratorOptions`
+### `ResolvedGeneratorOptions`
 
-Every field is required. In a `generate` hook, the stage options are available as `args.options`; their `source_map` carries no input or output request.
+Every field is required. This is the resolved type. To request the values, set the `generator` group on `GenerateOptions`, `CompileOptions`, or `CompileFromAstOptions`, or return it from an `options` hook. In a `generate` hook, the same value is available as `args.options`. Its `source_map` carries no input or output request.
 
-| Field        | Type               | Description                                      |
-| ------------ | ------------------ | ------------------------------------------------ |
-| `cwd`        | `PathBuf`          | Filesystem root used to resolve the source file. |
-| `file`       | `String`           | The file being generated.                        |
-| `source_map` | `SourceMapOptions` | Source-map request for the step.                 |
+| Field          | Type                | Description                                                             |
+| -------------- | ------------------- | ----------------------------------------------------------------------- |
+| `cwd`          | `PathBuf`           | Working directory used to resolve `file` and a relative input-map path. |
+| `file`         | `String`            | The file being generated.                                               |
+| `source_map`   | `SourceMapOptions`  | Source-map request for the step.                                        |
+| `single_quote` | `bool`              | Whether string literals use single quotes.                              |
+| `ascii_only`   | `bool`              | Whether non-ASCII characters are escaped.                               |
+| `indent_style` | `IndentStyle`       | The resolved indentation style.                                         |
+| `indent_width` | `usize`             | The resolved indentation width.                                         |
+| `comments`     | `bool`              | Whether any comment category is printed.                                |
+| `minify`       | `bool`              | Whether generated code is minified.                                     |
+| `oxc`          | `OxcCodegenOptions` | The full effective options for the raw oxc codegen.                     |
 
 `cwd` anchors resolution of `file`. A relative input-map `path` resolves against the source file's directory; absolute paths are used as-is.
 
-`file` is recorded as `map.file`. `GeneratorOptions` has no separate output name, so `file` also names the source when there is no input map.
+`file` is recorded as `map.file`. `ResolvedGeneratorOptions` has no separate output name, so `file` also names the source when there is no input map.
+
+`oxc` is the full effective object after the three [option layers](/apis#option-layering) apply. It is not the requested partial patch. Telarel owns `source_map_path`. See [generator options](/apis#generator-options).
 
 ## `Generator::generate`
 
@@ -49,8 +58,8 @@ The builtin generator always returns a source map. `Generator::generate` applies
 use std::path::PathBuf;
 
 use telarel::{
-    parse, AstResult, CodeResult, Generator, GeneratorOptions, ParseOptions,
-    SourceMapOptions,
+    parse, AstResult, CodeResult, Generator, IndentStyle, ParseOptions,
+    ResolvedGeneratorOptions, ResolvedGeneratorStageOptions, SourceMapOptions,
 };
 
 let parsed: AstResult = parse(
@@ -61,10 +70,17 @@ let parsed: AstResult = parse(
 
 let result: CodeResult = Generator::new(
     &parsed.ast,
-    GeneratorOptions {
+    ResolvedGeneratorOptions {
         cwd: PathBuf::from("."),
         file: String::from("index.ts"),
         source_map: SourceMapOptions::default(),
+        single_quote: false,
+        ascii_only: false,
+        indent_style: IndentStyle::Space,
+        indent_width: 2,
+        comments: true,
+        minify: false,
+        oxc: ResolvedGeneratorStageOptions::default().oxc,
     },
 )
 .generate()?;

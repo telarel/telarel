@@ -58,6 +58,7 @@ async function compileFromAst(
             file: options?.file,
             language: options?.language,
             sourceType: options?.sourceType,
+            generator: options?.generator,
             output: options?.output,
             sourceMap: options?.sourceMap,
             plugins,

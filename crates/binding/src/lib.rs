@@ -10,13 +10,14 @@ pub use crate::_types::ast::{JsAst, JsAstInput, JsAstResult};
 pub use crate::_types::options::{
     JsCompileFromAstOptions, JsCompileOptions, JsGenerateOptions,
     JsGeneratorOptions, JsOutputOptions, JsParseOptions, JsParserOptions,
-    JsRewriteOptions,
+    JsResolvedGeneratorOptions, JsResolvedParserOptions, JsRewriteOptions,
 };
 pub use crate::_types::plugin::context::JsPluginContext;
 pub use crate::_types::plugin::hooks::{
     JsAstArgs, JsCodeOutput, JsEndArgs, JsGenerateArgs, JsGeneratorHookOptions,
     JsOptionsOutput, JsParseArgs, JsParseOutput, JsParserHookOptions,
-    JsResolvedOptions, JsResolvedOutputOptions, JsStartArgs,
+    JsResolvedGeneratorStageOptions, JsResolvedOptions,
+    JsResolvedOutputOptions, JsResolvedParserStageOptions, JsStartArgs,
     JsTransformBatchArgs, JsTransformOutput,
 };
 pub use crate::_types::results::JsCodeResult;

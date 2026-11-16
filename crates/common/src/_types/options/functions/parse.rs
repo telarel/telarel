@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
+use crate::_types::options::builtin::parser::ParserOptions;
 use crate::_types::options::sourcemap::input::InputSourceMap;
 
 /// User options for a parse step.
@@ -25,6 +26,10 @@ pub struct ParseOptions {
     ///
     /// `None` keeps the module kind resolved from the grammar.
     pub source_type: Option<SourceType>,
+    /// Parser-stage options.
+    ///
+    /// By default, it is `None`, which applies the `ParserOptions` defaults.
+    pub parser: Option<ParserOptions>,
     /// The input source-map request for the step.
     ///
     /// `None` means no input-map lookup.

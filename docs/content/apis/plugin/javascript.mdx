@@ -80,24 +80,28 @@ Returning `null` or `void` defers. For `parse` and `generate`, a deferral passes
 
 ### Arguments
 
-| Type            | Fields                                   |
-| --------------- | ---------------------------------------- |
-| `OptionsArgs`   | `options: ResolvableOptions`             |
-| `StartArgs`     | `options: ResolvedOptions` (read-only)   |
-| `ParseArgs`     | `code: string`, `options: ParserOptions` |
-| `PrepareArgs`   | `ast: Ast`                               |
-| `TransformArgs` | `ast: Ast`                               |
-| `FinalizeArgs`  | `ast: Ast`                               |
-| `GenerateArgs`  | `ast: Ast`, `options: GeneratorOptions`  |
-| `EndArgs`       | `error: string \| null`                  |
+| Type            | Fields                                           |
+| --------------- | ------------------------------------------------ |
+| `OptionsArgs`   | `options: ResolvableOptions`                     |
+| `StartArgs`     | `options: ResolvedOptions` (read-only)           |
+| `ParseArgs`     | `code: string`, `options: ResolvedParserOptions` |
+| `PrepareArgs`   | `ast: Ast`                                       |
+| `TransformArgs` | `ast: Ast`                                       |
+| `FinalizeArgs`  | `ast: Ast`                                       |
+| `GenerateArgs`  | `ast: Ast`, `options: ResolvedGeneratorOptions`  |
+| `EndArgs`       | `error: string \| null`                          |
 
 Every entry point uses the options bag, which always uses `sourceMap`. `parse` and `rewrite` expose a flat `inputSourceMap` at the entry point. The pipeline normalizes it to `sourceMap.input` before the `options` hook runs.
+
+The `parse` hook receives `ResolvedParserOptions`: the effective curated parser settings and the full effective `oxc` object. The `generate` hook receives `ResolvedGeneratorOptions` in the same shape. `start` receives `ResolvedOptions`, whose `parser` and `generator` fields are the resolved stage views with full effective `oxc` objects. The `options` hook instead sees `ResolvableOptions`: its `oxc` fields are the requested partial patches. See [parser options](/apis#parser-options), [generator options](/apis#generator-options), and [resolved options](/apis#resolved-options).
 
 Those AST-producing entry points ignore `sourceMap.output` and `output`. A stage-agnostic plugin can set them for every stage without failing.
 
 The `generate` hook's generator options carry an empty source-map request: `args.options.sourceMap` has no input or output request. Input resolution happens before the hook; output delivery happens after the winning result. See [source maps](/apis#source-maps).
 
 The `options` hook observes the bag before the pipeline resolves it. An unset `cwd` or `file` is absent from `args.options`, so treat it as `undefined`, not `""`. A fixpoint repeats over new instances and settles when none remains. The pipeline applies the defaults (`process.cwd()` and `"index.ts"`) only after the fixpoint settles. `start` and later hooks then see the resolved values. Returning `{ ...args.options }` therefore preserves unset fields and cannot make them explicit empty strings.
+
+The `parser` and `generator` groups follow the same rule. Return them to keep changes. Omit them to reset them to unset.
 
 The plugin object is the identity, not its `name`. The same object does not run its `options` hook again. Duplicates and the depth guard follow the [shared fixpoint rules](/apis/plugin#hook-semantics).
 

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::_types::grammar::language::Language;
+use crate::_types::options::builtin::generator::GeneratorOptions;
 use crate::_types::options::output::OutputOptions;
 use crate::_types::options::sourcemap::SourceMapOptions;
 
@@ -22,6 +23,10 @@ pub struct GenerateOptions {
     /// `None` falls back to the AST grammar, then the file extension for
     /// AST-entry stages.
     pub language: Option<Language>,
+    /// Generator-stage options.
+    ///
+    /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
+    pub generator: Option<GeneratorOptions>,
     /// The output code configuration.
     pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the step.
