@@ -9,7 +9,7 @@ version = "0.2.0"
 authors = ["Alpheus <contact@alphe.us>"]
 edition = "2024"
 rust-version = "1.97.0"
-homepage = "https://github.com/telarel/telarel"
+homepage = "https://telarel.github.io"
 repository = "https://github.com/telarel/telarel"
 license = "MIT"
 categories = ["compilers", "web-programming"]
@@ -21,7 +21,6 @@ telarel_common = { version = "0.2.0", path = "crates/common" }
 telarel_plugin = { version = "0.2.0", path = "crates/plugin" }
 telarel_plugin_transform = { version = "0.2.0", path = "crates/plugin_transform" }
 telarel_core = { version = "0.2.0", path = "crates/core" }
-telarel_binding = { version = "0.2.0", path = "crates/binding" }
 telarel = { version = "0.2.0", path = "crates/telarel" }
 
 # Crates
