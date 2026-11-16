@@ -134,26 +134,42 @@ pub struct JsTransformOutput {
 #[napi_derive::napi(object)]
 pub struct JsOptionsOutput {
     /// Working directory used to resolve relative paths.
+    ///
+    /// By default, it is unset.
     pub cwd: Option<String>,
     /// The file being parsed or generated.
+    ///
+    /// By default, it is unset.
     pub file: Option<String>,
     /// Source language of the file.
+    ///
+    /// By default, it is unset.
     pub language: Option<String>,
     /// Module system used for code generation.
+    ///
+    /// By default, it is unset.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
-    /// Parser-stage options after the hook. An absent value means unset.
+    /// Parser-stage options after the hook.
+    ///
+    /// By default, it is unset.
     pub parser: Option<serde_json::Value>,
-    /// Generator-stage options after the hook. An absent value means unset.
+    /// Generator-stage options after the hook.
+    ///
+    /// By default, it is unset.
     pub generator: Option<serde_json::Value>,
     /// The output code options after the hook.
+    ///
+    /// By default, it is unset.
     pub output: Option<JsOutputOptions>,
-    /// The source-map inputs and outputs after the hook. An absent value means
-    /// unset.
+    /// The source-map inputs and outputs after the hook.
+    ///
+    /// By default, it is unset.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
-    /// The bag's plugins after the hook, as raw descriptor objects. A missing
-    /// value means the default empty list.
+    /// The bag's plugins after the hook, as raw descriptor objects.
+    ///
+    /// By default, it is `[]`.
     pub plugins: Option<Vec<napi::bindgen_prelude::ObjectRef<false>>>,
 }
 

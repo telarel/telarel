@@ -28,6 +28,8 @@ type ObjectHook<T> =
     | {
           /**
            * The relative order requested for the hook.
+           *
+           * By default, it is `undefined`, which uses the normal bucket.
            */
           order?: PluginOrder;
           /**

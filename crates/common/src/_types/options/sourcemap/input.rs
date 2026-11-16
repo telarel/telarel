@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use crate::sourcemap::SourceMap;
 
 /// How an input source map is obtained for a parse step.
+///
+/// By default, it is `InputSourceMapMode::Auto`.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum InputSourceMapMode {
@@ -36,12 +38,16 @@ impl Default for InputSourceMapMode {
 #[derive(Debug, Clone, Default)]
 pub struct InputSourceMapOptions {
     /// How the map is obtained.
+    ///
+    /// By default, it is `InputSourceMapMode::Auto`.
     pub mode: InputSourceMapMode,
     /// Local filesystem path to an external map file.
     ///
     /// Absolute paths are used as-is. Relative paths resolve against the
     /// source file's directory. The field applies to `External` and the `Auto`
     /// fallback, and other modes ignore it.
+    ///
+    /// By default, it is `None`.
     pub path: Option<PathBuf>,
 }
 

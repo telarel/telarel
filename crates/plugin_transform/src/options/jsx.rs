@@ -4,6 +4,8 @@ use oxc::transformer::ReactRefreshOptions as OxcReactRefreshOptions;
 use serde::Deserialize;
 
 /// How the transform handles JSX.
+///
+/// By default, it is `JsxRuntime::Preserve`.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum JsxRuntime {
@@ -22,21 +24,21 @@ pub enum JsxRuntime {
 pub struct JsxOptions {
     /// Selects the JSX runtime.
     ///
-    /// By default, it is `preserve`.
+    /// By default, it is `JsxRuntime::Preserve`.
     pub runtime: Option<JsxRuntime>,
     /// Module imported for automatic-runtime helpers.
     ///
-    /// By default, it is `react`.
+    /// By default, it is `"react"`.
     #[serde(default)]
     pub import_source: Option<String>,
     /// Function used for JSX elements by the classic runtime.
     ///
-    /// By default, it is `React.createElement`.
+    /// By default, it is `"React.createElement"`.
     #[serde(default)]
     pub pragma: Option<String>,
     /// Component used for JSX fragments by the classic runtime.
     ///
-    /// By default, it is `React.Fragment`.
+    /// By default, it is `"React.Fragment"`.
     #[serde(default)]
     pub pragma_frag: Option<String>,
     /// Adds development-only `__source` and `__self` metadata to JSX elements.

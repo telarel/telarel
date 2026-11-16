@@ -9,6 +9,8 @@ use oxc_transformer_plugins::ReplaceGlobalDefinesConfig;
 pub struct DefineOptions {
     /// Global replacement entries as `(key, value)` expression sources. The
     /// first entry for a duplicate key wins.
+    ///
+    /// By default, it is `[]`.
     pub entries: Vec<(String, String)>,
 }
 

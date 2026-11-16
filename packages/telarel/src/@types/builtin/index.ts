@@ -12,6 +12,8 @@ type BuiltinPlugin<Name extends string = string, Options = object> = {
     name: Name;
     /**
      * The plugin options bag, passed through to the Rust plugin.
+     *
+     * By default, it is `undefined`.
      */
     options?: Options;
 };

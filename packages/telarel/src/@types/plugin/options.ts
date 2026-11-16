@@ -35,9 +35,8 @@ type CompleteOutputOptions = {
      * The intended path of the generated code.
      *
      * The compiler does not write the file. A non-empty value is used verbatim.
-     * An empty string is treated as unset, the same as an absent `file`. When
-     * `output.file` is unset, the transform plugin derives the name from the
-     * input file. Without the plugin, the resolved `file` is used.
+     * An empty string is treated as unset, the same as an absent `file`.
+     * Without the transform plugin, the resolved `file` is used.
      *
      * The resolved path is recorded as `map.file` and derives the default URL
      * for an external source map by appending `.map`.
@@ -47,6 +46,8 @@ type CompleteOutputOptions = {
 
 /**
  * Options for the output code.
+ *
+ * By default, `file` is derived from the input file.
  */
 type OutputOptions = Partial<CompleteOutputOptions>;
 
@@ -72,13 +73,13 @@ type CompleteOptions = {
     /**
      * The grammar of the source code.
      *
-     * Resolved from options, the AST, or the file extension.
+     * By default, it is inferred from the input AST or the file extension.
      */
     language: Language;
     /**
      * The module kind of the code.
      *
-     * Resolved from options, the AST, or the file extension.
+     * By default, it is resolved from the input AST or the file extension.
      */
     sourceType: SourceType;
     /**
@@ -108,12 +109,16 @@ type ParseOptions = Partial<
 > & {
     /**
      * Parser-stage options.
+     *
+     * By default, it is `undefined`, which applies the parser defaults.
      */
     parser?: ParserOptions;
     /**
      * The input source-map request for the step.
      *
      * `parse` returns an AST and has no output source map.
+     *
+     * By default, it is `undefined`, which disables input-map lookup.
      */
     inputSourceMap?: InputSourceMap;
 };
@@ -131,6 +136,8 @@ type RewriteOptions = Partial<
      * The input source-map request for the step.
      *
      * `rewrite` returns an AST and has no output source map.
+     *
+     * By default, it is `undefined`, which disables input-map lookup.
      */
     inputSourceMap?: InputSourceMap;
 };
@@ -147,14 +154,21 @@ type GenerateOptions = Partial<
 > & {
     /**
      * Generator-stage options.
+     *
+     * By default, it is `undefined`, which applies the generator defaults.
      */
     generator?: GeneratorOptions;
     /**
      * The output code options.
+     *
+     * By default, it is `undefined`.
      */
     output?: OutputOptions;
     /**
      * The source-map inputs and outputs requested for the step.
+     *
+     * By default, it is `undefined`, which disables source-map input lookup and
+     * output delivery.
      */
     sourceMap?: SourceMapOptions;
 };
@@ -170,14 +184,21 @@ type CompileFromAstOptions = Partial<
 > & {
     /**
      * Generator-stage options.
+     *
+     * By default, it is `undefined`, which applies the generator defaults.
      */
     generator?: GeneratorOptions;
     /**
      * The output code options.
+     *
+     * By default, it is `undefined`.
      */
     output?: OutputOptions;
     /**
      * The source-map inputs and outputs requested for the step.
+     *
+     * By default, it is `undefined`, which disables source-map input lookup and
+     * output delivery.
      */
     sourceMap?: SourceMapOptions;
 };
@@ -193,18 +214,27 @@ type CompileOptions = Partial<
 > & {
     /**
      * Parser-stage options.
+     *
+     * By default, it is `undefined`, which applies the parser defaults.
      */
     parser?: ParserOptions;
     /**
      * Generator-stage options.
+     *
+     * By default, it is `undefined`, which applies the generator defaults.
      */
     generator?: GeneratorOptions;
     /**
      * The output code options.
+     *
+     * By default, it is `undefined`.
      */
     output?: OutputOptions;
     /**
      * The source-map inputs and outputs requested for the run.
+     *
+     * By default, it is `undefined`, which disables source-map input lookup and
+     * output delivery.
      */
     sourceMap?: SourceMapOptions;
 };
@@ -215,18 +245,27 @@ type CompileOptions = Partial<
 type Options = Partial<Omit<CompleteOptions, "output" | "sourceMap">> & {
     /**
      * Parser-stage options.
+     *
+     * By default, it is `undefined`, which applies the parser defaults.
      */
     parser?: ParserOptions;
     /**
      * Generator-stage options.
+     *
+     * By default, it is `undefined`, which applies the generator defaults.
      */
     generator?: GeneratorOptions;
     /**
      * The output code options.
+     *
+     * By default, it is `undefined`.
      */
     output?: OutputOptions;
     /**
      * The source-map inputs and outputs requested for the run.
+     *
+     * By default, it is `undefined`, which disables source-map input lookup and
+     * output delivery.
      */
     sourceMap?: SourceMapOptions;
 };
@@ -243,18 +282,27 @@ type ResolvableOptions = Partial<
 > & {
     /**
      * Parser-stage options requested for the run.
+     *
+     * By default, it is `undefined`, which applies the parser defaults.
      */
     parser?: ParserOptions;
     /**
      * Generator-stage options requested for the run.
+     *
+     * By default, it is `undefined`, which applies the generator defaults.
      */
     generator?: GeneratorOptions;
     /**
      * The output code options.
+     *
+     * By default, it is `undefined`.
      */
     output?: OutputOptions;
     /**
      * The source-map inputs and outputs requested for the run.
+     *
+     * By default, it is `undefined`, which disables source-map input lookup and
+     * output delivery.
      */
     sourceMap?: SourceMapOptions;
 };

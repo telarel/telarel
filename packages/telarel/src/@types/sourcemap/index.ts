@@ -5,17 +5,19 @@ import type { OutputSourceMap } from "#/@types/sourcemap/output";
 
 /**
  * The source-map inputs and outputs requested for a step.
- *
- * An omitted `input` field means no input map lookup. An omitted `output` field
- * means the default output mode.
  */
 type SourceMapOptions = Partial<{
     /**
-     * The input source-map request. Omitted means no input map lookup.
+     * The input source-map request.
+     *
+     * By default, it is `undefined`, which disables input-map lookup.
      */
     input: InputSourceMap;
     /**
-     * The output source-map request. Omitted means the default output mode.
+     * The output source-map request.
+     *
+     * By default, it is `undefined`, which returns the map separately without
+     * appending a source-mapping comment.
      */
     output: OutputSourceMap;
 }>;

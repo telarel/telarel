@@ -11,6 +11,8 @@ pub enum PluginOrder {
 /// Per-hook ordering metadata. A hook with no meta runs in the normal bucket.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PluginHookMeta {
-    /// The requested bucket. `None` means the normal bucket.
+    /// The requested bucket.
+    ///
+    /// By default, it is `None`, which uses the normal bucket.
     pub order: Option<PluginOrder>,
 }

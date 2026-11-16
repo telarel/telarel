@@ -12,19 +12,19 @@ use crate::_types::options::sourcemap::input::InputSourceMap;
 pub struct ParseOptions {
     /// Current working directory.
     ///
-    /// `None` resolves to the process working directory.
+    /// By default, it is the process working directory.
     pub cwd: Option<PathBuf>,
     /// The file being parsed.
     ///
-    /// `None` resolves to the default file name.
+    /// By default, it is `"index.ts"`.
     pub file: Option<String>,
     /// The grammar of the code.
     ///
-    /// `None` infers the grammar from the file extension.
+    /// By default, it is inferred from the file extension.
     pub language: Option<Language>,
     /// The module system of the code.
     ///
-    /// `None` keeps the module kind resolved from the grammar.
+    /// By default, it is resolved from the grammar.
     pub source_type: Option<SourceType>,
     /// Parser-stage options.
     ///
@@ -32,6 +32,6 @@ pub struct ParseOptions {
     pub parser: Option<ParserOptions>,
     /// The input source-map request for the step.
     ///
-    /// `None` means no input-map lookup.
+    /// By default, it is `None`, which disables input-map lookup.
     pub input_source_map: Option<InputSourceMap>,
 }

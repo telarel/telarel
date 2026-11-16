@@ -29,12 +29,15 @@ type AstOptions = {
      */
     source: string;
     /**
-     * The grammar of the program. `undefined` means unknown, because ESTree
-     * cannot carry grammar.
+     * The grammar of the program.
+     *
+     * By default, it is `undefined`, which means the language is unknown.
      */
     language?: Language;
     /**
      * An optional incremental source map.
+     *
+     * By default, it is `undefined`.
      */
     map?: SourceMap;
 };

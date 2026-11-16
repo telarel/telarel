@@ -12,23 +12,28 @@ use crate::_types::options::sourcemap::SourceMapOptions;
 pub struct GenerateOptions {
     /// Current working directory.
     ///
-    /// `None` resolves to the process working directory.
+    /// By default, it is the process working directory.
     pub cwd: Option<PathBuf>,
     /// The file being generated.
     ///
-    /// `None` resolves to the default file name.
+    /// By default, it is `"index.ts"`.
     pub file: Option<String>,
     /// The grammar used for resolution and visible to plugins.
     ///
-    /// `None` falls back to the AST grammar, then the file extension for
-    /// AST-entry stages.
+    /// By default, it is taken from the AST grammar, then inferred from the
+    /// file extension.
     pub language: Option<Language>,
     /// Generator-stage options.
     ///
     /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
     pub generator: Option<GeneratorOptions>,
     /// The output code configuration.
+    ///
+    /// By default, it is `None`.
     pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the step.
+    ///
+    /// By default, it is `None`, which disables source-map input lookup and
+    /// output delivery.
     pub source_map: Option<SourceMapOptions>,
 }

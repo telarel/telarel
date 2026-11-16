@@ -19,27 +19,39 @@ use crate::_types::options::sourcemap::input::InputSourceMap;
 pub struct ResolvableOptions {
     /// Current working directory.
     ///
-    /// `None` resolves to the process working directory.
+    /// By default, it is the process working directory.
     pub cwd: Option<PathBuf>,
     /// The file being compiled.
     ///
-    /// `None` resolves to the default file name.
+    /// By default, it is `"index.ts"`.
     pub file: Option<String>,
     /// The grammar of the code.
     ///
-    /// `None` falls back to the input AST grammar, then the file extension.
+    /// By default, it is taken from the input AST grammar, then inferred
+    /// from the file extension.
     pub language: Option<Language>,
     /// The module kind of the code.
     ///
-    /// `None` falls back to the input AST module kind, then the file extension.
+    /// By default, it is taken from the input AST module kind, then resolved
+    /// from the file extension.
     pub source_type: Option<SourceType>,
     /// Parser-stage options requested for the run.
+    ///
+    /// By default, it is `None`, which applies the `ParserOptions` defaults.
     pub parser: Option<ParserOptions>,
     /// Generator-stage options requested for the run.
+    ///
+    /// By default, it is `None`, which applies the `GeneratorOptions`
+    /// defaults.
     pub generator: Option<GeneratorOptions>,
     /// The output code configuration.
+    ///
+    /// By default, it is `None`.
     pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the run.
+    ///
+    /// By default, it is `None`, which disables source-map input lookup and
+    /// output delivery.
     pub source_map: Option<SourceMapOptions>,
 }
 

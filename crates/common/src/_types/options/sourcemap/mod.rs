@@ -9,11 +9,12 @@ use crate::_types::options::sourcemap::output::OutputSourceMap;
 pub struct SourceMapOptions {
     /// The input source-map request.
     ///
-    /// `None` disables input-map lookup.
+    /// By default, it is `None`, which disables input-map lookup.
     pub input: Option<InputSourceMap>,
     /// The output source-map request.
     ///
-    /// `None` means `External` at use time.
+    /// By default, it is `None`, which returns the map separately without
+    /// appending a source-mapping comment.
     pub output: Option<OutputSourceMap>,
 }
 

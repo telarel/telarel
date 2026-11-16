@@ -9,8 +9,11 @@ pub struct OutputOptions {
     ///
     /// The compiler does not write the file. A non-empty value is used
     /// verbatim. `None` or an empty string is unset. The transform plugin
-    /// derives an unset value in its options hook. Otherwise, the compiler
-    /// uses the resolved input `file`.
+    /// may set the file in its options hook; otherwise the compiler uses the
+    /// resolved input `file`.
+    ///
+    /// By default, it is `None`, which derives the output file from the input
+    /// file.
     pub file: Option<String>,
 }
 

@@ -61,13 +61,15 @@ type OxcTransformOptions = {
      */
     helperLoader?: {
         /**
-         * The strategy used to resolve helper calls. By default, it is
-         * `inline`.
+         * The strategy used to resolve helper calls.
+         *
+         * By default, it is `"inline"`.
          */
         mode?: HelperLoaderMode;
         /**
-         * The module to import helper functions from in `runtime` mode. By
-         * default, it is `@oxc-project/runtime`.
+         * The module to import helper functions from in `runtime` mode.
+         *
+         * By default, it is `"@oxc-project/runtime"`.
          */
         moduleName?: string;
     };

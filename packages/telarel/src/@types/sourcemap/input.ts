@@ -9,6 +9,8 @@ import type { SourceMap } from "#/@types/sourcemap/map";
  * - `inline`: read a `//# sourceMappingURL=data:...` comment from the code
  * - `external`: read an external map. A `?query` or `#hash` suffix is ignored.
  * - `auto`: the inline comment first, then the external map (best effort)
+ *
+ * By default, it is `"auto"`.
  */
 type InputSourceMapMode = SourceMap | "inline" | "external" | "auto";
 
@@ -37,6 +39,8 @@ type CompleteInputSourceMapOptions = {
 
 /**
  * Options for the input source map.
+ *
+ * By default, `path` is `undefined`.
  */
 type InputSourceMapOptions = Partial<CompleteInputSourceMapOptions, "path">;
 

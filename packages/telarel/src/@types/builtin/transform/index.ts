@@ -16,14 +16,20 @@ import type { BindingBuiltinPluginName } from "#/binding";
 type TransformOptions = {
     /**
      * The compilation targets.
+     *
+     * By default, it is `[]`, which targets ESNext.
      */
     targets?: Array<TransformTarget>;
     /**
      * The TypeScript transform options.
+     *
+     * By default, it is `undefined`.
      */
     typescript?: TypeScriptOptions;
     /**
      * The JSX transform options.
+     *
+     * By default, it is `undefined`.
      */
     jsx?: JsxOptions;
     /**
@@ -38,6 +44,8 @@ type TransformOptions = {
      * from `source`. The object form selects the specifier explicitly.
      *
      * Injected imports run after all transforms and before `define`.
+     *
+     * By default, it is `undefined`.
      */
     inject?: Record<string, InjectShorthand | InjectObject>;
     /**
@@ -52,6 +60,8 @@ type TransformOptions = {
      * through object literals.
      *
      * Replacements run last, after `inject` and all transforms.
+     *
+     * By default, it is `undefined`.
      */
     define?: Record<string, DefineValue>;
     /**

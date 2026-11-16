@@ -39,17 +39,30 @@ use crate::options::typescript::overlay_typescript;
 /// Configures the transform passes and their inputs.
 #[derive(Debug, Clone, Default)]
 pub struct TransformOptions {
-    /// Empty means the ESNext default. Targets win over an `oxc` layer env.
+    /// Targets win over an `oxc` layer env.
+    ///
+    /// By default, it is `[]`, which targets ESNext.
     pub targets: Vec<TransformTarget>,
     /// Controls TypeScript lowering.
+    ///
+    /// By default, it is `None`.
     pub typescript: Option<TypeScriptOptions>,
     /// Controls JSX lowering.
+    ///
+    /// By default, it is `None`.
     pub jsx: Option<JsxOptions>,
     /// Helper loader configuration. The raw `oxc` base helper state is ignored.
+    ///
+    /// By default, it is `None`, which uses inline helpers from
+    /// `@oxc-project/runtime`.
     pub helper_loader: Option<HelperLoaderOptions>,
     /// Injected imports run after all transforms, before `define`.
+    ///
+    /// By default, it is `None`.
     pub inject: Option<InjectOptions>,
     /// Replacements run after `inject` and all transforms.
+    ///
+    /// By default, it is `None`.
     pub define: Option<DefineOptions>,
     /// Raw backend passthrough (base layer).
     pub oxc: Option<OxcTransformOptions>,

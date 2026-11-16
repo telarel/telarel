@@ -7,7 +7,9 @@
 type InjectShorthand = string | [source: string, imported: string];
 
 /**
- * The kind of specifier an `inject` entry emits. By default, it is `named`.
+ * The kind of specifier an `inject` entry emits.
+ *
+ * By default, it is `"named"`.
  */
 type InjectMode = "named" | "default" | "namespace";
 
@@ -21,6 +23,8 @@ type InjectObject = {
     source: string;
     /**
      * The name imported from the module, for `named` mode.
+     *
+     * By default, it is `undefined`.
      */
     imported?: string;
     /**
@@ -28,7 +32,9 @@ type InjectObject = {
      */
     local: string;
     /**
-     * The kind of specifier to emit. By default, it is `named`.
+     * The kind of specifier to emit.
+     *
+     * By default, it is `"named"`.
      */
     mode?: InjectMode;
 };

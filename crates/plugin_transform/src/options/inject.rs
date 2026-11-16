@@ -26,6 +26,8 @@ pub struct InjectEntry {
 #[derive(Debug, Clone, Default)]
 pub struct InjectOptions {
     /// Imports to inject when their local bindings would otherwise be unresolved.
+    ///
+    /// By default, it is `[]`.
     pub entries: Vec<InjectEntry>,
 }
 

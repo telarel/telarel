@@ -15,7 +15,9 @@ pub enum BindingPluginOrder {
 /// The raw `<hook>Meta` shape read from a JS plugin object.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BindingPluginHookMeta {
-    /// The requested bucket. `None` means the normal bucket.
+    /// The requested bucket.
+    ///
+    /// By default, it is `None`, which uses the normal bucket.
     pub order: Option<BindingPluginOrder>,
 }
 

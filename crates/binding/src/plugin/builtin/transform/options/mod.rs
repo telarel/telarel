@@ -24,14 +24,24 @@ use crate::plugin::builtin::transform::options::target::parse_target;
 #[serde(deny_unknown_fields)]
 pub struct BindingTransformPluginOptions {
     /// Target environments the transform must support.
+    ///
+    /// By default, it is `None`, which targets ESNext.
     pub targets: Option<Vec<serde_json::Value>>,
     /// TypeScript transform options, when requested.
+    ///
+    /// By default, it is `None`.
     pub typescript: Option<serde_json::Value>,
     /// JSX transform options, when requested.
+    ///
+    /// By default, it is `None`.
     pub jsx: Option<serde_json::Value>,
     /// Module inject options, when requested.
+    ///
+    /// By default, it is `None`.
     pub inject: Option<serde_json::Value>,
     /// Compile-time define replacements, when requested.
+    ///
+    /// By default, it is `None`.
     pub define: Option<serde_json::Value>,
     /// Raw transform options for oxc, passed through unchanged.
     pub oxc: Option<serde_json::Value>,

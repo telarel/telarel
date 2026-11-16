@@ -7,6 +7,8 @@ use oxc::transformer::HelperLoaderOptions as OxcHelperLoaderOptions;
 pub const DEFAULT_HELPER_MODULE_NAME: &str = "@oxc-project/runtime";
 
 /// Selects how helper functions are loaded.
+///
+/// By default, it is `HelperLoaderMode::Inline`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum HelperLoaderMode {
     /// Helper functions are directly inserted into the program.
@@ -30,16 +32,17 @@ impl HelperLoaderMode {
 }
 
 /// Controls how the transform plugin loads helper functions.
-///
-/// Absent values default to [`HelperLoaderMode::Inline`] and
-/// `DEFAULT_HELPER_MODULE_NAME`.
 #[derive(Debug, Clone, Default)]
 pub struct HelperLoaderOptions {
     /// Strategy used to resolve helper calls.
+    ///
+    /// By default, it is `HelperLoaderMode::Inline`.
     pub mode: Option<HelperLoaderMode>,
     /// The module name to import helper functions from.
     ///
     /// Applies to [`HelperLoaderMode::Inline`] and [`HelperLoaderMode::Runtime`].
+    ///
+    /// By default, it is `"@oxc-project/runtime"`.
     pub module_name: Option<String>,
 }
 

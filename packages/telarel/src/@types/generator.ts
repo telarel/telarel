@@ -2,6 +2,8 @@ import type { SourceMapOptions } from "#/@types/sourcemap";
 
 /**
  * The indentation style for generated code.
+ *
+ * By default, it is `"space"`.
  */
 type IndentStyle = "space" | "tab";
 

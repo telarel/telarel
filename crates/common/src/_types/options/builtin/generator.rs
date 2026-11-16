@@ -8,6 +8,8 @@ use crate::_types::options::sourcemap::SourceMapOptions;
 use crate::helpers::resolve::resolve_generator_stage_options;
 
 /// The indentation style for generated code.
+///
+/// By default, it is `IndentStyle::Space`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum IndentStyle {
     /// Use spaces.

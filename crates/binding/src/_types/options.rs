@@ -17,29 +17,36 @@ use telarel_common::{
 /// JS-facing options for `parse`.
 #[napi_derive::napi(object)]
 pub struct JsParseOptions {
-    /// Current working directory. When the JS side omits it, the value
-    /// resolves to the process working directory.
+    /// Current working directory.
+    ///
+    /// By default, it is the process working directory.
     pub cwd: Option<String>,
-    /// The file being parsed. When the JS side omits it, the value resolves
-    /// to a default filename.
+    /// The file being parsed.
+    ///
+    /// By default, it is `"index.ts"`.
     pub file: Option<String>,
-    /// The grammar of the source. When the JS side omits it, the grammar
-    /// comes from the file extension.
+    /// The grammar of the source.
+    ///
+    /// By default, it is inferred from the file extension.
     pub language: Option<String>,
-    /// The module system of the source. When the JS side omits it, the module
-    /// kind stays the one that the grammar resolves.
+    /// The module system of the source.
+    ///
+    /// By default, it is resolved from the grammar.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
     /// Parser-stage options.
     ///
     /// By default, it is `None`, which applies the `ParserOptions` defaults.
     pub parser: Option<JsParserOptions>,
-    /// The input source-map request for the step. When the JS side omits it,
-    /// Telarel performs no input-map lookup.
+    /// The input source-map request for the step.
+    ///
+    /// By default, it is `None`, which disables input-map lookup.
     #[napi(js_name = "inputSourceMap")]
     pub input_source_map: Option<serde_json::Value>,
     /// Raw objects for JS plugins, rooted as references.
     /// `JsPlugin::from_object` bridges them.
+    ///
+    /// By default, it is `[]`.
     pub plugins: Vec<ObjectRef<false>>,
 }
 
@@ -47,26 +54,34 @@ pub struct JsParseOptions {
 #[napi_derive::napi(object)]
 pub struct JsOutputOptions {
     /// The intended path of the generated code. A non-empty value is used
-    /// verbatim. An empty value is unset. When unset, the transform plugin
-    /// derives the name from the input file. The resolved value is recorded as
-    /// `map.file` and derives the default external source-map URL.
+    /// verbatim. An empty value is unset. The transform plugin may set
+    /// the file in its options hook; otherwise the compiler uses the resolved
+    /// input `file`. The resolved value is recorded as `map.file` and derives
+    /// the default external source-map URL.
+    ///
+    /// By default, it is `None`, which derives the output file from the input
+    /// file.
     pub file: Option<String>,
 }
 
 /// JS-facing options for `compile`.
 #[napi_derive::napi(object)]
 pub struct JsCompileOptions {
-    /// Current working directory. When the JS side omits it, the value
-    /// resolves to the process working directory.
+    /// Current working directory.
+    ///
+    /// By default, it is the process working directory.
     pub cwd: Option<String>,
-    /// The file being compiled. When the JS side omits it, the value resolves
-    /// to a default filename.
+    /// The file being compiled.
+    ///
+    /// By default, it is `"index.ts"`.
     pub file: Option<String>,
-    /// The grammar of the source. When the JS side omits it, the grammar
-    /// comes from the file extension.
+    /// The grammar of the source.
+    ///
+    /// By default, it is inferred from the file extension.
     pub language: Option<String>,
-    /// The module system of the source. When the JS side omits it, the module
-    /// kind stays the one that the grammar resolves.
+    /// The module system of the source.
+    ///
+    /// By default, it is resolved from the grammar.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
     /// Parser-stage options.
@@ -78,54 +93,76 @@ pub struct JsCompileOptions {
     /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
     pub generator: Option<JsGeneratorOptions>,
     /// The output code options.
+    ///
+    /// By default, it is `None`.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
+    ///
+    /// By default, it is `None`, which disables source-map input lookup and
+    /// output delivery.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
     /// Raw objects for JS plugins, rooted as references.
     /// `JsPlugin::from_object` bridges them.
+    ///
+    /// By default, it is `[]`.
     pub plugins: Vec<ObjectRef<false>>,
 }
 
 /// JS-facing options for `rewrite`.
 #[napi_derive::napi(object)]
 pub struct JsRewriteOptions {
-    /// Current working directory. When the JS side omits it, the value
-    /// resolves to the process working directory.
+    /// Current working directory.
+    ///
+    /// By default, it is the process working directory.
     pub cwd: Option<String>,
-    /// The file being rewritten. When the JS side omits it, the value
-    /// resolves to a default filename.
+    /// The file being rewritten.
+    ///
+    /// By default, it is `"index.ts"`.
     pub file: Option<String>,
-    /// The grammar of the source. When the JS side omits it, the value falls
-    /// back to the AST language, then the file extension.
+    /// The grammar of the source.
+    ///
+    /// By default, it is taken from the input AST grammar, then inferred from
+    /// the file extension.
     pub language: Option<String>,
-    /// The module system of the source. When the JS side omits it, the module
-    /// kind stays the one that the grammar resolves.
+    /// The module system of the source.
+    ///
+    /// By default, it is taken from the input AST module kind, then resolved
+    /// from the file extension.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
-    /// The input source-map request for the step. When the JS side omits it,
-    /// Telarel performs no input-map lookup.
+    /// The input source-map request for the step.
+    ///
+    /// By default, it is `None`, which disables input-map lookup.
     #[napi(js_name = "inputSourceMap")]
     pub input_source_map: Option<serde_json::Value>,
     /// Raw objects for JS plugins, rooted as references.
     /// `JsPlugin::from_object` bridges them.
+    ///
+    /// By default, it is `[]`.
     pub plugins: Vec<ObjectRef<false>>,
 }
 
 /// JS-facing options for `compileFromAst`.
 #[napi_derive::napi(object)]
 pub struct JsCompileFromAstOptions {
-    /// Current working directory. When the JS side omits it, the value
-    /// resolves to the process working directory.
+    /// Current working directory.
+    ///
+    /// By default, it is the process working directory.
     pub cwd: Option<String>,
-    /// The file being compiled. When the JS side omits it, the value resolves
-    /// to a default filename.
+    /// The file being compiled.
+    ///
+    /// By default, it is `"index.ts"`.
     pub file: Option<String>,
-    /// The grammar of the source. When the JS side omits it, the value falls
-    /// back to the AST language, then the file extension.
+    /// The grammar of the source.
+    ///
+    /// By default, it is taken from the input AST grammar, then inferred from
+    /// the file extension.
     pub language: Option<String>,
-    /// The module system of the source. When the JS side omits it, the module
-    /// kind stays the one that the grammar resolves.
+    /// The module system of the source.
+    ///
+    /// By default, it is taken from the input AST module kind, then resolved
+    /// from the file extension.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
     /// Generator-stage options.
@@ -133,12 +170,19 @@ pub struct JsCompileFromAstOptions {
     /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
     pub generator: Option<JsGeneratorOptions>,
     /// The output code options.
+    ///
+    /// By default, it is `None`.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
+    ///
+    /// By default, it is `None`, which disables source-map input lookup and
+    /// output delivery.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
     /// Raw objects for JS plugins, rooted as references.
     /// `JsPlugin::from_object` bridges them.
+    ///
+    /// By default, it is `[]`.
     pub plugins: Vec<ObjectRef<false>>,
 }
 
@@ -146,26 +190,37 @@ pub struct JsCompileFromAstOptions {
 /// generated program's own `sourceType` settles it.
 #[napi_derive::napi(object)]
 pub struct JsGenerateOptions {
-    /// Current working directory. When the JS side omits it, the value
-    /// resolves to the process working directory.
+    /// Current working directory.
+    ///
+    /// By default, it is the process working directory.
     pub cwd: Option<String>,
-    /// The file being generated. When the JS side omits it, the value
-    /// resolves to a default filename.
+    /// The file being generated.
+    ///
+    /// By default, it is `"index.ts"`.
     pub file: Option<String>,
-    /// The grammar of the generated code. When the JS side omits it, the
-    /// value falls back to the AST language, then the file extension.
+    /// The grammar of the generated code.
+    ///
+    /// By default, it is taken from the AST grammar, then inferred from the
+    /// file extension.
     pub language: Option<String>,
     /// Generator-stage options.
     ///
     /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
     pub generator: Option<JsGeneratorOptions>,
     /// The output code options.
+    ///
+    /// By default, it is `None`.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs requested for the step.
+    ///
+    /// By default, it is `None`, which disables source-map input lookup and
+    /// output delivery.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
     /// Raw objects for JS plugins, rooted as references.
     /// `JsPlugin::from_object` bridges them.
+    ///
+    /// By default, it is `[]`.
     pub plugins: Vec<ObjectRef<false>>,
 }
 

@@ -15,19 +15,19 @@ use crate::_types::options::sourcemap::SourceMapOptions;
 pub struct CompileOptions {
     /// Current working directory.
     ///
-    /// `None` resolves to the process working directory.
+    /// By default, it is the process working directory.
     pub cwd: Option<PathBuf>,
     /// The file being compiled.
     ///
-    /// `None` resolves to the default file name.
+    /// By default, it is `"index.ts"`.
     pub file: Option<String>,
     /// The grammar of the code.
     ///
-    /// `None` infers the grammar from the file extension.
+    /// By default, it is inferred from the file extension.
     pub language: Option<Language>,
     /// The module system of the code.
     ///
-    /// `None` keeps the module kind resolved from the grammar.
+    /// By default, it is resolved from the grammar.
     pub source_type: Option<SourceType>,
     /// Parser-stage options.
     ///
@@ -38,8 +38,13 @@ pub struct CompileOptions {
     /// By default, it is `None`, which applies the `GeneratorOptions` defaults.
     pub generator: Option<GeneratorOptions>,
     /// The output code configuration.
+    ///
+    /// By default, it is `None`.
     pub output: Option<OutputOptions>,
     /// The source-map inputs and outputs requested for the run.
+    ///
+    /// By default, it is `None`, which disables source-map input lookup and
+    /// output delivery.
     pub source_map: Option<SourceMapOptions>,
 }
 
