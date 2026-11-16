@@ -9,7 +9,7 @@
         "@decimalturn/toml-patch": "^3.3.2",
         "@emnapi/core": "2.0.0-alpha.5",
         "@emnapi/runtime": "2.0.0-alpha.5",
-        "@napi-rs/cli": "~3.7.4",
+        "@napi-rs/cli": "~3.9.1",
         "@oxc-project/runtime": "0.157.0",
         "@types/node": "^26.6.6",
         "@types/react": "^19.3.0",

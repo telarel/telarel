@@ -111,13 +111,38 @@ await Fsp.copyFile(generatedBinding, localBinding);
 
 consola.info("Moving artifacts into npm packages...");
 
-await napi.artifacts({
-    cwd: pkgDir,
-    packageJsonPath: Path.join("package.json"),
-    outputDir: Path.join("artifacts"),
-    npmDir: Path.join("npm"),
-    buildOutputDir: Path.join("artifacts"),
-});
+const artifactsPackageJsonName: string = ".napi-artifacts-package.json";
+const artifactsPackageJsonPath: string = Path.resolve(
+    pkgDir,
+    artifactsPackageJsonName,
+);
+
+await Fsp.writeFile(
+    artifactsPackageJsonPath,
+    JSON.stringify(
+        {
+            ...pkg,
+            napi: {
+                ...pkg.napi,
+                targets: orderedTargets,
+            },
+        },
+        null,
+        4,
+    ),
+);
+
+try {
+    await napi.artifacts({
+        cwd: pkgDir,
+        packageJsonPath: artifactsPackageJsonName,
+        outputDir: Path.join("artifacts"),
+        npmDir: Path.join("npm"),
+        buildOutputDir: Path.join("artifacts"),
+    });
+} finally {
+    await Fsp.rm(artifactsPackageJsonPath, { force: true });
+}
 
 consola.info("Cleaning up stray build artifacts from package root...");
 
@@ -127,7 +152,8 @@ const isStrayArtifact = (name: string): boolean =>
     name.endsWith(".wasi.cjs") ||
     name.endsWith(".wasi-browser.js") ||
     name.startsWith("wasi-worker") ||
-    name === "browser.js";
+    name === "browser.js" ||
+    name === "index.js";
 
 for (const file of await Fsp.readdir(pkgDir)) {
     if (isStrayArtifact(file)) {
