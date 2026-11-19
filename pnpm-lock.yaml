@@ -36,8 +36,8 @@ importers:
         specifier: ~0.6.0
         version: 0.6.0(tsdown@0.23.7(typescript@7.0.2))
       '@decimalturn/toml-patch':
-        specifier: ^3.3.2
-        version: 3.3.2
+        specifier: ^3.3.3
+        version: 3.3.3
       '@emnapi/core':
         specifier: 2.0.0-alpha.5
         version: 2.0.0-alpha.5
@@ -257,8 +257,8 @@ packages:
   '@chevrotain/utils@13.2.0':
     resolution: {integrity: sha512-SzKYY68rseOrb9KILVzPsl6SjkQtdWw01SRGB5aCVI5kFcHltQsOYV3JB0Ffst72DgkvHCyDQ0NLwxtmCCf97Q==}
 
-  '@decimalturn/toml-patch@3.3.2':
-    resolution: {integrity: sha512-UUsjKkIJWC4JwhAK7IUMZeN4TjjtCWapAkdIuvllT3/fYcNooDQ0HtwgGDV77ew+arh/15hazN9M9/oSNV+PDg==}
+  '@decimalturn/toml-patch@3.3.3':
+    resolution: {integrity: sha512-x3+jj/r8uEEnnVs0vgdSYxn4YXcnklZPmbQ105DI/e4mng+9z/eDUuc8PMwASab51CWt15DTVHLYiEbDBUzHJA==}
     engines: {node: '>=16'}
 
   '@emnapi/core@2.0.0-alpha.5':
@@ -3985,7 +3985,7 @@ snapshots:
 
   '@chevrotain/utils@13.2.0': {}
 
-  '@decimalturn/toml-patch@3.3.2': {}
+  '@decimalturn/toml-patch@3.3.3': {}
 
   '@emnapi/core@2.0.0-alpha.5':
     dependencies:
