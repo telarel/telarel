@@ -36,7 +36,7 @@ const plugin: Plugin = {
 };
 ```
 
-Hooks are return-based. Return the replacement value, or `null`/`void` for no change. `start`, `prepare`, `finalize`, and `end` are observers; their returns are ignored.
+Hooks are return-based. Return a value for the compiler to apply, or `null`/`void` for no change. `start`, `prepare`, `finalize`, and `end` are observers. The compiler ignores their returns.
 
 ## `Ast`
 
@@ -108,7 +108,7 @@ const optionsPlugin: Plugin = {
 };
 ```
 
-The returned bag replaces the whole bag; omitted fields take defaults. Omitting `plugins` empties the list. Entries may be normalized descriptors; check `name`, not identity. Append a stable instance: creating the injected plugin inside the hook is fine, but an instance created on every pass hits the depth guard.
+The returned bag is a patch. The pipeline uses a present field to override the settled value and keeps the value of an absent field. When the bag omits `plugins`, the pipeline keeps the settled list. An entry may be a normalized descriptor. Check `name`, not identity. Append a stable instance. Creating the injected plugin inside the hook is fine, but an instance created on every pass hits the depth guard.
 
 ### Parse a custom input language (exclusive)
 

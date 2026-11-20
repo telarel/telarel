@@ -123,53 +123,53 @@ pub struct JsTransformOutput {
     pub language: Option<String>,
 }
 
-/// Output of the `options` hook: a replacement options bag returned by the JS
-/// hook.
+/// Output of the `options` hook: an option patch returned by the JS hook.
 ///
-/// The bag is inbound. The JS wrapper omits an absent group, and Rust treats
-/// absence as unset; a returned bag replaces the whole options set. The
-/// `plugins` list is the returned bag's plugin list, as raw descriptor objects
-/// for plugins.
+/// The patch is inbound. The JS wrapper omits every field the hook left
+/// unchanged, and Rust keeps the settled value for an absent field. The
+/// `plugins` list carries only the descriptors the hook added, as raw
+/// descriptor objects for plugins.
 #[derive(Default)]
 #[napi_derive::napi(object)]
 pub struct JsOptionsOutput {
     /// Working directory used to resolve relative paths.
     ///
-    /// By default, it is unset.
+    /// By default, it is absent and the settled value is kept.
     pub cwd: Option<String>,
     /// The file being parsed or generated.
     ///
-    /// By default, it is unset.
+    /// By default, it is absent and the settled value is kept.
     pub file: Option<String>,
     /// Source language of the file.
     ///
-    /// By default, it is unset.
+    /// By default, it is absent and the settled value is kept.
     pub language: Option<String>,
     /// Module system used for code generation.
     ///
-    /// By default, it is unset.
+    /// By default, it is absent and the settled value is kept.
     #[napi(js_name = "sourceType")]
     pub source_type: Option<String>,
     /// Parser-stage options after the hook.
     ///
-    /// By default, it is unset.
+    /// By default, it is absent and the settled group is kept.
     pub parser: Option<serde_json::Value>,
     /// Generator-stage options after the hook.
     ///
-    /// By default, it is unset.
+    /// By default, it is absent and the settled group is kept.
     pub generator: Option<serde_json::Value>,
     /// The output code options after the hook.
     ///
-    /// By default, it is unset.
+    /// By default, it is absent and the settled group is kept.
     pub output: Option<JsOutputOptions>,
     /// The source-map inputs and outputs after the hook.
     ///
-    /// By default, it is unset.
+    /// By default, it is absent and the settled group is kept.
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
-    /// The bag's plugins after the hook, as raw descriptor objects.
+    /// The descriptors the hook added, as raw descriptor objects.
     ///
-    /// By default, it is `[]`.
+    /// By default, it is absent, which adds no plugin. Descriptors already in
+    /// the payload's `plugins` list are never repeated here.
     pub plugins: Option<Vec<napi::bindgen_prelude::ObjectRef<false>>>,
 }
 

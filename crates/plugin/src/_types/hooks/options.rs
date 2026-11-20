@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use telarel_common::ResolvableOptions;
 
 use crate::PluginError;
@@ -5,19 +7,69 @@ use crate::plugin::pluginable::SharedPluginable;
 
 /// Arguments for the `options` hook: resolvable options plus the plugin list.
 ///
-/// The `options` hook returns args that replace the whole set. Fields not
-/// present are dropped (struct-level replace). Returning `None` keeps the args
-/// unchanged.
+/// A returned value is a patch, not a replacement. Each `Some` option field
+/// overrides the current value and each `None` keeps it. Returned plugins
+/// append to the current list. Returning `None` keeps the args unchanged.
 #[derive(Debug, Clone)]
 pub struct OptionsArgs {
     /// Resolvable compile options.
     pub options: ResolvableOptions,
-    /// Plugins to run, in order. Duplicates are allowed.
+    /// Plugins to run, in order.
+    ///
+    /// The settled list may repeat an instance. A returned plugin joins it
+    /// only when the same instance is not already present.
     pub plugins: Vec<SharedPluginable>,
 }
 
-/// The `options` hook return: replacement args, `None`, or an error.
+/// The `options` hook return: an option patch, `None`, or an error.
+///
+/// A `Some` patch merges into the current args. `None` keeps them unchanged.
 pub type OptionsReturn = Result<Option<OptionsArgs>, PluginError>;
+
+fn pick<T: Clone>(
+    patch: &Option<T>,
+    base: &Option<T>,
+) -> Option<T> {
+    patch.clone().or_else(|| base.clone())
+}
+
+/// Merge a returned `options` patch into the settled args.
+///
+/// A `Some` option field in `patch` overrides the settled value and a `None`
+/// keeps it. A patch plugin appends to the settled list only when the same
+/// instance (`Arc::ptr_eq`) is not already present.
+pub fn merge_options(
+    base: &OptionsArgs,
+    patch: &OptionsArgs,
+) -> OptionsArgs {
+    let mut plugins: Vec<SharedPluginable> = base.plugins.clone();
+
+    for plugin in &patch.plugins {
+        if !plugins.iter().any(|present| Arc::ptr_eq(present, plugin)) {
+            plugins.push(Arc::clone(plugin));
+        }
+    }
+
+    OptionsArgs {
+        options: ResolvableOptions {
+            cwd: pick(&patch.options.cwd, &base.options.cwd),
+            file: pick(&patch.options.file, &base.options.file),
+            language: pick(&patch.options.language, &base.options.language),
+            source_type: pick(
+                &patch.options.source_type,
+                &base.options.source_type,
+            ),
+            parser: pick(&patch.options.parser, &base.options.parser),
+            generator: pick(&patch.options.generator, &base.options.generator),
+            output: pick(&patch.options.output, &base.options.output),
+            source_map: pick(
+                &patch.options.source_map,
+                &base.options.source_map,
+            ),
+        },
+        plugins,
+    }
+}
 
 #[cfg(test)]
 mod tests {

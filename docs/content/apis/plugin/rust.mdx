@@ -99,7 +99,7 @@ Every fallible hook returns `Result<_, PluginError>`. `NotifyReturn` is `Result<
 | `TransformReturn` | `Result<Option<TransformOutput>, PluginError>` |
 | `GenerateReturn`  | `Result<Option<CodeResult>, PluginError>`      |
 
-Returning `Some` from `options` replaces the whole bag. Omitted fields take their default values. The `parser` and `generator` groups follow the same rule. Return them to keep changes. Omit them to reset them to unset. Duplicates and the depth guard follow the [shared fixpoint rules](/apis/plugin#hook-semantics).
+Returning `Some` from `options` patches the current bag. The pipeline uses a present field to override the settled value and keeps the value of an absent field. The `parser` and `generator` groups follow the same rule: return a group to override it, and omit it to keep the current one. The `plugins` field follows the [shared fixpoint rules](/apis/plugin#hook-semantics), including duplicates in the initial list and the depth guard.
 
 ### Errors
 

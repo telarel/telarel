@@ -47,7 +47,7 @@ use crate::comment;
 use crate::errors::plugin::decode_plugin_error;
 use crate::plugin::build::NAME_REQUIRED;
 use crate::plugin::build::TRANSFORM_BATCH_KEY;
-use crate::plugin::build::to_plugins;
+use crate::plugin::build::to_patch_plugins;
 use crate::plugin::hooks::{
     CtxTsfn, EndCall, EndTsfn, FinalizeTsfn, GenerateCall, GenerateTsfn,
     HookCall, ObserveCall, OptionsCall, OptionsTsfn, ParseCall, ParseTsfn,
@@ -392,11 +392,11 @@ fn finish_transform_batch_output(
     }
 }
 
-/// Holds a returned options bag's rooted plugin descriptors until `to_plugins`
-/// adopts them.
+/// Holds a returned options bag's rooted plugin descriptors until
+/// `to_patch_plugins` adopts them.
 ///
 /// The descriptors arrive already rooted. `ObjectRef`'s `Drop` is a no-op, so
-/// an unmarshal error before `to_plugins` would leak every root. The guard
+/// an unmarshal error before `to_patch_plugins` would leak every root. The guard
 /// moves them onto the release list on drop, and `FunctionTask::finally`
 /// drains that list when the compile aborts.
 struct PendingPluginRoots<'a> {
@@ -425,9 +425,9 @@ impl Drop for PendingPluginRoots<'_> {
 /// Unmarshal an `options` hook return into the pipeline bag on the JS thread,
 /// where the returned plugin descriptors are reachable.
 ///
-/// `null` or `undefined` means no change. A returned object is the full bag:
-/// omitted scalars stay unspecified, and the bridge wraps every `plugins`
-/// entry. Rooted descriptors join the compile's release list.
+/// `null` or `undefined` means no change. A returned object is a patch: it
+/// carries only the fields the hook changed and the descriptors it added.
+/// Rooted descriptors join the compile's release list.
 fn unmarshal_options(
     output: Option<JsOptionsOutput>,
     env: &Env,
@@ -441,15 +441,16 @@ fn unmarshal_options(
     // created one `napi_create_reference` root per descriptor, owned by
     // `ctx.value` in the resolution callback. These roots must move onto the
     // release list as-is. Re-rooting them with `SharedRef::new` (`create_ref`)
-    // would leak one `napi_ref` per descriptor per options call. `to_plugins`
-    // wraps the same roots. The entry bridge in `compile` does too. The guard
-    // keeps every early error path from dropping them unrooted.
+    // would leak one `napi_ref` per descriptor per options call.
+    // `to_patch_plugins` wraps the same roots. The entry bridge in `compile`
+    // does too. The guard keeps every early error path from dropping them
+    // unrooted.
     let mut pending_plugins: PendingPluginRoots<'_> =
         PendingPluginRoots { descriptors: output.plugins, refs };
 
     // Parse the scalar fields before touching the descriptor table. The
-    // returned bag is the new current bag, and `to_plugins` replaces its
-    // table only after every fallible step succeeds. On an error the compile
+    // returned bag is a patch, and `to_patch_plugins` updates the descriptor
+    // view only after every fallible step succeeds. On an error the compile
     // aborts. `pending_plugins` moves the roots onto the release list for
     // `FunctionTask::finally`.
     let language: Option<telarel_common::Language> = match &output.language {
@@ -489,13 +490,16 @@ fn unmarshal_options(
             | None => None,
         };
 
-    // The returned bag replaces the whole plugin list, because the wrapper
-    // echoes the payload's `plugins` array. An omitted field means the default
-    // empty list (see `JsOptionsOutput`'s docs). `to_plugins` bridges the
-    // whole bag and replaces the current descriptor view. On failure it
-    // releases the rooted references and leaves the view untouched.
+    // The wrapper returns only the descriptors the hook added, so this list
+    // carries the patch's new plugins. An omitted field adds nothing. The
+    // pipeline appends these to the settled list and skips instances that are
+    // already present. `to_patch_plugins` bridges the patch descriptors and
+    // appends them to the options-payload view, so later hooks see the full
+    // settled list. On failure it releases the rooted references and leaves
+    // the view untouched.
     let plugins: Vec<telarel_plugin::SharedPluginable> =
-        to_plugins(env, pending_plugins.take(), refs).map_err(hook_error)?;
+        to_patch_plugins(env, pending_plugins.take(), refs)
+            .map_err(hook_error)?;
 
     let args: OptionsArgs = OptionsArgs {
         options: ResolvableOptions {
@@ -1117,8 +1121,8 @@ impl TransformBatch for JsTransformBatch {
 /// unmarshalling, the transform read-back rules, and the bag and release-list
 /// bookkeeping.
 ///
-/// The tests cover no full-bag scalar defaulting and the omitted-`plugins`
-/// empty list. The ESTree serialization and map parsing live in `crate::ast`,
+/// The tests cover the options patch and the omitted-`plugins` settled view.
+/// The ESTree serialization and map parsing live in `crate::ast`,
 /// where tests cover them. Only a JS runtime can observe the descriptor-loop and
 /// promise-wiring paths, because they touch napi FFI (reference rooting,
 /// `napi_is_promise`). The options-injection tests in
@@ -1136,7 +1140,7 @@ mod tests {
     use crate::_types::ast::JsAstInput;
     use crate::ast::estree::ast_from_program;
     use crate::ast::test_util::{fixture_ast, parse_fixture, sample_map};
-    use crate::plugin::hooks::RefList;
+    use crate::plugin::hooks::{BagDescriptor, RefList};
 
     use super::*;
 
@@ -1539,13 +1543,13 @@ mod tests {
     }
 
     #[test]
-    fn test_unmarshal_options_omitted_plugins_empties_the_bag_table() {
+    fn test_unmarshal_options_omitted_plugins_keeps_the_bag_table() {
         let env: Env = env();
         let refs: Arc<RefList> = Arc::new(RefList::new());
 
-        refs.set_bag(vec![
-            crate::plugin::hooks::SharedRef::stub(),
-            crate::plugin::hooks::SharedRef::stub(),
+        refs.seed_bag(vec![
+            BagDescriptor::stub(Some(1)),
+            BagDescriptor::stub(Some(2)),
         ]);
 
         assert_eq!(refs.bag_snapshot().len(), 2);
@@ -1554,45 +1558,45 @@ mod tests {
             .unwrap()
             .expect("a returned bag is Some");
 
-        assert_eq!(refs.bag_snapshot().len(), 0);
+        assert_eq!(refs.bag_ids(), vec![Some(1), Some(2)]);
     }
 
-    /// The contract: the `options` payload is the descriptor list of the
-    /// current bag, not the accumulating release list. Two fixpoint passes
-    /// echo the same two descriptors. The release list grows every pass, but
-    /// the bag snapshot stays at two.
+    /// The contract: the `options` payload is the settled descriptor view, not
+    /// the accumulating release list. The entry seed stays in place, and a
+    /// later patch appends only its new descriptor. An echoed descriptor whose
+    /// id is already in the view adds nothing.
     ///
     /// Limitation: the descriptor-loop half of `unmarshal_options` touches
     /// napi FFI (`materialize` -> `get_value`) and cannot run without a JS
-    /// runtime. The test therefore models the returned-bag table update with
-    /// the same `set_bag` calls that the loop makes. The omitted-`plugins`
-    /// test exercises the reset through the real `unmarshal_options` above.
+    /// runtime. The test therefore models the patch append with the same
+    /// `append_bag` calls that the loop makes.
     #[test]
-    fn test_bag_table_tracks_current_bag_not_release_list() {
+    fn test_bag_table_tracks_settled_view_not_release_list() {
         let refs: RefList = RefList::new();
 
-        let first: Vec<crate::plugin::hooks::SharedRef> =
-            (0..2).map(|_| crate::plugin::hooks::SharedRef::stub()).collect();
+        let first: Vec<BagDescriptor> =
+            vec![BagDescriptor::stub(Some(1)), BagDescriptor::stub(Some(2))];
 
         for descriptor in &first {
-            refs.push_ref(descriptor.clone());
+            refs.push_ref(descriptor.reference.clone());
         }
 
-        refs.set_bag(first);
+        refs.seed_bag(first);
 
         assert_eq!(refs.bag_snapshot().len(), 2);
         assert_eq!(refs.len(), 2);
 
-        let echoed: Vec<crate::plugin::hooks::SharedRef> =
-            (0..2).map(|_| crate::plugin::hooks::SharedRef::stub()).collect();
+        // The patch echoes descriptor 2 and adds descriptor 3.
+        let patch: Vec<BagDescriptor> =
+            vec![BagDescriptor::stub(Some(2)), BagDescriptor::stub(Some(3))];
 
-        for descriptor in &echoed {
-            refs.push_ref(descriptor.clone());
+        for descriptor in &patch {
+            refs.push_ref(descriptor.reference.clone());
         }
 
-        refs.set_bag(echoed);
+        refs.append_bag(patch);
 
-        assert_eq!(refs.bag_snapshot().len(), 2);
+        assert_eq!(refs.bag_ids(), vec![Some(1), Some(2), Some(3)]);
         assert_eq!(refs.len(), 4);
     }
 

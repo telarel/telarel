@@ -217,6 +217,27 @@ pub fn release_refs(
     }
 }
 
+/// One entry in the options-payload descriptor view.
+///
+/// The reference shares its root with the release list. `id` is the JS
+/// wrapper's internal plugin identity when the descriptor carries one. An
+/// `options` patch uses it to avoid repeating a descriptor the view already
+/// holds.
+pub(crate) struct BagDescriptor {
+    /// The JS wrapper's `__PLUGIN_ID__`, when the descriptor carries one.
+    pub(crate) id: Option<u32>,
+    /// The rooted descriptor reference.
+    pub(crate) reference: SharedRef,
+}
+
+#[cfg(test)]
+impl BagDescriptor {
+    /// An inert entry for view-bookkeeping tests.
+    pub(crate) fn stub(id: Option<u32>) -> Self {
+        Self { id, reference: SharedRef::stub() }
+    }
+}
+
 /// A dynamic, per-compile registry of rooted JS object references.
 ///
 /// The same `Arc` handle reaches every site that needs one of its three roles:
@@ -226,11 +247,14 @@ pub fn release_refs(
 ///   plugin references as the bridge wraps and registers them, before the
 ///   driver is built. `FunctionTask::finally` drains the list once the call
 ///   settles, so mid-call additions are still released.
-/// - `bag_descriptors`: a view of the plugin descriptors in the current bag,
-///   one per plugin in the `OptionsArgs` being folded. Each entry is a
-///   `SharedRef` clone that shares its root with the release list. The table
-///   never owns or releases a reference. [`RefList::set_bag`] replaces the
-///   view whole: first for the entry seed, then for each returned bag.
+/// - `bag_descriptors`: the options-payload descriptor view, one entry per
+///   plugin in the settled `OptionsArgs` in bag order. The entry bridge seeds
+///   it in registration order, duplicates included. Each `options` patch
+///   appends the descriptors it added, so later hooks see the full settled
+///   list. Each entry is a `SharedRef` clone that shares its root with the
+///   release list. The table never owns or releases a reference.
+///   [`RefList::seed_bag`] replaces the view. [`RefList::append_bag`] extends
+///   it without repeating an id.
 /// - `bridged_plugins`: the adapter memo. It maps the internal plugin id from
 ///   the JS wrapper to the already-bridged adapter for the current compile. An
 ///   echoed descriptor therefore reuses the same `SharedPluginable`.
@@ -238,7 +262,7 @@ pub fn release_refs(
 pub struct RefList {
     /// Rooted references drained in `FunctionTask::finally`.
     refs: Mutex<Vec<SharedRef>>,
-    bag_descriptors: Mutex<Vec<SharedRef>>,
+    bag_descriptors: Mutex<Vec<BagDescriptor>>,
     bridged_plugins: Mutex<HashMap<u32, SharedPluginable>>,
 }
 
@@ -267,13 +291,15 @@ impl RefList {
         self.refs.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
 
-    /// Clone the descriptor view for the current bag, one entry per plugin in
-    /// bag order).
+    /// Clone the descriptor view for the settled options bag, one entry per
+    /// plugin in bag order.
     pub fn bag_snapshot(&self) -> Vec<SharedRef> {
         self.bag_descriptors
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+            .iter()
+            .map(|entry: &BagDescriptor| entry.reference.clone())
+            .collect()
     }
 
     /// The already-bridged adapter memoized for `id`, if any.
@@ -324,25 +350,52 @@ impl RefList {
             .push(reference);
     }
 
-    /// Replace the descriptor view for the current bag.
+    /// Replace the descriptor view with the entry descriptors.
     ///
-    /// Each descriptor is a `SharedRef` clone that shares the release list's
-    /// roots. This table never releases them, because the release list owns
-    /// that lifecycle. A returned bag replaces the view whole, and an empty
-    /// list is the omitted-`plugins` default. On a partial unmarshal failure
-    /// the table stays untouched: the compile aborts and the release list
-    /// still drains every rooted descriptor.
+    /// The entry list keeps duplicate entries of one instance, so this seed
+    /// does not dedupe by id. Only the entry bridge calls it. On a partial
+    /// unmarshal failure the table stays untouched: the compile aborts and the
+    /// release list still drains every rooted descriptor.
     ///
     /// Rust-native plugins that return bags do not flow through this NAPI
-    /// surface, so only the entry bag and `options`-returned bags matter here.
-    pub fn set_bag(
+    /// surface, so only the entry bag and `options`-returned patches matter
+    /// here.
+    pub(crate) fn seed_bag(
         &self,
-        descriptors: Vec<SharedRef>,
+        descriptors: Vec<BagDescriptor>,
     ) {
-        let mut bag: MutexGuard<'_, Vec<SharedRef>> =
+        let mut bag: MutexGuard<'_, Vec<BagDescriptor>> =
             self.bag_descriptors.lock().unwrap_or_else(PoisonError::into_inner);
 
         *bag = descriptors;
+    }
+
+    /// Append the descriptors an `options` patch added.
+    ///
+    /// A descriptor whose id already appears in the view is skipped, so an
+    /// echoed bag or a repeated descriptor cannot duplicate the view.
+    /// A descriptor without an id appends as a new entry. Patch order is
+    /// preserved. On a partial unmarshal failure the table stays untouched:
+    /// the compile aborts and the release list still drains every rooted
+    /// descriptor.
+    pub(crate) fn append_bag(
+        &self,
+        descriptors: Vec<BagDescriptor>,
+    ) {
+        let mut bag: MutexGuard<'_, Vec<BagDescriptor>> =
+            self.bag_descriptors.lock().unwrap_or_else(PoisonError::into_inner);
+
+        for descriptor in descriptors {
+            let is_present: bool = descriptor.id.is_some_and(|id| {
+                bag.iter().any(|present: &BagDescriptor| present.id == Some(id))
+            });
+
+            if is_present {
+                continue;
+            }
+
+            bag.push(descriptor);
+        }
     }
 
     /// Release every reference on the release list and clear the adapter memo.
@@ -369,6 +422,19 @@ impl RefList {
     }
 }
 
+#[cfg(test)]
+impl RefList {
+    /// The ids of the descriptor view, for bookkeeping tests.
+    pub(crate) fn bag_ids(&self) -> Vec<Option<u32>> {
+        self.bag_descriptors
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|entry: &BagDescriptor| entry.id)
+            .collect()
+    }
+}
+
 /// Worker-side call data for the `options` hook.
 pub struct OptionsCall {
     /// Working directory used to resolve relative paths. Absent when unset.
@@ -392,9 +458,9 @@ pub struct OptionsCall {
     /// The source-map inputs and outputs requested so far, as the JS union.
     /// `None` means unspecified, and Telarel omits it from the payload.
     pub source_map: Option<serde_json::Value>,
-    /// The plugin descriptors of the current bag, snapshotted at call time.
-    /// The JS-thread payload builds the array from this exact list, not from
-    /// the accumulating release list. See the binding contract.
+    /// The settled plugin descriptors of the options bag, snapshotted at call
+    /// time. The view starts with the entry descriptors and grows by each
+    /// patch's additions, so every later hook sees the full settled list.
     pub plugins: Vec<SharedRef>,
 }
 
@@ -463,8 +529,8 @@ impl ToNapiValue for OptionsCall {
 /// TSFN bridging the `options` hook.
 ///
 /// [`OptionsCall`] (the slot table's `Args`) emits its payload, whose
-/// `plugins` property is the plugin descriptors of the current bag. The raw
-/// `options` hook is async and returns a promise that carries
+/// `plugins` property is the settled plugin descriptors of the options bag.
+/// The raw `options` hook is async and returns a promise that carries
 /// `Option<JsOptionsOutput>`. The TSFN delivers that promise raw. See
 /// [`crate::plugin::pluginable::OptionsReturn`].
 pub type OptionsTsfn =
@@ -1009,6 +1075,39 @@ mod tests {
 
         assert!(Arc::ptr_eq(&adapter, &found));
         assert!(refs.bridged_plugin(8).is_none());
+    }
+
+    #[test]
+    fn test_bag_seed_keeps_duplicate_instance_ids() {
+        let refs: RefList = RefList::new();
+
+        refs.seed_bag(vec![
+            BagDescriptor::stub(Some(1)),
+            BagDescriptor::stub(Some(1)),
+        ]);
+
+        assert_eq!(refs.bag_ids(), vec![Some(1), Some(1)]);
+    }
+
+    #[test]
+    fn test_bag_append_skips_present_ids_and_keeps_patch_order() {
+        let refs: RefList = RefList::new();
+
+        refs.seed_bag(vec![
+            BagDescriptor::stub(Some(1)),
+            BagDescriptor::stub(Some(2)),
+        ]);
+
+        // The echoed id 2 is skipped. The new id and the two unmarked
+        // descriptors append in patch order.
+        refs.append_bag(vec![
+            BagDescriptor::stub(Some(2)),
+            BagDescriptor::stub(Some(3)),
+            BagDescriptor::stub(None),
+            BagDescriptor::stub(None),
+        ]);
+
+        assert_eq!(refs.bag_ids(), vec![Some(1), Some(2), Some(3), None, None]);
     }
 
     #[test]

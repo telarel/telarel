@@ -68,7 +68,10 @@ pub trait Pluginable: Any + Send + Sync + 'static {
     /// Query which hooks the plugin implements.
     fn call_register_hook_usage(&self) -> HookUsage;
 
-    /// Call the `options` hook. A returned bag replaces the whole bag.
+    /// Call the `options` hook. A returned bag patches the current bag. The
+    /// pipeline uses a present field to override the settled value, keeps the
+    /// value of an absent field, and appends returned plugins to the settled
+    /// list.
     fn call_options<'a>(
         &'a self,
         ctx: &'a CommonPluginContext,

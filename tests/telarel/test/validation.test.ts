@@ -98,9 +98,9 @@ describe("validation", (): void => {
     });
 
     it("applies a returned options bag to the resolved file", async (): Promise<void> => {
-        // The options hook returns the replacement bag, and the later stage
-        // observes the new `file`. The bag never carries `code`, so the options
-        // hook cannot retarget the source.
+        // The options hook returns a patch with the new `file`, and the later
+        // stage observes it. The bag never carries `code`, so the options hook
+        // cannot retarget the source.
         let stage: string = "__NONE__";
 
         const plugin: unknown = {
@@ -135,11 +135,13 @@ describe("validation", (): void => {
         expect(result.code).toBe("const a = 1;");
     });
 
-    it("applies a returned bag that omits plugins as full-bag replace", async (): Promise<void> => {
-        // A returned bag replaces the whole bag. A bag that omits `plugins`
-        // drops the plugin list, so the default empty list applies. The bag
-        // cannot carry a `code` rewrite, so the compile uses the untouched
-        // source and the explicit `file`.
+    it("keeps the settled plugin list when a returned bag omits plugins", async (): Promise<void> => {
+        // A returned bag is a patch. An omitted `plugins` field keeps the
+        // settled list, so this plugin stays registered and its `start` hook
+        // runs. The bag cannot carry a `code` rewrite, so the compile uses the
+        // untouched source and the explicit `file`.
+        let isStarted: boolean = false;
+
         const plugin: unknown = {
             name: "returned-bag",
             options: (): OptionsArgs => ({
@@ -147,6 +149,9 @@ describe("validation", (): void => {
                     file: "index.ts",
                 },
             }),
+            start: (): void => {
+                isStarted = true;
+            },
         };
 
         const result: CodeResult = await compile("const a = 1;", {
@@ -155,6 +160,7 @@ describe("validation", (): void => {
             plugins: [plugin as Plugin],
         });
 
+        expect(isStarted).toBe(true);
         expect(result.code).toBe("const a = 1;");
         expect(result.map?.sources).toEqual(["index.ts"]);
     });

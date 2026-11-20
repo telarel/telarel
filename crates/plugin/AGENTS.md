@@ -33,8 +33,8 @@ Each hook has its own optional `PluginHookMeta { order }`. `sort_plugins_by_hook
 ## Options fixpoint
 
 - the fixpoint runs before any `PluginDriver` exists
-- `Some(OptionsArgs)` replaces the entire args bag at struct level. Omitted fields fall back to defaults, not to the previous values. The `parser` and `generator` groups follow this rule: a returned bag that omits a group drops it
-- the returned plugin list replaces the settled list wholesale, including same-length swaps, reorders, and truncations
+- `Some(OptionsArgs)` is a patch. A `Some` option field overrides the settled value and a `None` keeps it. The `parser` and `generator` groups follow this rule: a returned bag that omits a group keeps it
+- the pipeline appends returned plugins to the settled list. It skips an entry whose instance is already present (`Arc::ptr_eq`), so echoing the received list cannot duplicate it. A patch cannot reorder or remove an entry
 - newly injected plugins get their own `options` hook run on a later pass
 - identity is the plugin instance (`Arc::ptr_eq` on `SharedPluginable`), not the name. See the [plugin hook semantics](../../docs/content/apis/plugin/index.mdx#hook-semantics) for the public consequences
 - each pass re-ranks a copy of the current list by `options_meta` to drive execution order only. The persisted and returned list keeps append/registration order

@@ -364,13 +364,76 @@ describe("ordering", (): void => {
             ],
         });
 
-        // The `pre` hook runs first, and the `normal` hook runs last. The last
-        // returned options bag replaces the earlier one, so the `normal` hook
-        // sets the final `file`. The bag never carries `code`, so the source
-        // is untouched.
+        // The `pre` hook runs first, and the `normal` hook runs last. The
+        // `normal` hook's `file` overrides the `pre` hook's. The bag never
+        // carries `code`, so the source is untouched.
         expect(seen).toEqual(["pre", "normal"]);
         expect(result.code).toBe("const a = 1;");
         expect(result.map?.sources).toEqual(["normal.ts"]);
+    });
+
+    it("runs a newly added plugin's options hook in its requested order", async (): Promise<void> => {
+        const seen: Array<string> = [];
+
+        const normalLate: Plugin = {
+            name: "normal-late",
+            options: (): void => {
+                seen.push("normal-late.options");
+            },
+        };
+
+        const preLate: Plugin = {
+            name: "pre-late",
+            options: {
+                order: "pre",
+                handler: (): void => {
+                    seen.push("pre-late.options");
+                },
+            },
+        };
+
+        let isAdded: boolean = false;
+
+        const adder: Plugin = {
+            name: "adder",
+            options: (
+                _ctx: CommonPluginContext,
+                args: OptionsArgs,
+            ): OptionsArgs | null | void => {
+                seen.push("adder.options");
+
+                if (isAdded) {
+                    return null;
+                }
+
+                isAdded = true;
+
+                // Append the normal entry first so only the `pre` metadata can
+                // move the `pre-late` hook ahead on the next pass.
+                return {
+                    options: {
+                        ...args.options,
+                        plugins: [
+                            ...(args.options.plugins ?? []),
+                            normalLate,
+                            preLate,
+                        ],
+                    },
+                };
+            },
+        };
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [adder],
+        });
+
+        expect(seen).toEqual([
+            "adder.options",
+            "pre-late.options",
+            "normal-late.options",
+        ]);
     });
 
     it("orders start hooks across plugins", async (): Promise<void> => {

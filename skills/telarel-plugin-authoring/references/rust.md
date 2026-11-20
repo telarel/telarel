@@ -146,9 +146,8 @@ fn options<'a>(
 }
 ```
 
-- clone `args` so you keep the current plugin list and every unset field
-- returning `Some(OptionsArgs { ... })` replaces the whole struct. Omitted fields take defaults, not previous values
-- the returned plugin list replaces the settled list wholesale
+- returning `Some(OptionsArgs { ... })` is a patch. Present fields override the settled values and omitted fields keep them, so cloning `args` is optional
+- the pipeline appends returned plugins to the settled list. It skips an entry whose instance is already present, so echoing `args.plugins` cannot duplicate the list
 - append a stable instance. The hook runs once per distinct instance, so creating the injected plugin inside the hook is fine. The depth guard applies when a hook creates a new instance on every pass
 
 ### Parse a custom input language (exclusive)
@@ -299,7 +298,7 @@ Add `tokio` as a dev-dependency with `rt` and `macros` features. Test the smalle
 - returning the `Ast` instead of `Ok(Some(TransformOutput { ast }))`
 - calling `Ast::with_mut` and returning `Ok(None)`; the change is discarded
 - replacing `Program::source_text` inside `with_mut`; build a new `Ast`
-- returning a fresh `OptionsArgs` and dropping `args.plugins`
+- expecting a returned plugin list to remove or reorder settled plugins. The pipeline only appends returned plugins.
 - forgetting to clone `args.options` in a parse or generate hook
 - storing non-`Send` or non-`Sync` state in a plugin
 - treating `Ast::map` as the generated output map

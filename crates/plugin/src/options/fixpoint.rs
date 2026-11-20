@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::_types::context::CommonPluginContext;
-use crate::_types::hooks::options::OptionsArgs;
+use crate::_types::hooks::options::{OptionsArgs, merge_options};
 use crate::PluginError;
 use crate::plugin::pluginable::SharedPluginable;
 use crate::plugin_driver::sort_plugins_by_hook_meta;
@@ -12,7 +12,7 @@ use crate::plugin_driver::sort_plugins_by_hook_meta;
 /// plugin cycles reach this guard.
 const MAX_OPTIONS_DEPTH: usize = 10;
 
-/// Compares by instance identity. A same-name replacement is a new instance.
+/// Compares by instance identity. A same-name instance is new work.
 /// Duplicates of an already-run instance are the same work.
 fn same_instances(
     left: &[SharedPluginable],
@@ -24,12 +24,14 @@ fn same_instances(
 
 /// Run the `options` hook as a fixpoint over the plugin list.
 ///
-/// `Some` replaces the entire settled list and `None` keeps it. `options` runs
-/// once per plugin instance, in per-pass `options_meta` order. Both the
-/// already-run check and termination compare instance identity. A same-name
-/// replacement is a new instance and runs on a later pass. The settled list is
-/// not deduplicated and may repeat an instance. `MAX_OPTIONS_DEPTH` guards
-/// cycles.
+/// `Some` patches the settled args and `None` keeps them. A patch's `Some`
+/// option fields override the current value and its `None` fields keep it.
+/// Patch plugins append when the instance is not already present. `options`
+/// runs once per plugin instance, in per-pass `options_meta` order. Both the
+/// already-run check and termination compare instance identity. A new
+/// instance, including a same-name one, runs on a later pass. The settled list
+/// may repeat an initial instance. Patch entries never duplicate one.
+/// `MAX_OPTIONS_DEPTH` guards cycles.
 pub async fn options_fixpoint(
     ctx: &CommonPluginContext,
     args: &OptionsArgs,
@@ -72,13 +74,12 @@ pub async fn options_fixpoint(
             let next: Option<OptionsArgs> =
                 plugin.call_options(ctx, &args).await?;
 
-            if let Some(replaced) = next {
-                args = replaced;
+            if let Some(patch) = next {
+                args = merge_options(&args, &patch);
             }
 
-            // Returned args replace the whole set. Only a plugin whose return
-            // GREW `plugins` records its name in the chain. A return that
-            // truncates below `before` adds nothing.
+            // A returned args value patches the settled set. Only a plugin
+            // whose patch GREW `plugins` records its name in the chain.
             if args.plugins.len() > before {
                 chain.push(plugin.call_name().into_owned());
             }
@@ -118,8 +119,8 @@ mod tests {
     use std::sync::MutexGuard;
 
     use telarel_common::{
-        GeneratorOptions, HookUsage, IndentStyle, ParserOptions,
-        ResolvableOptions,
+        GeneratorOptions, HookUsage, IndentStyle, Language, OutputOptions,
+        ParserOptions, ResolvableOptions, SourceMapOptions, SourceType,
     };
 
     use crate::_types::hooks::options::OptionsReturn;
@@ -352,14 +353,13 @@ mod tests {
         }
     }
 
-    /// Returns args carrying ONLY `cwd`: every other field ("file") is
-    /// dropped by the struct-level replace.
+    /// Returns a patch carrying ONLY `cwd`: every other field is omitted.
     #[derive(Debug)]
-    struct ReplaceArgsDroppingFieldsOptionsPlugin;
+    struct PartialCwdOptionsPlugin;
 
-    impl Plugin for ReplaceArgsDroppingFieldsOptionsPlugin {
+    impl Plugin for PartialCwdOptionsPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "replace-args-dropping-fields".into()
+            "partial-cwd-options".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
@@ -373,13 +373,62 @@ mod tests {
         ) -> impl Future<Output = OptionsReturn> + Send {
             async {
                 Ok(Some(OptionsArgs {
-                    options: telarel_common::ResolvableOptions {
+                    options: ResolvableOptions {
                         cwd: Some(PathBuf::from("/only")),
-                        ..telarel_common::ResolvableOptions::default()
+                        ..ResolvableOptions::default()
                     },
                     plugins: Vec::new(),
                 }))
             }
+        }
+    }
+
+    /// Returns an empty patch: no option fields and no plugins.
+    #[derive(Debug)]
+    struct EmptyPatchOptionsPlugin;
+
+    impl Plugin for EmptyPatchOptionsPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "empty-patch-options".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Options
+        }
+
+        fn options<'a>(
+            &'a self,
+            _ctx: &'a CommonPluginContext,
+            _args: &'a OptionsArgs,
+        ) -> impl Future<Output = OptionsReturn> + Send {
+            async {
+                Ok(Some(OptionsArgs {
+                    options: ResolvableOptions::default(),
+                    plugins: Vec::new(),
+                }))
+            }
+        }
+    }
+
+    /// Returns the received args unchanged.
+    #[derive(Debug)]
+    struct EchoOptionsPlugin;
+
+    impl Plugin for EchoOptionsPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "echo-options".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Options
+        }
+
+        fn options<'a>(
+            &'a self,
+            _ctx: &'a CommonPluginContext,
+            args: &'a OptionsArgs,
+        ) -> impl Future<Output = OptionsReturn> + Send {
+            async move { Ok(Some(args.clone())) }
         }
     }
 
@@ -451,7 +500,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_options_replacement_visible_to_later_plugin() {
+    async fn test_options_patch_visible_to_later_plugin() {
         let observed: Arc<Mutex<Vec<String>>> =
             Arc::new(Mutex::new(Vec::new()));
 
@@ -475,7 +524,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_options_cwd_replacement_visible_to_later_plugin() {
+    async fn test_options_cwd_patch_visible_to_later_plugin() {
         let observed: Arc<Mutex<Vec<Option<PathBuf>>>> =
             Arc::new(Mutex::new(Vec::new()));
 
@@ -514,7 +563,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_added_plugin_gets_options_hook_run() {
+    async fn test_added_plugin_options_hook_runs() {
         let observed: Arc<Mutex<Vec<String>>> =
             Arc::new(Mutex::new(Vec::new()));
 
@@ -545,6 +594,51 @@ mod tests {
         let recorded: Vec<String> = observed.lock().unwrap().clone();
 
         assert_eq!(recorded, vec!["a.ts".to_string()]);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_plugins_append_without_duplicates() {
+        let first: SharedPluginable = Plugin::new_shared(NoopOptionsPlugin);
+        let second: SharedPluginable = Plugin::new_shared(NoopOptionsPlugin);
+
+        let root: SharedPluginable =
+            Plugin::new_shared(AppendingOptionsPlugin {
+                name: "append-two",
+                append: vec![Arc::clone(&first), Arc::clone(&second)],
+                remaining: Mutex::new(1),
+            });
+
+        let plugins: Vec<SharedPluginable> = vec![Arc::clone(&root)];
+
+        let args: OptionsArgs = make_args(plugins);
+
+        let (_settled, list): (OptionsArgs, Vec<SharedPluginable>) =
+            options_fixpoint(&common_ctx(), &args).await.unwrap();
+
+        // The patch echoes `root` and adds both instances. The echo must not
+        // append a second `root`, and both new instances append in patch order.
+        assert_eq!(list.len(), 3);
+        assert!(Arc::ptr_eq(&list[0], &root));
+        assert!(Arc::ptr_eq(&list[1], &first));
+        assert!(Arc::ptr_eq(&list[2], &second));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_echoed_plugins_do_not_duplicate() {
+        let echoed: SharedPluginable = Plugin::new_shared(EchoOptionsPlugin);
+        let other: SharedPluginable = Plugin::new_shared(NoopOptionsPlugin);
+
+        let plugins: Vec<SharedPluginable> =
+            vec![Arc::clone(&echoed), Arc::clone(&other)];
+
+        let args: OptionsArgs = make_args(plugins);
+
+        let (_settled, list): (OptionsArgs, Vec<SharedPluginable>) =
+            options_fixpoint(&common_ctx(), &args).await.unwrap();
+
+        assert_eq!(list.len(), 2);
+        assert!(Arc::ptr_eq(&list[0], &echoed));
+        assert!(Arc::ptr_eq(&list[1], &other));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -662,39 +756,96 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_options_some_replaces_whole_args_drops_fields() {
-        // Struct-level replace: returned args REPLACE the whole set. Every
-        // field they do not carry falls back to `ResolvableOptions`'s own
-        // defaults (`None`). The input args' `file: Some("a.ts")` is NOT
-        // preserved.
+    async fn test_partial_options_keep_previous_values() {
+        // A patch that omits a field keeps the settled value for it. Only the
+        // field the patch carries (`cwd`) changes.
         let plugins: Vec<SharedPluginable> =
-            vec![Plugin::new_shared(ReplaceArgsDroppingFieldsOptionsPlugin)];
+            vec![Plugin::new_shared(PartialCwdOptionsPlugin)];
 
-        let args: OptionsArgs = make_args(plugins);
+        let args: OptionsArgs = OptionsArgs {
+            options: ResolvableOptions {
+                cwd: Some(PathBuf::from("/base")),
+                file: Some(String::from("a.ts")),
+                language: Some(Language::TS),
+                source_type: Some(SourceType::Module),
+                parser: Some(ParserOptions {
+                    preserve_parens: Some(true),
+                    ..ParserOptions::default()
+                }),
+                generator: Some(GeneratorOptions {
+                    single_quote: Some(true),
+                    ..GeneratorOptions::default()
+                }),
+                output: Some(OutputOptions {
+                    file: Some(String::from("dist/a.js")),
+                }),
+                source_map: Some(SourceMapOptions::default()),
+            },
+            plugins,
+        };
 
         let (settled, _list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
         assert_eq!(settled.options.cwd, Some(PathBuf::from("/only")));
-
-        assert!(
-            settled.options.file.is_none(),
-            "file must be dropped by the whole-struct replace"
+        assert_eq!(settled.options.file.as_deref(), Some("a.ts"));
+        assert_eq!(settled.options.language, Some(Language::TS));
+        assert_eq!(settled.options.source_type, Some(SourceType::Module));
+        assert_eq!(
+            settled
+                .options
+                .parser
+                .as_ref()
+                .and_then(|parser| parser.preserve_parens),
+            Some(true),
         );
-
-        assert!(settled.options.language.is_none());
-        assert!(
-            settled.options.parser.is_none(),
-            "parser must be dropped by the whole-struct replace"
+        assert_eq!(
+            settled
+                .options
+                .generator
+                .as_ref()
+                .and_then(|generator| generator.single_quote),
+            Some(true),
         );
-        assert!(
-            settled.options.generator.is_none(),
-            "generator must be dropped by the whole-struct replace"
+        assert_eq!(
+            settled
+                .options
+                .output
+                .as_ref()
+                .and_then(|output| output.file.as_deref()),
+            Some("dist/a.js"),
         );
+        assert!(settled.options.source_map.is_some());
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_options_some_replacement_preserves_parser_and_generator() {
+    async fn test_omitted_fields_do_not_clear_values() {
+        let plugins: Vec<SharedPluginable> =
+            vec![Plugin::new_shared(EmptyPatchOptionsPlugin)];
+
+        let args: OptionsArgs = OptionsArgs {
+            options: ResolvableOptions {
+                cwd: Some(PathBuf::from("/base")),
+                file: Some(String::from("a.ts")),
+                language: Some(Language::TS),
+                ..ResolvableOptions::default()
+            },
+            plugins: plugins.clone(),
+        };
+
+        let (settled, list): (OptionsArgs, Vec<SharedPluginable>) =
+            options_fixpoint(&common_ctx(), &args).await.unwrap();
+
+        assert_eq!(settled.options.cwd, Some(PathBuf::from("/base")));
+        assert_eq!(settled.options.file.as_deref(), Some("a.ts"));
+        assert_eq!(settled.options.language, Some(Language::TS));
+
+        assert_eq!(list.len(), 1);
+        assert!(Arc::ptr_eq(&list[0], &plugins[0]));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_options_partial_patch_preserves_parser_and_generator() {
         let plugins: Vec<SharedPluginable> =
             vec![Plugin::new_shared(OptionsPlugin { cwd: "/next" })];
 
@@ -724,7 +875,7 @@ mod tests {
         let parser: ParserOptions = settled
             .options
             .parser
-            .expect("the parser group survives a Some replacement");
+            .expect("the parser group survives a partial patch");
 
         assert_eq!(parser.preserve_parens, Some(true));
         assert_eq!(parser.allow_return_outside_function, Some(true));
@@ -732,7 +883,7 @@ mod tests {
         let generator: GeneratorOptions = settled
             .options
             .generator
-            .expect("the generator group survives a Some replacement");
+            .expect("the generator group survives a partial patch");
 
         assert_eq!(generator.single_quote, Some(true));
         assert_eq!(generator.indent_style, Some(IndentStyle::Tab));
@@ -853,8 +1004,8 @@ mod tests {
         }
     }
 
-    /// Records its own name and replaces the WHOLE plugin list with a
-    /// preconfigured list on every call.
+    /// Records its own name and returns a preconfigured plugin list as a
+    /// patch on every call.
     #[derive(Debug)]
     struct ReturnsListOptionsPlugin {
         name: &'static str,
@@ -1011,21 +1162,21 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_same_length_swap_takes_effect_and_runs_new_plugin() {
+    async fn test_returned_list_appends_without_replacing() {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let probe_b: SharedPluginable = Plugin::new_shared(
             MetaRecordingOptionsPlugin::new("probe-b", None, &log),
         );
 
-        let replacement: Arc<Mutex<Vec<SharedPluginable>>> =
+        let patch: Arc<Mutex<Vec<SharedPluginable>>> =
             Arc::new(Mutex::new(vec![probe_b]));
 
         let replacer: SharedPluginable = Plugin::new_shared(
-            ReturnsListOptionsPlugin::new("replacer", &replacement, &log),
+            ReturnsListOptionsPlugin::new("replacer", &patch, &log),
         );
 
-        replacement.lock().unwrap().insert(0, Arc::clone(&replacer));
+        patch.lock().unwrap().insert(0, Arc::clone(&replacer));
 
         let probe_a: SharedPluginable = Plugin::new_shared(
             MetaRecordingOptionsPlugin::new("probe-a", None, &log),
@@ -1041,7 +1192,16 @@ mod tests {
         let names: Vec<String> =
             list.iter().map(|plugin| plugin.call_name().into_owned()).collect();
 
-        assert_eq!(names, vec!["replacer".to_string(), "probe-b".to_string()],);
+        // The patch repeats `replacer` and adds `probe-b`. `probe-a` is not in
+        // the patch but stays in the settled list.
+        assert_eq!(
+            names,
+            vec![
+                "replacer".to_string(),
+                "probe-a".to_string(),
+                "probe-b".to_string(),
+            ],
+        );
 
         assert_eq!(
             log.lock().unwrap().clone(),
@@ -1054,21 +1214,21 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_same_length_same_name_swap_runs_new_instance() {
+    async fn test_same_name_new_instance_appends_and_runs() {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let new_probe: SharedPluginable = Plugin::new_shared(
             MetaRecordingOptionsPlugin::new("same", None, &log),
         );
 
-        let replacement: Arc<Mutex<Vec<SharedPluginable>>> =
+        let patch: Arc<Mutex<Vec<SharedPluginable>>> =
             Arc::new(Mutex::new(vec![Arc::clone(&new_probe)]));
 
         let replacer: SharedPluginable = Plugin::new_shared(
-            ReturnsListOptionsPlugin::new("replacer", &replacement, &log),
+            ReturnsListOptionsPlugin::new("replacer", &patch, &log),
         );
 
-        replacement.lock().unwrap().insert(0, Arc::clone(&replacer));
+        patch.lock().unwrap().insert(0, Arc::clone(&replacer));
 
         let old_probe: SharedPluginable = Plugin::new_shared(
             MetaRecordingOptionsPlugin::new("same", None, &log),
@@ -1081,11 +1241,13 @@ mod tests {
         let (_settled, list): (OptionsArgs, Vec<SharedPluginable>) =
             options_fixpoint(&common_ctx(), &args).await.unwrap();
 
-        // The replacement keeps the list length and the probe name, but a new
-        // instance is new work and runs on the next pass.
+        // The patch names the same plugin name but carries a new instance.
+        // It appends, and the new instance runs on the next pass.
         assert_eq!(log.lock().unwrap().len(), 3);
 
-        assert!(Arc::ptr_eq(&list[1], &new_probe));
+        assert_eq!(list.len(), 3);
+
+        assert!(Arc::ptr_eq(&list[2], &new_probe));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1143,21 +1305,21 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_prefix_reorder_converges_without_reruns() {
+    async fn test_patch_cannot_reorder_settled_list() {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let b: SharedPluginable = Plugin::new_shared(
             MetaRecordingOptionsPlugin::new("b", None, &log),
         );
 
-        let replacement: Arc<Mutex<Vec<SharedPluginable>>> =
+        let patch: Arc<Mutex<Vec<SharedPluginable>>> =
             Arc::new(Mutex::new(vec![Arc::clone(&b)]));
 
         let a: SharedPluginable = Plugin::new_shared(
-            ReturnsListOptionsPlugin::new("a", &replacement, &log),
+            ReturnsListOptionsPlugin::new("a", &patch, &log),
         );
 
-        replacement.lock().unwrap().push(Arc::clone(&a));
+        patch.lock().unwrap().push(Arc::clone(&a));
 
         let plugins: Vec<SharedPluginable> = vec![a, b];
 
@@ -1169,10 +1331,10 @@ mod tests {
         let names: Vec<String> =
             list.iter().map(|plugin| plugin.call_name().into_owned()).collect();
 
-        assert_eq!(names, vec!["b".to_string(), "a".to_string()]);
+        // A patch cannot reorder the settled list. Both instances are already
+        // present, so neither is appended or re-run.
+        assert_eq!(names, vec!["a".to_string(), "b".to_string()]);
 
-        // Both identities were already processed in pass 1. The reorder
-        // introduces no unprocessed entry, so neither is re-run.
         assert_eq!(
             log.lock().unwrap().clone(),
             vec!["a".to_string(), "b".to_string()],
@@ -1180,7 +1342,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_truncation_drops_plugins_after_they_ran() {
+    async fn test_patch_cannot_truncate_settled_plugins() {
         let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
         let probe_a: SharedPluginable = Plugin::new_shared(
@@ -1191,14 +1353,14 @@ mod tests {
             MetaRecordingOptionsPlugin::new("probe-b", None, &log),
         );
 
-        let replacement: Arc<Mutex<Vec<SharedPluginable>>> =
+        let patch: Arc<Mutex<Vec<SharedPluginable>>> =
             Arc::new(Mutex::new(Vec::new()));
 
         let trunc: SharedPluginable = Plugin::new_shared(
-            ReturnsListOptionsPlugin::new("trunc", &replacement, &log),
+            ReturnsListOptionsPlugin::new("trunc", &patch, &log),
         );
 
-        replacement.lock().unwrap().push(Arc::clone(&trunc));
+        patch.lock().unwrap().push(Arc::clone(&trunc));
 
         let plugins: Vec<SharedPluginable> = vec![trunc, probe_a, probe_b];
 
@@ -1210,10 +1372,16 @@ mod tests {
         let names: Vec<String> =
             list.iter().map(|plugin| plugin.call_name().into_owned()).collect();
 
-        assert_eq!(names, vec!["trunc".to_string()]);
+        // A patch that names only `trunc` appends nothing and removes nothing.
+        assert_eq!(
+            names,
+            vec![
+                "trunc".to_string(),
+                "probe-a".to_string(),
+                "probe-b".to_string(),
+            ],
+        );
 
-        // The dropped plugins were processed before the truncating return, so
-        // no error occurs. The settled list simply excludes them.
         assert_eq!(
             log.lock().unwrap().clone(),
             vec![

@@ -43,6 +43,7 @@
 
 #### Breaking
 
+- change the `options` hook to patch the settled options and plugin list instead of replacing them. The pipeline applies the value of each present option field and keeps the value of each absent field. It appends returned plugins to the settled list and skips an entry whose instance is already present
 - rename the `ParseArgs.options` and `GenerateArgs.options` types to `ResolvedParserOptions` and `ResolvedGeneratorOptions`
 
 ### Plugin Transform
@@ -82,6 +83,7 @@
 
 - change `GeneratorOptions.file` to be recorded as `map.file`
 - change `SourceMap.file` to name the generated output. `sources` keeps the input sources
+- change plugin descriptor conversion to release every unvisited descriptor on every error path
 
 ### Telarel (Crate)
 
@@ -110,6 +112,7 @@
 - change `ParserOptions.preserveParens` to default to `false`
 - change `ResolvedGeneratorOptions` and `ResolvedParserOptions` to add required generator fields (`singleQuote`, `asciiOnly`, `indentStyle`, `indentWidth`, `comments`, `minify`, and full effective `oxc`) and required parser fields (`preserveParens`, `allowReturnOutsideFunction`, and full effective `oxc`)
 - change `TypeScriptOptions` to `tsconfig` names: `onlyRemoveTypeImports` becomes `verbatimModuleSyntax`, and `jsxPragma`/`jsxPragmaFrag` are replaced by `jsx.pragma`/`jsx.pragmaFrag`
+- change the `options` hook to patch the settled options and plugins with a returned bag instead of replacing them. The pipeline applies the value of each present field and keeps the value of each absent field. It appends returned plugins to the settled list. It adds nothing for an object already in the list
 - remove `allowNamespaces` and `optimizeEnums` from `TypeScriptOptions`
 - rename the resolved `GeneratorOptions` and `ParserOptions` types to `ResolvedGeneratorOptions` and `ResolvedParserOptions`
 

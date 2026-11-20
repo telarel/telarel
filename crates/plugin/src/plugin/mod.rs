@@ -40,8 +40,9 @@ pub trait Plugin: Any + Debug + Send + Sync + 'static {
     fn register_hook_usage(&self) -> HookUsage;
 
     /// Run the `options` hook over the pipeline options args. Returning
-    /// `Some` replaces the whole set (struct-level replace). Returning `None`
-    /// keeps the args unchanged.
+    /// `Some` returns a patch. The pipeline uses a present field to override
+    /// the settled value and keeps the value of an absent field. It appends
+    /// returned plugins. Returning `None` keeps the args unchanged.
     fn options<'a>(
         &'a self,
         _ctx: &'a CommonPluginContext,
@@ -211,13 +212,13 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct OptionsReplacePlugin {
+    struct OptionsPatchPlugin {
         file: &'static str,
     }
 
-    impl Plugin for OptionsReplacePlugin {
+    impl Plugin for OptionsPatchPlugin {
         fn name(&self) -> Cow<'static, str> {
-            "options-replace".into()
+            "options-patch".into()
         }
 
         fn register_hook_usage(&self) -> HookUsage {
@@ -661,13 +662,13 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_options_some_replaces_args() {
+    async fn test_options_some_returns_patch() {
         let common: CommonPluginContext = CommonPluginContext::default();
 
         let args: OptionsArgs = make_args(vec![]);
 
         let shared: SharedPluginable =
-            Plugin::new_shared(OptionsReplacePlugin { file: "b.ts" });
+            Plugin::new_shared(OptionsPatchPlugin { file: "b.ts" });
 
         let next: OptionsArgs =
             shared.call_options(&common, &args).await.unwrap().unwrap();

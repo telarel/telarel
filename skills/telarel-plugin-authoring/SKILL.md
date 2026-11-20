@@ -5,7 +5,7 @@ description: Use when writing or reviewing a Telarel plugin in JavaScript/TypeSc
 
 # Writing Telarel Plugins
 
-A Telarel plugin is a named value with any subset of eight hooks. The compiler owns pipeline state. A hook returns a replacement for the current value or observes it. Pick the narrowest hook, return the documented shape, and test with `compile` or `rewrite`.
+A Telarel plugin is a named value with any subset of eight hooks. The compiler owns pipeline state. A hook returns a value for the compiler to apply or observes the current state. The `options` hook returns a patch. Pick the narrowest hook, return the documented shape, and test with `compile` or `rewrite`.
 
 This covers consumers of the public `telarel` npm package and Rust crate, not compiler internals or builtin plugins.
 
@@ -22,16 +22,16 @@ This covers consumers of the public `telarel` npm package and Rust crate, not co
 
 ## Which Hook?
 
-| Goal                              | Hook        | Return           | Key rule                                               |
-| --------------------------------- | ----------- | ---------------- | ------------------------------------------------------ |
-| Change options before resolution  | `options`   | options bag      | Full-bag replacement; identity is the instance         |
-| Setup, metrics, logging           | `start`     | nothing          | Receives resolved options                              |
-| Parse a custom input language     | `parse`     | `{ ast }`        | Exclusive; skips later hooks and the builtin parser    |
-| Inspect the parsed AST            | `prepare`   | nothing          | Observer; mutations do not persist                     |
-| Rewrite the AST                   | `transform` | `{ ast }`        | Carried fold; return the AST to carry changes          |
-| Inspect the final AST             | `finalize`  | nothing          | Observer; mutations do not persist                     |
-| Generate a custom output format   | `generate`  | `{ code, map? }` | Exclusive; skips later hooks and the builtin generator |
-| Cleanup, metrics, error reporting | `end`       | nothing          | Runs on success and failure                            |
+| Goal                              | Hook        | Return           | Key rule                                                |
+| --------------------------------- | ----------- | ---------------- | ------------------------------------------------------- |
+| Change options before resolution  | `options`   | options patch    | Patch; omitted fields keep values; identity is instance |
+| Setup, metrics, logging           | `start`     | nothing          | Receives resolved options                               |
+| Parse a custom input language     | `parse`     | `{ ast }`        | Exclusive; skips later hooks and the builtin parser     |
+| Inspect the parsed AST            | `prepare`   | nothing          | Observer; mutations do not persist                      |
+| Rewrite the AST                   | `transform` | `{ ast }`        | Carried fold; return the AST to carry changes           |
+| Inspect the final AST             | `finalize`  | nothing          | Observer; mutations do not persist                      |
+| Generate a custom output format   | `generate`  | `{ code, map? }` | Exclusive; skips later hooks and the builtin generator  |
+| Cleanup, metrics, error reporting | `end`       | nothing          | Runs on success and failure                             |
 
 `parse` and `generate` replace the builtin stage; they do not compose. Declare `parse` only when the plugin owns the input language, and `generate` only when it owns the output format. Return `null` / `None` to defer. Use `prepare` or `finalize` for validation, and `transform` for AST edits.
 
@@ -113,12 +113,12 @@ Use `Plugin::new_shared(ClearBody)` in the plugin list. `HookUsage::Transform` i
 - `ast.program` is deeply read-only in JavaScript; use `ast.mutate`. In Rust, `with_mut` cannot change the source text
 - a mutation that is not returned from `transform` is discarded: return `{ ast }` / `Ok(Some(TransformOutput { ast }))`
 - mutating in `prepare`, `finalize`, or `generate` has no effect; those hooks receive snapshots
-- an options bag replaces the whole bag. Forgetting `plugins` makes the plugin list empty
+- an options bag is a patch. Omitted fields keep their values, and omitting `plugins` keeps the settled list
 - `options` identity is the plugin instance, not the name. `args.options.plugins` may hold normalized descriptors; check `name`
 - ordering is per hook, not per plugin. `parse` and `generate` are first-win and exclusive: a result skips later hooks of that name and the builtin stage. `transform` is a carried fold
 - don't use `parse` or `generate` for validation or post-processing; use `prepare` / `finalize`, or post-process the returned `CodeResult` at the call site
 - a `generate` hook's options carry an empty source-map request. A failing `end` hook replaces the stage error
-- in Rust, declaring `HookUsage::Transform` is required; a fresh `OptionsArgs` must keep `args.plugins`
+- in Rust, declaring `HookUsage::Transform` is required. A fresh `OptionsArgs` does not need to copy `args.plugins`
 
 ## References
 

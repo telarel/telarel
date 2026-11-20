@@ -4,29 +4,29 @@ Shared contract for JavaScript/TypeScript and Rust plugins. Full reference: [Plu
 
 ## Hook Summary
 
-| Hook        | Arguments                             | Return                         | Semantics    |
-| ----------- | ------------------------------------- | ------------------------------ | ------------ |
-| `options`   | context, resolvable options + plugins | replacement options or nothing | Fixpoint     |
-| `start`     | context, resolved options             | ignored                        | Notify       |
-| `parse`     | context, code + parser options        | AST result or nothing          | First-win    |
-| `prepare`   | context, AST                          | ignored                        | Observer     |
-| `transform` | context, owned AST handle             | replacement AST or nothing     | Carried fold |
-| `finalize`  | context, AST                          | ignored                        | Observer     |
-| `generate`  | context, AST + generator options      | code result or nothing         | First-win    |
-| `end`       | context, error or nothing             | ignored                        | Notify       |
+| Hook        | Arguments                             | Return                     | Semantics    |
+| ----------- | ------------------------------------- | -------------------------- | ------------ |
+| `options`   | context, resolvable options + plugins | option patch or nothing    | Fixpoint     |
+| `start`     | context, resolved options             | ignored                    | Notify       |
+| `parse`     | context, code + parser options        | AST result or nothing      | First-win    |
+| `prepare`   | context, AST                          | ignored                    | Observer     |
+| `transform` | context, owned AST handle             | replacement AST or nothing | Carried fold |
+| `finalize`  | context, AST                          | ignored                    | Observer     |
+| `generate`  | context, AST + generator options      | code result or nothing     | First-win    |
+| `end`       | context, error or nothing             | ignored                    | Notify       |
 
 Rust return types: `ParseReturn`, `TransformReturn`, `GenerateReturn`, `OptionsReturn`, and `NotifyReturn`. Every fallible Rust hook returns `Result<_, PluginError>`.
 
 Deferrable hooks (`options`, `parse`, `transform`, `generate`) use `Ok(None)` / `null` / `void` to make no change. Notify hooks (`start`, `prepare`, `finalize`, `end`) use `Ok(())`; their success value is ignored, but an error still fails the stage.
 
-## `options`: Fixpoint Replace
+## `options`: Fixpoint Patch
 
 - runs before defaults resolve, as a sequential fixpoint
-- identity is the plugin instance, not the name: Rust `Arc::ptr_eq`; JavaScript object identity. Each distinct instance runs once; duplicate entries share one run
-- a returned bag replaces the whole bag at struct level; omitted fields take defaults, not previous values. Returning nothing keeps the current bag
+- identity is the plugin instance, not the name. Rust uses `Arc::ptr_eq`, and JavaScript uses object identity. Each distinct instance runs once, and duplicate entries share one run
+- a returned bag is a patch. The pipeline uses a present field to override the settled value and keeps the value of an absent field. Returning nothing keeps the current bag
 - payload: resolvable options plus the plugin list; never source text
-- a returned plugin list replaces the settled list wholesale, including same-length swaps, reorders, and truncations
-- injected plugins get their own `options` hook on a later pass. An instance created every pass is new work every pass; the fixpoint rejects at `MAX_OPTIONS_DEPTH` (10)
+- the pipeline appends returned plugins to the settled list. It skips an entry whose instance is already present. A patch cannot reorder or remove an entry
+- injected plugins get their own `options` hook on a later pass. An instance created every pass is new work every pass. The fixpoint rejects at `MAX_OPTIONS_DEPTH` (10)
 
 In JavaScript, `args.options.plugins` may contain bridge-normalized descriptors, not the original objects. Check `name`, not identity. In Rust, `args.plugins` holds shared handles.
 

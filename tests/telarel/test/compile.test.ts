@@ -8,6 +8,7 @@ import type {
     OptionsArgs,
     Plugin,
     PluginContext,
+    PluginOption,
     PrepareArgs,
     Program,
     ResolvedOptions,
@@ -49,6 +50,22 @@ type DeclarationProgramFixture = {
         }>;
     }>;
 };
+
+type NamedPluginPayload = {
+    name: string;
+};
+
+/**
+ * Read the names of the descriptors carried by an `options` payload. The
+ * payload's entries are bridge-normalized descriptors at runtime.
+ */
+const payloadPluginNames = (
+    plugins: ReadonlyArray<PluginOption> | undefined,
+): Array<string> =>
+    (plugins ?? []).map(
+        (plugin: PluginOption): string =>
+            (plugin as unknown as NamedPluginPayload).name,
+    );
 
 describe("compile", (): void => {
     it("returns original code with no plugins", async (): Promise<void> => {
@@ -279,11 +296,9 @@ describe("compile", (): void => {
         expect(result.map?.sources).toEqual(["renamed.ts"]);
     });
 
-    it("applies a returned bag as full-bag replace with defaults", async (): Promise<void> => {
-        // Fields that a returned bag omits take their default values. An
-        // omitted `plugins` field becomes `[]`, the documented default, and the
-        // plugin would drop. So this bag repeats the current `file` and plugin
-        // list.
+    it("merges a returned bag with the settled options", async (): Promise<void> => {
+        // A returned bag is a patch. Fields the bag omits keep their settled
+        // values; here it repeats `file` and `plugins`, so both are unchanged.
         const seen: Array<string> = [];
 
         const result: CodeResult = await compile("const a = 1;", {
@@ -556,9 +571,7 @@ describe("compile", (): void => {
         expect(result.code).toBe("const a: number = 1;");
     });
 
-    it("re-resolves a cwd omitted by a late options hook to the process working directory", async (): Promise<void> => {
-        const isWasi: boolean = process.env.NAPI_RS_FORCE_WASI === "error";
-        const expected: string = isWasi ? "/" : process.cwd();
+    it("keeps the settled cwd when a late options hook omits it", async (): Promise<void> => {
         const seen: Array<string> = [];
 
         const result: CodeResult = await compile("const a = 1;", {
@@ -585,7 +598,9 @@ describe("compile", (): void => {
             ],
         });
 
-        expect(seen).toEqual([expected]);
+        // The returned bag is a patch. An absent `cwd` keeps the settled
+        // `/repo`; it does not fall back to the process working directory.
+        expect(seen).toEqual(["/repo"]);
         expect(result.code).toBe("const a = 1;");
     });
 
@@ -620,7 +635,7 @@ describe("compile", (): void => {
     });
 
     it("injects a plugin through a returned options bag", async (): Promise<void> => {
-        // An options hook replaces the whole bag, including `plugins`. The
+        // An options hook patches the bag; returned plugins append. The
         // bridge wraps the injected plugin. Then the plugin joins the settled
         // list and runs like any entry plugin. The injection appends only
         // once, so the fixpoint converges.
@@ -717,7 +732,7 @@ describe("compile", (): void => {
         expect(seen).toEqual(["in:false", "late.options"]);
     });
 
-    it("runs a same-name replacement plugin's options hook on the next pass", async (): Promise<void> => {
+    it("runs an appended same-name plugin's options hook on the next pass", async (): Promise<void> => {
         let isSwapped: boolean = false;
         const seen: Array<string> = [];
 
@@ -770,11 +785,14 @@ describe("compile", (): void => {
         });
 
         // The fixpoint treats the same-name instance as new work on the next
-        // pass. The settled list no longer contains the old probe.
+        // pass. A returned plugin list is a patch: `newProbe` appends after
+        // `oldProbe`, so the settled list keeps both instances and both run
+        // `start`.
         expect(seen).toEqual([
             "swapper.options",
             "old.options",
             "new.options",
+            "old.start",
             "new.start",
         ]);
     });
@@ -863,6 +881,122 @@ describe("compile", (): void => {
         });
 
         expect(seen).toEqual(["first.options", "second.options"]);
+    });
+
+    it("exposes the settled plugin list to a later options hook after a scalar patch", async (): Promise<void> => {
+        const seen: Array<Array<string>> = [];
+
+        const patchFile: Plugin = {
+            name: "a",
+            options: (
+                _ctx: CommonPluginContext,
+                args: OptionsArgs,
+            ): OptionsArgs => ({
+                options: { ...args.options, file: "a.ts" },
+            }),
+        };
+
+        const observePlugins: Plugin = {
+            name: "b",
+            options: (_ctx: CommonPluginContext, args: OptionsArgs): null => {
+                seen.push(payloadPluginNames(args.options.plugins));
+
+                return null;
+            },
+        };
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [patchFile, observePlugins],
+        });
+
+        // The scalar-only patch appends no descriptors, so the later hook still
+        // observes the full entry list.
+        expect(seen).toEqual([["a", "b"]]);
+    });
+
+    it("exposes an added plugin to later options hooks with the full settled list", async (): Promise<void> => {
+        const seen: Array<string> = [];
+
+        const added: Plugin = {
+            name: "c",
+            options: (_ctx: CommonPluginContext, args: OptionsArgs): null => {
+                seen.push(
+                    `c sees: ${payloadPluginNames(args.options.plugins).join(",")}`,
+                );
+
+                return null;
+            },
+        };
+
+        const adder: Plugin = {
+            name: "a",
+            options: (
+                _ctx: CommonPluginContext,
+                args: OptionsArgs,
+            ): OptionsArgs => ({
+                options: {
+                    ...args.options,
+                    plugins: [...(args.options.plugins ?? []), added],
+                },
+            }),
+        };
+
+        const observer: Plugin = {
+            name: "b",
+            options: (_ctx: CommonPluginContext, args: OptionsArgs): null => {
+                seen.push(
+                    `b sees: ${payloadPluginNames(args.options.plugins).join(",")}`,
+                );
+
+                return null;
+            },
+        };
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            plugins: [adder, observer],
+        });
+
+        // The added plugin appends before the later hook runs, and it observes
+        // the same settled list on the next pass.
+        expect(seen).toEqual(["b sees: a,b,c", "c sees: a,b,c"]);
+    });
+
+    it("applies an in-place curated group-field change", async (): Promise<void> => {
+        const seen: Array<string> = [];
+
+        const mutator: Plugin = {
+            name: "mutator",
+            options: (
+                _ctx: CommonPluginContext,
+                args: OptionsArgs,
+            ): OptionsArgs => {
+                if (args.options.output !== void 0) {
+                    args.options.output.file = "mutated.js";
+                }
+
+                return { options: args.options };
+            },
+        };
+
+        const observer: Plugin = {
+            name: "observer",
+            start: (_ctx: PluginContext, args: StartArgs): void => {
+                seen.push(args.options.output.file);
+            },
+        };
+
+        await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            output: { file: "orig.js" },
+            plugins: [mutator, observer],
+        });
+
+        expect(seen).toEqual(["mutated.js"]);
     });
 
     it("rejects on hook errors with plugin context", async (): Promise<void> => {

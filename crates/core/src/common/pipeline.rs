@@ -421,6 +421,7 @@ pub async fn run<S: Stage>(
 mod tests {
     use std::borrow::Cow;
     use std::future::Future;
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
 
@@ -428,20 +429,21 @@ mod tests {
     use telarel_common::{
         Ast, CompileError, CompileOptions, ErrorSource, GeneratorOptions,
         IndentStyle, Language, ParseOptions, ParserOptions,
-        PartialOxcCodegenOptions, PartialOxcParseOptions,
+        PartialOxcCodegenOptions, PartialOxcParseOptions, ResolvableOptions,
         ResolvedGeneratorOptions, ResolvedOptions, ResolvedParserOptions,
         RewriteOptions, SourceType,
     };
     use telarel_plugin::{
-        EndArgs, HookUsage, NotifyReturn, ParseArgs, ParseReturn, Plugin,
-        PluginContext, PluginError, SharedPluginable, TransformArgs,
-        TransformReturn,
+        CommonPluginContext, EndArgs, HookUsage, NotifyReturn, OptionsArgs,
+        OptionsReturn, ParseArgs, ParseReturn, Plugin, PluginContext,
+        PluginError, SharedPluginable, TransformArgs, TransformReturn,
     };
 
     use crate::common::test_util::{
         EndObserverPlugin, FailPlugin, FailStage,
         GenerateHookOptionsObserverPlugin, OptionsGroupsPlugin,
-        ParseHookOptionsObserverPlugin, StartObserverPlugin, parse_fixture,
+        ParseHookOptionsObserverPlugin, SpyPlugin, StartObserverPlugin,
+        parse_fixture,
     };
     use crate::functions::compile::compile;
     use crate::functions::parse::parse;
@@ -524,6 +526,47 @@ mod tests {
                     "const x = 1;",
                     Span::new(6, 7),
                 ))
+            }
+        }
+    }
+
+    /// Returns a partial options patch that sets `language` and appends one
+    /// plugin, without echoing the received bag.
+    #[derive(Debug)]
+    struct PartialOptionsPatchPlugin {
+        appended: SharedPluginable,
+    }
+
+    impl PartialOptionsPatchPlugin {
+        fn new(appended: SharedPluginable) -> Self {
+            Self { appended }
+        }
+    }
+
+    impl Plugin for PartialOptionsPatchPlugin {
+        fn name(&self) -> Cow<'static, str> {
+            "partial-options".into()
+        }
+
+        fn register_hook_usage(&self) -> HookUsage {
+            HookUsage::Options
+        }
+
+        fn options<'a>(
+            &'a self,
+            _ctx: &'a CommonPluginContext,
+            _args: &'a OptionsArgs,
+        ) -> impl Future<Output = OptionsReturn> + Send {
+            let appended: SharedPluginable = Arc::clone(&self.appended);
+
+            async move {
+                Ok(Some(OptionsArgs {
+                    options: ResolvableOptions {
+                        language: Some(Language::JS),
+                        ..ResolvableOptions::default()
+                    },
+                    plugins: vec![appended],
+                }))
             }
         }
     }
@@ -792,5 +835,57 @@ mod tests {
         );
         assert_eq!(generate_seen[0].oxc.indent_width, 2);
         assert!(generate_seen[0].comments);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_partial_options_patch_settles_through_pipeline() {
+        let seen: Arc<Mutex<Vec<ResolvedOptions>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let appended: SharedPluginable =
+            Plugin::new_shared(SpyPlugin::new("appended", &log));
+
+        let plugins: Vec<SharedPluginable> = vec![
+            Plugin::new_shared(PartialOptionsPatchPlugin::new(Arc::clone(
+                &appended,
+            ))),
+            Plugin::new_shared(StartObserverPlugin::new(&seen)),
+        ];
+
+        let options: ParseOptions = ParseOptions {
+            cwd: Some(PathBuf::from("/repo")),
+            file: Some(String::from("entry.ts")),
+            ..ParseOptions::default()
+        };
+
+        parse(String::from("const a = 1;"), options, plugins)
+            .await
+            .expect("parse succeeds");
+
+        let options: Vec<ResolvedOptions> = seen.lock().unwrap().clone();
+
+        assert_eq!(options.len(), 1);
+
+        // The patch sets only `language`. The caller's `cwd` and `file` stay.
+        assert_eq!(options[0].cwd, PathBuf::from("/repo"));
+        assert_eq!(options[0].file, "entry.ts");
+        assert_eq!(options[0].language, Language::JS);
+
+        assert_eq!(
+            options[0].plugins,
+            vec![
+                String::from("partial-options"),
+                String::from("start-observer"),
+                String::from("appended"),
+            ],
+        );
+
+        let log: Vec<String> = log.lock().unwrap().clone();
+
+        assert!(
+            log.contains(&String::from("appended:options")),
+            "the appended plugin must run its options hook: {log:?}"
+        );
     }
 }

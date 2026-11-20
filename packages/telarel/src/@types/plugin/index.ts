@@ -54,8 +54,13 @@ type Plugin = {
      */
     name: string;
     /**
-     * The options hook. Return the full options bag to replace it, or
-     * `null`/`void` for no change. The `code` is never part of the bag.
+     * The options hook. Return an options patch for the settled bag, or
+     * `null`/`void` for no change. The pipeline uses a present field to
+     * override the settled value and keeps the value of an absent field. It
+     * appends returned plugins. A group's own fields compare by value, so the
+     * pipeline detects a top-level change even in place. Replace a nested raw
+     * payload such as a group's `oxc` object. Do not mutate it in place. The
+     * `code` is never part of the bag.
      *
      * Runs before resolution as a fixpoint. Plugins added here get their own
      * `options` hook run too.

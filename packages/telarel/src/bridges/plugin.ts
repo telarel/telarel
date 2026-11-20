@@ -269,6 +269,20 @@ const isBuiltinPlugin = (
     );
 };
 
+// Only a marked descriptor carries a plugin identity. A plain plugin object
+// may happen to have a `__PLUGIN_ID__` property of its own.
+const getPluginId = (plugin: RawPlugin): number | void => {
+    if (!(RAW_PLUGIN_MARKER in plugin)) {
+        return void 0;
+    }
+
+    const id: unknown = (plugin as unknown as Record<PropertyKey, unknown>)[
+        PLUGIN_ID
+    ];
+
+    return typeof id === "number" ? id : void 0;
+};
+
 const toLanguage = (language: string): Language | void => {
     return language.length === 0 ? void 0 : parseLanguage(language);
 };
@@ -330,6 +344,11 @@ type ToRawPluginOptions = {
 
 type ToRawPluginsOptions = {
     plugins: ReadonlyArray<PluginOption>;
+    /**
+     * Descriptors the caller already holds. A resulting descriptor is skipped
+     * when it is one of these objects or carries the same `__PLUGIN_ID__`.
+     */
+    present?: ReadonlyArray<RawPlugin>;
 };
 
 type OptionsHook = (
@@ -596,6 +615,109 @@ const flattenPlugins = async (
     return flattened;
 };
 
+// Compare a returned options group without descending into raw payloads. The
+// pipeline detects a top-level field change even in place. Replace a nested
+// raw payload such as `oxc` with a new object, because it can hold arbitrary
+// binding data.
+const isShallowEqual = (left: unknown, right: unknown): boolean => {
+    if (
+        typeof left !== "object" ||
+        left === null ||
+        typeof right !== "object" ||
+        right === null
+    ) {
+        return false;
+    }
+
+    const leftGroup: Record<string, unknown> = left as Record<string, unknown>;
+
+    const rightGroup: Record<string, unknown> = right as Record<
+        string,
+        unknown
+    >;
+
+    const leftKeys: Array<string> = Object.keys(leftGroup);
+
+    const rightKeys: Array<string> = Object.keys(rightGroup);
+
+    if (leftKeys.length !== rightKeys.length) {
+        return false;
+    }
+
+    return leftKeys.every(
+        (key: string): boolean =>
+            Object.prototype.hasOwnProperty.call(rightGroup, key) &&
+            Object.is(leftGroup[key], rightGroup[key]),
+    );
+};
+
+type DiffOptionsOptions = {
+    rawArgs: RawOptionsArgs;
+    next: ResolvableOptions;
+};
+
+// An unchanged field stays absent so the binding keeps the settled value. A
+// returned group compares its own fields, so an in-place change is still sent.
+// Replace a nested raw payload such as `oxc` with a new object.
+const diffOptions = ({
+    rawArgs,
+    next,
+}: DiffOptionsOptions): RawOptionsOutput => {
+    const patch: RawOptionsOutput = {};
+
+    if (typeof next.cwd === "string" && next.cwd !== rawArgs.cwd) {
+        patch.cwd = next.cwd;
+    }
+
+    if (typeof next.file === "string" && next.file !== rawArgs.file) {
+        patch.file = next.file;
+    }
+
+    if (
+        typeof next.language === "string" &&
+        next.language !== rawArgs.language
+    ) {
+        patch.language = next.language;
+    }
+
+    if (
+        typeof next.sourceType === "string" &&
+        next.sourceType !== rawArgs.sourceType
+    ) {
+        patch.sourceType = next.sourceType;
+    }
+
+    if (
+        next.parser !== void 0 &&
+        !isShallowEqual(next.parser, rawArgs.parser)
+    ) {
+        patch.parser = next.parser;
+    }
+
+    if (
+        next.generator !== void 0 &&
+        !isShallowEqual(next.generator, rawArgs.generator)
+    ) {
+        patch.generator = next.generator;
+    }
+
+    if (
+        next.output !== void 0 &&
+        !isShallowEqual(next.output, rawArgs.output)
+    ) {
+        patch.output = next.output;
+    }
+
+    if (
+        next.sourceMap !== void 0 &&
+        !isShallowEqual(next.sourceMap, rawArgs.sourceMap)
+    ) {
+        patch.sourceMap = next.sourceMap;
+    }
+
+    return patch;
+};
+
 const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
     if (typeof plugin === "function" || Array.isArray(plugin)) {
         throw new TypeError(
@@ -667,20 +789,23 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
                     bag.sourceType = parseSourceType(rawArgs.sourceType);
                 }
 
+                // A group is a shallow copy so an in-place change to a curated
+                // field is visible to the diff. Nested raw payloads stay shared
+                // and must be replaced.
                 if (rawArgs.parser !== void 0) {
-                    bag.parser = rawArgs.parser;
+                    bag.parser = { ...rawArgs.parser };
                 }
 
                 if (rawArgs.generator !== void 0) {
-                    bag.generator = rawArgs.generator;
+                    bag.generator = { ...rawArgs.generator };
                 }
 
                 if (rawArgs.output !== void 0) {
-                    bag.output = rawArgs.output;
+                    bag.output = { ...rawArgs.output };
                 }
 
                 if (rawArgs.sourceMap !== void 0) {
-                    bag.sourceMap = rawArgs.sourceMap;
+                    bag.sourceMap = { ...rawArgs.sourceMap };
                 }
 
                 const ctx: CommonPluginContext = {};
@@ -698,45 +823,23 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
                 const next: ResolvableOptions = result.options;
 
-                const output: RawOptionsOutput = {
-                    plugins: await toRawPlugins({
-                        plugins: next.plugins ?? [],
-                    }),
-                };
+                const patch: RawOptionsOutput = diffOptions({
+                    rawArgs,
+                    next,
+                });
 
-                if (typeof next.cwd === "string") {
-                    output.cwd = next.cwd;
+                const added: Array<RawPlugin> = await toRawPlugins({
+                    plugins: next.plugins ?? [],
+                    // The payload carries the full settled descriptor view, so
+                    // this filter sees every instance already in the bag.
+                    present: rawArgs.plugins,
+                });
+
+                if (added.length > 0) {
+                    patch.plugins = added;
                 }
 
-                if (typeof next.file === "string") {
-                    output.file = next.file;
-                }
-
-                if (typeof next.language === "string") {
-                    output.language = next.language;
-                }
-
-                if (typeof next.sourceType === "string") {
-                    output.sourceType = next.sourceType;
-                }
-
-                if (next.parser !== void 0) {
-                    output.parser = next.parser;
-                }
-
-                if (next.generator !== void 0) {
-                    output.generator = next.generator;
-                }
-
-                if (next.output !== void 0) {
-                    output.output = next.output;
-                }
-
-                if (next.sourceMap !== void 0) {
-                    output.sourceMap = next.sourceMap;
-                }
-
-                return output;
+                return patch;
             });
 
         if (options.meta.order !== void 0) {
@@ -982,13 +1085,53 @@ const toRawPlugin = ({ plugin }: ToRawPluginOptions): RawPlugin => {
 
 const toRawPlugins = async ({
     plugins,
+    present,
 }: ToRawPluginsOptions): Promise<RawPlugin[]> => {
     const flattened: Array<Plugin | BuiltinPlugin> =
         await flattenPlugins(plugins);
 
-    return flattened.map((plugin: Plugin | BuiltinPlugin): RawPlugin =>
-        toRawPlugin({ plugin }),
+    const raw: Array<RawPlugin> = flattened.map(
+        (plugin: Plugin | BuiltinPlugin): RawPlugin => toRawPlugin({ plugin }),
     );
+
+    // Entry registration keeps duplicate entries. Only a patch filters
+    // against the caller's descriptors.
+    if (present === void 0) {
+        return raw;
+    }
+
+    const presentDescriptors: Set<RawPlugin> = new Set<RawPlugin>(present);
+    const presentIds: Set<number> = new Set<number>();
+
+    for (const plugin of present) {
+        const id: number | void = getPluginId(plugin);
+
+        if (id !== void 0) {
+            presentIds.add(id);
+        }
+    }
+
+    const added: Array<RawPlugin> = [];
+
+    for (const plugin of raw) {
+        if (presentDescriptors.has(plugin)) {
+            continue;
+        }
+
+        const id: number | void = getPluginId(plugin);
+
+        if (id !== void 0) {
+            if (presentIds.has(id)) {
+                continue;
+            }
+
+            presentIds.add(id);
+        }
+
+        added.push(plugin);
+    }
+
+    return added;
 };
 
 export type { RawPlugin };

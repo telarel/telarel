@@ -11,34 +11,34 @@ Rust plugins use the bundled oxc version. JavaScript plugins remain backend-inde
 
 ## Hooks
 
-| Hook        | Arguments                       | Return     | Semantics        |
-| ----------- | ------------------------------- | ---------- | ---------------- |
-| `options`   | options, plugins                | options    | Fixpoint replace |
-| `start`     | resolved options                | —          | Notify           |
-| `parse`     | code, resolved parser options   | ast        | First-win        |
-| `prepare`   | ast                             | —          | Observer         |
-| `transform` | ast                             | ast        | Carried fold     |
-| `finalize`  | ast                             | —          | Observer         |
-| `generate`  | ast, resolved generator options | code, map? | First-win        |
-| `end`       | error?                          | —          | Notify           |
+| Hook        | Arguments                       | Return     | Semantics      |
+| ----------- | ------------------------------- | ---------- | -------------- |
+| `options`   | options, plugins                | options    | Fixpoint patch |
+| `start`     | resolved options                | —          | Notify         |
+| `parse`     | code, resolved parser options   | ast        | First-win      |
+| `prepare`   | ast                             | —          | Observer       |
+| `transform` | ast                             | ast        | Carried fold   |
+| `finalize`  | ast                             | —          | Observer       |
+| `generate`  | ast, resolved generator options | code, map? | First-win      |
+| `end`       | error?                          | —          | Notify         |
 
 ### Hook semantics
 
-**`options`: fixpoint replace.** The pipeline runs this hook first and then resolves options. It runs the hook as a sequential fixpoint over the plugin list. A fixpoint repeats until no instance is new work. It then settles.
+**`options`: fixpoint patch.** The pipeline runs this hook first and then resolves options. It runs the hook as a sequential fixpoint over the plugin list. A fixpoint repeats until no instance is new work. It then settles.
 
 ```mermaid
 flowchart TD
     A["Start with the plugin list"] --> B["Run options on each instance not yet run"]
-    B --> C["Replace the bag with any returned value"]
+    B --> C["Apply any returned patch to the bag"]
     C --> D{"Any instance not yet run?"}
     D -- "yes" --> B
     D -- "no" --> E["Settle and resolve defaults"]
 ```
 
 - **identity**: the instance is the identity, not the `name`. Each distinct instance runs once
-- **replacement**: a same-name replacement counts as new work. The pipeline preserves duplicate entries of one instance
-- **return**: a returned bag replaces the whole bag at struct level. Omitted fields take their default values, including the `parser` and `generator` groups. Returning nothing keeps the current bag
-- **payload**: the payload is the resolvable options and the plugin list. It never includes the source. Unset fields stay absent until the fixpoint settles. The payload can carry the caller's `parser` and `generator` groups. Absent groups stay unset. A hook can set or replace them. Each group's `oxc` field is the requested partial patch, not the resolved object
+- **append**: the pipeline counts a same-name instance as new work and appends it as a separate entry. It preserves duplicate entries of one instance
+- **return**: a returned bag is a patch. The pipeline uses a present option field to override the settled value and keeps the value of an absent field. This rule includes the `parser` and `generator` groups. It appends returned plugins to the settled list and skips an entry whose instance is already present. Every `options` hook observes the full settled plugin list, including plugins added by earlier hooks. Returning nothing keeps the current bag
+- **payload**: the payload is the resolvable options and the plugin list, and it never includes the source. Unset fields stay absent until the fixpoint settles. The payload can carry the caller's `parser` and `generator` groups. In the payload, an absent group stays unset. In a returned bag, an absent group keeps the settled value. A hook can set a group in its returned bag, and each group's `oxc` field is the requested partial patch, not the resolved object
 - **depth**: an instance created every pass is new work every pass. It reaches `MAX_OPTIONS_DEPTH`
 
 **`start`: notify.** The pipeline runs `start` on every settled entry. The hook receives the fully resolved, read-only options. The hook's `parser` and `generator` fields are the resolved stage views, and their `oxc` fields are the full effective objects. The pipeline ignores return values. The first error aborts.
