@@ -8,6 +8,7 @@ export default defineConfig(
             "./src/ast.ts",
             "./src/walker.ts",
             "./src/plugins/*.ts",
+            "./src/internal/*.ts",
         ],
         platform: "node",
         deps: {
