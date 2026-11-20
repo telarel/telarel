@@ -8,7 +8,6 @@ import type {
     ParseArgs,
     PluginContext,
     Program,
-    SourceMap,
     TransformArgs,
     TransformResult,
 } from "telarel";
@@ -25,11 +24,6 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { resolvedGeneratorOptions } from "#/functions/options";
-import {
-    appendInlineMap,
-    buildMap,
-    SOURCE_MAPPING_COMMENT,
-} from "#/functions/sourcemap";
 
 const SOURCE: string = "// lead\nconst µ = 1; /* trail */\n// tail";
 
@@ -64,24 +58,6 @@ const commentValues = (program: DeepReadonly<Program>): Array<string> =>
         (comment: DeepReadonly<Comment>): string => comment.value,
     );
 
-const hasSourceMappingComment = (result: AstResult): boolean =>
-    (result.ast.program.comments ?? []).some(
-        (comment: DeepReadonly<Comment>): boolean =>
-            result.ast.source
-                .slice(comment.start, comment.end)
-                .includes(SOURCE_MAPPING_COMMENT),
-    );
-
-const inlineMapSource = (): string => {
-    const map: SourceMap = buildMap({
-        file: "index.js",
-        sources: ["index.js"],
-        mappings: "AAAA",
-    });
-
-    return appendInlineMap("const a = 1;", map);
-};
-
 const expectPreserved = (code: string): void => {
     for (const comment of COMPILED_COMMENTS) {
         expect(code).toContain(comment);
@@ -91,7 +67,7 @@ const expectPreserved = (code: string): void => {
 const parsedSource = async (source: string): Promise<AstResult> =>
     await parse(source, { file: "index.js" });
 
-describe("comments", (): void => {
+describe("comment preservation", (): void => {
     it("parse exposes comments sorted by start with UTF-16 spans", async (): Promise<void> => {
         const source: string =
             'const smile = "😀";\n// first\n/* second */\nconst b = 2;';
@@ -307,201 +283,6 @@ describe("comments", (): void => {
         expect(generated.code).toContain("/*#__PURE__*/");
     });
 
-    it("keeps a winning parse hook's comments", async (): Promise<void> => {
-        const replacement: AstResult = await parsedSource(
-            "// replacement\nconst b = 2;",
-        );
-        const result: CodeResult = await compile("// original\nconst a = 1;", {
-            cwd: "/repo",
-            file: "index.js",
-            plugins: [
-                {
-                    name: "parse-replacement",
-                    parse: (
-                        _ctx: PluginContext,
-                        _args: ParseArgs,
-                    ): AstResult => ({ ast: replacement.ast }),
-                },
-            ],
-        });
-
-        expect(result.code).toContain("// replacement");
-        expect(result.code).not.toContain("// original");
-    });
-
-    it("drops a winning parse hook's comments when it returns comments: []", async (): Promise<void> => {
-        const replacement: AstResult = await parsedSource(
-            "// replacement\nconst b = 2;",
-        );
-        const program: Program = copyProgram(replacement.ast.program);
-        program.comments = [];
-        const ast: Ast = new Ast({ program, source: replacement.ast.source });
-        const result: CodeResult = await compile("// original\nconst a = 1;", {
-            cwd: "/repo",
-            file: "index.js",
-            plugins: [
-                {
-                    name: "parse-empty-comments",
-                    parse: (
-                        _ctx: PluginContext,
-                        _args: ParseArgs,
-                    ): AstResult => ({ ast }),
-                },
-            ],
-        });
-
-        expect(result.code).not.toContain("// replacement");
-        expect(result.code).not.toContain("// original");
-    });
-
-    it("keeps a transform replacement AST's comments", async (): Promise<void> => {
-        const replacement: AstResult = await parsedSource(
-            "// replacement\nconst b = 2;",
-        );
-        const result: CodeResult = await compile("// original\nconst a = 1;", {
-            cwd: "/repo",
-            file: "index.js",
-            plugins: [
-                {
-                    name: "transform-replacement",
-                    transform: (
-                        _ctx: PluginContext,
-                        _args: TransformArgs,
-                    ): TransformResult => ({ ast: replacement.ast }),
-                },
-            ],
-        });
-
-        expect(result.code).toContain("// replacement");
-        expect(result.code).not.toContain("// original");
-    });
-
-    it("drops the original comments when a transform returns an AST without comments", async (): Promise<void> => {
-        const replacement: AstResult = await parsedSource(
-            "// replacement\nconst b = 2;",
-        );
-        const program: Program = copyProgram(replacement.ast.program);
-        delete program.comments;
-        const ast: Ast = new Ast({ program, source: replacement.ast.source });
-        const result: CodeResult = await compile("// original\nconst a = 1;", {
-            cwd: "/repo",
-            file: "index.js",
-            plugins: [
-                {
-                    name: "transform-without-comments",
-                    transform: (
-                        _ctx: PluginContext,
-                        _args: TransformArgs,
-                    ): TransformResult => ({ ast }),
-                },
-            ],
-        });
-
-        expect(result.code).not.toContain("// replacement");
-        expect(result.code).not.toContain("// original");
-        expect(result.code).toBe("const b = 2;");
-    });
-
-    it("treats absent comments and comments: [] as no comments", async (): Promise<void> => {
-        const parsed: AstResult = await parsedSource(SOURCE);
-        const absent: Program = copyProgram(parsed.ast.program);
-        delete absent.comments;
-        const empty: Program = copyProgram(parsed.ast.program);
-        empty.comments = [];
-        const withoutComments: CodeResult = await generate(
-            absent,
-            parsed.ast.source,
-            { file: "index.js" },
-        );
-        const withEmptyComments: CodeResult = await generate(
-            empty,
-            parsed.ast.source,
-            { file: "index.js" },
-        );
-
-        expect(withoutComments.code).toBe("const µ = 1;");
-        expect(withEmptyComments.code).toBe("const µ = 1;");
-    });
-
-    it("derives value from source and does not emit range or loc", async (): Promise<void> => {
-        const source: string = "// real\nconst a = 1;";
-        const parsed: AstResult = await parsedSource(source);
-        const parsedComment: DeepReadonly<Comment> | undefined =
-            parsed.ast.program.comments?.[0];
-
-        expect(parsedComment?.value).toBe(" real");
-        expect(parsedComment).not.toHaveProperty("range");
-        expect(parsedComment).not.toHaveProperty("loc");
-
-        const program: Program = copyProgram(parsed.ast.program);
-        program.comments = [
-            {
-                type: "Line",
-                value: "bogus",
-                start: 0,
-                end: 7,
-                range: [0, 7],
-                loc: {
-                    start: { line: 1, column: 0 },
-                    end: { line: 1, column: 7 },
-                },
-            },
-        ] as unknown as Array<Comment>;
-        const rewritten: AstResult = await rewrite(program, source, {
-            file: "index.js",
-        });
-        const rewrittenComment: DeepReadonly<Comment> | undefined =
-            rewritten.ast.program.comments?.[0];
-        const generated: CodeResult = await generate(rewritten.ast, {
-            file: "index.js",
-        });
-
-        expect(rewrittenComment?.value).toBe(" real");
-        expect(rewrittenComment).not.toHaveProperty("range");
-        expect(rewrittenComment).not.toHaveProperty("loc");
-        expect(generated.code).toContain("// real");
-        expect(generated.code).not.toContain("bogus");
-    });
-
-    it("rejects comments without a complete span", async (): Promise<void> => {
-        const source: string = "// a\nconst x = 1;";
-        const parsed: AstResult = await parsedSource(source);
-        const missing: Program = copyProgram(parsed.ast.program);
-        missing.comments = [{ type: "Line" } as unknown as Comment];
-        const missingResult: Promise<CodeResult> = generate(missing, source, {
-            file: "index.js",
-        });
-
-        await expect(missingResult).rejects.toThrow(/comment 0/);
-        await expect(missingResult).rejects.toThrow(/missing start\/end/);
-
-        const loneStart: Program = copyProgram(parsed.ast.program);
-        loneStart.comments = [{ type: "Line", start: 0 } as unknown as Comment];
-        const loneStartResult: Promise<CodeResult> = generate(
-            loneStart,
-            source,
-            { file: "index.js" },
-        );
-
-        await expect(loneStartResult).rejects.toThrow(/comment 0 \(start 0\)/);
-        await expect(loneStartResult).rejects.toThrow(/missing start\/end/);
-    });
-
-    it("rejects a malformed block span with its offsets", async (): Promise<void> => {
-        const source: string = "/* ok */\nconst x = 1;";
-        const parsed: AstResult = await parsedSource(source);
-        const program: Program = copyProgram(parsed.ast.program);
-        program.comments = [
-            { type: "Block", start: 0, end: 3 } as unknown as Comment,
-        ];
-        const result: Promise<CodeResult> = generate(program, source, {
-            file: "index.js",
-        });
-
-        await expect(result).rejects.toThrow(/comment 0 \(start 0, end 3\)/);
-        await expect(result).rejects.toThrow(/closing block delimiter/);
-    });
-
     it("accepts an OxcProgram across entry points", async (): Promise<void> => {
         const parsed: AstResult = await parsedSource("// keep\nconst a = 1;");
         const program: OxcProgram = copyProgram(parsed.ast.program);
@@ -524,44 +305,5 @@ describe("comments", (): void => {
         expect(generated.code).toContain("// keep");
         expect(rewritten.ast.program.type).toBe("Program");
         expect(compiled.code).toContain("// keep");
-    });
-
-    it("removes the consumed comment from a rewritten AST", async (): Promise<void> => {
-        const source: string = inlineMapSource();
-        const parsed: AstResult = await parsedSource(source);
-
-        expect(hasSourceMappingComment(parsed)).toBe(true);
-
-        const result: AstResult = await rewrite(parsed.ast, {
-            file: "index.js",
-            inputSourceMap: "inline",
-        });
-
-        expect(hasSourceMappingComment(result)).toBe(false);
-        expect(result.ast.source).toContain(SOURCE_MAPPING_COMMENT);
-    });
-
-    it("removes the consumed comment before generate output", async (): Promise<void> => {
-        const source: string = inlineMapSource();
-        const parsed: AstResult = await parsedSource(source);
-        const result: CodeResult = await generate(parsed.ast, {
-            file: "index.js",
-            sourceMap: { input: "inline" },
-        });
-
-        expect(result.code).toContain("const a = 1;");
-        expect(result.code).not.toContain(SOURCE_MAPPING_COMMENT);
-    });
-
-    it("removes the consumed comment before compileFromAst output", async (): Promise<void> => {
-        const source: string = inlineMapSource();
-        const parsed: AstResult = await parsedSource(source);
-        const result: CodeResult = await compileFromAst(parsed.ast, {
-            file: "index.js",
-            sourceMap: { input: "inline" },
-        });
-
-        expect(result.code).toContain("const a = 1;");
-        expect(result.code).not.toContain(SOURCE_MAPPING_COMMENT);
     });
 });

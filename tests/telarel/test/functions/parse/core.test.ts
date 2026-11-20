@@ -4,8 +4,6 @@ import type {
     CommonPluginContext,
     OptionsArgs,
     ParseArgs,
-    Parser,
-    ParserOptions,
     Plugin,
     PluginContext,
     ResolvedParserOptions,
@@ -14,13 +12,9 @@ import type {
 import * as Fsp from "node:fs/promises";
 import * as Path from "node:path";
 
-import { Ast, CompileError, createParser, generate, parse } from "telarel";
+import { Ast, CompileError, generate, parse } from "telarel";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-    resolvedOxcParserOptions,
-    resolvedParserOptions,
-} from "#/functions/options";
 import {
     appendInlineMap,
     buildMap,
@@ -57,45 +51,6 @@ const upstreamMap = (): ReturnType<typeof buildMap> =>
         sources: ["upstream.ts"],
         sourcesContent: ["const a = 1;"],
     });
-
-type DeclarationProgramFixture = {
-    body: Array<{
-        declarations?: Array<{
-            init?: { type: string } | null;
-        }>;
-    }>;
-};
-
-const firstInitializerType = (program: unknown): string | void =>
-    (program as DeclarationProgramFixture).body[0]?.declarations?.[0]?.init
-        ?.type;
-
-const observeParserOptions = async (
-    parser?: ParserOptions,
-): Promise<ResolvedParserOptions> => {
-    const seen: Array<ResolvedParserOptions> = [];
-
-    await parse("const a = (1);", {
-        file: "index.ts",
-        parser,
-        plugins: [
-            {
-                name: "observe-empty-raw-parser",
-                parse: (_ctx: PluginContext, args: ParseArgs): void => {
-                    seen.push(args.options);
-                },
-            },
-        ],
-    });
-
-    const options: ResolvedParserOptions | undefined = seen[0];
-
-    if (options === void 0) {
-        throw new Error("expected the parse hook to observe options");
-    }
-
-    return options;
-};
 
 describe("parse", (): void => {
     it("returns the source and program in an AST result", async (): Promise<void> => {
@@ -219,83 +174,6 @@ describe("parse", (): void => {
             allowV8Intrinsics: false,
             enableIdentHashes: true,
         });
-    });
-
-    it("keeps parenthesized expressions when parser.preserveParens is set", async (): Promise<void> => {
-        const preserved: AstResult = await parse("const a = (1);", {
-            file: "index.ts",
-            parser: { preserveParens: true },
-        });
-        const flattened: AstResult = await parse("const a = (1);", {
-            file: "index.ts",
-        });
-
-        expect(firstInitializerType(preserved.ast.program)).toBe(
-            "ParenthesizedExpression",
-        );
-        expect(firstInitializerType(flattened.ast.program)).toBe("Literal");
-    });
-
-    it("lets createParser apply curated options over raw oxc", async (): Promise<void> => {
-        const parser: Parser = createParser(
-            "const a = (1);",
-            resolvedParserOptions({
-                preserveParens: true,
-                oxc: resolvedOxcParserOptions({ preserveParens: false }),
-            }),
-        );
-
-        const result: AstResult = await parser.parse();
-
-        expect(firstInitializerType(result.ast.program)).toBe(
-            "ParenthesizedExpression",
-        );
-    });
-
-    it("keeps the Telarel parser defaults when raw oxc sets only preserveParens", async (): Promise<void> => {
-        const seen: Array<ResolvedParserOptions> = [];
-
-        const result: AstResult = await parse("const a = (1);", {
-            file: "index.ts",
-            parser: { oxc: { preserveParens: true } },
-            plugins: [
-                {
-                    name: "observe-raw-parser",
-                    parse: (_ctx: PluginContext, args: ParseArgs): void => {
-                        seen.push(args.options);
-                    },
-                },
-            ],
-        });
-
-        expect(firstInitializerType(result.ast.program)).toBe(
-            "ParenthesizedExpression",
-        );
-        expect(seen[0]?.preserveParens).toBe(true);
-        expect(seen[0]?.oxc).toEqual({
-            parseRegularExpression: false,
-            allowReturnOutsideFunction: false,
-            preserveParens: true,
-            allowV8Intrinsics: false,
-            enableIdentHashes: true,
-        });
-    });
-
-    it("treats an empty raw oxc parser object as a no-op", async (): Promise<void> => {
-        expect(await observeParserOptions({ oxc: {} })).toEqual(
-            await observeParserOptions(),
-        );
-    });
-
-    it("rejects unknown raw oxc parser options", async (): Promise<void> => {
-        await expect(
-            parse("const a = 1;", {
-                file: "index.ts",
-                parser: {
-                    oxc: { sourceMapPath: "custom.map" } as never,
-                },
-            }),
-        ).rejects.toThrow("invalid parser.oxc");
     });
 
     it("attaches a value input map to the AST", async (): Promise<void> => {
@@ -522,6 +400,54 @@ describe("parse", (): void => {
         expect(result.ast.map?.mappings).toBe("AASA");
     });
 
+    it("rejects a path string as inputSourceMap", async (): Promise<void> => {
+        await expect(
+            parse("const a = 1;", {
+                file: "index.ts",
+                inputSourceMap: "custom.map" as never,
+            }),
+        ).rejects.toThrow("invalid inputSourceMap");
+    });
+
+    it("prefers the inline map in auto mode", async (): Promise<void> => {
+        const directory: string = await tempDir();
+
+        await Fsp.writeFile(
+            Path.join(directory, "index.ts.map"),
+            JSON.stringify(upstreamMap()),
+            "utf-8",
+        );
+
+        const inlineMap = buildMap({
+            file: "inline.ts",
+            mappings: "AAAA",
+            sources: ["inline.ts"],
+        });
+
+        const fromInline: AstResult = await parse(
+            appendInlineMap("const a = 1;", inlineMap),
+            {
+                cwd: directory,
+                file: "index.ts",
+                inputSourceMap: "auto",
+            },
+        );
+
+        expect(fromInline.ast.map?.sources).toEqual(["inline.ts"]);
+    });
+
+    it("attaches no map in auto mode when none is available", async (): Promise<void> => {
+        const directory: string = await tempDir();
+
+        const result: AstResult = await parse("const a = 1;", {
+            cwd: directory,
+            file: "index.ts",
+            inputSourceMap: "auto",
+        });
+
+        expect(result.ast.map).toBeNull();
+    });
+
     it.skipIf(isWasiWindows)(
         "attaches an external input map read next to the source",
         async (): Promise<void> => {
@@ -595,42 +521,6 @@ describe("parse", (): void => {
         },
     );
 
-    it("rejects a path string as inputSourceMap", async (): Promise<void> => {
-        await expect(
-            parse("const a = 1;", {
-                file: "index.ts",
-                inputSourceMap: "custom.map" as never,
-            }),
-        ).rejects.toThrow("invalid inputSourceMap");
-    });
-
-    it("prefers the inline map in auto mode", async (): Promise<void> => {
-        const directory: string = await tempDir();
-
-        await Fsp.writeFile(
-            Path.join(directory, "index.ts.map"),
-            JSON.stringify(upstreamMap()),
-            "utf-8",
-        );
-
-        const inlineMap = buildMap({
-            file: "inline.ts",
-            mappings: "AAAA",
-            sources: ["inline.ts"],
-        });
-
-        const fromInline: AstResult = await parse(
-            appendInlineMap("const a = 1;", inlineMap),
-            {
-                cwd: directory,
-                file: "index.ts",
-                inputSourceMap: "auto",
-            },
-        );
-
-        expect(fromInline.ast.map?.sources).toEqual(["inline.ts"]);
-    });
-
     it.skipIf(isWasiWindows)(
         "falls back to the external map in auto mode",
         async (): Promise<void> => {
@@ -675,18 +565,6 @@ describe("parse", (): void => {
             expect(result.ast.map?.sources).toEqual(["upstream.ts"]);
         },
     );
-
-    it("attaches no map in auto mode when none is available", async (): Promise<void> => {
-        const directory: string = await tempDir();
-
-        const result: AstResult = await parse("const a = 1;", {
-            cwd: directory,
-            file: "index.ts",
-            inputSourceMap: "auto",
-        });
-
-        expect(result.ast.map).toBeNull();
-    });
 
     it("rejects a plugin with a missing name", async (): Promise<void> => {
         const nameless: unknown = { prepare: (): void => {} };

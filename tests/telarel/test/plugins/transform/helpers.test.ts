@@ -13,7 +13,7 @@ const MODULE_NAME = "@oxc-project/runtime" as const;
 
 const testDir: string = Path.dirname(Url.fileURLToPath(import.meta.url));
 
-const repoDir: string = Path.resolve(testDir, "..", "..", "..");
+const repoDir: string = Path.resolve(testDir, "..", "..", "..", "..", "..");
 
 const sourcesPath: string = Path.resolve(
     repoDir,

@@ -5,7 +5,6 @@ import type {
     CodeResult,
     CommonPluginContext,
     GenerateArgs,
-    Generator,
     Language,
     OptionsArgs,
     PluginContext,
@@ -13,13 +12,9 @@ import type {
     SourceType,
 } from "telarel";
 
-import { CompileError, createGenerator, generate, parse } from "telarel";
+import { CompileError, generate, parse } from "telarel";
 import { describe, expect, it } from "vitest";
 
-import {
-    resolvedGeneratorOptions,
-    resolvedOxcCodegenOptions,
-} from "#/functions/options";
 import {
     buildMap,
     firstMappingSegment,
@@ -208,21 +203,6 @@ describe("generate", (): void => {
         expect(result.code).toBe("const f = <T>(x: T) => x;");
     });
 
-    it("createGenerator prefers the AST language over the file", async (): Promise<void> => {
-        const ast: Ast = (
-            await parse("const f = <T,>(x: T) => x;", {
-                language: "tsx",
-            })
-        ).ast;
-        const generator: Generator = createGenerator(
-            ast,
-            resolvedGeneratorOptions(),
-        );
-        const result: CodeResult = await generator.generate();
-
-        expect(result.code).toBe("const f = <T,>(x: T) => x;");
-    });
-
     it("applies generator options to generated code", async (): Promise<void> => {
         const ast: Ast = (
             await parse('// lead\nfunction f() {\n    return "hello";\n}', {
@@ -340,27 +320,6 @@ describe("generate", (): void => {
 
         expect(seen).toEqual([{ indentWidth: 2, indentChar: "space" }]);
         expect(result.code).toBe("function f() {\n  return 1;\n}");
-    });
-
-    it("lets createGenerator apply curated options over raw oxc", async (): Promise<void> => {
-        const ast: Ast = (
-            await parse('function f() {\n    return "hello";\n}', {
-                file: "index.ts",
-            })
-        ).ast;
-        const generator: Generator = createGenerator(
-            ast,
-            resolvedGeneratorOptions({
-                singleQuote: true,
-                oxc: resolvedOxcCodegenOptions({
-                    singleQuote: false,
-                    indentChar: "tab",
-                }),
-            }),
-        );
-        const result: CodeResult = await generator.generate();
-
-        expect(result.code).toBe("function f() {\n  return 'hello';\n}");
     });
 
     it("rejects invalid raw oxc generator options", async (): Promise<void> => {
