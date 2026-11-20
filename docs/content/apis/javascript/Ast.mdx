@@ -5,6 +5,8 @@ description: An AST with its source text, optional language metadata and source 
 
 `Ast` carries an Oxc-backed `Program`, the source text its spans anchor to, optional language metadata, and an optional incremental source map. Every hook that takes an AST receives an `Ast`.
 
+`Ast` is exported from both `telarel` and `telarel/ast`. Both entry points share the same runtime class, so an AST received by a hook passes `instanceof Ast` against either import.
+
 ```ts
 type AstOptions = {
     program: Program;

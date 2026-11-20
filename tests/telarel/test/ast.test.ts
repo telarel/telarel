@@ -4,13 +4,17 @@ import type {
     CodeResult,
     Language,
     Parser,
+    PluginContext,
     SourceMap,
+    TransformArgs,
+    TransformResult,
 } from "telarel";
 import type { OxcProgram, Program as AstProgram } from "telarel/ast";
 
 import type { ProgramFixture } from "#/functions/ast";
 
 import { Ast, createParser, generate, parse, rewrite } from "telarel";
+import { Ast as AstFromEntry } from "telarel/ast";
 import { describe, expect, it } from "vitest";
 
 import { renameRootIdentifier } from "#/functions/ast";
@@ -254,6 +258,71 @@ describe("Ast", (): void => {
         expect(oxcProgram.type).toBe("Program");
         expect(program.comments).toBeUndefined();
         expect(ast.program.type).toBe("Program");
+    });
+
+    it("exports the runtime Ast class from telarel/ast", (): void => {
+        const program: Program = makeProgram();
+
+        const ast: AstFromEntry = new AstFromEntry({
+            program,
+            source: "const a = 1;",
+        });
+
+        expect(ast).toBeInstanceOf(AstFromEntry);
+        expect(AstFromEntry).toBe(Ast);
+        expect(ast.program).toBe(program);
+        expect(ast.source).toBe("const a = 1;");
+        expect(ast.language).toBeUndefined();
+        expect(ast.sourceType).toBe("module");
+        expect(ast.map).toBeNull();
+        expect(ast).toHaveProperty("mutate", expect.any(Function));
+
+        ast.mutate((mutable: Program): void => {
+            renameRootIdentifier({
+                program: mutable as unknown as ProgramFixture,
+                name: "b",
+            });
+        });
+
+        expect(rootName(ast.program)).toBe("b");
+    });
+
+    it("passes the telarel/ast class to hooks and carries its mutation", async (): Promise<void> => {
+        const parsed: AstResult = await parse("const a = 1;", {
+            file: "index.ts",
+        });
+
+        let received: unknown;
+
+        const rewritten: AstResult = await rewrite(parsed.ast, {
+            file: "index.ts",
+            plugins: [
+                {
+                    name: "rename",
+                    transform: (
+                        _ctx: PluginContext,
+                        args: TransformArgs,
+                    ): TransformResult => {
+                        received = args.ast;
+
+                        args.ast.mutate((program: Program): void => {
+                            renameRootIdentifier({
+                                program: program as unknown as ProgramFixture,
+                                name: "b",
+                            });
+                        });
+
+                        return { ast: args.ast };
+                    },
+                },
+            ],
+        });
+
+        expect(received).toBeInstanceOf(AstFromEntry);
+
+        const generated: CodeResult = await generate(rewritten.ast);
+
+        expect(generated.code).toBe("const b = 1;");
     });
 
     it("rejects plain-object AST inputs", async (): Promise<void> => {

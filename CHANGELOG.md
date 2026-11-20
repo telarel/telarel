@@ -118,6 +118,7 @@
 
 #### Features
 
+- add `Ast` as a runtime export of the `telarel/ast` entry point. It is the same class as the `telarel` export, so an AST received by a hook passes `instanceof Ast` with either import
 - add `GeneratorOptions` and `ParserOptions` option groups with camelCase raw `oxc` payloads. Only fields set in `oxc` override the Telarel defaults, `oxc: {}` changes nothing, and a curated field wins over its raw counterpart, except for `comments`: when set to `false` it disables every category, and when set to `true` it preserves explicitly set raw categories unless raw comments are fully disabled. The entry point rejects unknown raw fields.
 - add `IndentStyle`, `OxcCodegenOptions`, `OxcCommentOptions`, `OxcLegalComment`, `OxcParserOptions`, `ResolvedGeneratorStageOptions`, `ResolvedOxcCodegenOptions`, `ResolvedOxcCommentOptions`, `ResolvedOxcParserOptions`, and `ResolvedParserStageOptions` types
 - add `preserve` to `JsxRuntime`

@@ -7,3 +7,5 @@ export type {
     CommentType,
 } from "#/@types/comment";
 export type { OxcProgram, Program } from "#/@types/program";
+
+export { Ast } from "#/classes/ast";
