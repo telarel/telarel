@@ -1,5 +1,19 @@
 ## Next
 
+### Dependencies
+
+#### Rust
+
+- change `oxc`, `oxc_compat`, `oxc_traverse`, and `oxc_transformer_plugins` to `~0.160.0`
+- change `oxc_estree_codec` to `~0.3.0`
+- change `oxc_sourcemap` to `^10.0.0`
+
+#### JavaScript
+
+- change `@oxc-project/runtime` to `0.160.0`
+- change `@oxc-project/types` to `0.160.0`
+- change `oxc-transform` to `0.160.0`
+
 ### Common
 
 #### Breaking
@@ -8,6 +22,7 @@
 - change `generate_code` and `generate_program` default indentation to spaces of width `2`
 - change `parse_ast` and `parse_program` default `preserve_parens` to `false`
 - change `ResolvedGeneratorOptions` and `ResolvedParserOptions` to add the curated fields and the full effective `oxc` object. Existing struct literals must add the new fields
+- change the re-exported `SourceMap` source-name APIs to be nullable
 - rename the resolved builtin `GeneratorOptions` and `ParserOptions` to `ResolvedGeneratorOptions` and `ResolvedParserOptions`
 
 #### Features
@@ -65,12 +80,14 @@
 
 #### Fixes
 
+- add `setFunctionName` to the inlined and vendored runtime helpers
 - change JSX import elision in TypeScript to use `jsx.pragma` and `jsx.pragma_frag` when `jsx.runtime` is `classic`
 
 ### Binding
 
 #### Breaking
 
+- change `JsSourceMap.sources` to accept and return `null` entries
 - change `output.file` to be derived by the transform plugin when unset or empty
 
 #### Features
@@ -81,6 +98,7 @@
 
 #### Fixes
 
+- change AST read-back to reject invalid spans instead of clamping them
 - change `GeneratorOptions.file` to be recorded as `map.file`
 - change `SourceMap.file` to name the generated output. `sources` keeps the input sources
 - change plugin descriptor conversion to release every unvisited descriptor on every error path
@@ -89,6 +107,10 @@
 
 #### Breaking
 
+- change `LabelIdentifier` to add `label_id`. Existing struct literals must add the new field
+- change the MSRV to `1.98.0`
+- change the re-exported `SourceMap` source-name APIs to be nullable
+- remove `BigIntLiteral.base` and `NumericLiteral.base`, and the `BigintBase` and `NumberBase` types
 - rename the resolved builtin re-exports `GeneratorOptions` and `ParserOptions` to `ResolvedGeneratorOptions` and `ResolvedParserOptions`
 
 #### Features
@@ -111,6 +133,7 @@
 - change `OxcDecoratorOptions` to omit `legacy`, which the binding rejects. Use `experimentalDecorators` instead
 - change `ParserOptions.preserveParens` to default to `false`
 - change `ResolvedGeneratorOptions` and `ResolvedParserOptions` to add required generator fields (`singleQuote`, `asciiOnly`, `indentStyle`, `indentWidth`, `comments`, `minify`, and full effective `oxc`) and required parser fields (`preserveParens`, `allowReturnOutsideFunction`, and full effective `oxc`)
+- change `SourceMap.sources` to `(string | null)[]`
 - change `TypeScriptOptions` to `tsconfig` names: `onlyRemoveTypeImports` becomes `verbatimModuleSyntax`, and `jsxPragma`/`jsxPragmaFrag` are replaced by `jsx.pragma`/`jsx.pragmaFrag`
 - change the `options` hook to patch the settled options and plugins with a returned bag instead of replacing them. The pipeline applies the value of each present field and keeps the value of each absent field. It appends returned plugins to the settled list. It adds nothing for an object already in the list
 - remove `allowNamespaces` and `optimizeEnums` from `TypeScriptOptions`

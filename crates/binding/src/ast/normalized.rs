@@ -94,7 +94,7 @@ mod tests {
 
         let map: JsSourceMap = js.map.expect("the input map is carried");
 
-        assert_eq!(map.sources, vec![String::from("upstream.ts")]);
+        assert_eq!(map.sources, vec![Some(String::from("upstream.ts"))]);
     }
 
     #[test]

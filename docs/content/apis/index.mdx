@@ -115,7 +115,7 @@ See the individual function pages for the exact shapes.
 
 ## Source maps
 
-A generated source map keeps the input in `map.sources` and records the output name in `map.file`. After the winning `generate` result, the pipeline records the resolved `output.file` as `map.file`, including when a custom `generate` hook produced the map. An external source map without an explicit `sourceMap.output.url` appends a `sourceMappingURL` comment whose URL is `<output.file>.map`. An empty `sourceMap.output.url` is treated as unset, the same as absent.
+A generated source map keeps the input in `map.sources` and records the output name in `map.file`. An input map's unknown source name is preserved as `null`. After the winning `generate` result, the pipeline records the resolved `output.file` as `map.file`, including when a custom `generate` hook produced the map. An external source map without an explicit `sourceMap.output.url` appends a `sourceMappingURL` comment whose URL is `<output.file>.map`. An empty `sourceMap.output.url` is treated as unset, the same as absent.
 
 ## Types and errors
 

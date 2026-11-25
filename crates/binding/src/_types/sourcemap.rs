@@ -15,8 +15,10 @@ pub struct JsSourceMap {
     /// An optional source root, prepended to the individual entries in
     /// `sources`.
     pub source_root: Option<String>,
-    /// A list of original sources that the `mappings` entry uses.
-    pub sources: Vec<String>,
+    /// A list of original sources that the `mappings` entry uses. An entry is
+    /// `None` when the source map does not record a name.
+    #[napi(ts_type = "(string | null)[]")]
+    pub sources: Vec<Option<String>>,
     /// An optional list of source contents, in the same order as `sources`.
     pub sources_content: Option<Vec<Option<String>>>,
     /// A list of symbol names that the `mappings` entry uses.
@@ -61,7 +63,7 @@ mod tests {
             file: Some(String::from("out.js")),
             mappings: String::from("AAAA"),
             source_root: Some(String::from("/src")),
-            sources: vec![String::from("index.ts")],
+            sources: vec![Some(String::from("index.ts"))],
             sources_content: Some(vec![
                 Some(String::from("const a = 1;")),
                 None,
@@ -76,13 +78,31 @@ mod tests {
         assert_eq!(converted.file, Some(String::from("out.js")));
         assert_eq!(converted.mappings, String::from("AAAA"));
         assert_eq!(converted.source_root, Some(String::from("/src")));
-        assert_eq!(converted.sources, vec![String::from("index.ts")]);
+        assert_eq!(converted.sources, vec![Some(String::from("index.ts"))]);
         assert_eq!(
             converted.sources_content,
             Some(vec![Some(String::from("const a = 1;")), None])
         );
         assert_eq!(converted.names, vec![String::from("a")]);
         assert_eq!(converted.ignore_list, Some(vec![0_u32]));
+    }
+
+    #[test]
+    fn test_source_map_conversion_null_source_round_trips() {
+        let json: oxc_sourcemap::JSONSourceMap = oxc_sourcemap::JSONSourceMap {
+            version: 3,
+            file: None,
+            mappings: String::from("AAAA"),
+            source_root: None,
+            sources: vec![None],
+            sources_content: None,
+            names: Vec::new(),
+            debug_id: None,
+            ignore_list: None,
+        };
+        let converted: JsSourceMap = to_js_source_map(json);
+
+        assert_eq!(converted.sources, vec![None]);
     }
 
     #[test]
@@ -118,7 +138,7 @@ mod tests {
             file: None,
             mappings: String::from(mappings),
             source_root: None,
-            sources: vec![String::from("index.ts")],
+            sources: vec![Some(String::from("index.ts"))],
             sources_content: None,
             names: Vec::new(),
             debug_id: None,
@@ -149,7 +169,7 @@ mod tests {
             file: None,
             mappings: String::from("AAAA"),
             source_root: None,
-            sources: vec![String::from("index.ts")],
+            sources: vec![Some(String::from("index.ts"))],
             sources_content: None,
             names: Vec::new(),
             debug_id: Some(String::from("debug-1234")),
@@ -168,7 +188,7 @@ mod tests {
             file: None,
             mappings: String::from("AAAA,CAEGA"),
             source_root: None,
-            sources: vec![String::from("index.ts")],
+            sources: vec![Some(String::from("index.ts"))],
             sources_content: Some(vec![Some(String::from("const a = 1;"))]),
             names: vec![String::from("a")],
             debug_id: None,

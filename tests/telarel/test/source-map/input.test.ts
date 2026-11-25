@@ -166,6 +166,30 @@ describe("source map input", (): void => {
         expect(result.map?.mappings).toBe("AASA,MAAA,ICWK;AAoBH,MAAA,IDUK");
     });
 
+    it("preserves a null input source name in the output map", async (): Promise<void> => {
+        const result: CodeResult = await compile("const a = 1;", {
+            cwd: "/repo",
+            file: "index.ts",
+            sourceMap: {
+                input: buildMap({
+                    file: "upstream.ts",
+                    mappings: "AAAA",
+                    names: [],
+                    sources: [null],
+                }),
+            },
+        });
+
+        expect(result.map?.file).toBe("index.ts");
+        expect(result.map?.sources).toEqual([null]);
+        expect(firstMappingSegment(result.map?.mappings ?? "")).toEqual({
+            dstColumn: 0,
+            sourceIndex: 0,
+            sourceLine: 0,
+            sourceColumn: 0,
+        });
+    });
+
     it("replaces a winning parse hook AST's own input map with the requested inline map", async (): Promise<void> => {
         const code: string = appendInlineMap("const a = 1;", upstreamMap());
         const astMap: SourceMap = ownMap();
@@ -213,7 +237,7 @@ describe("source map input", (): void => {
             sources: ["transform.ts"],
             sourcesContent: ["const a = 1;"],
         });
-        let observedSources: ReadonlyArray<string> | undefined;
+        let observedSources: ReadonlyArray<string | null> | undefined;
 
         const result: CodeResult = await compile("const a = 1;", {
             cwd: "/repo",

@@ -24,9 +24,10 @@ type SourceMap = {
      */
     sourceRoot?: string | undefined;
     /**
-     * A list of original sources used by the `mappings` entry.
+     * A list of original sources used by the `mappings` entry. An unknown
+     * source name is preserved as `null`.
      */
-    sources: string[];
+    sources: (string | null)[];
     /**
      * An optional list of source contents, in the same order as `sources`.
      */

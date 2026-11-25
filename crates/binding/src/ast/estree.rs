@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use oxc::span::SourceType as OxcSourceType;
@@ -11,7 +10,7 @@ use telarel_common::{
 use crate::comment;
 use crate::comment::adapted::NormalizedComment;
 use crate::comment::raw::RawComment;
-use crate::plugin::spans::{SpanMap, spans_to_bytes, spans_to_utf16};
+use crate::plugin::spans::{SpanMap, spans_to_utf16};
 
 fn debug_assert_source_anchored(ast: &Ast) {
     // Span conversion uses `Ast::source`, so the program text must match.
@@ -49,15 +48,7 @@ pub fn ast_from_json(
     map: Option<SourceMap>,
     source_type: OxcSourceType,
 ) -> anyhow::Result<Ast> {
-    let spans: SpanMap = SpanMap::new(&source);
-
     let raw_comments: Vec<RawComment> = comment::extract_raw(program_json)?;
-
-    let bytes: Cow<'_, str> = if spans.is_ascii() {
-        Cow::Borrowed(program_json)
-    } else {
-        Cow::Owned(spans_to_bytes(&spans, program_json))
-    };
 
     let language: Language = from_oxc_language(source_type);
 
@@ -70,11 +61,12 @@ pub fn ast_from_json(
         map,
         |source_text: &str, allocator: &oxc::allocator::Allocator| {
             oxc_estree_codec::json_to_program(
-                bytes.as_ref(),
+                program_json,
                 oxc_estree_codec::JsonToProgramOptions {
                     allocator,
                     source_type,
                     source_text,
+                    span_encoding: oxc_estree_codec::SpanEncoding::Utf16Units,
                 },
             )
         },
@@ -82,6 +74,8 @@ pub fn ast_from_json(
     .map_err(anyhow::Error::from)?;
 
     if !raw_comments.is_empty() {
+        let spans: SpanMap = SpanMap::new(ast.source());
+
         let (comments, starts): (Vec<NormalizedComment>, Vec<u32>) =
             comment::normalize_from_program(
                 &raw_comments,

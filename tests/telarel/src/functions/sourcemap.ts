@@ -13,7 +13,7 @@ const SOURCE_MAPPING_COMMENT: string = "//#" + " sourceMappingURL=";
 
 type BuildMapOptions = {
     file?: string;
-    sources: Array<string>;
+    sources: Array<string | null>;
     sourcesContent?: Array<string>;
     names?: Array<string>;
     mappings: string;

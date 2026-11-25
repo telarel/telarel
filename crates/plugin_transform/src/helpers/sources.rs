@@ -125,6 +125,10 @@ pub const HELPERS: &[HelperSource] = &[
         name: "taggedTemplateLiteral",
         source: include_str!("runtime/taggedTemplateLiteral.js"),
     },
+    HelperSource {
+        name: "setFunctionName",
+        source: include_str!("runtime/setFunctionName.js"),
+    },
 ];
 
 /// The helpers in the transitive dependency closure of [`HELPERS`] that are
@@ -180,7 +184,7 @@ mod tests {
 
     use super::*;
 
-    const OXC_HELPER_NAMES: [&str; 29] = [
+    const OXC_HELPER_NAMES: [&str; 30] = [
         "awaitAsyncGenerator",
         "asyncGeneratorDelegate",
         "asyncIterator",
@@ -210,6 +214,7 @@ mod tests {
         "decorateMetadata",
         "usingCtx",
         "taggedTemplateLiteral",
+        "setFunctionName",
     ];
 
     #[test]

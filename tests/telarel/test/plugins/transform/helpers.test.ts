@@ -240,6 +240,12 @@ const TRIGGERS: ReadonlyArray<Trigger> = [
         options: { targets: es2015 },
     },
     {
+        helper: "setFunctionName",
+        file: "index.mjs",
+        code: "class A { static { init(); } static x = function () {}; }",
+        options: { targets: [{ node: 14 }] },
+    },
+    {
         helper: "OverloadYield",
         file: "index.mjs",
         code: "async function* g() { yield 1; }",

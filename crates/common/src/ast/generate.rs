@@ -288,8 +288,8 @@ mod tests {
         assert_eq!(token.get_src_col(), 0);
 
         assert_eq!(
-            map.get_sources().collect::<Vec<&str>>(),
-            vec!["upstream.ts"],
+            map.get_sources().collect::<Vec<Option<&str>>>(),
+            vec![Some("upstream.ts")],
         );
         assert_eq!(
             map.get_source_contents().collect::<Vec<Option<&str>>>(),
@@ -318,8 +318,8 @@ mod tests {
 
         assert_eq!(map.get_file(), Some(FILE));
         assert_eq!(
-            map.get_sources().collect::<Vec<&str>>(),
-            vec!["a.ts", "b.ts"],
+            map.get_sources().collect::<Vec<Option<&str>>>(),
+            vec![Some("a.ts"), Some("b.ts")],
         );
         assert_eq!(
             map.get_source_contents().collect::<Vec<Option<&str>>>(),

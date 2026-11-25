@@ -54,6 +54,29 @@ mod tests {
     }
 
     #[test]
+    fn test_js_source_map_to_owned_round_trips_null_source() {
+        let js: JsSourceMap = JsSourceMap {
+            version: 3,
+            file: None,
+            mappings: String::from("AAAA"),
+            source_root: None,
+            sources: vec![None],
+            sources_content: None,
+            names: Vec::new(),
+            ignore_list: None,
+        };
+
+        let rebuilt: SourceMap =
+            js_source_map_to_owned(&js).expect("the map rebuilds");
+
+        assert_eq!(
+            rebuilt.get_sources().collect::<Vec<Option<&str>>>(),
+            vec![None],
+        );
+        assert_eq!(source_map_to_js(&rebuilt).sources, vec![None]);
+    }
+
+    #[test]
     fn test_parse_json_map_round_trips() {
         let map: SourceMap = sample_map();
 

@@ -464,6 +464,10 @@ mod tests {
 
     const ES2017: &[TransformTarget] = &[TransformTarget::Es2017];
 
+    // Node 14 supports class fields but not static blocks, so oxc runs the
+    // standalone static-block pass that loads `setFunctionName`.
+    const NODE14: &[TransformTarget] = &[TransformTarget::Node(14)];
+
     fn trigger_options(
         trigger: &Trigger,
         mode: HelperLoaderMode,
@@ -678,6 +682,12 @@ mod tests {
             helper: "taggedTemplateLiteral",
             source: "const t = tag`</script>`;",
             tagged_template: true,
+            ..BASE
+        },
+        Trigger {
+            helper: "setFunctionName",
+            source: "class A { static { init(); } static x = function () {}; }",
+            targets: NODE14,
             ..BASE
         },
         Trigger {

@@ -1739,7 +1739,10 @@ mod tests {
             | InputSourceMap::Mode(InputSourceMapMode::Value(map)) => {
                 let json: oxc_sourcemap::JSONSourceMap = map.to_json();
 
-                assert_eq!(json.sources, vec![String::from("upstream.ts")]);
+                assert_eq!(
+                    json.sources,
+                    vec![Some(String::from("upstream.ts"))],
+                );
             },
             | other => panic!("expected a value input, got {other:?}"),
         }
@@ -1769,7 +1772,10 @@ mod tests {
             }) => {
                 let json: oxc_sourcemap::JSONSourceMap = map.to_json();
 
-                assert_eq!(json.sources, vec![String::from("upstream.ts")]);
+                assert_eq!(
+                    json.sources,
+                    vec![Some(String::from("upstream.ts"))],
+                );
 
                 assert_eq!(
                     path.as_deref(),

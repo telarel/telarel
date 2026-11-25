@@ -163,16 +163,9 @@ pub fn spans_to_utf16(
     rewrite_spans(json, |byte: usize| map.byte_to_utf16(byte))
 }
 
-pub fn spans_to_bytes(
-    map: &SpanMap,
-    json: &str,
-) -> String {
-    rewrite_spans(json, |utf16: usize| map.utf16_to_byte(utf16))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{SpanMap, spans_to_bytes, spans_to_utf16};
+    use super::{SpanMap, spans_to_utf16};
 
     #[test]
     fn test_new_ascii_skips_the_boundary_table() {
@@ -287,7 +280,6 @@ mod tests {
 
         assert!(map.is_ascii());
         assert_eq!(spans_to_utf16(&map, json), json);
-        assert_eq!(spans_to_bytes(&map, json), json);
     }
 
     #[test]
@@ -319,18 +311,5 @@ mod tests {
         let converted: String = spans_to_utf16(&map, json);
 
         assert_eq!(converted, r#"{"name":"a\"start\"","start":1,"end":2}"#);
-    }
-
-    #[test]
-    fn test_spans_to_bytes_round_trips_span_keys() {
-        let source: &str = "日a";
-        let map: SpanMap = SpanMap::new(source);
-        let json: &str = r#"{"start":3,"end":4}"#;
-
-        let utf16: String = spans_to_utf16(&map, json);
-        let bytes: String = spans_to_bytes(&map, &utf16);
-
-        assert_eq!(utf16, r#"{"start":1,"end":2}"#);
-        assert_eq!(bytes, json);
     }
 }

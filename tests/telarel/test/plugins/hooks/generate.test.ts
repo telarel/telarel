@@ -157,10 +157,11 @@ describe("generate hooks", (): void => {
 
     it("drives a custom language through parse and generate hooks only", async (): Promise<void> => {
         // The custom source is invalid JS, so only plugin parse and generate
-        // hooks can avoid both builtins.
+        // hooks can avoid both builtins. The captured program's spans must fit
+        // `custom`; both strings are 12 ASCII characters.
         const custom: string = "greet world!";
         const program: Program = (await captureProgram({
-            code: "const fromCustom = 1;",
+            code: "const a = 1;",
         })) as Program;
 
         await expect(
