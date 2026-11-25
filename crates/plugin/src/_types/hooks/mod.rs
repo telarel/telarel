@@ -2,7 +2,6 @@ pub mod end;
 pub mod finalize;
 pub mod generate;
 pub mod notify;
-pub mod options;
 pub mod parse;
 pub mod prepare;
 pub mod start;

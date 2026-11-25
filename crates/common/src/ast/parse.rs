@@ -10,12 +10,12 @@ use oxc::span::{SourceType as OxcSourceType, Span};
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::{SourceType, with_module_kind};
 use crate::_types::options::OxcParseOptions;
+use crate::_types::options::builtin::parser::default_parser_oxc;
 use crate::ast::ast::Ast;
 use crate::contexts::compile::CompileContext;
 use crate::errors::compile::CompileError;
 use crate::helpers::resolve::{
-    default_parser_oxc, from_oxc_language, from_oxc_module_kind,
-    resolve_grammar,
+    from_oxc_language, from_oxc_module_kind, resolve_grammar,
 };
 use crate::sourcemap::SourceMap;
 

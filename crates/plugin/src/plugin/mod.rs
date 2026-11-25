@@ -13,13 +13,12 @@ use crate::_types::hooks::end::EndArgs;
 use crate::_types::hooks::finalize::FinalizeArgs;
 use crate::_types::hooks::generate::{GenerateArgs, GenerateReturn};
 use crate::_types::hooks::notify::NotifyReturn;
-use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
 use crate::_types::hooks::parse::{ParseArgs, ParseReturn};
 use crate::_types::hooks::prepare::PrepareArgs;
 use crate::_types::hooks::start::StartArgs;
 use crate::_types::hooks::transform::{TransformArgs, TransformReturn};
 use crate::_types::order::PluginHookMeta;
-use crate::plugin::pluginable::SharedPluginable;
+use crate::plugin::pluginable::{OptionsArgs, OptionsReturn, SharedPluginable};
 
 /// The Rust plugin trait.
 pub trait Plugin: Any + Debug + Send + Sync + 'static {

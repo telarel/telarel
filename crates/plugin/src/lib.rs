@@ -19,7 +19,6 @@ pub use crate::_types::hooks::end::EndArgs;
 pub use crate::_types::hooks::finalize::FinalizeArgs;
 pub use crate::_types::hooks::generate::{GenerateArgs, GenerateReturn};
 pub use crate::_types::hooks::notify::NotifyReturn;
-pub use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
 pub use crate::_types::hooks::parse::{ParseArgs, ParseReturn};
 pub use crate::_types::hooks::prepare::PrepareArgs;
 pub use crate::_types::hooks::start::StartArgs;
@@ -28,7 +27,9 @@ pub use crate::_types::hooks::transform::{TransformArgs, TransformOutput};
 pub use crate::_types::order::{PluginHookMeta, PluginOrder};
 pub use crate::options::fixpoint::options_fixpoint;
 pub use crate::plugin::Plugin;
-pub use crate::plugin::pluginable::{Pluginable, SharedPluginable};
+pub use crate::plugin::pluginable::{
+    OptionsArgs, OptionsReturn, Pluginable, SharedPluginable,
+};
 
 #[doc(hidden)]
 pub mod __internal {

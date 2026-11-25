@@ -5,18 +5,8 @@ use oxc::ast::ast::{
 use crate::comment::adapted::{AdaptedComment, NormalizedComment};
 use crate::comment::adapters::{ADAPTERS, CommentAdapter};
 use crate::comment::classify::classify_content;
+use crate::comment::context::CommentContext;
 use crate::comment::raw::RawComment;
-use crate::plugin::spans::SpanMap;
-
-/// The source-dependent inputs that every adapter and the normalizer share.
-pub struct CommentContext<'a> {
-    /// The source text the comment spans refer to.
-    pub source: &'a str,
-    /// The byte to UTF-16 boundary table for `source`.
-    pub spans: &'a SpanMap,
-    /// Printable boundaries in UTF-16 units, sorted and unique.
-    pub anchors: &'a [u32],
-}
 
 fn is_line_terminator(character: char) -> bool {
     matches!(character, '\r' | '\n' | '\u{2028}' | '\u{2029}')
@@ -326,9 +316,8 @@ mod tests {
 
     use crate::comment::adapted::NormalizedComment;
     use crate::comment::adapters::{CANONICAL, CommentAdapter};
-    use crate::comment::normalize::{
-        CommentContext, normalize, normalize_with_adapters,
-    };
+    use crate::comment::context::CommentContext;
+    use crate::comment::normalize::{normalize, normalize_with_adapters};
     use crate::comment::raw::{RawComment, RawNewlines};
     use crate::plugin::spans::SpanMap;
 

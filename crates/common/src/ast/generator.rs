@@ -74,7 +74,9 @@ mod tests {
     use oxc_sourcemap::SourceMapBuilder;
     use tempfile::TempDir;
 
-    use crate::_types::options::builtin::generator::IndentStyle;
+    use crate::_types::options::builtin::generator::{
+        IndentStyle, default_codegen_oxc,
+    };
     use crate::_types::options::sourcemap::SourceMapOptions;
     use crate::_types::options::sourcemap::input::{
         InputSourceMap, InputSourceMapMode,
@@ -83,7 +85,6 @@ mod tests {
         OutputSourceMap, OutputSourceMapMode,
     };
     use crate::ast::parse::{ParseAstOptions, parse_ast};
-    use crate::helpers::resolve::default_codegen_oxc;
     use crate::helpers::test_util::{path_buf, temp_dir, write_file};
     use crate::sourcemap::SourceMap;
     use crate::sourcemap::inline::append_inline_source_map;

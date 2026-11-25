@@ -97,23 +97,9 @@ pub fn resolve_source_type(
     from_oxc_module_kind(resolved)
 }
 
-/// The raw oxc parser options that back the Telarel defaults.
-pub(crate) fn default_parser_oxc() -> OxcParseOptions {
-    OxcParseOptions { preserve_parens: false, ..OxcParseOptions::default() }
-}
-
-/// The raw oxc codegen options that back the Telarel defaults.
-pub(crate) fn default_codegen_oxc() -> OxcCodegenOptions {
-    OxcCodegenOptions {
-        indent_char: IndentChar::Space,
-        indent_width: 2,
-        ..OxcCodegenOptions::default()
-    }
-}
-
 /// The curated generator fields that override the effective oxc object.
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct CuratedGeneratorOptions {
+pub struct CuratedGeneratorOptions {
     single_quote: Option<bool>,
     ascii_only: Option<bool>,
     indent_style: Option<IndentStyle>,
@@ -152,7 +138,7 @@ impl From<&ResolvedGeneratorOptions> for CuratedGeneratorOptions {
 ///
 /// The overlay is idempotent: applying it to an already-resolved object leaves
 /// that object unchanged.
-pub(crate) fn apply_curated_parser_options(
+pub fn apply_curated_parser_options(
     oxc: &mut OxcParseOptions,
     preserve_parens: Option<bool>,
     allow_return_outside_function: Option<bool>,
@@ -172,7 +158,7 @@ pub(crate) fn apply_curated_parser_options(
 /// that object unchanged. Curated `comments: false` disables every category.
 /// Curated `comments: true` restores the default policy only when the effective
 /// categories are all disabled, so explicitly set raw categories survive.
-pub(crate) fn apply_curated_generator_options(
+pub fn apply_curated_generator_options(
     oxc: &mut OxcCodegenOptions,
     curated: CuratedGeneratorOptions,
 ) {
@@ -209,10 +195,10 @@ pub(crate) fn apply_curated_generator_options(
 
 /// Resolve the parser stage: the Telarel defaults are the base, the raw `oxc`
 /// patch overrides them, and curated fields win over both.
-pub(crate) fn resolve_parser_stage_options(
+pub fn resolve_parser_stage_options(
     options: Option<&ParserOptions>
 ) -> ResolvedParserStageOptions {
-    let mut oxc: OxcParseOptions = default_parser_oxc();
+    let mut oxc: OxcParseOptions = ResolvedParserStageOptions::default().oxc;
 
     if let Some(raw) = options.and_then(|options| options.oxc.as_ref()) {
         raw.apply_to(&mut oxc);
@@ -224,11 +210,7 @@ pub(crate) fn resolve_parser_stage_options(
         options.and_then(|options| options.allow_return_outside_function),
     );
 
-    ResolvedParserStageOptions {
-        preserve_parens: oxc.preserve_parens,
-        allow_return_outside_function: oxc.allow_return_outside_function,
-        oxc,
-    }
+    ResolvedParserStageOptions::from_oxc(oxc)
 }
 
 /// Resolve the generator stage: the Telarel defaults are the base, the raw
@@ -237,10 +219,11 @@ pub(crate) fn resolve_parser_stage_options(
 /// An effective `minify` disables comments unless the raw patch sets comment
 /// categories explicitly. Curated comment settings follow the documented
 /// precedence.
-pub(crate) fn resolve_generator_stage_options(
+pub fn resolve_generator_stage_options(
     options: Option<&GeneratorOptions>
 ) -> ResolvedGeneratorStageOptions {
-    let mut oxc: OxcCodegenOptions = default_codegen_oxc();
+    let mut oxc: OxcCodegenOptions =
+        ResolvedGeneratorStageOptions::default().oxc;
 
     let raw = options.and_then(|options| options.oxc.as_ref());
 
@@ -265,15 +248,7 @@ pub(crate) fn resolve_generator_stage_options(
     // `file` at generation time.
     oxc.source_map_path = None;
 
-    ResolvedGeneratorStageOptions {
-        single_quote: oxc.single_quote,
-        ascii_only: oxc.ascii_only,
-        indent_style: IndentStyle::from(oxc.indent_char),
-        indent_width: oxc.indent_width,
-        comments: oxc.comments != CommentOptions::disabled(),
-        minify: oxc.minify,
-        oxc,
-    }
+    ResolvedGeneratorStageOptions::from_oxc(oxc)
 }
 
 /// Resolve the optional run settings into concrete options.
@@ -660,6 +635,71 @@ mod tests {
     }
 
     #[test]
+    fn test_resolved_parser_stage_options_default_matches_resolver() {
+        // The documented Telarel override over oxc's raw defaults.
+        let expected_oxc: OxcParseOptions = OxcParseOptions {
+            preserve_parens: false,
+            ..OxcParseOptions::default()
+        };
+
+        let default: ResolvedParserStageOptions =
+            ResolvedParserStageOptions::default();
+        let resolved: ResolvedParserStageOptions =
+            resolve_parser_stage_options(None);
+
+        for oxc in [&default.oxc, &resolved.oxc] {
+            assert_eq!(
+                oxc.parse_regular_expression,
+                expected_oxc.parse_regular_expression
+            );
+            assert_eq!(
+                oxc.allow_return_outside_function,
+                expected_oxc.allow_return_outside_function
+            );
+            assert_eq!(oxc.preserve_parens, expected_oxc.preserve_parens);
+            assert_eq!(
+                oxc.allow_v8_intrinsics,
+                expected_oxc.allow_v8_intrinsics
+            );
+            assert_eq!(
+                oxc.enable_ident_hashes,
+                expected_oxc.enable_ident_hashes
+            );
+        }
+
+        for stage in [&default, &resolved] {
+            assert_eq!(stage.preserve_parens, expected_oxc.preserve_parens);
+            assert_eq!(
+                stage.allow_return_outside_function,
+                expected_oxc.allow_return_outside_function
+            );
+        }
+
+        assert_eq!(default.preserve_parens, resolved.preserve_parens);
+        assert_eq!(
+            default.allow_return_outside_function,
+            resolved.allow_return_outside_function
+        );
+        assert_eq!(
+            default.oxc.parse_regular_expression,
+            resolved.oxc.parse_regular_expression
+        );
+        assert_eq!(
+            default.oxc.allow_return_outside_function,
+            resolved.oxc.allow_return_outside_function
+        );
+        assert_eq!(default.oxc.preserve_parens, resolved.oxc.preserve_parens);
+        assert_eq!(
+            default.oxc.allow_v8_intrinsics,
+            resolved.oxc.allow_v8_intrinsics
+        );
+        assert_eq!(
+            default.oxc.enable_ident_hashes,
+            resolved.oxc.enable_ident_hashes
+        );
+    }
+
+    #[test]
     fn test_resolve_parser_stage_options_raw_partial_keeps_telarel_defaults() {
         let resolved: ResolvedParserStageOptions =
             resolve_parser_stage_options(Some(&ParserOptions {
@@ -768,6 +808,64 @@ mod tests {
         assert!(!resolved.minify);
         assert_eq!(resolved.oxc.initial_indent, 0);
         assert!(resolved.oxc.source_map_path.is_none());
+    }
+
+    #[test]
+    fn test_resolved_generator_stage_options_default_matches_resolver() {
+        // The documented Telarel overrides over oxc's raw defaults, including
+        // the resolver's cleared map path.
+        let expected_oxc: OxcCodegenOptions = OxcCodegenOptions {
+            indent_char: IndentChar::Space,
+            indent_width: 2,
+            source_map_path: None,
+            ..OxcCodegenOptions::default()
+        };
+
+        let default: ResolvedGeneratorStageOptions =
+            ResolvedGeneratorStageOptions::default();
+        let resolved: ResolvedGeneratorStageOptions =
+            resolve_generator_stage_options(None);
+
+        for oxc in [&default.oxc, &resolved.oxc] {
+            assert_eq!(oxc.single_quote, expected_oxc.single_quote);
+            assert_eq!(oxc.minify, expected_oxc.minify);
+            assert_eq!(oxc.ascii_only, expected_oxc.ascii_only);
+            assert_eq!(oxc.comments, expected_oxc.comments);
+            assert_eq!(oxc.source_map_path, expected_oxc.source_map_path);
+            assert_eq!(oxc.indent_char, expected_oxc.indent_char);
+            assert_eq!(oxc.indent_width, expected_oxc.indent_width);
+            assert_eq!(oxc.initial_indent, expected_oxc.initial_indent);
+        }
+
+        for stage in [&default, &resolved] {
+            assert_eq!(stage.single_quote, expected_oxc.single_quote);
+            assert_eq!(stage.ascii_only, expected_oxc.ascii_only);
+            assert_eq!(
+                stage.indent_style,
+                IndentStyle::from(expected_oxc.indent_char)
+            );
+            assert_eq!(stage.indent_width, expected_oxc.indent_width);
+            assert_eq!(
+                stage.comments,
+                expected_oxc.comments != CommentOptions::disabled()
+            );
+            assert_eq!(stage.minify, expected_oxc.minify);
+        }
+
+        assert_eq!(default.single_quote, resolved.single_quote);
+        assert_eq!(default.ascii_only, resolved.ascii_only);
+        assert_eq!(default.indent_style, resolved.indent_style);
+        assert_eq!(default.indent_width, resolved.indent_width);
+        assert_eq!(default.comments, resolved.comments);
+        assert_eq!(default.minify, resolved.minify);
+        assert_eq!(default.oxc.single_quote, resolved.oxc.single_quote);
+        assert_eq!(default.oxc.minify, resolved.oxc.minify);
+        assert_eq!(default.oxc.ascii_only, resolved.oxc.ascii_only);
+        assert_eq!(default.oxc.comments, resolved.oxc.comments);
+        assert_eq!(default.oxc.source_map_path, resolved.oxc.source_map_path);
+        assert_eq!(default.oxc.indent_char, resolved.oxc.indent_char);
+        assert_eq!(default.oxc.indent_width, resolved.oxc.indent_width);
+        assert_eq!(default.oxc.initial_indent, resolved.oxc.initial_indent);
     }
 
     #[test]

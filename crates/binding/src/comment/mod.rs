@@ -7,6 +7,7 @@
 pub mod adapted;
 pub mod adapters;
 pub mod classify;
+pub mod context;
 pub mod normalize;
 pub mod raw;
 mod scan;
@@ -21,7 +22,8 @@ use telarel_common::Ast;
 
 use crate::comment::adapted::NormalizedComment;
 use crate::comment::adapters::content_label;
-use crate::comment::normalize::{CommentContext, normalize};
+use crate::comment::context::CommentContext;
+use crate::comment::normalize::normalize;
 use crate::comment::raw::RawComment;
 use crate::plugin::spans::SpanMap;
 

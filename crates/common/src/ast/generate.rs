@@ -4,9 +4,9 @@ use oxc::ast::ast::Program;
 use oxc::codegen::Codegen;
 
 use crate::_types::options::OxcCodegenOptions;
+use crate::_types::options::builtin::generator::default_codegen_oxc;
 use crate::ast::ast::Ast;
 use crate::ast::result::CodeResult;
-use crate::helpers::resolve::default_codegen_oxc;
 use crate::sourcemap::SourceMap;
 
 /// Options for [`generate_code`].

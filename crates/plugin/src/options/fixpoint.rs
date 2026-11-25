@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use crate::_types::context::CommonPluginContext;
-use crate::_types::hooks::options::{OptionsArgs, merge_options};
 use crate::PluginError;
-use crate::plugin::pluginable::SharedPluginable;
+use crate::plugin::pluginable::{OptionsArgs, SharedPluginable, merge_options};
 use crate::plugin_driver::sort_plugins_by_hook_meta;
 
 /// Maximum number of fixpoint iterations before aborting.
@@ -123,9 +122,9 @@ mod tests {
         ParserOptions, ResolvableOptions, SourceMapOptions, SourceType,
     };
 
-    use crate::_types::hooks::options::OptionsReturn;
     use crate::_types::order::{PluginHookMeta, PluginOrder};
     use crate::plugin::Plugin;
+    use crate::plugin::pluginable::OptionsReturn;
 
     use super::*;
 

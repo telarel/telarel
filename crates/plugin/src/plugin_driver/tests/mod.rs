@@ -22,7 +22,6 @@ use crate::_types::context::{CommonPluginContext, ModuleInfo};
 use crate::_types::hooks::finalize::FinalizeArgs;
 use crate::_types::hooks::generate::{GenerateArgs, GenerateReturn};
 use crate::_types::hooks::notify::NotifyReturn;
-use crate::_types::hooks::options::{OptionsArgs, OptionsReturn};
 use crate::_types::hooks::parse::{ParseArgs, ParseReturn};
 use crate::_types::hooks::prepare::PrepareArgs;
 use crate::_types::hooks::start::StartArgs;
@@ -31,8 +30,8 @@ use crate::_types::order::{PluginHookMeta, PluginOrder};
 use crate::SharedPluginable;
 use crate::plugin::Plugin;
 use crate::plugin::pluginable::{
-    HookFuture, Pluginable, SharedTransformBatch, TransformBatch,
-    TransformBatchable,
+    HookFuture, OptionsArgs, OptionsReturn, Pluginable, SharedTransformBatch,
+    TransformBatch, TransformBatchable,
 };
 
 use super::*;

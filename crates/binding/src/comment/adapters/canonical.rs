@@ -2,7 +2,7 @@ use oxc::ast::ast::{CommentContent, CommentNewlines, CommentPosition};
 
 use crate::comment::adapted::AdaptedComment;
 use crate::comment::adapters::{CommentAdapter, content_from_label};
-use crate::comment::normalize::CommentContext;
+use crate::comment::context::CommentContext;
 use crate::comment::raw::{RawComment, RawNewlines};
 
 /// Reads Telarel's extended placement metadata: `attachedTo`, `position`,
@@ -61,7 +61,7 @@ mod tests {
     use crate::comment::adapted::AdaptedComment;
     use crate::comment::adapters::CommentAdapter;
     use crate::comment::adapters::canonical::CanonicalAdapter;
-    use crate::comment::normalize::CommentContext;
+    use crate::comment::context::CommentContext;
     use crate::comment::raw::{RawComment, RawNewlines};
     use crate::plugin::spans::SpanMap;
 

@@ -4,7 +4,7 @@ pub mod start_end;
 use oxc::ast::ast::CommentContent;
 
 use crate::comment::adapted::AdaptedComment;
-use crate::comment::normalize::CommentContext;
+use crate::comment::context::CommentContext;
 use crate::comment::raw::RawComment;
 
 /// A dialect adapter: reads the comment fields one producer shape carries.

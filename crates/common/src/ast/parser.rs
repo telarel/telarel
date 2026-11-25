@@ -76,12 +76,12 @@ mod tests {
 
     use crate::_types::grammar::language::Language;
     use crate::_types::grammar::source_type::SourceType;
+    use crate::_types::options::builtin::parser::default_parser_oxc;
     use crate::_types::options::sourcemap::SourceMapOptions;
     use crate::_types::options::sourcemap::input::{
         InputSourceMap, InputSourceMapMode, InputSourceMapOptions,
     };
     use crate::ast::ast::Ast;
-    use crate::helpers::resolve::default_parser_oxc;
     use crate::helpers::test_util::{
         comment_text, first_initializer, path_buf, temp_dir, write_file,
     };

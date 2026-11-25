@@ -223,7 +223,7 @@ pub fn release_refs(
 /// wrapper's internal plugin identity when the descriptor carries one. An
 /// `options` patch uses it to avoid repeating a descriptor the view already
 /// holds.
-pub(crate) struct BagDescriptor {
+pub struct BagDescriptor {
     /// The JS wrapper's `__PLUGIN_ID__`, when the descriptor carries one.
     pub(crate) id: Option<u32>,
     /// The rooted descriptor reference.

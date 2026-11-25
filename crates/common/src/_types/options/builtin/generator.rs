@@ -3,9 +3,7 @@ use std::path::PathBuf;
 use oxc::codegen::{CommentOptions, IndentChar, LegalComment};
 
 use crate::_types::options::OxcCodegenOptions;
-use crate::_types::options::resolved::ResolvedOptions;
 use crate::_types::options::sourcemap::SourceMapOptions;
-use crate::helpers::resolve::resolve_generator_stage_options;
 
 /// The indentation style for generated code.
 ///
@@ -198,6 +196,15 @@ pub struct GeneratorOptions {
     pub oxc: Option<PartialOxcCodegenOptions>,
 }
 
+/// The raw oxc codegen options that back the Telarel defaults.
+pub fn default_codegen_oxc() -> OxcCodegenOptions {
+    OxcCodegenOptions {
+        indent_char: IndentChar::Space,
+        indent_width: 2,
+        ..OxcCodegenOptions::default()
+    }
+}
+
 /// Effective generator-stage settings.
 ///
 /// `oxc` is the full merged object and the curated fields mirror it.
@@ -225,9 +232,24 @@ pub struct ResolvedGeneratorStageOptions {
     pub oxc: OxcCodegenOptions,
 }
 
+impl ResolvedGeneratorStageOptions {
+    /// Build the stage from an oxc codegen object that has all fields merged.
+    pub(crate) fn from_oxc(oxc: OxcCodegenOptions) -> Self {
+        Self {
+            single_quote: oxc.single_quote,
+            ascii_only: oxc.ascii_only,
+            indent_style: IndentStyle::from(oxc.indent_char),
+            indent_width: oxc.indent_width,
+            comments: oxc.comments != CommentOptions::disabled(),
+            minify: oxc.minify,
+            oxc,
+        }
+    }
+}
+
 impl Default for ResolvedGeneratorStageOptions {
     fn default() -> Self {
-        resolve_generator_stage_options(None)
+        Self::from_oxc(default_codegen_oxc())
     }
 }
 
@@ -256,75 +278,11 @@ pub struct ResolvedGeneratorOptions {
     pub oxc: OxcCodegenOptions,
 }
 
-impl From<&ResolvedOptions> for ResolvedGeneratorOptions {
-    fn from(options: &ResolvedOptions) -> Self {
-        Self {
-            cwd: options.cwd.clone(),
-            file: options.file.clone(),
-            source_map: options.source_map.clone(),
-            single_quote: options.generator.single_quote,
-            ascii_only: options.generator.ascii_only,
-            indent_style: options.generator.indent_style,
-            indent_width: options.generator.indent_width,
-            comments: options.generator.comments,
-            minify: options.generator.minify,
-            oxc: options.generator.oxc.clone(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use oxc::codegen::CommentOptions;
 
-    use crate::_types::grammar::language::Language;
-    use crate::_types::grammar::source_type::SourceType;
-    use crate::_types::options::builtin::parser::ResolvedParserStageOptions;
-    use crate::_types::options::output::ResolvedOutputOptions;
-    use crate::_types::options::sourcemap::SourceMapOptions;
-    use crate::_types::options::sourcemap::input::{
-        InputSourceMap, InputSourceMapMode,
-    };
-    use crate::_types::options::sourcemap::output::{
-        OutputSourceMap, OutputSourceMapMode,
-    };
-
     use super::*;
-
-    fn resolved_options() -> ResolvedOptions {
-        ResolvedOptions {
-            cwd: PathBuf::from("/repo"),
-            file: String::from("src/app.js"),
-            language: Language::JS,
-            source_type: SourceType::Module,
-            parser: ResolvedParserStageOptions::default(),
-            generator: ResolvedGeneratorStageOptions {
-                single_quote: true,
-                ascii_only: true,
-                indent_style: IndentStyle::Tab,
-                indent_width: 4,
-                comments: false,
-                minify: true,
-                oxc: OxcCodegenOptions {
-                    single_quote: true,
-                    ascii_only: true,
-                    indent_char: IndentChar::Tab,
-                    indent_width: 4,
-                    comments: CommentOptions::disabled(),
-                    minify: true,
-                    ..OxcCodegenOptions::default()
-                },
-            },
-            output: ResolvedOutputOptions {
-                file: String::from("dist/src/app.js"),
-            },
-            source_map: SourceMapOptions {
-                input: Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
-                output: Some(OutputSourceMap::Mode(OutputSourceMapMode::Both)),
-            },
-            plugins: vec![String::from("probe")],
-        }
-    }
 
     #[test]
     fn test_generator_options_default_is_all_unset() {
@@ -433,36 +391,5 @@ mod tests {
         assert_eq!(IndentStyle::from(IndentChar::Tab), IndentStyle::Tab);
         assert_eq!(IndentChar::from(IndentStyle::Space), IndentChar::Space);
         assert_eq!(IndentChar::from(IndentStyle::Tab), IndentChar::Tab);
-    }
-
-    #[test]
-    fn test_from_resolved_options_maps_every_field() {
-        let resolved: ResolvedOptions = resolved_options();
-
-        let options: ResolvedGeneratorOptions =
-            ResolvedGeneratorOptions::from(&resolved);
-
-        assert_eq!(options.cwd, PathBuf::from("/repo"));
-        assert_eq!(options.file, "src/app.js");
-        assert!(matches!(
-            options.source_map.input,
-            Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
-        ));
-        assert!(matches!(
-            options.source_map.output,
-            Some(OutputSourceMap::Mode(OutputSourceMapMode::Both)),
-        ));
-        assert!(options.single_quote);
-        assert!(options.ascii_only);
-        assert_eq!(options.indent_style, IndentStyle::Tab);
-        assert_eq!(options.indent_width, 4);
-        assert!(!options.comments);
-        assert!(options.minify);
-        assert!(options.oxc.single_quote);
-        assert!(options.oxc.ascii_only);
-        assert_eq!(options.oxc.indent_char, IndentChar::Tab);
-        assert_eq!(options.oxc.indent_width, 4);
-        assert_eq!(options.oxc.comments, CommentOptions::disabled());
-        assert!(options.oxc.minify);
     }
 }

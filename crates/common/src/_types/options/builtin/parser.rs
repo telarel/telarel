@@ -3,9 +3,7 @@ use std::path::PathBuf;
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
 use crate::_types::options::OxcParseOptions;
-use crate::_types::options::resolved::ResolvedOptions;
 use crate::_types::options::sourcemap::SourceMapOptions;
-use crate::helpers::resolve::resolve_parser_stage_options;
 
 /// A partial patch of raw oxc parser options.
 ///
@@ -80,6 +78,11 @@ pub struct ParserOptions {
     pub oxc: Option<PartialOxcParseOptions>,
 }
 
+/// The raw oxc parser options that back the Telarel defaults.
+pub fn default_parser_oxc() -> OxcParseOptions {
+    OxcParseOptions { preserve_parens: false, ..OxcParseOptions::default() }
+}
+
 /// Effective parser-stage settings.
 ///
 /// `oxc` is the full merged object and the curated fields mirror it.
@@ -95,9 +98,20 @@ pub struct ResolvedParserStageOptions {
     pub oxc: OxcParseOptions,
 }
 
+impl ResolvedParserStageOptions {
+    /// Build the stage from an oxc parser object that has all fields merged.
+    pub(crate) fn from_oxc(oxc: OxcParseOptions) -> Self {
+        Self {
+            preserve_parens: oxc.preserve_parens,
+            allow_return_outside_function: oxc.allow_return_outside_function,
+            oxc,
+        }
+    }
+}
+
 impl Default for ResolvedParserStageOptions {
     fn default() -> Self {
-        resolve_parser_stage_options(None)
+        Self::from_oxc(default_parser_oxc())
     }
 }
 
@@ -122,66 +136,9 @@ pub struct ResolvedParserOptions {
     pub oxc: OxcParseOptions,
 }
 
-impl From<&ResolvedOptions> for ResolvedParserOptions {
-    fn from(options: &ResolvedOptions) -> Self {
-        Self {
-            cwd: options.cwd.clone(),
-            file: options.file.clone(),
-            language: options.language,
-            source_type: options.source_type,
-            source_map: options.source_map.clone(),
-            preserve_parens: options.parser.preserve_parens,
-            allow_return_outside_function: options
-                .parser
-                .allow_return_outside_function,
-            oxc: options.parser.oxc,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::_types::grammar::language::Language;
-    use crate::_types::grammar::source_type::SourceType;
-    use crate::_types::options::builtin::generator::ResolvedGeneratorStageOptions;
-    use crate::_types::options::output::ResolvedOutputOptions;
-    use crate::_types::options::sourcemap::SourceMapOptions;
-    use crate::_types::options::sourcemap::input::{
-        InputSourceMap, InputSourceMapMode,
-    };
-    use crate::_types::options::sourcemap::output::{
-        OutputSourceMap, OutputSourceMapMode,
-    };
-
     use super::*;
-
-    fn resolved_options() -> ResolvedOptions {
-        ResolvedOptions {
-            cwd: PathBuf::from("/repo"),
-            file: String::from("src/app.ts"),
-            language: Language::TS,
-            source_type: SourceType::Module,
-            parser: ResolvedParserStageOptions {
-                preserve_parens: true,
-                allow_return_outside_function: true,
-                oxc: OxcParseOptions {
-                    preserve_parens: true,
-                    allow_return_outside_function: true,
-                    enable_ident_hashes: false,
-                    ..OxcParseOptions::default()
-                },
-            },
-            generator: ResolvedGeneratorStageOptions::default(),
-            output: ResolvedOutputOptions {
-                file: String::from("dist/src/app.js"),
-            },
-            source_map: SourceMapOptions {
-                input: Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
-                output: Some(OutputSourceMap::Mode(OutputSourceMapMode::Both)),
-            },
-            plugins: vec![String::from("probe")],
-        }
-    }
 
     #[test]
     fn test_parser_options_default_is_all_unset() {
@@ -251,31 +208,5 @@ mod tests {
         assert!(!options.oxc.preserve_parens);
         assert!(!options.oxc.allow_return_outside_function);
         assert!(options.oxc.enable_ident_hashes);
-    }
-
-    #[test]
-    fn test_from_resolved_options_maps_every_field() {
-        let resolved: ResolvedOptions = resolved_options();
-
-        let options: ResolvedParserOptions =
-            ResolvedParserOptions::from(&resolved);
-
-        assert_eq!(options.cwd, PathBuf::from("/repo"));
-        assert_eq!(options.file, "src/app.ts");
-        assert_eq!(options.language, Language::TS);
-        assert_eq!(options.source_type, SourceType::Module);
-        assert!(matches!(
-            options.source_map.input,
-            Some(InputSourceMap::Mode(InputSourceMapMode::Auto)),
-        ));
-        assert!(matches!(
-            options.source_map.output,
-            Some(OutputSourceMap::Mode(OutputSourceMapMode::Both)),
-        ));
-        assert!(options.preserve_parens);
-        assert!(options.allow_return_outside_function);
-        assert!(options.oxc.preserve_parens);
-        assert!(options.oxc.allow_return_outside_function);
-        assert!(!options.oxc.enable_ident_hashes);
     }
 }

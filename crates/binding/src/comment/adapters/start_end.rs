@@ -1,6 +1,6 @@
 use crate::comment::adapted::AdaptedComment;
 use crate::comment::adapters::CommentAdapter;
-use crate::comment::normalize::CommentContext;
+use crate::comment::context::CommentContext;
 use crate::comment::raw::RawComment;
 
 /// Reads standard `start`/`end` spans (Acorn, oxc, Esprima).
@@ -31,7 +31,7 @@ mod tests {
     use crate::comment::adapted::AdaptedComment;
     use crate::comment::adapters::CommentAdapter;
     use crate::comment::adapters::start_end::StartEndAdapter;
-    use crate::comment::normalize::CommentContext;
+    use crate::comment::context::CommentContext;
     use crate::comment::raw::RawComment;
     use crate::plugin::spans::SpanMap;
 

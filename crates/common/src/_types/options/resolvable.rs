@@ -4,6 +4,7 @@ use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::SourceType;
 use crate::_types::options::builtin::generator::GeneratorOptions;
 use crate::_types::options::builtin::parser::ParserOptions;
+use crate::_types::options::functions::compile::CompileOptions;
 use crate::_types::options::functions::compile_from_ast::CompileFromAstOptions;
 use crate::_types::options::functions::generate::GenerateOptions;
 use crate::_types::options::functions::parse::ParseOptions;
@@ -62,6 +63,21 @@ fn wrap_input_source_map(
         input: Some(input),
         output: None,
     })
+}
+
+impl From<CompileOptions> for ResolvableOptions {
+    fn from(options: CompileOptions) -> Self {
+        Self {
+            cwd: options.cwd,
+            file: options.file,
+            language: options.language,
+            source_type: options.source_type,
+            parser: options.parser,
+            generator: options.generator,
+            output: options.output,
+            source_map: options.source_map,
+        }
+    }
 }
 
 impl From<ParseOptions> for ResolvableOptions {
@@ -129,6 +145,57 @@ mod tests {
     use crate::_types::options::sourcemap::input::InputSourceMapMode;
 
     use super::*;
+
+    #[test]
+    fn test_from_compile_options_moves_every_field() {
+        let options: CompileOptions = CompileOptions {
+            cwd: Some(PathBuf::from("/repo")),
+            file: Some(String::from("src/app.tsx")),
+            language: Some(Language::TSX),
+            source_type: Some(SourceType::Script),
+            parser: Some(ParserOptions {
+                allow_return_outside_function: Some(true),
+                ..ParserOptions::default()
+            }),
+            generator: Some(GeneratorOptions {
+                minify: Some(true),
+                ..GeneratorOptions::default()
+            }),
+            output: Some(OutputOptions {
+                file: Some(String::from("dist/app.mjs")),
+            }),
+            source_map: Some(SourceMapOptions::default()),
+        };
+
+        let resolvable: ResolvableOptions = ResolvableOptions::from(options);
+
+        assert_eq!(resolvable.cwd, Some(PathBuf::from("/repo")));
+        assert_eq!(resolvable.file.as_deref(), Some("src/app.tsx"));
+        assert_eq!(resolvable.language, Some(Language::TSX));
+        assert_eq!(resolvable.source_type, Some(SourceType::Script));
+        assert_eq!(
+            resolvable
+                .output
+                .as_ref()
+                .and_then(|output| output.file.as_deref()),
+            Some("dist/app.mjs"),
+        );
+        assert!(resolvable.source_map.is_some());
+        assert_eq!(
+            resolvable
+                .parser
+                .as_ref()
+                .and_then(|parser| parser.allow_return_outside_function),
+            Some(true),
+        );
+        assert_eq!(
+            resolvable
+                .generator
+                .as_ref()
+                .and_then(|generator| generator.minify),
+            Some(true),
+        );
+    }
 
     #[test]
     fn test_from_parse_options_wraps_input_source_map() {

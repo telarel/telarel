@@ -6,12 +6,12 @@ This crate holds the plugin contract and hook engine. It covers the `Plugin` tra
 
 | Path                       | Responsibility                                                                                                                                         |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/_types/hooks/`        | Hook argument and return types                                                                                                                         |
+| `src/_types/hooks/`        | Hook argument and return types for every hook except `options`                                                                                         |
 | `src/_types/context.rs`    | `CommonPluginContext`, `PluginContext`, `ModuleInfo`                                                                                                   |
 | `src/_types/order.rs`      | `PluginHookMeta` and `PluginOrder`                                                                                                                     |
 | `src/options/fixpoint.rs`  | The `options` fixpoint runner                                                                                                                          |
 | `src/plugin/mod.rs`        | The `Plugin` trait. Every hook defaults to a no-op                                                                                                     |
-| `src/plugin/pluginable.rs` | Object-safe `Pluginable`, `SharedPluginable`, `HookFuture`                                                                                             |
+| `src/plugin/pluginable.rs` | Object-safe `Pluginable`, `SharedPluginable`, `HookFuture`, `OptionsArgs`, `OptionsReturn`, `merge_options`                                            |
 | `src/plugin_driver/hooks/` | One module per driver-run hook (`start`, `parse`, `transform`, `prepare`, `finalize`, `generate`, `end`): `options` lives in `src/options/fixpoint.rs` |
 | `src/plugin_driver/mod.rs` | Partitions plugins by `HookUsage`, sorts by per-hook meta, exposes the driver                                                                          |
 

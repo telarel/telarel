@@ -371,17 +371,6 @@ fn parse_source_type(text: &str) -> std::result::Result<SourceType, String> {
     }
 }
 
-pub fn parse_language_option(
-    language: Option<&str>
-) -> Result<Option<Language>> {
-    match language {
-        | Some(text) => {
-            Ok(Some(text.parse::<Language>().map_err(invalid_arg)?))
-        },
-        | None => Ok(None),
-    }
-}
-
 fn parse_source_type_option(
     source_type: Option<&str>
 ) -> Result<Option<SourceType>> {
@@ -576,6 +565,17 @@ fn parse_output_source_map(
              \"both\" or { mode, url? }"
                 .to_owned(),
         )),
+    }
+}
+
+pub fn parse_language_option(
+    language: Option<&str>
+) -> Result<Option<Language>> {
+    match language {
+        | Some(text) => {
+            Ok(Some(text.parse::<Language>().map_err(invalid_arg)?))
+        },
+        | None => Ok(None),
     }
 }
 
@@ -958,6 +958,40 @@ impl From<&PartialOxcCodegenOptions> for BindingOxcCodegenOptions {
     }
 }
 
+fn parse_oxc_parser_options(
+    value: &serde_json::Value
+) -> Result<PartialOxcParseOptions> {
+    serde_json::from_value::<BindingOxcParseOptions>(value.clone())
+        .map(BindingOxcParseOptions::into_partial)
+        .map_err(|error| invalid_arg(format!("invalid parser.oxc: {error}")))
+}
+
+fn parse_oxc_codegen_options(
+    value: &serde_json::Value
+) -> Result<PartialOxcCodegenOptions> {
+    serde_json::from_value::<BindingOxcCodegenOptions>(value.clone())
+        .map(BindingOxcCodegenOptions::into_partial)
+        .map_err(|error| invalid_arg(format!("invalid generator.oxc: {error}")))
+}
+
+/// Serialize the requested parser oxc patch into its JS wire shape. Only
+/// explicitly set fields are emitted.
+pub fn partial_parser_oxc_to_js(
+    options: &PartialOxcParseOptions
+) -> serde_json::Value {
+    serde_json::to_value(BindingOxcParseOptions::from(options))
+        .expect("partial parser oxc options serialize")
+}
+
+/// Serialize the requested generator oxc patch into its JS wire shape. Only
+/// explicitly set fields are emitted.
+pub fn partial_codegen_oxc_to_js(
+    options: &PartialOxcCodegenOptions
+) -> serde_json::Value {
+    serde_json::to_value(BindingOxcCodegenOptions::from(options))
+        .expect("partial codegen oxc options serialize")
+}
+
 /// The camelCase JS wire shape for parser-stage options.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
@@ -1045,92 +1079,6 @@ impl From<&GeneratorOptions> for BindingGeneratorOptions {
     }
 }
 
-fn parse_oxc_parser_options(
-    value: &serde_json::Value
-) -> Result<PartialOxcParseOptions> {
-    serde_json::from_value::<BindingOxcParseOptions>(value.clone())
-        .map(BindingOxcParseOptions::into_partial)
-        .map_err(|error| invalid_arg(format!("invalid parser.oxc: {error}")))
-}
-
-fn parse_oxc_codegen_options(
-    value: &serde_json::Value
-) -> Result<PartialOxcCodegenOptions> {
-    serde_json::from_value::<BindingOxcCodegenOptions>(value.clone())
-        .map(BindingOxcCodegenOptions::into_partial)
-        .map_err(|error| invalid_arg(format!("invalid generator.oxc: {error}")))
-}
-
-/// Parse a JS parser-stage options object.
-pub(crate) fn parse_parser_options(
-    value: &serde_json::Value
-) -> Result<ParserOptions> {
-    serde_json::from_value::<BindingParserOptions>(value.clone())
-        .map_err(|error| {
-            invalid_arg(format!("invalid parser options: {error}"))
-        })?
-        .into_options()
-}
-
-/// Parse a JS generator-stage options object.
-pub(crate) fn parse_generator_options(
-    value: &serde_json::Value
-) -> Result<GeneratorOptions> {
-    serde_json::from_value::<BindingGeneratorOptions>(value.clone())
-        .map_err(|error| {
-            invalid_arg(format!("invalid generator options: {error}"))
-        })?
-        .into_options()
-}
-
-/// Serialize parser-stage options into their JS wire shape.
-pub(crate) fn parser_options_to_js(
-    options: &ParserOptions
-) -> serde_json::Value {
-    serde_json::to_value(BindingParserOptions::from(options))
-        .expect("parser options serialize")
-}
-
-/// Serialize generator-stage options into their JS wire shape.
-pub(crate) fn generator_options_to_js(
-    options: &GeneratorOptions
-) -> serde_json::Value {
-    serde_json::to_value(BindingGeneratorOptions::from(options))
-        .expect("generator options serialize")
-}
-
-/// Serialize the effective parser options into their JS wire shape.
-pub(crate) fn parser_oxc_to_js(options: &OxcParseOptions) -> serde_json::Value {
-    serde_json::to_value(BindingOxcParseOptions::from(options))
-        .expect("parser oxc options serialize")
-}
-
-/// Serialize the requested parser oxc patch into its JS wire shape. Only
-/// explicitly set fields are emitted.
-pub(crate) fn partial_parser_oxc_to_js(
-    options: &PartialOxcParseOptions
-) -> serde_json::Value {
-    serde_json::to_value(BindingOxcParseOptions::from(options))
-        .expect("partial parser oxc options serialize")
-}
-
-/// Serialize the effective generator options into their JS wire shape.
-pub(crate) fn codegen_oxc_to_js(
-    options: &OxcCodegenOptions
-) -> serde_json::Value {
-    serde_json::to_value(BindingOxcCodegenOptions::from(options))
-        .expect("codegen oxc options serialize")
-}
-
-/// Serialize the requested generator oxc patch into its JS wire shape. Only
-/// explicitly set fields are emitted.
-pub(crate) fn partial_codegen_oxc_to_js(
-    options: &PartialOxcCodegenOptions
-) -> serde_json::Value {
-    serde_json::to_value(BindingOxcCodegenOptions::from(options))
-        .expect("partial codegen oxc options serialize")
-}
-
 fn parse_indent_style(text: &str) -> Result<IndentStyle> {
     match text {
         | "space" => Ok(IndentStyle::Space),
@@ -1208,6 +1156,54 @@ impl JsGeneratorOptions {
             self.oxc.as_ref(),
         )
     }
+}
+
+/// Parse a JS parser-stage options object.
+pub fn parse_parser_options(
+    value: &serde_json::Value
+) -> Result<ParserOptions> {
+    serde_json::from_value::<BindingParserOptions>(value.clone())
+        .map_err(|error| {
+            invalid_arg(format!("invalid parser options: {error}"))
+        })?
+        .into_options()
+}
+
+/// Parse a JS generator-stage options object.
+pub fn parse_generator_options(
+    value: &serde_json::Value
+) -> Result<GeneratorOptions> {
+    serde_json::from_value::<BindingGeneratorOptions>(value.clone())
+        .map_err(|error| {
+            invalid_arg(format!("invalid generator options: {error}"))
+        })?
+        .into_options()
+}
+
+/// Serialize parser-stage options into their JS wire shape.
+pub fn parser_options_to_js(options: &ParserOptions) -> serde_json::Value {
+    serde_json::to_value(BindingParserOptions::from(options))
+        .expect("parser options serialize")
+}
+
+/// Serialize generator-stage options into their JS wire shape.
+pub fn generator_options_to_js(
+    options: &GeneratorOptions
+) -> serde_json::Value {
+    serde_json::to_value(BindingGeneratorOptions::from(options))
+        .expect("generator options serialize")
+}
+
+/// Serialize the effective parser options into their JS wire shape.
+pub fn parser_oxc_to_js(options: &OxcParseOptions) -> serde_json::Value {
+    serde_json::to_value(BindingOxcParseOptions::from(options))
+        .expect("parser oxc options serialize")
+}
+
+/// Serialize the effective generator options into their JS wire shape.
+pub fn codegen_oxc_to_js(options: &OxcCodegenOptions) -> serde_json::Value {
+    serde_json::to_value(BindingOxcCodegenOptions::from(options))
+        .expect("codegen oxc options serialize")
 }
 
 impl JsParseOptions {
