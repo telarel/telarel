@@ -12,7 +12,7 @@
         "@napi-rs/cli": "~3.9.1",
         "@oxc-project/runtime": "0.160.0",
         "@types/node": "^26.6.6",
-        "@types/react": "^19.3.0",
+        "@types/react": "^19.3.1",
         "consola": "^3.4.2",
         "emnapi": "2.0.0-alpha.5",
         "oxfmt": "~0.80.0",
