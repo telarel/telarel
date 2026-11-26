@@ -3,10 +3,10 @@ use std::sync::Arc;
 use napi::bindgen_prelude::{ToNapiValue, TypeName};
 use napi::{Env, Error, Result, Status, Task};
 
+use crate::_types::refs::RefList;
 use crate::errors::compile::{
     CompileErrorPayload, decode_compile_error, reject_compile_error,
 };
-use crate::plugin::hooks::RefList;
 
 /// The worker closure a [`FunctionTask`] runs.
 ///

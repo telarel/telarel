@@ -2,8 +2,8 @@ use oxc::span::Span;
 use serde::Deserialize;
 use telarel_common::PluginError;
 
+use crate::_types::spans::SpanMap;
 use crate::errors::ErrorSourcePayload;
-use crate::plugin::spans::SpanMap;
 
 /// The private marker a JS `PluginError` encodes into its message.
 const PLUGIN_ERROR_MARKER: &str = "__TELAREL_PLUGIN_ERROR__:";

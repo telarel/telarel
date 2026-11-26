@@ -7,8 +7,8 @@ use telarel_plugin::SharedPluginable;
 
 use crate::_types::ast::JsAstResult;
 use crate::_types::options::JsParseOptions;
+use crate::_types::refs::RefList;
 use crate::plugin::build::to_plugins;
-use crate::plugin::hooks::RefList;
 use crate::tasks::function::{FunctionTask, Run};
 use crate::tasks::{anyhow_to_napi, run_core};
 

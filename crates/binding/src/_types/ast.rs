@@ -1,7 +1,4 @@
-use telarel_common::Ast;
-
 use crate::_types::sourcemap::JsSourceMap;
-use crate::ast::normalized;
 
 /// The JS-facing normalized AST: the ESTree program, the source text that its
 /// spans anchor to, an optional source map for the input, and the grammar label.
@@ -16,24 +13,6 @@ pub struct JsAst {
     pub map: Option<JsSourceMap>,
     /// The grammar of the program, as its canonical label.
     pub language: String,
-}
-
-impl JsAst {
-    /// Convert an owned [`Ast`] into its JS-facing form.
-    pub fn from_ast(ast: &Ast) -> anyhow::Result<Self> {
-        Ok(normalized::ast_to_js(ast)?.into())
-    }
-}
-
-impl From<normalized::JsAst> for JsAst {
-    fn from(value: normalized::JsAst) -> Self {
-        Self {
-            program: value.program,
-            code: value.code,
-            map: value.map,
-            language: value.language,
-        }
-    }
 }
 
 /// The JS-facing input form of the normalized AST. This is the read side of
@@ -51,28 +30,10 @@ pub struct JsAstInput {
     pub language: Option<String>,
 }
 
-impl From<JsAstInput> for normalized::JsAstInput {
-    fn from(value: JsAstInput) -> Self {
-        Self {
-            program: value.program,
-            code: value.code,
-            map: value.map,
-            language: value.language,
-        }
-    }
-}
-
 /// Result of the AST-returning entry points (`parse`, `rewrite`) and of a
 /// `parse` hook replacement.
 #[napi_derive::napi(object)]
 pub struct JsAstResult {
     /// Parsed or rewritten AST.
     pub ast: JsAst,
-}
-
-impl JsAstResult {
-    /// Convert an owned [`Ast`] into the JS-facing result.
-    pub fn from_ast(ast: &Ast) -> anyhow::Result<Self> {
-        Ok(Self { ast: JsAst::from_ast(ast)? })
-    }
 }

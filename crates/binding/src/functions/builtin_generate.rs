@@ -34,11 +34,9 @@ pub fn builtin_generate(
     let options_rust: ResolvedGeneratorOptions =
         ResolvedGeneratorOptions::from(&resolved);
 
-    let input: crate::ast::normalized::JsAstInput = ast.into();
-
     let language: Language = effective_language(
         None,
-        parse_ast_language(input.language.as_deref())?,
+        parse_ast_language(ast.language.as_deref())?,
         resolved.language,
     );
 
@@ -51,7 +49,7 @@ pub fn builtin_generate(
     let output_file: String = resolved.output.file;
 
     let run: Run<JsCodeResult> = Box::new(move || {
-        let ast: Ast = js_to_ast(input, source_type).map_err(anyhow_to_napi)?;
+        let ast: Ast = js_to_ast(ast, source_type).map_err(anyhow_to_napi)?;
 
         let result: CodeResult = Generator::new(&ast, options_rust)
             .generate()

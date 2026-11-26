@@ -1,4 +1,4 @@
-use crate::plugin::spans::SpanMap;
+use crate::_types::spans::SpanMap;
 
 /// The source-dependent inputs that every adapter and the normalizer share.
 pub struct CommentContext<'a> {

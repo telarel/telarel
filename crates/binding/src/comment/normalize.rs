@@ -314,12 +314,12 @@ pub fn normalize(
 mod tests {
     use oxc::ast::ast::{CommentContent, CommentNewlines, CommentPosition};
 
+    use crate::_types::spans::SpanMap;
     use crate::comment::adapted::NormalizedComment;
     use crate::comment::adapters::{CANONICAL, CommentAdapter};
     use crate::comment::context::CommentContext;
     use crate::comment::normalize::{normalize, normalize_with_adapters};
     use crate::comment::raw::{RawComment, RawNewlines};
-    use crate::plugin::spans::SpanMap;
 
     fn raw_line(
         start: u32,

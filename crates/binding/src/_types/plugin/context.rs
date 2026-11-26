@@ -1,7 +1,7 @@
 use napi::bindgen_prelude::{JsValue, Object, ToNapiValue};
 use napi::sys;
 
-use crate::plugin::hooks::SharedStr;
+use crate::_types::refs::SharedStr;
 
 /// The JS-facing plugin context that every context-bearing hook receives.
 pub struct JsPluginContext {

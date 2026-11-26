@@ -10,12 +10,12 @@ use telarel_plugin::SharedPluginable;
 
 use crate::_types::ast::{JsAstInput, JsAstResult};
 use crate::_types::options::JsRewriteOptions;
+use crate::_types::refs::RefList;
 use crate::ast::normalized::js_to_ast;
 use crate::ast::resolve::{
     effective_language, parse_ast_language, source_type_for_ast_input,
 };
 use crate::plugin::build::to_plugins;
-use crate::plugin::hooks::RefList;
 use crate::tasks::function::{FunctionTask, Run};
 use crate::tasks::{anyhow_to_napi, run_core};
 
@@ -36,11 +36,9 @@ pub fn rewrite(
         Vec::new(),
     );
 
-    let input: crate::ast::normalized::JsAstInput = ast.into();
-
     let language: Language = effective_language(
         options_rust.language,
-        parse_ast_language(input.language.as_deref())?,
+        parse_ast_language(ast.language.as_deref())?,
         resolved.language,
     );
 
@@ -48,7 +46,7 @@ pub fn rewrite(
         &resolved.file,
         language,
         options_rust.source_type,
-        &input.program,
+        &ast.program,
     );
 
     let refs: Arc<RefList> = Arc::new(RefList::new());
@@ -57,7 +55,7 @@ pub fn rewrite(
         to_plugins(&env, options.plugins, &refs)?;
 
     let run: Run<JsAstResult> = Box::new(move || {
-        let ast: Ast = js_to_ast(input, source_type).map_err(anyhow_to_napi)?;
+        let ast: Ast = js_to_ast(ast, source_type).map_err(anyhow_to_napi)?;
 
         let result: AstResult = run_core(async move {
             telarel_core::rewrite(ast, options_rust, plugins).await

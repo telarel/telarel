@@ -4,21 +4,22 @@ The NAPI binding between the Rust compiler and the `telarel` JavaScript package.
 
 ## Key files
 
-| Path                       | Responsibility                                                         |
-| -------------------------- | ---------------------------------------------------------------------- |
-| `src/_types/`              | JS-facing options, results, hooks, source maps, AST shapes             |
-| `src/ast/`                 | Crate-private AST normalization and ESTree JSON codec                  |
-| `src/comment/`             | Comment normalization and injection layer                              |
-| `src/errors/`              | Private error envelopes and their shared source payload                |
-| `src/errors/render.rs`     | Internal sync NAPI helper for native code-frame rendering              |
-| `src/functions/`           | Seven NAPI entry points                                                |
-| `src/plugin/builtin/`      | Rust builtin plugin dispatch and transform option parsing              |
-| `src/plugin/build.rs`      | `bridge_plugin` / `to_plugins`, builtin dispatch by `__builtin`        |
-| `src/plugin/hooks.rs`      | TSFN payloads, `RefList`, `SharedRef`, `SharedStr`                     |
-| `src/plugin/pluginable.rs` | `JsPlugin`: hook scanning, TSFN calls, marshalling                     |
-| `src/plugin/spans.rs`      | UTF-8 to UTF-16 span conversion with an ASCII identity fast path       |
-| `src/tasks/function.rs`    | `FunctionTask`, the worker closure, and reference release in `finally` |
-| `src/tasks/mod.rs`         | Tokio current-thread runtime per thread and `block_on_compile`         |
+| Path                     | Responsibility                                                         |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `src/_types/`            | JS-facing options, results, hooks, source maps, spans, AST shapes      |
+| `src/_types/refs.rs`     | Shared strings, rooted object references, and release lists            |
+| `src/_types/spans.rs`    | UTF-8 to UTF-16 span conversion with an ASCII identity fast path       |
+| `src/ast/`               | Crate-private AST normalization and ESTree JSON codec                  |
+| `src/comment/`           | Comment normalization and injection layer                              |
+| `src/errors/`            | Private error envelopes and their shared source payload                |
+| `src/errors/render.rs`   | Internal sync NAPI helper for native code-frame rendering              |
+| `src/functions/`         | Seven NAPI entry points                                                |
+| `src/plugin/builtin/`    | Rust builtin plugin dispatch and transform option parsing              |
+| `src/plugin/build.rs`    | `bridge_plugin` / `to_plugins`, builtin dispatch by `__builtin`        |
+| `src/plugin/hooks.rs`    | TSFN payloads and worker-side hook call data                           |
+| `src/plugin/pluginable/` | `JsPlugin`: hook scanning, TSFN calls, marshalling                     |
+| `src/tasks/function.rs`  | `FunctionTask`, the worker closure, and reference release in `finally` |
+| `src/tasks/mod.rs`       | Tokio current-thread runtime per thread and `block_on_compile`         |
 
 ## JS API surface
 
@@ -33,11 +34,11 @@ Raw `oxc` is a camelCase JS mirror with `deny_unknown_fields`. The parser mirror
 - generated maps follow [common source maps](../common/AGENTS.md#source-maps)
 - `builtinGenerate` and `createGenerator` have no separate output name. Public contract: `docs/content/apis/javascript/createGenerator.mdx`
 
-`cwd` stays a JS string at the napi boundary. The JS-facing option structs keep `String`, and both `_types/options.rs` and `unmarshal_options` convert it to `PathBuf` on entry. `_types/path.rs::path_label` renders it back at every outbound site. Non-UTF-8 paths become `U+FFFD`. `file` stays a UTF-8 string (`String`) in both directions. Because napi rejects non-UTF-8 paths on Unix, do not expose `PathBuf` in outbound napi structs.
+`cwd` stays a JS string at the napi boundary. The JS-facing option structs keep `String`, and both `_types/options/mod.rs` and `unmarshal_options` convert it to `PathBuf` on entry. `_types/path.rs::path_label` renders it back at every outbound site. Non-UTF-8 paths become `U+FFFD`. `file` stays a UTF-8 string (`String`) in both directions. Because napi rejects non-UTF-8 paths on Unix, do not expose `PathBuf` in outbound napi structs.
 
 ## AST boundary
 
-- `src/ast/` is crate-private. Its `normalized::JsAst` and `normalized::JsAstInput` mirrors stay inside the crate. The crate surface exposes only `_types::ast::{JsAst, JsAstInput, JsAstResult}`, re-exported from `lib.rs`
+- `src/ast/` is crate-private. `normalized` converts between `telarel_common::Ast` and the `_types::ast` shapes and owns no JS-facing struct. The crate surface exposes only `_types::ast::{JsAst, JsAstInput, JsAstResult}`, re-exported from `lib.rs`
 - `rewrite` and `compileFromAst` use the caller's `sourceType` when it is not `"unambiguous"`. When the option is `"unambiguous"` or absent, the module kind comes from `program.sourceType`. If the program has no `sourceType`, the file extension is the fallback. `generate` takes the module kind from `program.sourceType` unless an options hook replaces it
 - the `parse` and `generate` hooks use the normalized object `{ program, code, map?, language? }`. Outbound `JsAst.language` is required. Inbound `JsAstInput.language` is optional
 - the `prepare`, `transform`, and `finalize` hooks use a JSON-serialized ESTree string (`astJson`) through `oxc_estree_codec`. The payload also carries the AST's `code`, optional `map`, and language label. The JS wrapper rebuilds the normalized `Ast` from those fields. Transform read-back uses the returned language when present, otherwise the input AST's language. `program.sourceType` owns the module kind

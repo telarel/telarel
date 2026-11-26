@@ -58,12 +58,12 @@ impl CommentAdapter for CanonicalAdapter {
 mod tests {
     use oxc::ast::ast::{CommentContent, CommentNewlines, CommentPosition};
 
+    use crate::_types::spans::SpanMap;
     use crate::comment::adapted::AdaptedComment;
     use crate::comment::adapters::CommentAdapter;
     use crate::comment::adapters::canonical::CanonicalAdapter;
     use crate::comment::context::CommentContext;
     use crate::comment::raw::{RawComment, RawNewlines};
-    use crate::plugin::spans::SpanMap;
 
     fn context<'a>(
         source: &'a str,

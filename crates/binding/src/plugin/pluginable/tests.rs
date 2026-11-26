@@ -7,9 +7,9 @@ use telarel_common::{
 };
 
 use crate::_types::ast::JsAstInput;
+use crate::_types::refs::{BagDescriptor, RefList};
 use crate::ast::estree::ast_from_program;
 use crate::ast::test_util::{fixture_ast, parse_fixture, sample_map};
-use crate::plugin::hooks::{BagDescriptor, RefList};
 
 use super::*;
 
@@ -757,7 +757,7 @@ fn test_parse_output_ast_without_language_rebuilds_with_parser_options() {
         SourceType::Unambiguous,
     );
 
-    let ast: Ast = js_to_ast(output.ast.into(), source_type)
+    let ast: Ast = js_to_ast(output.ast, source_type)
         .expect("an absent returned language is unset");
 
     assert_eq!(ast.language(), Language::TS);
@@ -775,7 +775,7 @@ fn test_parse_output_ast_language_is_ignored_for_grammar() {
         SourceType::Unambiguous,
     );
 
-    let ast: Ast = js_to_ast(output.ast.into(), source_type)
+    let ast: Ast = js_to_ast(output.ast, source_type)
         .expect("a returned language does not block read-back");
 
     assert_eq!(ast.language(), Language::TS);

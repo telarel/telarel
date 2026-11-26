@@ -28,12 +28,12 @@ impl CommentAdapter for StartEndAdapter {
 
 #[cfg(test)]
 mod tests {
+    use crate::_types::spans::SpanMap;
     use crate::comment::adapted::AdaptedComment;
     use crate::comment::adapters::CommentAdapter;
     use crate::comment::adapters::start_end::StartEndAdapter;
     use crate::comment::context::CommentContext;
     use crate::comment::raw::RawComment;
-    use crate::plugin::spans::SpanMap;
 
     fn context<'a>(
         source: &'a str,

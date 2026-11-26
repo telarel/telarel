@@ -7,10 +7,10 @@ use telarel_common::{
     from_oxc_module_kind,
 };
 
+use crate::_types::spans::{SpanMap, spans_to_utf16};
 use crate::comment;
 use crate::comment::adapted::NormalizedComment;
 use crate::comment::raw::RawComment;
-use crate::plugin::spans::{SpanMap, spans_to_utf16};
 
 fn debug_assert_source_anchored(ast: &Ast) {
     // Span conversion uses `Ast::source`, so the program text must match.

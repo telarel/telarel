@@ -28,8 +28,8 @@ use telarel_plugin::{
 
 use crate::_types::ast::JsAst;
 use crate::_types::options::{
-    generator_options_to_js, parse_generator_options, parse_parser_options,
-    parser_options_to_js,
+    generator_options_to_js, language_label, parse_generator_options,
+    parse_parser_options, parser_options_to_js, source_type_label,
 };
 use crate::_types::path::path_label;
 use crate::_types::plugin::hooks::{
@@ -38,6 +38,7 @@ use crate::_types::plugin::hooks::{
     optional_output_options_to_js, optional_source_map_options_to_js,
 };
 use crate::_types::plugin::order::read_hook_meta;
+use crate::_types::refs::{RefList, SharedRef, SharedStr};
 use crate::_types::sourcemap::JsSourceMap;
 use crate::ast::estree::{ast_from_json, ast_to_estree_json};
 use crate::ast::normalized::js_to_ast;
@@ -51,13 +52,10 @@ use crate::plugin::build::to_patch_plugins;
 use crate::plugin::hooks::{
     CtxTsfn, EndCall, EndTsfn, FinalizeTsfn, GenerateCall, GenerateTsfn,
     HookCall, ObserveCall, OptionsCall, OptionsTsfn, ParseCall, ParseTsfn,
-    PrepareTsfn, RefList, SharedRef, SharedStr, StartCall, StartTsfn,
-    TransformBatchCall, TransformBatchTsfn, TransformCall, TransformTsfn,
-    hook_scan, scan_hook,
+    PrepareTsfn, StartCall, StartTsfn, TransformBatchCall, TransformBatchTsfn,
+    TransformCall, TransformTsfn, hook_scan, scan_hook,
 };
-use crate::plugin::options::{
-    language_label, parse_language, parse_source_type, source_type_label,
-};
+use crate::plugin::options::{parse_language, parse_source_type};
 
 /// A JS plugin object bridged into the Rust plugin layer.
 ///
@@ -827,7 +825,7 @@ impl Pluginable for JsPlugin {
                 args.options.source_type,
             );
 
-            let ast: Ast = js_to_ast(replaced.ast.into(), source_type)
+            let ast: Ast = js_to_ast(replaced.ast, source_type)
                 .map_err(anyhow_to_plugin_error)?;
 
             Ok(Some(AstResult { ast }))

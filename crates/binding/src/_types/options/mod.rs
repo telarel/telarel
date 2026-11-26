@@ -568,6 +568,26 @@ fn parse_output_source_map(
     }
 }
 
+/// The JS-facing label for a grammar. The label is `""` when unspecified.
+pub fn language_label(language: Option<Language>) -> &'static str {
+    match language {
+        | Some(language) => language.as_str(),
+        | None => "",
+    }
+}
+
+/// The JS-facing label for a module system. The label is `""` when
+/// unspecified.
+pub fn source_type_label(source_type: Option<SourceType>) -> &'static str {
+    match source_type {
+        | Some(SourceType::Script) => "script",
+        | Some(SourceType::CommonJS) => "commonjs",
+        | Some(SourceType::Module) => "module",
+        | Some(SourceType::Unambiguous) => "unambiguous",
+        | None => "",
+    }
+}
+
 pub fn parse_language_option(
     language: Option<&str>
 ) -> Result<Option<Language>> {

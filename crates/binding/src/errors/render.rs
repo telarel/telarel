@@ -1,7 +1,7 @@
 use oxc::span::Span;
 use telarel_common::CompileError;
 
-use crate::plugin::spans::SpanMap;
+use crate::_types::spans::SpanMap;
 
 /// Clamp a JavaScript number to a non-negative integer offset.
 fn utf16_offset(value: f64) -> usize {

@@ -38,32 +38,12 @@ pub fn parse_source_type(text: &str) -> Result<Option<SourceType>> {
     }
 }
 
-/// The JS-facing label for a grammar. The label is `""` when unspecified.
-pub fn language_label(language: Option<Language>) -> &'static str {
-    match language {
-        | Some(language) => language.as_str(),
-        | None => "",
-    }
-}
-
-/// The JS-facing label for a module system. The label is `""` when
-/// unspecified.
-pub fn source_type_label(source_type: Option<SourceType>) -> &'static str {
-    match source_type {
-        | Some(SourceType::Script) => "script",
-        | Some(SourceType::CommonJS) => "commonjs",
-        | Some(SourceType::Module) => "module",
-        | Some(SourceType::Unambiguous) => "unambiguous",
-        | None => "",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_language_label_roundtrip() {
+    fn test_parse_language_roundtrip() {
         for (text, language) in [
             ("js", Language::JS),
             ("ts", Language::TS),
@@ -71,20 +51,18 @@ mod tests {
             ("jsx", Language::JSX),
             ("tsx", Language::TSX),
         ] {
-            assert_eq!(language_label(Some(language)), text, "{text}");
             assert_eq!(parse_language(text).unwrap(), Some(language), "{text}");
         }
     }
 
     #[test]
-    fn test_source_type_label_roundtrip() {
+    fn test_parse_source_type_roundtrip() {
         for (text, source_type) in [
             ("script", SourceType::Script),
             ("commonjs", SourceType::CommonJS),
             ("module", SourceType::Module),
             ("unambiguous", SourceType::Unambiguous),
         ] {
-            assert_eq!(source_type_label(Some(source_type)), text, "{text}");
             assert_eq!(
                 parse_source_type(text).unwrap(),
                 Some(source_type),
@@ -94,10 +72,7 @@ mod tests {
     }
 
     #[test]
-    fn test_labels_empty_when_unspecified() {
-        assert_eq!(language_label(None), "");
-        assert_eq!(source_type_label(None), "");
-
+    fn test_parse_empty_is_unset() {
         assert_eq!(parse_language("").unwrap(), None);
         assert_eq!(parse_source_type("").unwrap(), None);
     }

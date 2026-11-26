@@ -1163,3 +1163,34 @@ fn test_generator_options_to_js_keeps_curated_and_raw_fields() {
         })
     );
 }
+
+#[test]
+fn test_language_label_roundtrip() {
+    for (text, language) in [
+        ("js", Language::JS),
+        ("ts", Language::TS),
+        ("dts", Language::DTS),
+        ("jsx", Language::JSX),
+        ("tsx", Language::TSX),
+    ] {
+        assert_eq!(language_label(Some(language)), text, "{text}");
+    }
+}
+
+#[test]
+fn test_source_type_label_roundtrip() {
+    for (text, source_type) in [
+        ("script", SourceType::Script),
+        ("commonjs", SourceType::CommonJS),
+        ("module", SourceType::Module),
+        ("unambiguous", SourceType::Unambiguous),
+    ] {
+        assert_eq!(source_type_label(Some(source_type)), text, "{text}");
+    }
+}
+
+#[test]
+fn test_labels_empty_when_unspecified() {
+    assert_eq!(language_label(None), "");
+    assert_eq!(source_type_label(None), "");
+}

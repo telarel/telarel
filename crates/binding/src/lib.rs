@@ -20,6 +20,7 @@ pub use crate::_types::plugin::hooks::{
     JsResolvedOutputOptions, JsResolvedParserStageOptions, JsStartArgs,
     JsTransformBatchArgs, JsTransformOutput,
 };
+pub use crate::_types::refs::{RefList, SharedRef, SharedStr};
 pub use crate::_types::results::JsCodeResult;
 pub use crate::_types::sourcemap::JsSourceMap;
 pub use crate::errors::render::render_code_frame;
@@ -29,7 +30,6 @@ pub use crate::functions::{
     parse::parse, rewrite::rewrite,
 };
 pub use crate::plugin::build::{bridge_plugin, to_plugins};
-pub use crate::plugin::hooks::{RefList, SharedRef, SharedStr};
 pub use crate::plugin::pluginable::JsPlugin;
 pub use crate::tasks::function::FunctionTask;
 
@@ -69,23 +69,22 @@ pub mod builtin {
 
 #[doc(hidden)]
 pub mod __internal {
+    pub use crate::_types::options::{language_label, source_type_label};
     pub use crate::_types::plugin::order::{
         BindingPluginHookMeta, BindingPluginOrder, parse_order, read_hook_meta,
         to_plugin_hook_meta,
     };
+    pub use crate::_types::refs::{materialize, release_refs};
     pub use crate::plugin::build::NAME_REQUIRED;
     pub use crate::plugin::hooks::{
         CtxTsfn, EndCall, EndTsfn, FinalizeTsfn, FnCtx, GenerateCall,
         GenerateTsfn, HookCall, ObserveCall, OptionsCall, OptionsTsfn,
         ParseCall, ParseTsfn, PrepareTsfn, StartCall, StartTsfn,
         TransformBatchCall, TransformBatchTsfn, TransformCall, TransformTsfn,
-        Tsfn, end, finalize, generate, materialize, options, parse,
-        plugin_context, prepare, release_refs, scan_hook, scan_options, start,
-        transform,
+        Tsfn, end, finalize, generate, options, parse, plugin_context, prepare,
+        scan_hook, scan_options, start, transform,
     };
-    pub use crate::plugin::options::{
-        language_label, parse_language, parse_source_type, source_type_label,
-    };
+    pub use crate::plugin::options::{parse_language, parse_source_type};
     pub use crate::plugin::pluginable::OptionsReturn;
     pub use crate::tasks::{
         anyhow_to_napi, block_on_compile, error_to_napi, run_core,

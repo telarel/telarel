@@ -3,8 +3,8 @@ use napi::{Env, Error, Result, Status};
 use serde::{Deserialize, Serialize};
 use telarel_common::CompileError;
 
+use crate::_types::spans::SpanMap;
 use crate::errors::{ErrorSourcePayload, ErrorSpanPayload};
-use crate::plugin::spans::SpanMap;
 
 /// The private marker that prefixes encoded compile errors.
 const COMPILE_ERROR_MARKER: &str = "__TELAREL_COMPILE_ERROR__:";

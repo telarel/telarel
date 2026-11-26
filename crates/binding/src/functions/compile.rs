@@ -6,9 +6,9 @@ use telarel_common::{CodeResult, CompileOptions};
 use telarel_plugin::SharedPluginable;
 
 use crate::_types::options::JsCompileOptions;
+use crate::_types::refs::RefList;
 use crate::_types::results::JsCodeResult;
 use crate::plugin::build::to_plugins;
-use crate::plugin::hooks::RefList;
 use crate::tasks::function::{FunctionTask, Run};
 use crate::tasks::run_core;
 

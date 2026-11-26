@@ -20,12 +20,12 @@ use oxc::span::GetSpan as _;
 
 use telarel_common::Ast;
 
+use crate::_types::spans::SpanMap;
 use crate::comment::adapted::NormalizedComment;
 use crate::comment::adapters::content_label;
 use crate::comment::context::CommentContext;
 use crate::comment::normalize::normalize;
 use crate::comment::raw::RawComment;
-use crate::plugin::spans::SpanMap;
 
 #[derive(serde::Serialize)]
 struct JsonNewlines {
@@ -356,6 +356,7 @@ mod tests {
         generate_code, parse_ast,
     };
 
+    use crate::_types::spans::SpanMap;
     use crate::ast::estree::{ast_from_program, ast_to_estree_json};
     use crate::ast::resolve::source_type_for_generate;
     use crate::comment::adapted::NormalizedComment;
@@ -364,7 +365,6 @@ mod tests {
         attach_with_starts, extract_raw, inject, normalize_from_program,
         printable_starts, reanchor_ast,
     };
-    use crate::plugin::spans::SpanMap;
 
     fn attach<'a>(
         allocator: &'a oxc::allocator::Allocator,

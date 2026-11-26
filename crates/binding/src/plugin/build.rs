@@ -6,8 +6,8 @@ use napi::{Env, Result};
 
 use telarel_plugin::SharedPluginable;
 
+use crate::_types::refs::{BagDescriptor, RefList, SharedRef};
 use crate::plugin::builtin::to_builtin_plugin;
-use crate::plugin::hooks::{BagDescriptor, RefList, SharedRef};
 use crate::plugin::pluginable::JsPlugin;
 
 /// The error raised when a JS plugin object carries no `name`.

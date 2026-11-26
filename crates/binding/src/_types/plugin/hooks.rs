@@ -9,12 +9,12 @@ use telarel_common::{
 
 use crate::_types::ast::{JsAst, JsAstInput};
 use crate::_types::options::{
-    JsOutputOptions, codegen_oxc_to_js, parser_oxc_to_js,
+    JsOutputOptions, codegen_oxc_to_js, language_label, parser_oxc_to_js,
+    source_type_label,
 };
 use crate::_types::path::path_label;
+use crate::_types::refs::SharedRef;
 use crate::_types::sourcemap::JsSourceMap;
-use crate::plugin::hooks::SharedRef;
-use crate::plugin::options::{language_label, source_type_label};
 
 /// Args for the `transform`, `prepare`, and `finalize` hooks. The payload
 /// holds the current AST as an ESTree JSON string. It also holds the source
