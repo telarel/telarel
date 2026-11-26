@@ -75,7 +75,7 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::_types::options::builtin::generator::{
-        IndentStyle, default_codegen_oxc,
+        IndentStyle, ResolvedGeneratorStageOptions,
     };
     use crate::_types::options::sourcemap::SourceMapOptions;
     use crate::_types::options::sourcemap::input::{
@@ -151,7 +151,7 @@ mod tests {
             indent_width: 2,
             comments: true,
             minify: false,
-            oxc: default_codegen_oxc(),
+            oxc: ResolvedGeneratorStageOptions::default().oxc,
         }
     }
 

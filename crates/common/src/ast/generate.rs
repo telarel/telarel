@@ -4,7 +4,7 @@ use oxc::ast::ast::Program;
 use oxc::codegen::Codegen;
 
 use crate::_types::options::OxcCodegenOptions;
-use crate::_types::options::builtin::generator::default_codegen_oxc;
+use crate::_types::options::builtin::generator::ResolvedGeneratorStageOptions;
 use crate::ast::ast::Ast;
 use crate::ast::result::CodeResult;
 use crate::sourcemap::SourceMap;
@@ -34,7 +34,11 @@ pub fn generate_code(
     ast: &Ast,
     options: GenerateCodeOptions,
 ) -> CodeResult {
-    generate_code_with_codegen(ast, options, default_codegen_oxc())
+    generate_code_with_codegen(
+        ast,
+        options,
+        ResolvedGeneratorStageOptions::default().oxc,
+    )
 }
 
 /// Generate code + map from an owned AST with explicit raw oxc codegen
@@ -74,7 +78,11 @@ pub fn generate_program(
     program: &Program<'_>,
     file: &str,
 ) -> (String, SourceMap) {
-    generate_program_with_codegen(program, file, default_codegen_oxc())
+    generate_program_with_codegen(
+        program,
+        file,
+        ResolvedGeneratorStageOptions::default().oxc,
+    )
 }
 
 /// Low-level program codegen with explicit raw oxc codegen options.

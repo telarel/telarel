@@ -197,7 +197,7 @@ pub struct GeneratorOptions {
 }
 
 /// The raw oxc codegen options that back the Telarel defaults.
-pub fn default_codegen_oxc() -> OxcCodegenOptions {
+fn default_codegen_oxc() -> OxcCodegenOptions {
     OxcCodegenOptions {
         indent_char: IndentChar::Space,
         indent_width: 2,
@@ -212,22 +212,16 @@ pub fn default_codegen_oxc() -> OxcCodegenOptions {
 pub struct ResolvedGeneratorStageOptions {
     /// Whether string literals use single quotes.
     pub single_quote: bool,
-
     /// Whether non-ASCII characters are escaped.
     pub ascii_only: bool,
-
     /// The resolved indentation style.
     pub indent_style: IndentStyle,
-
     /// The resolved indentation width.
     pub indent_width: usize,
-
     /// Whether any comment category is printed.
     pub comments: bool,
-
     /// Whether generated code is minified.
     pub minify: bool,
-
     /// The effective options for the raw oxc codegen.
     pub oxc: OxcCodegenOptions,
 }

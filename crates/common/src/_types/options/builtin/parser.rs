@@ -79,7 +79,7 @@ pub struct ParserOptions {
 }
 
 /// The raw oxc parser options that back the Telarel defaults.
-pub fn default_parser_oxc() -> OxcParseOptions {
+fn default_parser_oxc() -> OxcParseOptions {
     OxcParseOptions { preserve_parens: false, ..OxcParseOptions::default() }
 }
 

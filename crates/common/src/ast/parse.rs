@@ -10,7 +10,7 @@ use oxc::span::{SourceType as OxcSourceType, Span};
 use crate::_types::grammar::language::Language;
 use crate::_types::grammar::source_type::{SourceType, with_module_kind};
 use crate::_types::options::OxcParseOptions;
-use crate::_types::options::builtin::parser::default_parser_oxc;
+use crate::_types::options::builtin::parser::ResolvedParserStageOptions;
 use crate::ast::ast::Ast;
 use crate::contexts::compile::CompileContext;
 use crate::errors::compile::CompileError;
@@ -106,7 +106,11 @@ pub fn parse_program<'ctx, 'a>(
     code: &'a str,
     options: ParseProgramOptions<'ctx, 'a>,
 ) -> Result<ParseProgramResult<'a>, CompileError> {
-    parse_program_with_parser_options(code, options, default_parser_oxc())
+    parse_program_with_parser_options(
+        code,
+        options,
+        ResolvedParserStageOptions::default().oxc,
+    )
 }
 
 /// Parse source code into a [`Program`] borrowed from `allocator`, using the
@@ -144,7 +148,11 @@ pub fn parse_ast(
     code: String,
     options: ParseAstOptions,
 ) -> Result<Ast, CompileError> {
-    parse_ast_with_parser_options(code, options, default_parser_oxc())
+    parse_ast_with_parser_options(
+        code,
+        options,
+        ResolvedParserStageOptions::default().oxc,
+    )
 }
 
 /// Parse source code into an owned [`Ast`], using the supplied raw oxc parser

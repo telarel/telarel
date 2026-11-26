@@ -76,7 +76,7 @@ mod tests {
 
     use crate::_types::grammar::language::Language;
     use crate::_types::grammar::source_type::SourceType;
-    use crate::_types::options::builtin::parser::default_parser_oxc;
+    use crate::_types::options::builtin::parser::ResolvedParserStageOptions;
     use crate::_types::options::sourcemap::SourceMapOptions;
     use crate::_types::options::sourcemap::input::{
         InputSourceMap, InputSourceMapMode, InputSourceMapOptions,
@@ -119,7 +119,7 @@ mod tests {
             source_map,
             preserve_parens: false,
             allow_return_outside_function: false,
-            oxc: default_parser_oxc(),
+            oxc: ResolvedParserStageOptions::default().oxc,
         }
     }
 
@@ -160,7 +160,7 @@ mod tests {
                 source_map: SourceMapOptions::default(),
                 preserve_parens: false,
                 allow_return_outside_function: false,
-                oxc: default_parser_oxc(),
+                oxc: ResolvedParserStageOptions::default().oxc,
             },
         );
 
