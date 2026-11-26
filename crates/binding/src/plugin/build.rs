@@ -8,18 +8,11 @@ use telarel_plugin::SharedPluginable;
 
 use crate::_types::refs::{BagDescriptor, RefList, SharedRef};
 use crate::plugin::builtin::to_builtin_plugin;
-use crate::plugin::pluginable::JsPlugin;
-
-/// The error raised when a JS plugin object carries no `name`.
-pub const NAME_REQUIRED: &str = "plugin `name` is required";
+use crate::plugin::pluginable::{JsPlugin, NAME_REQUIRED};
 
 /// Internal descriptor key shared with the JS wrapper. This key must match
 /// `PLUGIN_ID` in `packages/telarel/src/bridges/plugin.ts`.
 const PLUGIN_ID: &str = "__PLUGIN_ID__";
-
-/// Internal batch-runner key shared with the JS wrapper. This key must match
-/// `TRANSFORM_BATCH` in `packages/telarel/src/bridges/plugin.ts`.
-pub const TRANSFORM_BATCH_KEY: &str = "__TRANSFORM_BATCH__";
 
 /// Bridge one raw descriptor for a JS plugin into a shared adapter.
 ///
@@ -51,7 +44,12 @@ pub fn bridge_plugin(
     }
 
     let adapter: SharedPluginable =
-        Arc::new(JsPlugin::from_object(object, refs, plugin_ref)?);
+        Arc::new(JsPlugin::from_object_with_patch_bridge(
+            object,
+            refs,
+            plugin_ref,
+            to_patch_plugins,
+        )?);
 
     Ok(adapter)
 }

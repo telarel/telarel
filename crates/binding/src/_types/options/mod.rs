@@ -44,7 +44,7 @@ pub struct JsParseOptions {
     #[napi(js_name = "inputSourceMap")]
     pub input_source_map: Option<serde_json::Value>,
     /// Raw objects for JS plugins, rooted as references.
-    /// `JsPlugin::from_object` bridges them.
+    /// `bridge_plugin` bridges them.
     ///
     /// By default, it is `[]`.
     pub plugins: Vec<ObjectRef<false>>,
@@ -103,7 +103,7 @@ pub struct JsCompileOptions {
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
     /// Raw objects for JS plugins, rooted as references.
-    /// `JsPlugin::from_object` bridges them.
+    /// `bridge_plugin` bridges them.
     ///
     /// By default, it is `[]`.
     pub plugins: Vec<ObjectRef<false>>,
@@ -137,7 +137,7 @@ pub struct JsRewriteOptions {
     #[napi(js_name = "inputSourceMap")]
     pub input_source_map: Option<serde_json::Value>,
     /// Raw objects for JS plugins, rooted as references.
-    /// `JsPlugin::from_object` bridges them.
+    /// `bridge_plugin` bridges them.
     ///
     /// By default, it is `[]`.
     pub plugins: Vec<ObjectRef<false>>,
@@ -180,7 +180,7 @@ pub struct JsCompileFromAstOptions {
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
     /// Raw objects for JS plugins, rooted as references.
-    /// `JsPlugin::from_object` bridges them.
+    /// `bridge_plugin` bridges them.
     ///
     /// By default, it is `[]`.
     pub plugins: Vec<ObjectRef<false>>,
@@ -218,7 +218,7 @@ pub struct JsGenerateOptions {
     #[napi(js_name = "sourceMap")]
     pub source_map: Option<serde_json::Value>,
     /// Raw objects for JS plugins, rooted as references.
-    /// `JsPlugin::from_object` bridges them.
+    /// `bridge_plugin` bridges them.
     ///
     /// By default, it is `[]`.
     pub plugins: Vec<ObjectRef<false>>,

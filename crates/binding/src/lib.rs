@@ -75,17 +75,16 @@ pub mod __internal {
         to_plugin_hook_meta,
     };
     pub use crate::_types::refs::{materialize, release_refs};
-    pub use crate::plugin::build::NAME_REQUIRED;
     pub use crate::plugin::hooks::{
         CtxTsfn, EndCall, EndTsfn, FinalizeTsfn, FnCtx, GenerateCall,
-        GenerateTsfn, HookCall, ObserveCall, OptionsCall, OptionsTsfn,
-        ParseCall, ParseTsfn, PrepareTsfn, StartCall, StartTsfn,
+        GenerateTsfn, HookCall, ObserveCall, OptionsCall, OptionsReturn,
+        OptionsTsfn, ParseCall, ParseTsfn, PrepareTsfn, StartCall, StartTsfn,
         TransformBatchCall, TransformBatchTsfn, TransformCall, TransformTsfn,
         Tsfn, end, finalize, generate, options, parse, plugin_context, prepare,
         scan_hook, scan_options, start, transform,
     };
     pub use crate::plugin::options::{parse_language, parse_source_type};
-    pub use crate::plugin::pluginable::OptionsReturn;
+    pub use crate::plugin::pluginable::NAME_REQUIRED;
     pub use crate::tasks::{
         anyhow_to_napi, block_on_compile, error_to_napi, run_core,
     };

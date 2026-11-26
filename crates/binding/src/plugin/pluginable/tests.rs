@@ -20,6 +20,16 @@ fn env() -> Env {
     napi::Env::from_raw(std::ptr::null_mut())
 }
 
+/// Replaces the injected patch bridge in tests. The unmarshal tests never pass
+/// descriptors, so an empty result is enough.
+fn patch_bridge_stub(
+    _env: &Env,
+    _descriptors: Vec<ObjectRef<false>>,
+    _refs: &Arc<RefList>,
+) -> Result<Vec<SharedPluginable>> {
+    Ok(Vec::new())
+}
+
 fn output(
     cwd: Option<String>,
     file: Option<String>,
@@ -37,6 +47,19 @@ fn output(
         generator: None,
         plugins: None,
     }
+}
+
+#[test]
+fn test_unsupported_patch_plugins_empty_is_empty() {
+    let env: Env = env();
+    let refs: Arc<RefList> = Arc::new(RefList::new());
+
+    let plugins: Vec<SharedPluginable> =
+        unsupported_patch_plugins(&env, Vec::new(), &refs)
+            .expect("an empty descriptor list needs no bridge");
+
+    assert!(plugins.is_empty());
+    assert!(refs.is_empty());
 }
 
 #[test]
@@ -64,7 +87,8 @@ fn test_unmarshal_options_null_is_none() {
     let env: Env = env();
     let refs: Arc<RefList> = Arc::new(RefList::new());
 
-    let outcome = unmarshal_options(None, &env, &refs).unwrap();
+    let outcome =
+        unmarshal_options(None, &env, &refs, patch_bridge_stub).unwrap();
 
     assert!(outcome.is_none());
 }
@@ -74,10 +98,14 @@ fn test_unmarshal_options_bag_keeps_omitted_fields_none() {
     let env: Env = env();
     let refs: Arc<RefList> = Arc::new(RefList::new());
 
-    let outcome =
-        unmarshal_options(Some(output(None, None, None, None)), &env, &refs)
-            .unwrap()
-            .expect("a returned bag is Some");
+    let outcome = unmarshal_options(
+        Some(output(None, None, None, None)),
+        &env,
+        &refs,
+        patch_bridge_stub,
+    )
+    .unwrap()
+    .expect("a returned bag is Some");
 
     assert_eq!(outcome.options.cwd, None);
     assert_eq!(outcome.options.file, None);
@@ -113,9 +141,10 @@ fn test_unmarshal_options_bag_preserves_echoed_groups() {
         "oxc": { "initialIndent": 1 },
     }));
 
-    let outcome: OptionsArgs = unmarshal_options(Some(bag), &env, &refs)
-        .unwrap()
-        .expect("a returned bag is Some");
+    let outcome: OptionsArgs =
+        unmarshal_options(Some(bag), &env, &refs, patch_bridge_stub)
+            .unwrap()
+            .expect("a returned bag is Some");
 
     let parser: ParserOptions =
         outcome.options.parser.expect("the parser group is carried");
@@ -201,8 +230,9 @@ fn test_unmarshal_options_bag_invalid_parser_group_errors() {
 
     bag.parser = Some(serde_json::json!({ "sourceMapPath": "a.map" }));
 
-    let error: PluginError = unmarshal_options(Some(bag), &env, &refs)
-        .expect_err("an unknown parser field is the hook error");
+    let error: PluginError =
+        unmarshal_options(Some(bag), &env, &refs, patch_bridge_stub)
+            .expect_err("an unknown parser field is the hook error");
 
     assert!(error.to_string().contains("invalid parser options"), "{error}");
 }
@@ -218,8 +248,9 @@ fn test_unmarshal_options_bag_invalid_generator_group_errors() {
         "indentStyle": "tabs",
     }));
 
-    let error: PluginError = unmarshal_options(Some(bag), &env, &refs)
-        .expect_err("an invalid generator field is the hook error");
+    let error: PluginError =
+        unmarshal_options(Some(bag), &env, &refs, patch_bridge_stub)
+            .expect_err("an invalid generator field is the hook error");
 
     assert!(error.to_string().contains("invalid generator options"), "{error}");
 }
@@ -234,8 +265,9 @@ fn test_unmarshal_options_bag_invalid_raw_oxc_errors() {
     bag.parser =
         Some(serde_json::json!({ "oxc": { "sourceMapPath": "a.map" } }));
 
-    let error: PluginError = unmarshal_options(Some(bag), &env, &refs)
-        .expect_err("an unknown raw parser field is the hook error");
+    let error: PluginError =
+        unmarshal_options(Some(bag), &env, &refs, patch_bridge_stub)
+            .expect_err("an unknown raw parser field is the hook error");
 
     assert!(error.to_string().contains("invalid parser.oxc"), "{error}");
 
@@ -244,8 +276,9 @@ fn test_unmarshal_options_bag_invalid_raw_oxc_errors() {
     bag.generator =
         Some(serde_json::json!({ "oxc": { "indentChar": "spaces" } }));
 
-    let error: PluginError = unmarshal_options(Some(bag), &env, &refs)
-        .expect_err("an invalid raw indentChar is the hook error");
+    let error: PluginError =
+        unmarshal_options(Some(bag), &env, &refs, patch_bridge_stub)
+            .expect_err("an invalid raw indentChar is the hook error");
 
     assert!(error.to_string().contains("invalid generator.oxc"), "{error}");
 }
@@ -261,9 +294,10 @@ fn test_unmarshal_options_bag_parses_output() {
         file: Some(String::from("dist/index.js")),
     });
 
-    let outcome: OptionsArgs = unmarshal_options(Some(bag), &env, &refs)
-        .unwrap()
-        .expect("a returned bag is Some");
+    let outcome: OptionsArgs =
+        unmarshal_options(Some(bag), &env, &refs, patch_bridge_stub)
+            .unwrap()
+            .expect("a returned bag is Some");
 
     let output: OutputOptions =
         outcome.options.output.expect("the bag's output is carried");
@@ -283,7 +317,7 @@ fn test_unmarshal_options_bag_parses_source_map() {
         "output": { "mode": "both" },
     }));
 
-    let outcome = unmarshal_options(Some(bag), &env, &refs)
+    let outcome = unmarshal_options(Some(bag), &env, &refs, patch_bridge_stub)
         .unwrap()
         .expect("a returned bag is Some");
 
@@ -326,9 +360,10 @@ fn test_unmarshal_options_bag_parses_source_map_paths() {
         },
     }));
 
-    let outcome: OptionsArgs = unmarshal_options(Some(bag), &env, &refs)
-        .unwrap()
-        .expect("a returned bag is Some");
+    let outcome: OptionsArgs =
+        unmarshal_options(Some(bag), &env, &refs, patch_bridge_stub)
+            .unwrap()
+            .expect("a returned bag is Some");
 
     let source_map: SourceMapOptions =
         outcome.options.source_map.expect("the bag's sourceMap is carried");
@@ -363,8 +398,9 @@ fn test_unmarshal_options_bag_invalid_source_map_errors() {
 
     bag.source_map = Some(serde_json::json!({ "output": "sideways" }));
 
-    let error: PluginError = unmarshal_options(Some(bag), &env, &refs)
-        .expect_err("an invalid sourceMap is the hook error");
+    let error: PluginError =
+        unmarshal_options(Some(bag), &env, &refs, patch_bridge_stub)
+            .expect_err("an invalid sourceMap is the hook error");
 
     assert!(error.to_string().contains("invalid sourceMap.output"), "{error}");
 }
@@ -383,6 +419,7 @@ fn test_unmarshal_options_bag_fields_and_labels() {
         )),
         &env,
         &refs,
+        patch_bridge_stub,
     )
     .unwrap()
     .expect("a returned bag is Some");
@@ -406,9 +443,14 @@ fn test_unmarshal_options_omitted_plugins_keeps_the_bag_table() {
 
     assert_eq!(refs.bag_snapshot().len(), 2);
 
-    unmarshal_options(Some(output(None, None, None, None)), &env, &refs)
-        .unwrap()
-        .expect("a returned bag is Some");
+    unmarshal_options(
+        Some(output(None, None, None, None)),
+        &env,
+        &refs,
+        patch_bridge_stub,
+    )
+    .unwrap()
+    .expect("a returned bag is Some");
 
     assert_eq!(refs.bag_ids(), vec![Some(1), Some(2)]);
 }
@@ -461,6 +503,7 @@ fn test_unmarshal_options_invalid_language_errors() {
         Some(output(None, None, Some("json".to_owned()), None)),
         &env,
         &refs,
+        patch_bridge_stub,
     );
 
     let error: PluginError =
@@ -478,6 +521,7 @@ fn test_unmarshal_options_invalid_source_type_errors() {
         Some(output(None, None, None, Some("json".to_owned()))),
         &env,
         &refs,
+        patch_bridge_stub,
     );
 
     let error: PluginError =

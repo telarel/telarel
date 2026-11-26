@@ -22,8 +22,8 @@ use telarel_plugin::__internal::{
 use telarel_plugin::{
     CommonPluginContext, EndArgs, FinalizeArgs, GenerateArgs, GenerateReturn,
     NotifyReturn, OptionsArgs, ParseArgs, ParseReturn, PluginContext,
-    PluginError, PluginHookMeta, Pluginable, PrepareArgs, StartArgs,
-    TransformArgs, TransformOutput, TransformReturn,
+    PluginError, PluginHookMeta, Pluginable, PrepareArgs, SharedPluginable,
+    StartArgs, TransformArgs, TransformOutput, TransformReturn,
 };
 
 use crate::_types::ast::JsAst;
@@ -46,16 +46,88 @@ use crate::ast::resolve::{source_type_for_generate, source_type_for_options};
 use crate::ast::sourcemap::{js_source_map_to_owned, source_map_to_js};
 use crate::comment;
 use crate::errors::plugin::decode_plugin_error;
-use crate::plugin::build::NAME_REQUIRED;
-use crate::plugin::build::TRANSFORM_BATCH_KEY;
-use crate::plugin::build::to_patch_plugins;
 use crate::plugin::hooks::{
     CtxTsfn, EndCall, EndTsfn, FinalizeTsfn, GenerateCall, GenerateTsfn,
-    HookCall, ObserveCall, OptionsCall, OptionsTsfn, ParseCall, ParseTsfn,
-    PrepareTsfn, StartCall, StartTsfn, TransformBatchCall, TransformBatchTsfn,
-    TransformCall, TransformTsfn, hook_scan, scan_hook,
+    HookCall, ObserveCall, OptionsCall, OptionsReturn, OptionsTsfn, ParseCall,
+    ParseTsfn, PrepareTsfn, StartCall, StartTsfn, TransformBatchCall,
+    TransformBatchTsfn, TransformCall, TransformTsfn, hook_scan, scan_hook,
 };
 use crate::plugin::options::{parse_language, parse_source_type};
+
+/// The error raised when a JS plugin object carries no `name`.
+pub const NAME_REQUIRED: &str = "plugin `name` is required";
+
+/// Internal batch-runner key shared with the JS wrapper. This key must match
+/// `TRANSFORM_BATCH` in `packages/telarel/src/bridges/plugin.ts`.
+pub const TRANSFORM_BATCH_KEY: &str = "__TRANSFORM_BATCH__";
+
+/// Bridges the descriptors that an `options` hook returns.
+///
+/// A [`JsPlugin`] cannot bridge the descriptors that its `options` hook
+/// returns. `build` injects this bridge when it creates the adapter.
+pub type PatchPluginBridge = fn(
+    &Env,
+    Vec<ObjectRef<false>>,
+    &Arc<RefList>,
+) -> Result<Vec<SharedPluginable>>;
+
+/// Holds a returned options bag's rooted descriptors until the patch bridge
+/// adopts them.
+///
+/// The descriptors arrive already rooted. `ObjectRef`'s `Drop` is a no-op, so
+/// an unmarshal error before the bridge runs would leak every root. The guard
+/// moves them onto the release list on drop, and `FunctionTask::finally`
+/// drains that list when the compile aborts.
+struct PendingPluginRoots<'a> {
+    descriptors: Option<Vec<ObjectRef<false>>>,
+    refs: &'a Arc<RefList>,
+}
+
+impl PendingPluginRoots<'_> {
+    fn take(&mut self) -> Vec<ObjectRef<false>> {
+        self.descriptors.take().unwrap_or_default()
+    }
+}
+
+impl Drop for PendingPluginRoots<'_> {
+    fn drop(&mut self) {
+        let Some(descriptors) = self.descriptors.take() else {
+            return;
+        };
+
+        for descriptor in descriptors {
+            self.refs.push_ref(SharedRef::from_ref(descriptor));
+        }
+    }
+}
+
+/// The patch bridge for a direct [`JsPlugin::from_object`] caller.
+///
+/// Such a caller cannot bridge descriptors that an `options` hook returns.
+/// The supported path is `bridge_plugin`, which injects `to_patch_plugins`.
+/// An omitted `plugins` field still unmarshals as empty.
+fn unsupported_patch_plugins(
+    _env: &Env,
+    descriptors: Vec<ObjectRef<false>>,
+    refs: &Arc<RefList>,
+) -> Result<Vec<SharedPluginable>> {
+    if descriptors.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // The caller's `PendingPluginRoots` no longer owns these roots. Adopt them,
+    // so the guard moves them onto the release list when this fallback returns
+    // the error. `FunctionTask::finally` drains that list when the compile
+    // aborts.
+    let _pending: PendingPluginRoots<'_> =
+        PendingPluginRoots { descriptors: Some(descriptors), refs };
+
+    Err(napi::Error::new(
+        Status::InvalidArg,
+        "`JsPlugin::from_object` cannot bridge descriptors returned by an \
+         `options` hook. Use `bridge_plugin` instead.",
+    ))
+}
 
 /// A JS plugin object bridged into the Rust plugin layer.
 ///
@@ -87,16 +159,20 @@ pub struct JsPlugin {
     /// The rooted raw descriptor. A transform batch payload carries it back to
     /// JS so the batch runner can read the descriptor's internal entry.
     plugin_ref: SharedRef,
+    /// Bridges the descriptors that the `options` hook returns.
+    patch_bridge: PatchPluginBridge,
 }
 
 impl JsPlugin {
-    /// Bridge a raw JS plugin object into a JS plugin adapter. Returns
-    /// `InvalidArg` when `name` is absent. `plugin_ref` is the caller's rooted
-    /// descriptor. The adapter keeps a clone for batch payloads.
-    pub fn from_object(
+    /// Bridge a raw JS plugin object with the caller's patch bridge.
+    ///
+    /// `patch_bridge` bridges the descriptors that the plugin's `options`
+    /// hook returns. `bridge_plugin` supplies `to_patch_plugins`.
+    pub(crate) fn from_object_with_patch_bridge(
         object: &Object<'static>,
         refs: &Arc<RefList>,
         plugin_ref: &SharedRef,
+        patch_bridge: PatchPluginBridge,
     ) -> Result<Self> {
         let name: String = object.get::<String>("name")?.ok_or_else(|| {
             napi::Error::new(Status::InvalidArg, NAME_REQUIRED.to_owned())
@@ -162,7 +238,28 @@ impl JsPlugin {
             hook_meta_end,
             refs: Arc::clone(refs),
             plugin_ref: plugin_ref.clone(),
+            patch_bridge,
         })
+    }
+
+    /// Bridge a raw JS plugin object into a JS plugin adapter. Returns
+    /// `InvalidArg` when `name` is absent. `plugin_ref` is the caller's rooted
+    /// descriptor. The adapter keeps a clone for batch payloads.
+    ///
+    /// A direct caller cannot bridge descriptors that an `options` hook
+    /// returns. The supported path is `bridge_plugin`, which supplies
+    /// `from_object_with_patch_bridge`.
+    pub fn from_object(
+        object: &Object<'static>,
+        refs: &Arc<RefList>,
+        plugin_ref: &SharedRef,
+    ) -> Result<Self> {
+        Self::from_object_with_patch_bridge(
+            object,
+            refs,
+            plugin_ref,
+            unsupported_patch_plugins,
+        )
     }
 }
 
@@ -390,38 +487,8 @@ fn finish_transform_batch_output(
     }
 }
 
-/// Holds a returned options bag's rooted plugin descriptors until
-/// `to_patch_plugins` adopts them.
-///
-/// The descriptors arrive already rooted. `ObjectRef`'s `Drop` is a no-op, so
-/// an unmarshal error before `to_patch_plugins` would leak every root. The guard
-/// moves them onto the release list on drop, and `FunctionTask::finally`
-/// drains that list when the compile aborts.
-struct PendingPluginRoots<'a> {
-    descriptors: Option<Vec<ObjectRef<false>>>,
-    refs: &'a Arc<RefList>,
-}
-
-impl PendingPluginRoots<'_> {
-    fn take(&mut self) -> Vec<ObjectRef<false>> {
-        self.descriptors.take().unwrap_or_default()
-    }
-}
-
-impl Drop for PendingPluginRoots<'_> {
-    fn drop(&mut self) {
-        let Some(descriptors) = self.descriptors.take() else {
-            return;
-        };
-
-        for descriptor in descriptors {
-            self.refs.push_ref(SharedRef::from_ref(descriptor));
-        }
-    }
-}
-
 /// Unmarshal an `options` hook return into the pipeline bag on the JS thread,
-/// where the returned plugin descriptors are reachable.
+/// where the returned descriptors are reachable.
 ///
 /// `null` or `undefined` means no change. A returned object is a patch: it
 /// carries only the fields the hook changed and the descriptors it added.
@@ -430,6 +497,7 @@ fn unmarshal_options(
     output: Option<JsOptionsOutput>,
     env: &Env,
     refs: &Arc<RefList>,
+    patch_bridge: PatchPluginBridge,
 ) -> std::result::Result<Option<OptionsArgs>, PluginError> {
     let Some(output) = output else {
         return Ok(None);
@@ -440,14 +508,14 @@ fn unmarshal_options(
     // `ctx.value` in the resolution callback. These roots must move onto the
     // release list as-is. Re-rooting them with `SharedRef::new` (`create_ref`)
     // would leak one `napi_ref` per descriptor per options call.
-    // `to_patch_plugins` wraps the same roots. The entry bridge in `compile`
+    // The patch bridge wraps the same roots. The entry bridge in `compile`
     // does too. The guard keeps every early error path from dropping them
     // unrooted.
     let mut pending_plugins: PendingPluginRoots<'_> =
         PendingPluginRoots { descriptors: output.plugins, refs };
 
     // Parse the scalar fields before touching the descriptor table. The
-    // returned bag is a patch, and `to_patch_plugins` updates the descriptor
+    // returned bag is a patch, and the patch bridge updates the descriptor
     // view only after every fallible step succeeds. On an error the compile
     // aborts. `pending_plugins` moves the roots onto the release list for
     // `FunctionTask::finally`.
@@ -491,13 +559,12 @@ fn unmarshal_options(
     // The wrapper returns only the descriptors the hook added, so this list
     // carries the patch's new plugins. An omitted field adds nothing. The
     // pipeline appends these to the settled list and skips instances that are
-    // already present. `to_patch_plugins` bridges the patch descriptors and
-    // appends them to the options-payload view, so later hooks see the full
-    // settled list. On failure it releases the rooted references and leaves
-    // the view untouched.
-    let plugins: Vec<telarel_plugin::SharedPluginable> =
-        to_patch_plugins(env, pending_plugins.take(), refs)
-            .map_err(hook_error)?;
+    // already present. The patch bridge wraps the descriptors and appends
+    // them to the options-payload view, so later hooks see the full settled
+    // list. On failure it releases the rooted references and leaves the view
+    // untouched.
+    let plugins: Vec<SharedPluginable> =
+        patch_bridge(env, pending_plugins.take(), refs).map_err(hook_error)?;
 
     let args: OptionsArgs = OptionsArgs {
         options: ResolvableOptions {
@@ -516,14 +583,6 @@ fn unmarshal_options(
     Ok(Some(args))
 }
 
-/// The raw return value of the TSFN that bridges an `options` hook.
-///
-/// The raw `options` hook is an async function that returns
-/// `Promise<Option<JsOptionsOutput>>`. The TSFN delivers the raw promise
-/// object to the JS-thread callback, and the callback wires the resolution
-/// bridging.
-pub type OptionsReturn = Unknown<'static>;
-
 /// Bridge a promise's resolution on the JS thread.
 ///
 /// Every failure settles the outcome channel first, because an escaping napi
@@ -533,6 +592,7 @@ fn await_options_promise(
     env: Env,
     refs: Arc<RefList>,
     sender: Sender<std::result::Result<Option<OptionsArgs>, PluginError>>,
+    patch_bridge: PatchPluginBridge,
 ) -> napi::Result<()> {
     use napi::bindgen_prelude::{CallbackContext, JsValue, PromiseRaw};
 
@@ -571,7 +631,7 @@ fn await_options_promise(
 
     let resolve = move |ctx: CallbackContext<Option<JsOptionsOutput>>| {
         let outcome: std::result::Result<Option<OptionsArgs>, PluginError> =
-            unmarshal_options(ctx.value, &ctx.env, &refs);
+            unmarshal_options(ctx.value, &ctx.env, &refs, patch_bridge);
 
         let _ = resolve_sender.send(outcome);
 
@@ -601,12 +661,13 @@ fn await_options_promise(
 /// The `options` hook call.
 ///
 /// It resolves on the JS thread because the bridge must wrap a returned bag's
-/// plugin descriptors where JS objects are reachable. The outcome travels
+/// descriptors where JS objects are reachable. The outcome travels
 /// back to the worker through a channel.
 async fn call_options_tsfn(
     tsfn: &OptionsTsfn,
     call: OptionsCall,
     refs: &Arc<RefList>,
+    patch_bridge: PatchPluginBridge,
 ) -> std::result::Result<Option<OptionsArgs>, PluginError> {
     type OptionsOutcome = std::result::Result<Option<OptionsArgs>, PluginError>;
 
@@ -630,7 +691,13 @@ async fn call_options_tsfn(
 
                     Ok(())
                 },
-                | Ok(value) => await_options_promise(value, env, refs, sender),
+                | Ok(value) => await_options_promise(
+                    value,
+                    env,
+                    refs,
+                    sender,
+                    patch_bridge,
+                ),
             }
         },
     );
@@ -734,7 +801,7 @@ impl Pluginable for JsPlugin {
             let call: OptionsCall =
                 options_call(&args.options, self.refs.bag_snapshot());
 
-            call_options_tsfn(tsfn, call, &self.refs).await
+            call_options_tsfn(tsfn, call, &self.refs, self.patch_bridge).await
         })
     }
 

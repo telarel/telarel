@@ -226,7 +226,8 @@ const isWrappedPlugin = (plugin: Plugin | BuiltinPlugin): boolean =>
 // Must match `PLUGIN_ID` in `crates/binding/src/plugin/build.rs`.
 const PLUGIN_ID: string = "__PLUGIN_ID__";
 
-// Must match `TRANSFORM_BATCH_KEY` in `crates/binding/src/plugin/build.rs`.
+// Must match `TRANSFORM_BATCH_KEY` in
+// `crates/binding/src/plugin/pluginable/mod.rs`.
 const TRANSFORM_BATCH: string = "__TRANSFORM_BATCH__";
 
 // Read only by the batch runner below. The binding never scans this key.

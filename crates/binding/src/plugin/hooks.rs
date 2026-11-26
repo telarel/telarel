@@ -1,6 +1,7 @@
 use napi::bindgen_prelude::{
     Array, Either, FromNapiValue, Function, JsValue, JsValuesTupleIntoVec,
-    Object, Promise, ToNapiValue, TypeName, Undefined, ValidateNapiValue,
+    Object, Promise, ToNapiValue, TypeName, Undefined, Unknown,
+    ValidateNapiValue,
 };
 use napi::sys;
 use napi::threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunction};
@@ -165,15 +166,23 @@ impl ToNapiValue for OptionsCall {
     }
 }
 
+/// The raw return value of the TSFN that bridges an `options` hook.
+///
+/// The raw `options` hook is an async function that returns
+/// `Promise<Option<JsOptionsOutput>>`. The TSFN delivers the raw promise
+/// object to the JS-thread callback, and the callback wires the resolution
+/// bridging.
+pub type OptionsReturn = Unknown<'static>;
+
 /// TSFN bridging the `options` hook.
 ///
 /// [`OptionsCall`] (the slot table's `Args`) emits its payload, whose
 /// `plugins` property is the settled plugin descriptors of the options bag.
 /// The raw `options` hook is async and returns a promise that carries
 /// `Option<JsOptionsOutput>`. The TSFN delivers that promise raw. See
-/// [`crate::plugin::pluginable::OptionsReturn`].
+/// [`crate::plugin::hooks::OptionsReturn`].
 pub type OptionsTsfn =
-    Tsfn<OptionsCall, OptionsCall, crate::plugin::pluginable::OptionsReturn>;
+    Tsfn<OptionsCall, OptionsCall, crate::plugin::hooks::OptionsReturn>;
 
 /// A worker-side hook call that carries a plugin context.
 pub trait HookCall: 'static {
@@ -581,7 +590,7 @@ pub fn scan_options(object: &Object<'static>) -> Result<Option<OptionsTsfn>> {
     let Some(function) = object.get::<Function<
         '_,
         OptionsCall,
-        crate::plugin::pluginable::OptionsReturn,
+        crate::plugin::hooks::OptionsReturn,
     >>("options")?
     else {
         return Ok(None);

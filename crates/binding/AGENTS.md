@@ -66,7 +66,7 @@ Raw `oxc` is a camelCase JS mirror with `deny_unknown_fields`. The parser mirror
 
 `docs/content/apis/plugin/javascript` documents the public plugin API. Internally:
 
-- `JsPlugin::from_object` makes sure that `name` is present and scans the hook slots into TSFNs. `read_hook_meta` reads the `<hook>Meta` siblings that the JS wrapper produces
+- `JsPlugin::from_object` makes sure that `name` is present and scans the hook slots into TSFNs. `read_hook_meta` reads the `<hook>Meta` siblings that the JS wrapper produces. The adapter stores a patch bridge that `build` injects. `from_object` supplies `unsupported_patch_plugins`, which rejects the descriptors that an `options` hook returns. That rejection surfaces as a `PluginError`. `bridge_plugin` is the supported path
 - the bridge infers hook usage from the TSFNs that the adapter carries
 - a plugin is transform-batchable only when it has both the transform TSFN and the `__TRANSFORM_BATCH__` TSFN. The wrapper attaches that runner plus `__TRANSFORM_ENTRY__` (the user handler) as non-enumerable properties on each transform descriptor. The binding scan uses `TRANSFORM_BATCH_KEY`, which must match `TRANSFORM_BATCH` in the wrapper
 - `JsPlugin` keeps a clone of the caller's rooted descriptor. `make_transform_batch` downcasts the run members to `JsPlugin` and sends their descriptor references in driver order. It never creates a second root; `to_plugins` owns the release list
