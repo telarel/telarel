@@ -3,8 +3,6 @@ use std::sync::Arc;
 
 use oxc::span::Span;
 
-use crate::ast::ast::Ast;
-
 /// A source location attached to an error.
 ///
 /// Shares the source text, so attaching it to many errors does not copy the
@@ -24,15 +22,6 @@ impl ErrorSource {
         span: Span,
     ) -> Self {
         Self { file: file.into(), code: code.into(), span }
-    }
-
-    /// Create a source location that shares the AST's source text.
-    pub fn from_ast(
-        file: impl Into<Arc<str>>,
-        ast: &Ast,
-        span: Span,
-    ) -> Self {
-        Self::from_code(file, Arc::clone(ast.source()), span)
     }
 
     /// The file the span belongs to.
@@ -69,6 +58,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use crate::ast::ast::Ast;
     use crate::ast::parse::{ParseAstOptions, parse_ast};
 
     fn parse(code: &str) -> Ast {

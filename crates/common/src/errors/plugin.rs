@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use oxc::span::Span;
 
-use crate::ast::ast::Ast;
 use crate::errors::compile::{CompileError, render_source};
 use crate::errors::source::ErrorSource;
 
@@ -39,16 +38,6 @@ impl PluginError {
         span: Span,
     ) -> Self {
         self.with_source(ErrorSource::from_code(file, code, span))
-    }
-
-    /// Attach a source location that shares the AST's source text.
-    pub fn with_source_ast(
-        self,
-        file: impl Into<Arc<str>>,
-        ast: &Ast,
-        span: Span,
-    ) -> Self {
-        self.with_source(ErrorSource::from_ast(file, ast, span))
     }
 
     /// The error message.

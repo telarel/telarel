@@ -4,7 +4,6 @@ use std::sync::Arc;
 use oxc::diagnostics::{NamedSource, OxcDiagnostic};
 use oxc::span::Span;
 
-use crate::ast::ast::Ast;
 use crate::errors::source::ErrorSource;
 
 pub fn render_source(
@@ -51,16 +50,6 @@ impl CompileError {
         span: Span,
     ) -> Self {
         self.with_source(ErrorSource::from_code(file, code, span))
-    }
-
-    /// Attach a source location that shares the AST's source text.
-    pub fn with_source_ast(
-        self,
-        file: impl Into<Arc<str>>,
-        ast: &Ast,
-        span: Span,
-    ) -> Self {
-        self.with_source(ErrorSource::from_ast(file, ast, span))
     }
 
     /// The error message.
@@ -110,7 +99,12 @@ impl std::error::Error for CompileError {}
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use oxc::span::Span;
+
+    use crate::ast::ast::Ast;
+    use crate::ast::parse::{ParseAstOptions, parse_ast};
 
     use super::*;
 
@@ -162,10 +156,6 @@ mod tests {
 
     #[test]
     fn test_source_ast_shares_ast_source() {
-        use std::path::PathBuf;
-
-        use crate::ast::parse::{ParseAstOptions, parse_ast};
-
         let options: ParseAstOptions = ParseAstOptions {
             cwd: PathBuf::new(),
             file: "index.ts".to_string(),

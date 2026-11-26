@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::sourcemap::SourceMap;
+use crate::_types::SourceMap;
 
 /// How an input source map is obtained for a parse step.
 ///

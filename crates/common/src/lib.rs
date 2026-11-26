@@ -11,6 +11,7 @@ mod errors;
 mod helpers;
 mod sourcemap;
 
+pub use crate::_types::SourceMap;
 pub use crate::_types::grammar::language::Language;
 pub use crate::_types::grammar::language::grammar_source_type;
 pub use crate::_types::grammar::source_type::SourceType;
@@ -57,6 +58,7 @@ pub use crate::ast::parse::{
 };
 pub use crate::ast::parser::Parser;
 pub use crate::ast::result::{AstResult, CodeResult};
+pub use crate::ast::sourcemap::apply_output_source_map_mode;
 pub use crate::contexts::compile::CompileContext;
 pub use crate::errors::compile::CompileError;
 pub use crate::errors::plugin::PluginError;
@@ -67,15 +69,14 @@ pub use crate::helpers::resolve::{
     resolve_grammar, resolve_options, resolve_source_type,
     source_type_for_module_id,
 };
-pub use crate::sourcemap::SourceMap;
 pub use crate::sourcemap::inline::{
     append_inline_source_map, extract_inline_source_map,
 };
-pub use crate::sourcemap::mode::apply_output_source_map_mode;
 pub use crate::sourcemap::resolve::resolve_input_source_map;
 
 #[doc(hidden)]
 pub mod __internal {
-    pub use crate::sourcemap::inline::strip_consumed_inline_source_map_comment;
-    pub use crate::sourcemap::resolve::attach_input_map;
+    pub use crate::ast::sourcemap::{
+        attach_input_map, strip_consumed_inline_source_map_comment,
+    };
 }

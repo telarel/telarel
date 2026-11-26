@@ -3,10 +3,10 @@ use crate::_types::options::builtin::parser::ResolvedParserOptions;
 use crate::ast::ast::Ast;
 use crate::ast::parse::{ParseAstOptions, parse_ast_with_parser_options};
 use crate::ast::result::AstResult;
+use crate::ast::sourcemap::strip_consumed_inline_source_map_comment;
 use crate::errors::compile::CompileError;
 use crate::helpers::resolve::apply_curated_parser_options;
 use crate::sourcemap::SourceMap;
-use crate::sourcemap::inline::strip_consumed_inline_source_map_comment;
 use crate::sourcemap::resolve::resolve_input_source_map;
 
 /// A builtin parser that attaches the requested input source map to its result.

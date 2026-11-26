@@ -1,12 +1,6 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use oxc::allocator::Allocator;
-use oxc::ast::ast::{Comment, Program};
 
-use crate::_types::options::sourcemap::input::{
-    InputSourceMap, InputSourceMapMode,
-};
-use crate::ast::ast::Ast;
 use crate::errors::compile::CompileError;
 use crate::sourcemap::SourceMap;
 
@@ -107,6 +101,20 @@ fn decode_payload(payload: &str) -> Result<SourceMap, CompileError> {
     Ok(map.into_owned())
 }
 
+/// Locate the inline map comment consumed by an input request.
+///
+/// This function returns the byte offset of the `sourceMappingURL=` marker
+/// when the last non-empty line carries a source-map comment with a base64
+/// data URI.
+pub(crate) fn inline_source_map_marker(code: &str) -> Option<usize> {
+    let comment: InlineSourceMapComment<'_> =
+        find_inline_source_map_comment(code)?;
+
+    decode_data_uri_payload(comment.url)?;
+
+    Some(comment.marker)
+}
+
 /// Append a `//# sourceMappingURL=<url>` comment to `code`.
 ///
 /// Ensures `code` ends with a newline before appending the comment line.
@@ -157,55 +165,9 @@ pub fn extract_inline_source_map(
     Some(decode_payload(payload))
 }
 
-/// Remove the inline source-map comment that supplied `input`.
-///
-/// This function considers only `Inline` and `Auto` requests. It removes a
-/// comment only when the last non-empty line carries a base64 data-URI
-/// `sourceMappingURL` comment. It removes the comment from `Program.comments`
-/// and leaves `Ast::source` unchanged. Returns whether it removed a comment.
-pub fn strip_consumed_inline_source_map_comment(
-    ast: &mut Ast,
-    input: &InputSourceMap,
-) -> bool {
-    let mode: &InputSourceMapMode = input.mode();
-
-    if !matches!(mode, InputSourceMapMode::Inline | InputSourceMapMode::Auto) {
-        return false;
-    }
-
-    let Some(comment): Option<InlineSourceMapComment<'_>> =
-        find_inline_source_map_comment(ast.source().as_ref())
-    else {
-        return false;
-    };
-
-    if decode_data_uri_payload(comment.url).is_none() {
-        return false;
-    }
-
-    let marker: usize = comment.marker;
-
-    ast.with_mut(|_allocator: &Allocator, program: &mut Program<'_>| -> bool {
-        let before: usize = program.comments.len();
-
-        program.comments.retain(|comment: &Comment| {
-            !(comment.span.start as usize <= marker
-                && marker < comment.span.end as usize)
-        });
-
-        program.comments.len() != before
-    })
-}
-
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use oxc_sourcemap::SourceMapBuilder;
-
-    use crate::_types::options::sourcemap::input::InputSourceMapOptions;
-    use crate::ast::parse::{ParseAstOptions, parse_ast};
-    use crate::helpers::test_util::comment_text;
 
     use super::*;
 
@@ -231,28 +193,6 @@ mod tests {
             "data:application/json;base64,{}",
             STANDARD.encode(map.to_json_string()),
         )
-    }
-
-    fn parse_code(code: &str) -> Ast {
-        parse_ast(
-            code.to_string(),
-            ParseAstOptions {
-                cwd: PathBuf::new(),
-                file: String::from("index.ts"),
-                language: None,
-                source_type: None,
-                input_map: None,
-            },
-        )
-        .expect("fixture parses")
-    }
-
-    fn comments(ast: &Ast) -> Vec<String> {
-        ast.program()
-            .comments
-            .iter()
-            .map(|comment: &Comment| comment_text(ast, comment))
-            .collect()
     }
 
     #[test]
@@ -346,144 +286,6 @@ mod tests {
         assert_eq!(start, code.find("//#").expect("comment start"));
         assert!(line.starts_with("//# sourceMappingURL="));
         assert!(!line.ends_with('\r'));
-    }
-
-    #[test]
-    fn test_strip_removes_consumed_inline_comment() {
-        let url: String = data_url(&sample_map());
-        let code: String =
-            format!("const a = 1;\n//# sourceMappingURL={url}\n");
-        let mut ast: Ast = parse_code(&code);
-
-        assert!(ast.source().contains("sourceMappingURL"));
-        assert_eq!(comments(&ast).len(), 1);
-
-        let removed: bool = strip_consumed_inline_source_map_comment(
-            &mut ast,
-            &InputSourceMap::Mode(InputSourceMapMode::Inline),
-        );
-
-        assert!(removed);
-        assert!(comments(&ast).is_empty());
-        assert!(ast.source().contains("sourceMappingURL"));
-    }
-
-    #[test]
-    fn test_strip_handles_slash_at_and_block_spellings() {
-        let url: String = data_url(&sample_map());
-
-        for code in [
-            format!("const a = 1;\n//@ sourceMappingURL={url}\n"),
-            format!("const a = 1;\n/*# sourceMappingURL={url} */\n"),
-        ] {
-            let mut ast: Ast = parse_code(&code);
-
-            let removed: bool = strip_consumed_inline_source_map_comment(
-                &mut ast,
-                &InputSourceMap::Mode(InputSourceMapMode::Inline),
-            );
-
-            assert!(removed);
-            assert!(comments(&ast).is_empty());
-        }
-    }
-
-    #[test]
-    fn test_strip_keeps_unconsumed_comments() {
-        let url: String = data_url(&sample_map());
-        let code: String = format!(
-            "// see sourceMappingURL=docs\nconst a = 1;\n//# sourceMappingURL={url}\n",
-        );
-        let mut ast: Ast = parse_code(&code);
-
-        let removed: bool = strip_consumed_inline_source_map_comment(
-            &mut ast,
-            &InputSourceMap::Mode(InputSourceMapMode::Inline),
-        );
-
-        assert!(removed);
-        assert_eq!(
-            comments(&ast),
-            vec![String::from("// see sourceMappingURL=docs")],
-        );
-    }
-
-    #[test]
-    fn test_strip_keeps_earlier_inline_map_comment() {
-        let first_url: String = data_url(&sample_map_for("first.ts"));
-        let last_url: String = data_url(&sample_map_for("last.ts"));
-        let code: String = format!(
-            "//# sourceMappingURL={first_url}\nconst a = 1;\n//# sourceMappingURL={last_url}\n",
-        );
-        let mut ast: Ast = parse_code(&code);
-
-        let removed: bool = strip_consumed_inline_source_map_comment(
-            &mut ast,
-            &InputSourceMap::Mode(InputSourceMapMode::Inline),
-        );
-
-        assert!(removed);
-        assert_eq!(
-            comments(&ast),
-            vec![format!("//# sourceMappingURL={first_url}")],
-        );
-    }
-
-    #[test]
-    fn test_strip_ignores_value_and_external_modes() {
-        let url: String = data_url(&sample_map());
-        let code: String =
-            format!("const a = 1;\n//# sourceMappingURL={url}\n");
-        let mut ast: Ast = parse_code(&code);
-        let before: Vec<String> = comments(&ast);
-
-        for input in [
-            InputSourceMap::Mode(InputSourceMapMode::Value(sample_map())),
-            InputSourceMap::Mode(InputSourceMapMode::External),
-        ] {
-            let removed: bool =
-                strip_consumed_inline_source_map_comment(&mut ast, &input);
-
-            assert!(!removed);
-        }
-
-        assert_eq!(comments(&ast), before);
-    }
-
-    #[test]
-    fn test_strip_handles_input_options_wrapper() {
-        let url: String = data_url(&sample_map());
-        let code: String =
-            format!("const a = 1;\n//# sourceMappingURL={url}\n");
-        let mut ast: Ast = parse_code(&code);
-        let input: InputSourceMap =
-            InputSourceMap::Options(InputSourceMapOptions {
-                mode: InputSourceMapMode::Inline,
-                path: None,
-            });
-
-        let removed: bool =
-            strip_consumed_inline_source_map_comment(&mut ast, &input);
-
-        assert!(removed);
-        assert!(comments(&ast).is_empty());
-    }
-
-    #[test]
-    fn test_strip_ignores_non_data_url_comment() {
-        let code: &str = "const a = 1;\n//# sourceMappingURL=docs.map\n";
-        let mut ast: Ast = parse_code(code);
-
-        let removed: bool = strip_consumed_inline_source_map_comment(
-            &mut ast,
-            &InputSourceMap::Mode(InputSourceMapMode::Auto),
-        );
-
-        assert!(!removed);
-        assert_eq!(
-            comments(&ast),
-            vec![String::from("//# sourceMappingURL=docs.map")],
-        );
     }
 
     #[test]

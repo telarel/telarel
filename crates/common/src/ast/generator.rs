@@ -3,11 +3,11 @@ use crate::_types::options::builtin::generator::ResolvedGeneratorOptions;
 use crate::ast::ast::Ast;
 use crate::ast::generate::{GenerateCodeOptions, generate_code_with_codegen};
 use crate::ast::result::CodeResult;
+use crate::ast::sourcemap::attach_input_map;
 use crate::errors::compile::CompileError;
 use crate::helpers::resolve::{
     CuratedGeneratorOptions, apply_curated_generator_options,
 };
-use crate::sourcemap::resolve::attach_input_map;
 
 /// A builtin generator over a borrowed [`Ast`].
 ///

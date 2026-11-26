@@ -10,17 +10,18 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 | `src/_types/options/builtin/`  | User-facing `ParserOptions` / `GeneratorOptions`, partial `oxc` patches, `IndentStyle`, resolved types, and stage defaults    |
 | `src/_types/options/sourcemap` | Input and output source-map modes                                                                                             |
 | `src/ast/ast.rs`               | `Ast` is an owned, self-referential AST. `AstOwner` keeps the allocator, source, semantic language/source type, and input map |
+| `src/ast/error.rs`             | `ErrorSource::from_ast`, `CompileError::with_source_ast`, and `PluginError::with_source_ast` constructors                     |
 | `src/ast/generator.rs`         | Builtin generator. Applies `source_map.input`, then produces code and an output map that records the output file              |
 | `src/ast/parser.rs`            | Builtin parser. Resolves the requested input source map during parsing                                                        |
 | `src/ast/result.rs`            | `AstResult` and `CodeResult`                                                                                                  |
+| `src/ast/sourcemap.rs`         | Integrates AST-level maps: `attach_input_map`, `strip_consumed_inline_source_map_comment`, `apply_output_source_map_mode`     |
 | `src/contexts/compile.rs`      | `CompileContext`                                                                                                              |
 | `src/errors/compile.rs`        | `CompileError` and code-frame rendering                                                                                       |
 | `src/errors/plugin.rs`         | `PluginError`                                                                                                                 |
 | `src/errors/source/mod.rs`     | `ErrorSource`                                                                                                                 |
 | `src/helpers/path.rs`          | Centralized process-cwd and path-resolution helpers                                                                           |
 | `src/helpers/resolve.rs`       | Option resolution helpers                                                                                                     |
-| `src/sourcemap/mode.rs`        | Applies the resolved output file and mode after code generation                                                               |
-| `src/sourcemap/resolve.rs`     | Input map resolution: `Value`, `Inline`, `External`, `Auto`; `attach_input_map` applies the precedence rule                   |
+| `src/sourcemap/resolve.rs`     | `resolve_input_source_map` resolves `Value`, `Inline`, `External`, and `Auto` requests                                        |
 
 ## AST invariants
 
@@ -39,12 +40,12 @@ Shared primitives for the compiler: the owned AST, option types, source-map hand
 
 The public modes are defined by `InputSourceMapMode` and `OutputSourceMapMode` in `crates/common/src/_types/options/sourcemap/` and mirrored by the JS types in `packages/telarel/src/@types/sourcemap/`. Internal invariants:
 
-- an explicit input request replaces the AST's own input map when it resolves. A best-effort `Inline` or `Auto` miss keeps the AST's own map, and an `External` miss or corrupt map is an error. `attach_input_map` implements this rule for the pipeline entry boundaries and the builtin generator
+- an explicit input request replaces the AST's own input map when it resolves. A best-effort `Inline` or `Auto` miss keeps the AST's own map, and an `External` miss or corrupt map is an error. `attach_input_map` in `crates/common/src/ast/sourcemap.rs` implements this rule for the pipeline entry boundaries and the builtin generator
 - input path overrides resolve through `source_dir` and `external_map_path_for`. `source_dir` resolves `file` against `cwd`, then joins a relative `path` to the source file's directory. Public path semantics: `docs/content/apis/rust/Parser.mdx` and `docs/content/apis/javascript/createParser.mdx`
 - code-entry functions (`parse`, `compile`) apply the resolved input map after a winning `parse` hook. The builtin parser resolves an input-map request carried by its own options
 - `Generator::generate` applies `source_map.input` before code generation and never `source_map.output`. Output delivery remains a pipeline concern. `ResolvedGeneratorOptions.cwd` anchors a relative input-map path through the source file. Public contract: `docs/content/apis/rust/Generator.mdx`
-- `generate_code` sets `map.file` after composing the input map. `apply_output_source_map_mode` overwrites it with a non-empty `output.file` after the winning generate result, including a custom map. Public contract: `docs/content/apis/index.mdx#source-maps`
-- when `Inline` or `Auto` resolves an inline map, the builtin parser and `attach_input_map` remove the consumed comment from `Program.comments` before generation. `Ast::source` is unchanged. Comments that were not consumed remain
+- `generate_code` sets `map.file` after composing the input map. `apply_output_source_map_mode` in `crates/common/src/ast/sourcemap.rs` overwrites it with a non-empty `output.file` after the winning generate result, including a custom map. Public contract: `docs/content/apis/index.mdx#source-maps`
+- when `Inline` or `Auto` resolves an inline map, the builtin parser and `attach_input_map` in `crates/common/src/ast/sourcemap.rs` remove the consumed comment from `Program.comments` before generation. `Ast::source` is unchanged. Comments that were not consumed remain
 - the pipeline applies output options uniformly after the winning `generate` hook. This rule holds whether the builtin or a plugin generated the code. Public output semantics: `docs/content/apis/rust/compile.mdx#compileoptions` and `docs/content/apis/rust/generate.mdx#generateoptions`
 - the builtin generator's output-map composition delegates to `oxc_sourcemap::SourceMap::compose`. The codegen map is the `self` operand, so it must contain at most one source
 - when no map was produced, the code is returned byte-identical in every mode. Never fabricate an identity map
