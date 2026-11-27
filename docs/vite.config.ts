@@ -9,7 +9,7 @@ export default defineConfig({
         tsconfigPaths: true,
     },
     plugins: [
-        press(),
+        press({ components: "./src/components/mdx.tsx" }),
         fumadocsMdx({
             globalOptions: {
                 mdxOptions: {

@@ -7,22 +7,26 @@ import * as React from "react";
 import { PeekContext } from "#/contexts/peek-context";
 
 const PEEK_CLASS: string = "peek-code";
-const DETECTED_CLASS: string = "peek-detected";
-const EXPANDED_CLASS: string = "peek-expanded";
+const PEEK_DETECTED_CLASS: string = "peek-detected";
+const PEEK_EXPANDED_CLASS: string = "peek-expanded";
+
+// Fumadocs v2 dropped `role="region"` from the code viewport, so mark it
+// ourselves for both the CSS and the overflow detection.
+const CODE_VIEWPORT_CLASS: string = "code-viewport";
 
 // Mirrors the 18rem collapsed height in app.css; the cap only applies after detection.
 const PEEK_HEIGHT: number = 18 * 16;
 
-const BAR_CLASS: string =
+const PEEK_BAR_CLASS: string =
     "absolute inset-x-0 bottom-0 z-2 flex h-11 cursor-pointer items-center justify-center gap-1.5 rounded-b-xl border-t border-fd-border bg-fd-card/85 text-sm font-medium text-fd-muted-foreground backdrop-blur-sm transition-colors hover:bg-fd-accent/60 hover:text-fd-accent-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fd-ring focus-visible:outline-none";
 
-const CHEVRON_CLASS: string = "size-4 shrink-0";
+const PEEK_CHEVRON_CLASS: string = "size-4 shrink-0";
 
-const COLLAPSE_CLASS: string =
+const PEEK_COLLAPSE_CLASS: string =
     "inline-flex size-6 items-center justify-center rounded-md text-fd-muted-foreground transition-colors hover:text-fd-accent-foreground focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:outline-none";
 
-const countLines = (region: HTMLElement): number => {
-    const text: string = region.querySelector("pre")?.textContent ?? "";
+const countLines = (viewport: HTMLElement): number => {
+    const text: string = viewport.querySelector("pre")?.textContent ?? "";
 
     return text === "" ? 0 : text.replace(/\n$/, "").split("\n").length;
 };
@@ -37,10 +41,10 @@ const PeekBar = ({ lines, onExpand }: PeekBarProps): React.JSX.Element => (
         type={"button"}
         aria-expanded={false}
         onClick={onExpand}
-        className={BAR_CLASS}
+        className={PEEK_BAR_CLASS}
     >
         {`Show all ${lines} lines`}
-        <ChevronDown className={CHEVRON_CLASS} />
+        <ChevronDown className={PEEK_CHEVRON_CLASS} />
     </button>
 );
 
@@ -56,9 +60,9 @@ const CollapseButton = ({
         title={"Collapse code"}
         aria-expanded
         onClick={onCollapse}
-        className={COLLAPSE_CLASS}
+        className={PEEK_COLLAPSE_CLASS}
     >
-        <ChevronUp className={CHEVRON_CLASS} />
+        <ChevronUp className={PEEK_CHEVRON_CLASS} />
         <span className={"sr-only"}>{"Collapse code"}</span>
     </button>
 );
@@ -81,21 +85,21 @@ const PeekedCodeBlock = ({
     const [isExpanded, setIsExpanded] = React.useState<boolean>(false);
 
     React.useLayoutEffect((): void => {
-        const region: HTMLElement | null =
-            figureRef.current?.querySelector('[role="region"]') ?? null;
+        const viewport: HTMLElement | null =
+            figureRef.current?.querySelector(`.${CODE_VIEWPORT_CLASS}`) ?? null;
 
-        if (region === null || region.scrollHeight <= PEEK_HEIGHT) {
-            return;
+        if (viewport === null || viewport.scrollHeight <= PEEK_HEIGHT) {
+            return void 0;
         }
 
-        setLineCount(countLines(region));
+        setLineCount(countLines(viewport));
     }, []);
 
     const className: string = [
         props.className,
         PEEK_CLASS,
-        lineCount === null ? "" : DETECTED_CLASS,
-        isExpanded ? EXPANDED_CLASS : "",
+        lineCount === null ? "" : PEEK_DETECTED_CLASS,
+        isExpanded ? PEEK_EXPANDED_CLASS : "",
     ]
         .filter(Boolean)
         .join(" ");
@@ -105,6 +109,7 @@ const PeekedCodeBlock = ({
             {...props}
             ref={figureRef}
             className={className}
+            viewportProps={{ className: CODE_VIEWPORT_CLASS }}
             Actions={({
                 className: actionClassName,
                 children: actionChildren,
@@ -158,7 +163,10 @@ const PeekCodeBlock = (props: CodeProps): React.JSX.Element => {
         const { children, ...rest } = props;
 
         return (
-            <CodeBlock {...rest}>
+            <CodeBlock
+                {...rest}
+                viewportProps={{ className: CODE_VIEWPORT_CLASS }}
+            >
                 <Pre>{children}</Pre>
             </CodeBlock>
         );

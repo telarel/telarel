@@ -28,3 +28,4 @@ minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
     - "@apst/*"
     - "@napi-rs/*"
+    - "@fumapress/*"
